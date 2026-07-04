@@ -4,6 +4,7 @@ import * as Calendar from 'expo-calendar';
 import * as Notifications from 'expo-notifications';
 import { StatusBar } from 'expo-status-bar';
 import React, { useEffect, useMemo, useState } from 'react';
+import { ChicPattern, DesignMode, getThemeTokens } from './theme';
 import {
   Alert,
   Animated,
@@ -29,7 +30,6 @@ type Priority = '高' | '中' | '低';
 type RepeatRule = 'none' | 'daily' | 'weekdays' | 'weekly';
 type TaskBucket = 'now' | 'later' | 'waiting';
 type NudgeMode = 'once' | 'repeat' | 'strong';
-type DesignMode = 'minimal' | 'chic' | 'companion';
 type ThemeMode = DesignMode;
 type UrgencyStatus = '余裕あり' | 'そろそろ準備' | '今出れば間に合う' | '急いで出発' | '予定どおりは厳しい' | 'リカバリーが必要';
 
@@ -74,6 +74,7 @@ type PersistedState = {
   completionIcon: string;
   designMode: DesignMode;
   taskTemplates?: string[];
+  chicPattern?: ChicPattern;
 };
 
 const STORAGE_KEY = 'rhythm-mvp-state-v1';
@@ -307,6 +308,12 @@ function getChicDailyPattern(now: Date) {
   return patterns[((dayNumber % patterns.length) + patterns.length) % patterns.length]!;
 }
 
+function getChicPatternVisual(pattern: ChicPattern) {
+  if (pattern === 'dot') return { background: '#FFF3F5', accent: '#D986A1', warm: '#A997C8' };
+  if (pattern === 'check') return { background: '#FFF9F6', accent: '#E8B8C7', warm: '#F4D8E2' };
+  return { background: '#FFF3F5', accent: '#D986A1', warm: '#A997C8' };
+}
+
 async function ensureNotifications() {
   const permission = await Notifications.requestPermissionsAsync();
   if (!permission.granted) return false;
@@ -345,8 +352,10 @@ export default function App() {
   const [showCompleted, setShowCompleted] = useState(false);
   const [completionIcon, setCompletionIcon] = useState('✓');
   const [designMode, setDesignMode] = useState<DesignMode>('chic');
+  const [chicPattern, setChicPattern] = useState<ChicPattern>('floral');
   const [taskTemplates, setTaskTemplates] = useState<string[]>(['朝の支度', '持ち物を確認', '連絡を返す', '薬を飲む']);
   const [guideOpen, setGuideOpen] = useState(false);
+  const theme = useMemo(() => getThemeTokens(designMode), [designMode]);
   const [addOpen, setAddOpen] = useState(false);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [selectionMode, setSelectionMode] = useState(false);
@@ -367,6 +376,7 @@ export default function App() {
         if (typeof saved.showCompleted === 'boolean') setShowCompleted(saved.showCompleted);
         if (saved.completionIcon) setCompletionIcon(saved.completionIcon);
         if (saved.designMode) setDesignMode(saved.designMode);
+        setChicPattern(saved.chicPattern ?? 'floral');
         if (saved.taskTemplates) setTaskTemplates(saved.taskTemplates);
       })
       .catch(() => Alert.alert('保存データを読み込めませんでした'))
@@ -406,9 +416,9 @@ export default function App() {
 
   useEffect(() => {
     if (!hydrated) return;
-    const state: PersistedState = { tasks, plan, departurePlans, widgetSize, showCompleted, completionIcon, designMode, taskTemplates };
+    const state: PersistedState = { tasks, plan, departurePlans, widgetSize, showCompleted, completionIcon, designMode, taskTemplates, chicPattern };
     AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(state)).catch(() => undefined);
-  }, [tasks, plan, departurePlans, widgetSize, showCompleted, completionIcon, designMode, taskTemplates, hydrated]);
+  }, [tasks, plan, departurePlans, widgetSize, showCompleted, completionIcon, designMode, taskTemplates, chicPattern, hydrated]);
 
   const timeline = useMemo(() => {
     const arrival = parseClock(plan.arrival);
@@ -578,7 +588,7 @@ export default function App() {
   };
 
   return (
-    <SafeAreaView style={[styles.safe, designMode === 'minimal' && styles.safeMinimal, designMode === 'chic' && styles.safeChic, designMode === 'companion' && styles.safeCompanion]}>
+    <SafeAreaView style={[styles.safe, { backgroundColor: theme.colors.screenBackground }, designMode === 'minimal' && styles.safeMinimal, designMode === 'chic' && styles.safeChic, designMode === 'companion' && styles.safeCompanion]}>
       <StatusBar style="dark" />
       <View style={styles.app}>
         <Header designMode={designMode} now={now} />
@@ -593,6 +603,7 @@ export default function App() {
               now={now}
               dangerousTask={dangerousTask}
               designMode={designMode}
+              chicPattern={chicPattern}
               completionIcon={completionIcon}
               selectionMode={selectionMode}
               selectedTaskIds={selectedTaskIds}
@@ -626,6 +637,7 @@ export default function App() {
               tasks={tasks}
               now={now}
               designMode={designMode}
+              chicPattern={chicPattern}
               initialTab={timelineInitialTab}
               onChange={setPlan}
               onSchedule={saveDeparturePlan}
@@ -646,10 +658,12 @@ export default function App() {
               showCompleted={showCompleted}
               completionIcon={completionIcon}
               designMode={designMode}
+              chicPattern={chicPattern}
               onSize={setWidgetSize}
               onShowCompleted={setShowCompleted}
               onCompletionIcon={setCompletionIcon}
               onDesignMode={setDesignMode}
+              onChicPattern={setChicPattern}
               templates={taskTemplates}
               onAddTemplate={(title) => setTaskTemplates((current) => current.includes(title) ? current : [...current, title])}
               onDeleteTemplate={(title) => setTaskTemplates((current) => current.filter((item) => item !== title))}
@@ -666,11 +680,12 @@ export default function App() {
         <BottomNav screen={screen} designMode={designMode} onChange={setScreen} />
       </View>
 
-      <TaskModal visible={addOpen} templates={taskTemplates} onClose={() => setAddOpen(false)} onSave={addTask} />
+      <TaskModal visible={addOpen} templates={taskTemplates} designMode={designMode} onClose={() => setAddOpen(false)} onSave={addTask} />
       <TaskModal
         visible={editingTask !== null}
         task={editingTask ?? undefined}
         templates={taskTemplates}
+        designMode={designMode}
         onClose={() => setEditingTask(null)}
         onSave={updateTask}
       />
@@ -700,6 +715,7 @@ function HomeScreen({
   dangerousTask,
   completionIcon,
   designMode,
+  chicPattern,
   selectionMode,
   selectedTaskIds,
   onAdd,
@@ -722,6 +738,7 @@ function HomeScreen({
   now: Date;
   dangerousTask?: Task;
   designMode: DesignMode;
+  chicPattern: ChicPattern;
   completionIcon: string;
   selectionMode: boolean;
   selectedTaskIds: string[];
@@ -749,13 +766,15 @@ function HomeScreen({
   return (
     <>
       <View style={[styles.compactTodayHeader, designMode === 'minimal' && styles.compactTodayHeaderMinimal, designMode === 'chic' && styles.compactTodayHeaderChic, designMode === 'companion' && styles.compactTodayHeaderCompanion]}>
+        {designMode === 'chic' && <View pointerEvents="none" style={styles.chicHeaderPatternCutout}><ChicPatternDecor pattern={chicPattern} accent="#D986A1" warm="#A997C8" /></View>}
+        {designMode === 'companion' && <><View pointerEvents="none" style={styles.companionHabitatSun} /><View pointerEvents="none" style={styles.companionHabitatFloor} /></>}
         {designMode === 'minimal' && <View style={styles.todayMinimalIndex}><Text style={styles.todayMinimalIndexText}>{String(tasks.filter((task) => (task.bucket ?? 'now') === 'now').length).padStart(2, '0')}</Text></View>}
         {designMode === 'chic' && <View style={styles.todayChicMark}><Text style={styles.todayChicMarkText}>✿</Text></View>}
-        {designMode === 'companion' && <View style={styles.todayCompanionFace}><Text style={styles.todayCompanionFaceText}>🥚</Text></View>}
-        <View style={{ flex: 1 }}><Text style={[styles.compactTodayKicker, designMode === 'chic' && styles.compactTodayKickerChic, designMode === 'companion' && styles.compactTodayKickerCompanion]}>{designMode === 'minimal' ? 'TODAY / PRIORITY' : designMode === 'chic' ? 'TODAY NOTE' : 'BUDDY MESSAGE'}</Text><Text numberOfLines={1} style={styles.compactTodayCopy}>{remaining === 0 ? (designMode === 'companion' ? '相棒も大満足。今日の分は完了！' : '今日の分は完了。いい感じ') : designMode === 'companion' ? `相棒と「今やる」${tasks.filter((task) => (task.bucket ?? 'now') === 'now').length}件から` : `まずは、今やる${tasks.filter((task) => (task.bucket ?? 'now') === 'now').length}件から`}</Text></View>
+        {designMode === 'companion' && <View style={styles.todayCompanionFace}><Text style={styles.todayCompanionFaceText}>🥚</Text><View style={styles.companionFutureExp}><View style={styles.companionFutureExpFill} /></View></View>}
+        <View style={{ flex: 1 }}><Text style={[styles.compactTodayKicker, designMode === 'chic' && styles.compactTodayKickerChic, designMode === 'companion' && styles.compactTodayKickerCompanion]}>{designMode === 'minimal' ? '今日の優先' : designMode === 'chic' ? '今日のメモ' : '相棒から'}</Text><Text numberOfLines={2} style={styles.compactTodayCopy}>{remaining === 0 ? (designMode === 'companion' ? '相棒も大満足。今日の分は完了！' : '今日の分は完了。いい感じ') : designMode === 'companion' ? `相棒と「今やる」${tasks.filter((task) => (task.bucket ?? 'now') === 'now').length}件から` : `まずは、今やる${tasks.filter((task) => (task.bucket ?? 'now') === 'now').length}件から`}</Text></View>
         {designMode === 'chic' && <Text style={styles.todayChicSpark}>✦</Text>}
       </View>
-      <TodayWinStrip tasks={allTasks} designMode={designMode} onRestore={(id) => onRestore(id)} />
+      <TodayWinStrip tasks={allTasks} designMode={designMode} chicPattern={chicPattern} onRestore={(id) => onRestore(id)} />
 
       <View style={[styles.sectionHeader, designMode === 'minimal' && styles.sectionHeaderMinimal]}>
         <View>
@@ -774,9 +793,9 @@ function HomeScreen({
       })}</View>
 
       <View style={styles.homeToolRow}>
-        <Pressable style={[styles.homeToolCard, designMode === 'minimal' && styles.homeToolCardMinimal]} onPress={() => onOpenTime('departure')}><Text style={styles.homeToolIcon}>↗</Text><Text style={styles.homeToolTitle}>出発</Text><Text numberOfLines={1} style={styles.homeToolMeta}>{timeline.leave}</Text></Pressable>
-        <Pressable style={[styles.homeToolCard, designMode === 'chic' && styles.homeToolCardChic]} onPress={() => onOpenTime('calendar')}><Text style={styles.homeToolIcon}>▦</Text><Text style={styles.homeToolTitle}>予定表</Text><Text style={styles.homeToolMeta}>月を見る</Text></Pressable>
-        <Pressable style={[styles.homeToolCard, designMode === 'companion' && styles.homeToolCardCompanion]} onPress={() => onOpenTime('focus')}><Text style={styles.homeToolIcon}>◉</Text><Text style={styles.homeToolTitle}>集中</Text><Text style={styles.homeToolMeta}>今だけ</Text></Pressable>
+        <Pressable style={[styles.homeToolCard, designMode === 'minimal' && styles.homeToolCardMinimal, designMode === 'chic' && styles.homeToolCardChic, designMode === 'companion' && styles.homeToolCardCompanion]} onPress={() => onOpenTime('departure')}><Text style={styles.homeToolIcon}>↗</Text><Text style={styles.homeToolTitle}>出発</Text><Text numberOfLines={1} style={styles.homeToolMeta}>{timeline.leave}</Text></Pressable>
+        <Pressable style={[styles.homeToolCard, designMode === 'minimal' && styles.homeToolCardMinimal, designMode === 'chic' && styles.homeToolCardChic, designMode === 'companion' && styles.homeToolCardCompanion]} onPress={() => onOpenTime('calendar')}><Text style={styles.homeToolIcon}>▦</Text><Text style={styles.homeToolTitle}>予定表</Text><Text style={styles.homeToolMeta}>月を見る</Text></Pressable>
+        <Pressable style={[styles.homeToolCard, designMode === 'minimal' && styles.homeToolCardMinimal, designMode === 'chic' && styles.homeToolCardChic, designMode === 'companion' && styles.homeToolCardCompanion]} onPress={() => onOpenTime('focus')}><Text style={styles.homeToolIcon}>◉</Text><Text style={styles.homeToolTitle}>集中</Text><Text style={styles.homeToolMeta}>今だけ</Text></Pressable>
       </View>
 
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterChips}>
@@ -793,7 +812,8 @@ function HomeScreen({
       )}
 
       {displayTasks.length === 0 ? (
-        <Pressable style={styles.emptyCard} onPress={onAdd}>
+        <Pressable style={[styles.emptyCard, designMode === 'minimal' && styles.emptyCardMinimal, designMode === 'chic' && styles.emptyCardChic, designMode === 'companion' && styles.emptyCardCompanion]} onPress={onAdd}>
+          {designMode === 'chic' && <View pointerEvents="none" style={styles.emptyChicPattern}><ChicPatternDecor pattern={chicPattern} accent="#D986A1" warm="#A997C8" /></View>}
           <Text style={styles.emptyIcon}>○</Text>
           <Text style={styles.emptyTitle}>最初のタスクを追加しよう</Text>
           <Text style={styles.emptyCopy}>忘れたくないことを、ここに置いておけます。</Text>
@@ -857,6 +877,7 @@ function TimelineScreen({
   now,
   designMode,
   initialTab,
+  chicPattern,
   onChange,
   onSchedule,
   onEdit,
@@ -871,6 +892,7 @@ function TimelineScreen({
   now: Date;
   designMode: DesignMode;
   initialTab: TimeTab;
+  chicPattern: ChicPattern;
   onChange: (plan: DeparturePlan) => void;
   onSchedule: () => void;
   onEdit: (plan: DeparturePlan) => void;
@@ -878,6 +900,7 @@ function TimelineScreen({
   onEditTask: (task: Task) => void;
   onPremium: () => void;
 }) {
+  const theme = getThemeTokens(designMode);
   const [showPlanDatePicker, setShowPlanDatePicker] = useState(false);
   const [timeTab, setTimeTab] = useState<TimeTab>(initialTab);
   const [calendarEvents, setCalendarEvents] = useState<Calendar.Event[]>([]);
@@ -911,15 +934,13 @@ function TimelineScreen({
   };
   return (
     <>
-      <Text style={styles.hero}>時間に追われる前に、先回り。</Text>
-      <View style={styles.timeTabs}>
-        <Pressable style={[styles.timeTab, timeTab === 'departure' && styles.timeTabActive]} onPress={() => setTimeTab('departure')}><Text style={[styles.timeTabText, timeTab === 'departure' && styles.timeTabTextActive]}>出発</Text></Pressable>
-        <Pressable style={[styles.timeTab, timeTab === 'deadline' && styles.timeTabActive]} onPress={() => setTimeTab('deadline')}><Text style={[styles.timeTabText, timeTab === 'deadline' && styles.timeTabTextActive]}>締切</Text></Pressable>
-        <Pressable style={[styles.timeTab, timeTab === 'calendar' && styles.timeTabActive]} onPress={() => setTimeTab('calendar')}><Text style={[styles.timeTabText, timeTab === 'calendar' && styles.timeTabTextActive]}>予定表</Text></Pressable>
-        <Pressable style={[styles.timeTab, timeTab === 'focus' && styles.timeTabActive]} onPress={() => setTimeTab('focus')}><Text style={[styles.timeTabText, timeTab === 'focus' && styles.timeTabTextActive]}>集中</Text></Pressable>
+      <Text numberOfLines={2} style={[styles.hero, styles.timeHero]}>時間に追われる前に、先回り。</Text>
+      <View style={[styles.timeTabs, designMode === 'minimal' && styles.timeTabsMinimal, designMode === 'chic' && styles.timeTabsChic, designMode === 'companion' && styles.timeTabsCompanion]}>
+        {designMode === 'chic' && <View pointerEvents="none" style={styles.timeTabPatternBand}><ChicPatternDecor pattern={chicPattern} accent="#D986A1" warm="#A997C8" /></View>}
+        {(['departure', 'deadline', 'calendar', 'focus'] as TimeTab[]).map((tab) => <Pressable key={tab} style={[styles.timeTab, designMode === 'minimal' && styles.timeTabMinimal, timeTab === tab && styles.timeTabActive, timeTab === tab && { backgroundColor: theme.colors.primaryAccent, borderColor: theme.colors.primaryAccent }]} onPress={() => setTimeTab(tab)}><Text style={[styles.timeTabText, { color: theme.colors.secondaryText }, timeTab === tab && styles.timeTabTextActive]}>{tab === 'departure' ? '出発' : tab === 'deadline' ? '締切' : tab === 'calendar' ? '予定表' : '集中'}</Text></Pressable>)}
       </View>
 
-      {timeTab === 'focus' ? <FocusMode tasks={tasks} designMode={designMode} /> : timeTab === 'calendar' ? <TaskScheduleCalendar tasks={tasks} plans={plans} now={now} onEditTask={onEditTask} onEditPlan={onEdit} /> : timeTab === 'deadline' ? <>
+      {timeTab === 'focus' ? <FocusMode tasks={tasks} designMode={designMode} /> : timeTab === 'calendar' ? <TaskScheduleCalendar tasks={tasks} plans={plans} now={now} designMode={designMode} chicPattern={chicPattern} onEditTask={onEditTask} onEditPlan={onEdit} /> : timeTab === 'deadline' ? <>
         <View style={styles.departureListHeader}><Text style={styles.sectionTitle}>締切カウントダウン</Text><Text style={styles.sectionSub}>{deadlineTasks.length}件</Text></View>
         {deadlineTasks.length === 0 ? <View style={styles.departureEmpty}><Text style={styles.emptyCopy}>期限付きタスクを追加すると、ここに残り時間が表示されます。</Text></View> : deadlineTasks.map((task) => {
           const target = getTargetDate(task)!;
@@ -985,13 +1006,13 @@ function TimelineScreen({
       </Pressable>
       </>}
 
-      <Pressable style={styles.premiumCard} onPress={onPremium}>
+      <Pressable style={[styles.premiumCard, { backgroundColor: designMode === 'minimal' ? '#FFFFFF' : designMode === 'chic' ? '#FFF0F2' : '#FFF0DC', borderColor: theme.colors.border, borderWidth: 1, borderRadius: theme.radius.large }]} onPress={onPremium}>
         <View style={styles.premiumText}>
-          <Text style={styles.premiumBadge}>PREMIUM</Text>
+          <Text style={[styles.premiumBadge, { color: theme.colors.primaryAccent }]}>PREMIUM</Text>
           <Text style={styles.premiumTitle}>寝坊防止モード</Text>
           <Text style={styles.premiumCopy}>自動再計算・遅刻リカバリー・ガチ警告</Text>
         </View>
-        <Text style={styles.lock}>▣</Text>
+        <Text style={[styles.lock, { color: theme.colors.primaryAccent }]}>▣</Text>
       </Pressable>
     </>
   );
@@ -1033,12 +1054,12 @@ function FocusMode({ tasks, designMode }: { tasks: Task[]; designMode: DesignMod
 
   const isMinimal = designMode === 'minimal';
   const isChic = designMode === 'chic';
-  const modeCopy = isMinimal ? 'ONE TASK. NO DISTRACTIONS.' : isChic ? '静かな時間を、ひとつだけ。' : '相棒も隣でいっしょに集中！';
+  const modeCopy = isMinimal ? '今はこれだけ' : isChic ? '静かな時間を、ひとつだけ。' : '相棒も隣でいっしょに集中！';
   return <>
     <View style={[styles.focusHero, isChic && styles.focusHeroChic, designMode === 'companion' && styles.focusHeroCompanion]}>
       {isChic && <><View style={styles.focusChicFlowerOne}><Text>✿</Text></View><View style={styles.focusChicFlowerTwo}><Text>✦</Text></View></>}
       {designMode === 'companion' && <View style={styles.focusCompanionBubble}><Text style={styles.focusCompanionEmoji}>🥚</Text><Text style={styles.focusCompanionSpeech}>{running ? 'しーっ、集中中…' : 'いっしょに始めよう！'}</Text></View>}
-      <Text style={[styles.focusEyebrow, !isMinimal && styles.focusEyebrowLight]}>{isMinimal ? 'FOCUS / 01' : isChic ? 'MY QUIET TIME' : 'BUDDY FOCUS'}</Text>
+      <Text style={[styles.focusEyebrow, !isMinimal && styles.focusEyebrowLight]}>{running ? '集中中' : '集中タイマー'}</Text>
       <Text style={[styles.focusTitle, !isMinimal && styles.focusTitleLight]}>{selectedTask?.title ?? '集中するタスクを選ぼう'}</Text>
       <Text style={[styles.focusCopy, !isMinimal && styles.focusCopyLight]}>{modeCopy}</Text>
       <View style={[styles.focusTimerRing, isChic && styles.focusTimerRingChic, designMode === 'companion' && styles.focusTimerRingCompanion]}>
@@ -1058,7 +1079,8 @@ function FocusMode({ tasks, designMode }: { tasks: Task[]; designMode: DesignMod
   </>;
 }
 
-function TaskScheduleCalendar({ tasks, plans, now, onEditTask, onEditPlan }: { tasks: Task[]; plans: DeparturePlan[]; now: Date; onEditTask: (task: Task) => void; onEditPlan: (plan: DeparturePlan) => void }) {
+function TaskScheduleCalendar({ tasks, plans, now, designMode, chicPattern, onEditTask, onEditPlan }: { tasks: Task[]; plans: DeparturePlan[]; now: Date; designMode: DesignMode; chicPattern: ChicPattern; onEditTask: (task: Task) => void; onEditPlan: (plan: DeparturePlan) => void }) {
+  const theme = getThemeTokens(designMode);
   const [monthDate, setMonthDate] = useState(() => new Date(now.getFullYear(), now.getMonth(), 1));
   const [selectedDate, setSelectedDate] = useState(dateKey(now));
   const year = monthDate.getFullYear();
@@ -1079,7 +1101,8 @@ function TaskScheduleCalendar({ tasks, plans, now, onEditTask, onEditPlan }: { t
   };
 
   return <>
-    <View style={styles.scheduleCalendarCard}>
+    <View style={[styles.scheduleCalendarCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border, borderRadius: designMode === 'minimal' ? 2 : theme.radius.large }]}>
+      {designMode === 'chic' && <View pointerEvents="none" style={styles.calendarPatternCorner}><ChicPatternDecor pattern={chicPattern} accent="#D986A1" warm="#A997C8" /></View>}
       <View style={styles.scheduleCalendarHeader}>
         <Pressable style={styles.scheduleMonthArrow} onPress={() => moveMonth(-1)}><Text style={styles.scheduleMonthArrowText}>‹</Text></Pressable>
         <View><Text style={styles.scheduleMonthTitle}>{year}年 {month + 1}月</Text><Text style={styles.scheduleMonthCopy}>タスクと出発予定を、ひと目で</Text></View>
@@ -1093,7 +1116,7 @@ function TaskScheduleCalendar({ tasks, plans, now, onEditTask, onEditPlan }: { t
         const dayPlans = plans.filter((item) => item.date === key);
         const selected = key === selectedDate;
         const today = key === dateKey(now);
-        return <Pressable key={key} style={[styles.scheduleDayCell, selected && styles.scheduleDayCellSelected]} onPress={() => setSelectedDate(key)}>
+        return <Pressable key={key} style={[styles.scheduleDayCell, designMode === 'minimal' && styles.scheduleDayCellMinimal, selected && styles.scheduleDayCellSelected, selected && { backgroundColor: theme.colors.primaryAccent }]} onPress={() => setSelectedDate(key)}>
           <Text style={[styles.scheduleDayNumber, today && styles.scheduleTodayNumber, selected && styles.scheduleSelectedText]}>{date.getDate()}</Text>
           <View style={styles.scheduleEventStack}>
             {dayTasks.slice(0, 2).map((task) => <View key={task.id} style={[styles.scheduleEventBar, { backgroundColor: categoryColors[task.category] }]}><Text numberOfLines={1} style={styles.scheduleEventBarText}>{task.title}</Text></View>)}
@@ -1176,8 +1199,8 @@ function ModeHomeHero({ designMode, tasks, dangerousTask, now, completedCount, r
   </View>;
 }
 
-function ChicPatternDecor({ pattern, accent, warm }: { pattern: 'flower' | 'dot' | 'stripe'; accent: string; warm: string }) {
-  if (pattern === 'stripe') {
+function ChicPatternDecor({ pattern, accent, warm }: { pattern: ChicPattern | 'flower' | 'stripe'; accent: string; warm: string }) {
+  if (pattern === 'check' || pattern === 'stripe') {
     return <View pointerEvents="none" style={styles.patternLayer}>
       {[0, 1, 2, 3, 4, 5].map((item) => <View key={item} style={[styles.patternStripe, { backgroundColor: item % 2 ? warm : accent, left: -55 + item * 83 }]} />)}
     </View>;
@@ -1263,10 +1286,12 @@ function WidgetScreen({
   showCompleted,
   completionIcon,
   designMode,
+  chicPattern,
   onSize,
   onShowCompleted,
   onCompletionIcon,
   onDesignMode,
+  onChicPattern,
   templates,
   onAddTemplate,
   onDeleteTemplate,
@@ -1281,10 +1306,12 @@ function WidgetScreen({
   showCompleted: boolean;
   completionIcon: string;
   designMode: DesignMode;
+  chicPattern: ChicPattern;
   onSize: (size: WidgetSize) => void;
   onShowCompleted: (value: boolean) => void;
   onCompletionIcon: (icon: string) => void;
   onDesignMode: (mode: DesignMode) => void;
+  onChicPattern: (pattern: ChicPattern) => void;
   templates: string[];
   onAddTemplate: (title: string) => void;
   onDeleteTemplate: (title: string) => void;
@@ -1293,7 +1320,7 @@ function WidgetScreen({
 }) {
   const [newTemplate, setNewTemplate] = useState('');
   const previewTasks = tasks.filter((task) => showCompleted || !task.done).slice(0, size === 'small' ? 2 : 3);
-  const chicPattern = getChicDailyPattern(now);
+  const patternVisual = getChicPatternVisual(chicPattern);
   return (
     <>
       <Text style={styles.hero}>Rhythmを、私仕様に。</Text>
@@ -1302,12 +1329,15 @@ function WidgetScreen({
         <View style={styles.modeChoices}>
           {designModes.map((mode) => (
             <Pressable key={mode.id} style={[styles.modeChoice, designMode === mode.id && styles.modeChoiceActive]} onPress={() => onDesignMode(mode.id)}>
-              <Text style={styles.modeIcon}>{mode.id === 'minimal' ? '○' : mode.id === 'chic' ? '✦' : '🥚'}</Text>
+              <View style={[styles.modeMiniPreview, mode.id === 'minimal' && styles.modeMiniMinimal, mode.id === 'chic' && styles.modeMiniChic, mode.id === 'companion' && styles.modeMiniCompanion]}>
+                {mode.id === 'minimal' ? <><View style={styles.modeMiniBlackBlock} /><Text style={styles.modeMiniNumber}>03</Text><View style={styles.modeMiniLine} /></> : mode.id === 'chic' ? <><View style={styles.modeMiniGlass} /><View style={styles.modeMiniFlower}><Text>✿</Text></View><Text style={styles.modeMiniSparkle}>✦</Text></> : <><View style={styles.modeMiniSun} /><Text style={styles.modeMiniEgg}>🥚</Text><View style={styles.modeMiniGround} /></>}
+              </View>
               <Text style={[styles.modeName, designMode === mode.id && styles.modeNameActive]}>{mode.name}</Text>
               <Text style={styles.modeDescription}>{mode.description}</Text>
             </Pressable>
           ))}
         </View>
+        {designMode === 'chic' && <View style={styles.patternSelector}><Text style={styles.fieldLabel}>Chicの柄</Text><View style={styles.patternChoices}>{(['floral', 'dot', 'check'] as ChicPattern[]).map((pattern) => <Pressable key={pattern} style={[styles.patternChoice, chicPattern === pattern && styles.patternChoiceActive]} onPress={() => onChicPattern(pattern)}><View style={styles.patternSwatch}><ChicPatternDecor pattern={pattern} accent="#D986A1" warm="#A997C8" /></View><Text style={[styles.patternChoiceText, chicPattern === pattern && styles.patternChoiceTextActive]}>{pattern === 'floral' ? '花柄' : pattern === 'dot' ? 'ドット' : 'チェック'}</Text></Pressable>)}</View></View>}
       </View>
       <Pressable style={styles.guideCard} onPress={onGuide}><View><Text style={styles.guideCardTitle}>Rhythmの使い方</Text><Text style={styles.guideCardCopy}>登録・振り分け・出発・集中の流れを見る</Text></View><Text style={styles.guideCardArrow}>›</Text></Pressable>
       <View style={styles.settingsCard}>
@@ -1319,10 +1349,10 @@ function WidgetScreen({
       <Text style={styles.settingsSectionLabel}>ウィジェット設定</Text>
       <Text style={styles.previewLabel}>WIDGET PREVIEW</Text>
 
-      <View style={[styles.phonePreview, designMode === 'minimal' && styles.phonePreviewMinimal, designMode === 'chic' && { backgroundColor: chicPattern.accent }, designMode === 'companion' && styles.phonePreviewCompanion]}>
+      <View style={[styles.phonePreview, designMode === 'minimal' && styles.phonePreviewMinimal, designMode === 'chic' && { backgroundColor: patternVisual.accent }, designMode === 'companion' && styles.phonePreviewCompanion]}>
         <Text style={styles.phoneClock}>9:41</Text>
-        <View style={[styles.widget, size === 'small' && styles.widgetSmall, designMode === 'minimal' && styles.widgetMinimal, designMode === 'chic' && { backgroundColor: chicPattern.background }, designMode === 'companion' && styles.widgetCompanion]}>
-          {designMode === 'chic' && <ChicPatternDecor pattern={chicPattern.pattern} accent={chicPattern.accent} warm={chicPattern.warm} />}
+        <View style={[styles.widget, size === 'small' && styles.widgetSmall, designMode === 'minimal' && styles.widgetMinimal, designMode === 'chic' && { backgroundColor: patternVisual.background }, designMode === 'companion' && styles.widgetCompanion]}>
+          {designMode === 'chic' && <ChicPatternDecor pattern={chicPattern} accent={patternVisual.accent} warm={patternVisual.warm} />}
           {designMode === 'chic' && <View pointerEvents="none" style={styles.widgetChicWash} />}
           <View style={styles.widgetTop}>
             <View>
@@ -1389,7 +1419,8 @@ function WidgetScreen({
   );
 }
 
-function TaskModal({ visible, task, templates, onClose, onSave }: { visible: boolean; task?: Task; templates: string[]; onClose: () => void; onSave: (title: string, category: Category, priority: Priority, remindDate?: string, remindAt?: string, deadlineDate?: string, deadlineTime?: string, deadlineNotifyBefore?: number, navigationEnabled?: boolean, preparationMinutes?: number, travelMinutes?: number, bufferMinutes?: number, repeatRule?: RepeatRule, nudgeMode?: NudgeMode, scheduledDate?: string) => void }) {
+function TaskModal({ visible, task, templates, designMode, onClose, onSave }: { visible: boolean; task?: Task; templates: string[]; designMode: DesignMode; onClose: () => void; onSave: (title: string, category: Category, priority: Priority, remindDate?: string, remindAt?: string, deadlineDate?: string, deadlineTime?: string, deadlineNotifyBefore?: number, navigationEnabled?: boolean, preparationMinutes?: number, travelMinutes?: number, bufferMinutes?: number, repeatRule?: RepeatRule, nudgeMode?: NudgeMode, scheduledDate?: string) => void }) {
+  const theme = getThemeTokens(designMode);
   const [title, setTitle] = useState('');
   const [remind, setRemind] = useState(false);
   const [time, setTime] = useState('09:00');
@@ -1450,7 +1481,7 @@ function TaskModal({ visible, task, templates, onClose, onSave }: { visible: boo
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <KeyboardAvoidingView style={styles.keyboardView} behavior={Platform.OS === 'ios' ? 'padding' : 'height'} keyboardVerticalOffset={8}>
       <Pressable style={styles.modalBackdrop} onPress={onClose}>
-        <Pressable style={styles.modalSheet} onPress={(event) => event.stopPropagation()}>
+        <Pressable style={[styles.modalSheet, { backgroundColor: theme.colors.screenBackground, borderRadius: theme.radius.modal }]} onPress={(event) => event.stopPropagation()}>
           <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false} contentContainerStyle={styles.modalScroll}>
           <View style={styles.modalHandle} />
           <Text style={styles.modalTitle}>{task ? 'タスクを編集' : '新しいタスク'}</Text>
@@ -1470,7 +1501,7 @@ function TaskModal({ visible, task, templates, onClose, onSave }: { visible: boo
           <Text style={[styles.fieldLabel, { marginTop: 18 }]}>ジャンル</Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.categoryChoices}>
             {categories.map((item) => (
-              <Pressable key={item} style={[styles.categoryChoice, { backgroundColor: categoryColors[item] }, category === item && styles.categoryChoiceActive]} onPress={() => setCategory(item)}>
+              <Pressable key={item} style={[styles.categoryChoice, { backgroundColor: theme.colors.secondarySurface }, category === item && styles.categoryChoiceActive, category === item && { backgroundColor: theme.colors.softAccent, borderColor: theme.colors.primaryAccent }]} onPress={() => setCategory(item)}>
                 <Text style={styles.categoryChoiceText}>{item}</Text>
               </Pressable>
             ))}
@@ -1478,7 +1509,7 @@ function TaskModal({ visible, task, templates, onClose, onSave }: { visible: boo
           <Text style={[styles.fieldLabel, { marginTop: 17 }]}>優先度</Text>
           <View style={styles.priorityChoices}>
             {priorities.map((item) => (
-              <Pressable key={item} style={[styles.priorityChoice, priority === item && styles.priorityChoiceActive, item === '高' && priority === item && styles.priorityChoiceHigh]} onPress={() => setPriority(item)}>
+              <Pressable key={item} style={[styles.priorityChoice, { backgroundColor: theme.colors.secondarySurface }, priority === item && styles.priorityChoiceActive, priority === item && { backgroundColor: theme.colors.softAccent, borderColor: theme.colors.primaryAccent }]} onPress={() => setPriority(item)}>
                 <Text style={[styles.priorityChoiceText, priority === item && styles.priorityChoiceTextActive]}>{item}</Text>
               </Pressable>
             ))}
@@ -1492,7 +1523,7 @@ function TaskModal({ visible, task, templates, onClose, onSave }: { visible: boo
           {showScheduledDatePicker && <DateTimePicker value={dateForReminder(scheduledDate, '12:00')} mode="date" minimumDate={new Date()} display={Platform.OS === 'ios' ? 'inline' : 'default'} onChange={(event: DateTimePickerEvent, selected) => { if (Platform.OS !== 'ios') setShowScheduledDatePicker(false); if (event.type === 'set' && selected) setScheduledDate(dateKey(selected)); }} />}
           <Text style={[styles.fieldLabel, { marginTop: 17 }]}>繰り返し・ルーティン</Text>
           <View style={styles.repeatChoices}>
-            {repeatOptions.map((option) => <Pressable key={option.id} style={[styles.repeatChoice, repeatRule === option.id && styles.repeatChoiceActive]} onPress={() => setRepeatRule(option.id)}><Text style={[styles.repeatChoiceText, repeatRule === option.id && styles.repeatChoiceTextActive]}>{option.label}</Text></Pressable>)}
+            {repeatOptions.map((option) => <Pressable key={option.id} style={[styles.repeatChoice, { backgroundColor: theme.colors.secondarySurface }, repeatRule === option.id && styles.repeatChoiceActive, repeatRule === option.id && { backgroundColor: theme.colors.softAccent, borderColor: theme.colors.primaryAccent }]} onPress={() => setRepeatRule(option.id)}><Text style={[styles.repeatChoiceText, repeatRule === option.id && styles.repeatChoiceTextActive]}>{option.label}</Text></Pressable>)}
           </View>
           <View style={styles.switchRow}>
             <View>
@@ -1573,7 +1604,7 @@ function TaskModal({ visible, task, templates, onClose, onSave }: { visible: boo
               </View>
             </View>
           )}
-          <Pressable style={styles.primaryButton} onPress={save}><Text style={styles.primaryButtonText}>{task ? '変更を保存' : '登録する'}</Text></Pressable>
+          <Pressable style={[styles.primaryButton, { backgroundColor: theme.colors.primaryAccent, borderRadius: theme.radius.button }]} onPress={save}><Text style={styles.primaryButtonText}>{task ? '変更を保存' : '登録する'}</Text></Pressable>
           <Pressable onPress={onClose}><Text style={styles.cancelText}>キャンセル</Text></Pressable>
           </ScrollView>
         </Pressable>
@@ -1583,7 +1614,8 @@ function TaskModal({ visible, task, templates, onClose, onSave }: { visible: boo
   );
 }
 
-function TodayWinStrip({ tasks, designMode, onRestore }: { tasks: Task[]; designMode: ThemeMode; onRestore: (id: string) => void }) {
+function TodayWinStrip({ tasks, designMode, chicPattern, onRestore }: { tasks: Task[]; designMode: ThemeMode; chicPattern: ChicPattern; onRestore: (id: string) => void }) {
+  const theme = getThemeTokens(designMode);
   const completed = tasks.filter((task) => task.done && task.completedAt && dateKey(task.completedAt) === dateKey());
   const count = completed.length;
   const drop = React.useRef(new Animated.Value(1)).current;
@@ -1603,10 +1635,10 @@ function TodayWinStrip({ tasks, designMode, onRestore }: { tasks: Task[]; design
     previous.current = count;
   }, [count, drop]);
   const fallingStyle = { transform: [{ translateY: drop.interpolate({ inputRange: [0, 1], outputRange: [-38, 18] }) }, { scale: drop.interpolate({ inputRange: [0, 1], outputRange: [1.25, 0.82] }) }], opacity: drop };
-  const details = <Modal visible={detailsOpen} transparent animationType="slide" onRequestClose={() => setDetailsOpen(false)}><Pressable style={styles.modalBackdrop} onPress={() => setDetailsOpen(false)}><Pressable style={styles.modalSheet} onPress={(event) => event.stopPropagation()}><View style={styles.modalHandle} /><Text style={styles.modalTitle}>今日できたこと</Text>{completed.length === 0 ? <Text style={styles.emptyCopy}>完了したタスクはまだありません。</Text> : completed.map((task) => <View key={task.id} style={styles.completedDetailRow}><Text style={styles.completedDetailIcon}>{designMode === 'minimal' ? '✓' : designMode === 'chic' ? '✿' : '★'}</Text><View style={{ flex: 1 }}><Text style={styles.taskTitle}>{task.title}</Text><Text style={styles.taskMeta}>{task.category}</Text></View><Pressable style={styles.restoreButton} onPress={() => onRestore(task.id)}><Text style={styles.restoreButtonText}>元に戻す</Text></Pressable></View>)}<Pressable style={styles.primaryButton} onPress={() => setDetailsOpen(false)}><Text style={styles.primaryButtonText}>閉じる</Text></Pressable></Pressable></Pressable></Modal>;
-  if (designMode === 'minimal') return <><Pressable style={styles.todayMinimalWin} onPress={() => setDetailsOpen(true)}><View><Text style={styles.minimalAchievementLabel}>TODAY’S OUTPUT</Text><Text style={styles.todayWinComment}>{count === 0 ? 'START WITH ONE.' : `${String(count).padStart(2, '0')} TASKS CLOSED.`}</Text></View><View style={styles.todayMiniMeter}>{Array.from({ length: 6 }, (_, item) => <View key={item} style={[styles.todayMiniTick, item < Math.min(6, count) && styles.todayMiniTickDone]} />)}</View></Pressable>{details}</>;
+  const details = <Modal visible={detailsOpen} transparent animationType="slide" onRequestClose={() => setDetailsOpen(false)}><Pressable style={styles.modalBackdrop} onPress={() => setDetailsOpen(false)}><Pressable style={[styles.modalSheet, { backgroundColor: theme.colors.screenBackground, borderRadius: theme.radius.modal }]} onPress={(event) => event.stopPropagation()}>{designMode === 'chic' && <View pointerEvents="none" style={styles.completedModalPattern}><ChicPatternDecor pattern={chicPattern} accent="#D986A1" warm="#A997C8" /></View>}{designMode === 'companion' && <Text style={styles.completedCompanionReaction}>🥚 できたこと、ちゃんと覚えてるよ</Text>}<View style={styles.modalHandle} /><Text style={styles.modalTitle}>今日できたこと</Text>{completed.length === 0 ? <Text style={styles.emptyCopy}>完了したタスクはまだありません。</Text> : completed.map((task) => <View key={task.id} style={[styles.completedDetailRow, designMode === 'minimal' && styles.completedDetailRowMinimal]}><Text style={[styles.completedDetailIcon, { color: theme.colors.primaryAccent }]}>{designMode === 'minimal' ? '✓' : designMode === 'chic' ? '✿' : '★'}</Text><View style={{ flex: 1 }}><Text style={styles.taskTitle}>{task.title}</Text><Text style={styles.taskMeta}>{task.category}</Text></View><Pressable style={[styles.restoreButton, { backgroundColor: theme.colors.softAccent }]} onPress={() => onRestore(task.id)}><Text style={[styles.restoreButtonText, { color: theme.colors.primaryAccent }]}>元に戻す</Text></Pressable></View>)}<Pressable style={[styles.primaryButton, { backgroundColor: theme.colors.primaryAccent, borderRadius: theme.radius.button }]} onPress={() => setDetailsOpen(false)}><Text style={styles.primaryButtonText}>閉じる</Text></Pressable></Pressable></Pressable></Modal>;
+  if (designMode === 'minimal') return <><Pressable style={styles.todayMinimalWin} onPress={() => setDetailsOpen(true)}><View><Text style={styles.minimalAchievementLabel}>今日できたこと</Text><Text style={styles.todayWinCount}>{String(count).padStart(2, '0')}</Text><Text style={styles.todayWinComment}>{count}件完了</Text></View><View style={styles.todayMiniMeter}>{Array.from({ length: 6 }, (_, item) => <View key={item} style={[styles.todayMiniTick, item < Math.min(6, count) && styles.todayMiniTickDone]} />)}</View></Pressable>{details}</>;
   const item = designMode === 'chic' ? '✿' : '🍪';
-  return <><Pressable style={styles.todayWinStrip} onPress={() => setDetailsOpen(true)}><View style={{ flex: 1 }}><Text style={styles.vesselLabelTop}>{designMode === 'chic' ? 'LITTLE WINS' : 'BUDDY’S TREASURE'}</Text><Text style={styles.todayWinComment}>{count === 0 ? '最初のひとつを待っています' : `${count}つ終わった、いい感じ`}</Text><Text style={styles.todayWinHint}>瓶をタップして今日の完了を見る</Text></View><View style={styles.miniJarWrap}><View style={styles.miniJarLid} /><View style={[styles.miniJar, designMode === 'companion' && styles.miniJarCompanion]}>{Array.from({ length: Math.min(5, count) }, (_, index) => <Text key={index} style={[styles.miniJarItem, { left: 8 + (index % 3) * 22, bottom: 4 + Math.floor(index / 3) * 19 }]}>{index % 2 ? '★' : item}</Text>)}</View>{dropVisible && <Animated.Text style={[styles.fallingTreasure, fallingStyle]}>{item}</Animated.Text>}</View></Pressable>{details}</>;
+  return <><Pressable style={styles.todayWinStrip} onPress={() => setDetailsOpen(true)}><View style={{ flex: 1 }}><Text style={styles.vesselLabelTop}>{designMode === 'chic' ? '小さな達成' : '相棒の宝もの'}</Text><Text style={styles.todayWinComment}>{count === 0 ? '最初のひとつを待っています' : `${count}つ終わった、いい感じ`}</Text><Text style={styles.todayWinHint}>瓶をタップして今日の完了を見る</Text></View><View style={styles.miniJarWrap}><View style={styles.miniJarLid} /><View style={[styles.miniJar, designMode === 'companion' && styles.miniJarCompanion]}>{Array.from({ length: Math.min(12, count) }, (_, index) => <Text key={index} style={[styles.miniJarItem, { left: 8 + (index % 3) * 22, bottom: 4 + Math.floor(index / 3) * 14 }]}>{index % 2 ? '✦' : '●'}</Text>)}</View>{dropVisible && <Animated.Text style={[styles.fallingTreasure, fallingStyle]}>{item}</Animated.Text>}</View></Pressable>{details}</>;
 }
 
 function AchievementVessel({ tasks, designMode, scope = 'month', compact = false }: { tasks: Task[]; designMode: ThemeMode; scope?: 'today' | 'month'; compact?: boolean }) {
@@ -1618,7 +1650,7 @@ function AchievementVessel({ tasks, designMode, scope = 'month', compact = false
   });
   const visible = completed.slice(-18);
   if (designMode === 'minimal') {
-    return <View style={[styles.minimalAchievement, compact && styles.minimalAchievementCompact]}><View><Text style={styles.minimalAchievementLabel}>{scope === 'today' ? 'TODAY COMPLETED' : 'MONTHLY ARCHIVE'}</Text><Text style={[styles.minimalAchievementNumber, compact && styles.minimalAchievementNumberCompact]}>{String(completed.length).padStart(2, '0')}</Text></View><View style={styles.minimalAchievementBars}>{Array.from({ length: 10 }, (_, item) => <View key={item} style={[styles.minimalAchievementBar, item < Math.min(10, completed.length) && styles.minimalAchievementBarFilled]} />)}</View></View>;
+    return <View style={[styles.minimalAchievement, compact && styles.minimalAchievementCompact]}><View><Text style={styles.minimalAchievementLabel}>{scope === 'today' ? '今日できたこと' : '今月の記録'}</Text><Text style={[styles.minimalAchievementNumber, compact && styles.minimalAchievementNumberCompact]}>{String(completed.length).padStart(2, '0')}</Text><Text style={styles.taskMeta}>{completed.length}件完了</Text></View><View style={styles.minimalAchievementBars}>{Array.from({ length: 10 }, (_, item) => <View key={item} style={[styles.minimalAchievementBar, item < Math.min(10, completed.length) && styles.minimalAchievementBarFilled]} />)}</View></View>;
   }
   return <View style={[styles.vesselScene, compact && styles.vesselSceneCompact, designMode === 'companion' && styles.vesselSceneCompanion]}>
     <View style={styles.vesselLabel}><Text style={styles.vesselLabelTop}>{scope === 'today' ? 'TODAY’S LITTLE WINS' : 'THIS MONTH’S WINS'}</Text><Text style={[styles.vesselLabelTitle, compact && styles.vesselLabelTitleCompact]}>{completed.length}個のできた！</Text></View>
@@ -1657,7 +1689,7 @@ function HistoryScreen({ tasks, completionIcon, designMode, onRestore }: { tasks
 
   return (
     <>
-      <Text style={styles.hero}>できた日を、ちゃんと残そう。</Text>
+      <Text style={styles.hero}>{designMode === 'minimal' ? '今月の記録' : designMode === 'chic' ? '今月の小さな達成' : '今月の相棒との記録'}</Text>
       <View style={styles.historySearchBox}><Text style={styles.taskSearchIcon}>⌕</Text><TextInput value={historySearch} onChangeText={setHistorySearch} placeholder="過去に完了したタスクを検索" placeholderTextColor="#A29DAA" style={styles.taskSearchInput} />{historySearch.length > 0 && <Pressable onPress={() => setHistorySearch('')}><Text style={styles.historySearchClear}>×</Text></Pressable>}</View>
       <AchievementVessel tasks={tasks} designMode={designMode} scope="month" />
       <View style={styles.monthStats}>
@@ -1668,7 +1700,7 @@ function HistoryScreen({ tasks, completionIcon, designMode, onRestore }: { tasks
       <View style={styles.calendarCard}>
         <View style={styles.calendarHeader}>
           <Text style={styles.calendarMonth}>{year}年 {month + 1}月</Text>
-          <Text style={styles.calendarTotal}>{monthlyCount} completed</Text>
+          <Text style={styles.calendarTotal}>{monthlyCount}件完了</Text>
         </View>
         <View style={styles.weekRow}>
           {['日', '月', '火', '水', '木', '金', '土'].map((day) => <Text key={day} style={styles.weekLabel}>{day}</Text>)}
@@ -1742,6 +1774,7 @@ function PremiumModal({ visible, onClose }: { visible: boolean; onClose: () => v
 }
 
 function BottomNav({ screen, designMode, onChange }: { screen: Screen; designMode: DesignMode; onChange: (screen: Screen) => void }) {
+  const theme = getThemeTokens(designMode);
   const items: { id: Screen; icon: string; label: string }[] = [
     { id: 'home', icon: '✓', label: '今日' },
     { id: 'timeline', icon: '↗', label: 'タイム' },
@@ -1754,8 +1787,8 @@ function BottomNav({ screen, designMode, onChange }: { screen: Screen; designMod
         const active = item.id === screen;
         return (
           <Pressable key={item.id} style={styles.navItem} onPress={() => onChange(item.id)}>
-            <Text style={[styles.navIcon, active && styles.navActive]}>{item.icon}</Text>
-            <Text style={[styles.navLabel, active && styles.navActive]}>{item.label}</Text>
+            <Text style={[styles.navIcon, { color: active ? theme.colors.primaryAccent : theme.colors.secondaryText }]}>{item.icon}</Text>
+            <Text style={[styles.navLabel, { color: active ? theme.colors.primaryAccent : theme.colors.secondaryText }]}>{item.label}</Text>
           </Pressable>
         );
       })}
@@ -1876,7 +1909,11 @@ const styles = StyleSheet.create({
   batchComplete: { backgroundColor: colors.violet, borderRadius: 12, paddingHorizontal: 13, paddingVertical: 9 },
   batchDisabled: { opacity: 0.35 },
   batchCompleteText: { color: '#FFFFFF', fontSize: 11, fontWeight: '900' },
-  emptyCard: { backgroundColor: colors.surface, borderRadius: 22, padding: 28, alignItems: 'center', borderWidth: 1, borderColor: colors.line, borderStyle: 'dashed' },
+  emptyCard: { minHeight: 164, backgroundColor: colors.surface, borderRadius: 22, paddingVertical: 28, paddingHorizontal: 24, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: colors.line, borderStyle: 'dashed', overflow: 'hidden' },
+  emptyCardMinimal: { borderRadius: 2, borderStyle: 'solid', borderColor: '#171715', backgroundColor: '#FFFFFF' },
+  emptyCardChic: { borderRadius: 26, borderStyle: 'solid', borderColor: '#F0DFE5', backgroundColor: '#FFFFFF' },
+  emptyCardCompanion: { borderRadius: 28, borderStyle: 'solid', borderColor: '#F0DFC9', backgroundColor: '#FFF2DE' },
+  emptyChicPattern: { position: 'absolute', right: 0, bottom: 0, width: '28%', height: '100%', overflow: 'hidden' },
   emptyIcon: { color: colors.violet, fontSize: 30, marginBottom: 8 },
   emptyTitle: { color: colors.ink, fontSize: 16, fontWeight: '800' },
   emptyCopy: { color: colors.muted, fontSize: 12, textAlign: 'center', marginTop: 6 },
@@ -1912,8 +1949,14 @@ const styles = StyleSheet.create({
   edit: { color: colors.violet, fontSize: 11, fontWeight: '900', paddingHorizontal: 6, paddingVertical: 10 },
   delete: { color: '#B2ACB8', fontSize: 22, padding: 8 },
   formCard: { backgroundColor: colors.surface, borderRadius: 24, padding: 20, marginBottom: 16 },
-  timeTabs: { flexDirection: 'row', backgroundColor: '#EDE9F1', borderRadius: 17, padding: 4, marginBottom: 22 },
+  timeHero: { fontSize: 28, lineHeight: 36, flexShrink: 1 },
+  timeTabs: { flexDirection: 'row', backgroundColor: '#EDE9F1', borderRadius: 17, padding: 4, marginBottom: 22, overflow: 'hidden' },
+  timeTabsMinimal: { borderRadius: 0, padding: 0, backgroundColor: 'transparent', borderTopWidth: 1, borderBottomWidth: 1, borderColor: '#CFCFCA' },
+  timeTabsChic: { backgroundColor: '#FFF3F5', borderRadius: 22, borderWidth: 1, borderColor: '#F0DFE5' },
+  timeTabsCompanion: { backgroundColor: '#FFF2DE', borderRadius: 24, borderWidth: 1, borderColor: '#F0DFC9' },
+  timeTabPatternBand: { position: 'absolute', right: 0, top: 0, bottom: 0, width: '22%', opacity: 0.55 },
   timeTab: { flex: 1, borderRadius: 13, paddingVertical: 12, alignItems: 'center' },
+  timeTabMinimal: { borderRadius: 0, borderRightWidth: 1, borderColor: '#CFCFCA' },
   timeTabActive: { backgroundColor: colors.surface, shadowColor: '#433850', shadowOpacity: 0.08, shadowRadius: 6 },
   timeTabText: { color: colors.muted, fontSize: 13, fontWeight: '900' },
   timeTabTextActive: { color: colors.violet },
@@ -1978,12 +2021,32 @@ const styles = StyleSheet.create({
   previewLabel: { color: colors.muted, fontSize: 10, fontWeight: '900', letterSpacing: 1.4, textAlign: 'center', marginBottom: 10 },
   modeCard: { backgroundColor: colors.surface, borderRadius: 24, padding: 18, marginBottom: 20 },
   modeChoices: { flexDirection: 'row', gap: 8, marginTop: 13 },
-  modeChoice: { flex: 1, minHeight: 104, borderRadius: 17, backgroundColor: '#F2EFF5', alignItems: 'center', justifyContent: 'center', padding: 7, borderWidth: 2, borderColor: 'transparent' },
+  modeChoice: { flex: 1, minHeight: 154, borderRadius: 17, backgroundColor: '#F2EFF5', alignItems: 'center', justifyContent: 'center', padding: 7, borderWidth: 2, borderColor: 'transparent' },
   modeChoiceActive: { backgroundColor: colors.violetSoft, borderColor: colors.violet },
   modeIcon: { fontSize: 24, marginBottom: 5 },
   modeName: { color: colors.ink, fontSize: 11, fontWeight: '900' },
   modeNameActive: { color: colors.violet },
   modeDescription: { color: colors.muted, fontSize: 8, marginTop: 3 },
+  modeMiniPreview: { width: '100%', height: 70, borderRadius: 10, marginBottom: 8, overflow: 'hidden', position: 'relative' },
+  modeMiniMinimal: { backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#171715', borderRadius: 2 },
+  modeMiniChic: { backgroundColor: '#FFF3F5', borderWidth: 1, borderColor: '#F0DFE5', borderRadius: 16 },
+  modeMiniCompanion: { backgroundColor: '#FFF2DE', borderWidth: 1, borderColor: '#F0DFC9', borderRadius: 18 },
+  modeMiniBlackBlock: { position: 'absolute', left: 7, top: 7, width: 24, height: 17, backgroundColor: '#171715' },
+  modeMiniNumber: { position: 'absolute', right: 8, top: 5, color: '#171715', fontSize: 24, fontWeight: '900' },
+  modeMiniLine: { position: 'absolute', left: 7, right: 7, bottom: 12, height: 1, backgroundColor: '#171715' },
+  modeMiniGlass: { position: 'absolute', width: 43, height: 43, borderRadius: 17, backgroundColor: 'rgba(255,255,255,0.72)', left: 10, top: 14, borderWidth: 1, borderColor: '#F4D8E2' },
+  modeMiniFlower: { position: 'absolute', right: 10, top: 8 },
+  modeMiniSparkle: { position: 'absolute', right: 20, bottom: 7, color: '#C6A467' },
+  modeMiniSun: { position: 'absolute', width: 39, height: 39, borderRadius: 20, backgroundColor: '#FFE4BD', right: 7, top: 5 },
+  modeMiniEgg: { position: 'absolute', fontSize: 31, left: 14, top: 17 },
+  modeMiniGround: { position: 'absolute', left: -8, right: -8, height: 28, borderRadius: 40, bottom: -15, backgroundColor: '#CFE8E1' },
+  patternSelector: { marginTop: 16, borderTopWidth: 1, borderTopColor: '#F0DFE5', paddingTop: 13 },
+  patternChoices: { flexDirection: 'row', gap: 8, marginTop: 8 },
+  patternChoice: { flex: 1, borderRadius: 16, borderWidth: 2, borderColor: 'transparent', backgroundColor: '#FFF3F5', padding: 6 },
+  patternChoiceActive: { borderColor: '#D986A1', backgroundColor: '#FFFFFF' },
+  patternSwatch: { height: 43, borderRadius: 11, backgroundColor: '#FFF9F6', overflow: 'hidden' },
+  patternChoiceText: { color: '#8B7B82', fontSize: 9, fontWeight: '800', textAlign: 'center', marginTop: 5 },
+  patternChoiceTextActive: { color: '#D986A1' },
   phonePreview: { backgroundColor: '#D9D1EA', borderRadius: 35, padding: 22, paddingBottom: 34, minHeight: 350, alignItems: 'center', marginBottom: 18 },
   phonePreviewMinimal: { backgroundColor: '#D7D7D7', borderRadius: 14 },
   phonePreviewCompanion: { backgroundColor: '#E6D4A8', borderRadius: 38 },
@@ -2160,6 +2223,10 @@ const styles = StyleSheet.create({
   fallingTreasure: { position: 'absolute', top: 0, right: 31, fontSize: 17, zIndex: 4 },
   completedDetailRow: { backgroundColor: colors.surface, borderRadius: 16, padding: 13, marginBottom: 8, flexDirection: 'row', alignItems: 'center', gap: 11 },
   completedDetailIcon: { color: colors.violet, fontSize: 20, fontWeight: '900' },
+  completedDetailRowMinimal: { borderRadius: 0, borderWidth: 0, borderBottomWidth: 1, borderBottomColor: '#CFCFCA' },
+  completedCompanionReaction: { color: '#7C5C3E', fontSize: 10, fontWeight: '800', backgroundColor: '#FFF2DE', borderRadius: 14, padding: 10, marginBottom: 10 },
+  completedModalPattern: { position: 'absolute', width: '30%', height: 100, right: 0, top: 0, overflow: 'hidden', opacity: 0.6 },
+  todayWinCount: { color: '#171715', fontSize: 32, lineHeight: 35, fontWeight: '900' },
   restoreButton: { height: 30, borderRadius: 9, backgroundColor: '#F1EDF5', paddingHorizontal: 9, alignItems: 'center', justifyContent: 'center' },
   restoreButtonText: { color: colors.violet, fontSize: 8, fontWeight: '900' },
   historySearchBox: { height: 46, borderRadius: 15, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#E7E1EA', flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, marginBottom: 14 },
@@ -2185,7 +2252,7 @@ const styles = StyleSheet.create({
   compactTodayHeader: { minHeight: 42, borderRadius: 14, backgroundColor: '#FFFFFF', paddingHorizontal: 13, paddingVertical: 9, marginBottom: 8, flexDirection: 'row', alignItems: 'center', gap: 10, borderWidth: 1, borderColor: '#EEE9F2' },
   compactTodayHeaderMinimal: { borderRadius: 2, borderColor: '#1A1A1A', backgroundColor: '#F8F8F8' },
   compactTodayHeaderChic: { minHeight: 58, borderRadius: 20, backgroundColor: '#FFF0F6', borderColor: '#FFD1E1', shadowColor: '#D96C9B', shadowOpacity: 0.1, shadowRadius: 10 },
-  compactTodayHeaderCompanion: { minHeight: 60, borderRadius: 20, backgroundColor: '#FFF0C9', borderColor: '#F0D69B' },
+  compactTodayHeaderCompanion: { minHeight: 182, borderRadius: 28, backgroundColor: '#FFF2DE', borderColor: '#F0DFC9', alignItems: 'flex-start', paddingTop: 18, overflow: 'hidden' },
   compactTodayTime: { color: colors.ink, fontSize: 27, lineHeight: 29, fontWeight: '800', letterSpacing: -1.2 },
   compactTodayDate: { color: colors.muted, fontSize: 8, fontWeight: '800', marginTop: 2 },
   compactTodayMessage: { flex: 1, borderLeftWidth: 1, borderLeftColor: 'rgba(100,90,105,0.15)', paddingLeft: 14 },
@@ -2198,8 +2265,13 @@ const styles = StyleSheet.create({
   todayChicMark: { width: 36, height: 36, borderRadius: 18, backgroundColor: '#FFD1E1', alignItems: 'center', justifyContent: 'center' },
   todayChicMarkText: { color: '#C84F7A', fontSize: 18 },
   todayChicSpark: { color: '#E5A34A', fontSize: 17, paddingRight: 2 },
-  todayCompanionFace: { width: 40, height: 40, borderRadius: 15, backgroundColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#F0D69B' },
-  todayCompanionFaceText: { fontSize: 23 },
+  todayCompanionFace: { width: 92, height: 105, borderRadius: 35, backgroundColor: 'rgba(255,255,255,0.78)', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#F0D69B', zIndex: 2 },
+  todayCompanionFaceText: { fontSize: 52 },
+  companionFutureExp: { position: 'absolute', left: 14, right: 14, bottom: 10, height: 5, borderRadius: 3, backgroundColor: '#F7E1B8', overflow: 'hidden' },
+  companionFutureExpFill: { width: '24%', height: '100%', backgroundColor: '#F1B65A' },
+  companionHabitatSun: { position: 'absolute', width: 80, height: 80, borderRadius: 40, backgroundColor: '#FFE4BD', right: 20, top: 16 },
+  companionHabitatFloor: { position: 'absolute', left: -30, right: -30, height: 72, borderRadius: 90, backgroundColor: '#DCEFE8', bottom: -38 },
+  chicHeaderPatternCutout: { position: 'absolute', width: '31%', right: 0, top: 0, bottom: 0, overflow: 'hidden' },
   bucketTabs: { flexDirection: 'row', gap: 6, marginBottom: 10 },
   bucketTab: { flex: 1, height: 38, borderRadius: 11, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#E7E1EA', alignItems: 'center', justifyContent: 'center' },
   bucketTabActive: { backgroundColor: colors.ink, borderColor: colors.ink },
@@ -2261,7 +2333,9 @@ const styles = StyleSheet.create({
   scheduleWeekRow: { flexDirection: 'row', marginBottom: 4 },
   scheduleWeekLabel: { width: '14.285%', textAlign: 'center', color: colors.muted, fontSize: 9, fontWeight: '800' },
   scheduleGrid: { flexDirection: 'row', flexWrap: 'wrap' },
-  scheduleDayCell: { width: '14.285%', height: 82, borderRadius: 10, alignItems: 'center', paddingTop: 6, paddingHorizontal: 2, borderWidth: 0.5, borderColor: '#F0EBF2' },
+  scheduleDayCell: { width: '14.285%', height: 66, borderRadius: 8, alignItems: 'center', paddingTop: 4, paddingHorizontal: 2, borderWidth: 0.5, borderColor: '#F0EBF2' },
+  scheduleDayCellMinimal: { borderRadius: 0, borderColor: '#CFCFCA' },
+  calendarPatternCorner: { position: 'absolute', width: '30%', height: 78, right: 0, top: 0, overflow: 'hidden', opacity: 0.55 },
   scheduleDayCellSelected: { backgroundColor: colors.violet },
   scheduleDayNumber: { color: colors.ink, fontSize: 12, fontWeight: '800' },
   scheduleTodayNumber: { color: '#D95887', textDecorationLine: 'underline' },
@@ -2286,24 +2360,24 @@ const styles = StyleSheet.create({
   scheduleAgendaMeta: { color: colors.muted, fontSize: 9, fontWeight: '700', marginTop: 4 },
   scheduleAgendaEdit: { color: colors.violet, fontSize: 9, fontWeight: '900' },
   focusHero: { backgroundColor: '#17151C', borderRadius: 26, padding: 22, alignItems: 'center', marginBottom: 22 },
-  focusHeroChic: { backgroundColor: '#FFF2F7', borderWidth: 2, borderColor: '#FFFFFF', shadowColor: '#D96C9B', shadowOpacity: 0.12, shadowRadius: 18, overflow: 'hidden' },
-  focusHeroCompanion: { backgroundColor: '#FFF0C7', borderWidth: 2, borderColor: '#FFE3A0' },
+  focusHeroChic: { backgroundColor: '#2E242B', borderWidth: 1, borderColor: '#59434E', shadowColor: '#D986A1', shadowOpacity: 0.12, shadowRadius: 18, overflow: 'hidden' },
+  focusHeroCompanion: { backgroundColor: '#3E352F', borderWidth: 1, borderColor: '#6A5A50' },
   focusChicFlowerOne: { position: 'absolute', top: 18, left: 20, opacity: 0.35 },
   focusChicFlowerTwo: { position: 'absolute', top: 74, right: 26, opacity: 0.4 },
   focusCompanionBubble: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.7)', borderRadius: 18, paddingHorizontal: 13, paddingVertical: 8, marginBottom: 12, gap: 7 },
   focusCompanionEmoji: { fontSize: 24 },
   focusCompanionSpeech: { color: '#745329', fontSize: 10, fontWeight: '900' },
   focusEyebrow: { color: '#AFA6C5', fontSize: 9, fontWeight: '900', letterSpacing: 1.7 },
-  focusEyebrowLight: { color: '#9A6D7F' },
+  focusEyebrowLight: { color: '#E8CDD7' },
   focusTitle: { color: '#FFFFFF', fontSize: 22, lineHeight: 29, fontWeight: '900', textAlign: 'center', marginTop: 12 },
-  focusTitleLight: { color: '#3E3440' },
+  focusTitleLight: { color: '#FFFFFF' },
   focusCopy: { color: '#BDB7C7', fontSize: 10, fontWeight: '700', marginTop: 5 },
-  focusCopyLight: { color: '#8A7880' },
+  focusCopyLight: { color: '#D7C8CE' },
   focusTimerRing: { width: 172, height: 172, borderRadius: 86, borderWidth: 9, borderColor: '#8370E8', alignItems: 'center', justifyContent: 'center', marginVertical: 23, backgroundColor: '#211E29' },
-  focusTimerRingChic: { borderColor: '#F1AFC5', backgroundColor: '#FFFFFF' },
-  focusTimerRingCompanion: { borderColor: '#F2B84B', backgroundColor: '#FFF9E9' },
+  focusTimerRingChic: { borderColor: '#D986A1', backgroundColor: '#392E35' },
+  focusTimerRingCompanion: { borderColor: '#F3A46F', backgroundColor: '#4A3F38' },
   focusTime: { color: '#FFFFFF', fontSize: 39, fontWeight: '300', letterSpacing: -1.5 },
-  focusTimeLight: { color: '#3E3440' },
+  focusTimeLight: { color: '#FFFFFF' },
   focusTimerState: { color: '#BDB2FF', fontSize: 9, fontWeight: '900', letterSpacing: 1, marginTop: 4 },
   focusTimerStateChic: { color: '#D2668C' },
   focusTimerStateCompanion: { color: '#B27416' },
