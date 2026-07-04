@@ -99,6 +99,15 @@ const categoryColors: Record<Category, string> = {
   予定: '#FFE4DF',
   その他: '#EEECEF',
 };
+type ChicTaskPatternPalette = { background: string; accent: string; warm: string };
+const chicTaskPatternPalettes: Record<Category, ChicTaskPatternPalette> = {
+  仕事: { background: '#F7F2FC', accent: '#A997C8', warm: '#DCCBF0' },
+  家事: { background: '#FFF5EF', accent: '#DFA58F', warm: '#F3C9B8' },
+  健康: { background: '#F1FAF7', accent: '#8FC9BD', warm: '#C9E8E0' },
+  予定: { background: '#FFF2F6', accent: '#D986A1', warm: '#F1B8CB' },
+  その他: { background: '#FFF9EE', accent: '#C6A467', warm: '#E8D5A7' },
+};
+function getChicTaskPatternPalette(category: Category) { return chicTaskPatternPalettes[category]; }
 
 const colors = {
   background: '#F8F5EF',
@@ -294,18 +303,6 @@ function countdownToDate(target: Date, now: Date) {
   if (minutes < 60) return `あと${minutes}分`;
   if (minutes < 24 * 60) return `あと${Math.floor(minutes / 60)}時間${minutes % 60}分`;
   return `あと${Math.floor(minutes / 1440)}日${Math.floor((minutes % 1440) / 60)}時間`;
-}
-
-function getChicDailyPattern(now: Date) {
-  const patterns = [
-    { background: '#FFF29A', accent: '#FF75A7', warm: '#7DD9FF', symbol: '✿', label: 'happy flowers', pattern: 'flower' as const },
-    { background: '#DCCBFF', accent: '#FF6F9F', warm: '#68D8C2', symbol: '●', label: 'candy dots', pattern: 'dot' as const },
-    { background: '#BFEAFF', accent: '#FF8FB8', warm: '#FFE477', symbol: '〰', label: 'soda stripe', pattern: 'stripe' as const },
-    { background: '#FFD1E1', accent: '#F45B91', warm: '#9BE3C7', symbol: '❀', label: 'pop flowers', pattern: 'flower' as const },
-    { background: '#CFF4D7', accent: '#7C68D9', warm: '#FF8EAE', symbol: '•', label: 'mint dots', pattern: 'dot' as const },
-  ];
-  const dayNumber = Math.floor(new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime() / 86_400_000);
-  return patterns[((dayNumber % patterns.length) + patterns.length) % patterns.length]!;
 }
 
 function getChicPatternVisual(pattern: ChicPattern) {
@@ -766,13 +763,15 @@ function HomeScreen({
   return (
     <>
       <View style={[styles.compactTodayHeader, designMode === 'minimal' && styles.compactTodayHeaderMinimal, designMode === 'chic' && styles.compactTodayHeaderChic, designMode === 'companion' && styles.compactTodayHeaderCompanion]}>
-        {designMode === 'chic' && <View pointerEvents="none" style={styles.chicHeaderPatternCutout}><ChicPatternDecor pattern={chicPattern} accent="#D986A1" warm="#A997C8" /></View>}
+        {designMode === 'chic' && <ChicPatternDecor pattern={chicPattern} accent="#D986A1" warm="#A997C8" />}
         {designMode === 'companion' && <><View pointerEvents="none" style={styles.companionHabitatSun} /><View pointerEvents="none" style={styles.companionHabitatFloor} /></>}
-        {designMode === 'minimal' && <View style={styles.todayMinimalIndex}><Text style={styles.todayMinimalIndexText}>{String(tasks.filter((task) => (task.bucket ?? 'now') === 'now').length).padStart(2, '0')}</Text></View>}
-        {designMode === 'chic' && <View style={styles.todayChicMark}><Text style={styles.todayChicMarkText}>✿</Text></View>}
-        {designMode === 'companion' && <View style={styles.todayCompanionFace}><Text style={styles.todayCompanionFaceText}>🥚</Text><View style={styles.companionFutureExp}><View style={styles.companionFutureExpFill} /></View></View>}
-        <View style={{ flex: 1 }}><Text style={[styles.compactTodayKicker, designMode === 'chic' && styles.compactTodayKickerChic, designMode === 'companion' && styles.compactTodayKickerCompanion]}>{designMode === 'minimal' ? '今日の優先' : designMode === 'chic' ? '今日のメモ' : '相棒から'}</Text><Text numberOfLines={2} style={styles.compactTodayCopy}>{remaining === 0 ? (designMode === 'companion' ? '相棒も大満足。今日の分は完了！' : '今日の分は完了。いい感じ') : designMode === 'companion' ? `相棒と「今やる」${tasks.filter((task) => (task.bucket ?? 'now') === 'now').length}件から` : `まずは、今やる${tasks.filter((task) => (task.bucket ?? 'now') === 'now').length}件から`}</Text></View>
-        {designMode === 'chic' && <Text style={styles.todayChicSpark}>✦</Text>}
+        <View style={designMode === 'chic' ? styles.chicTodayPaper : styles.todayHeaderInner}>
+          {designMode === 'minimal' && <View style={styles.todayMinimalIndex}><Text style={styles.todayMinimalIndexText}>{String(tasks.filter((task) => (task.bucket ?? 'now') === 'now').length).padStart(2, '0')}</Text></View>}
+          {designMode === 'chic' && <View style={styles.todayChicMark}><Text style={styles.todayChicMarkText}>✿</Text></View>}
+          {designMode === 'companion' && <View style={styles.todayCompanionFace}><Text style={styles.todayCompanionFaceText}>🥚</Text><View style={styles.companionFutureExp}><View style={styles.companionFutureExpFill} /></View></View>}
+          <View style={{ flex: 1 }}><Text style={[styles.compactTodayKicker, designMode === 'chic' && styles.compactTodayKickerChic, designMode === 'companion' && styles.compactTodayKickerCompanion]}>{designMode === 'minimal' ? '今日の優先' : designMode === 'chic' ? '今日のメモ' : '相棒から'}</Text><Text numberOfLines={2} style={styles.compactTodayCopy}>{remaining === 0 ? (designMode === 'companion' ? '相棒も大満足。今日の分は完了！' : '今日の分は完了。いい感じ') : designMode === 'companion' ? `相棒と「今やる」${tasks.filter((task) => (task.bucket ?? 'now') === 'now').length}件から` : `まずは、今やる${tasks.filter((task) => (task.bucket ?? 'now') === 'now').length}件から`}</Text>{designMode === 'chic' && <Text style={styles.chicTodayStats}>完了 {allTasks.filter((task) => task.done && task.completedAt && dateKey(task.completedAt) === dateKey(now)).length}　残り {remaining}</Text>}</View>
+          {designMode === 'chic' && <Text style={styles.todayChicSpark}>✦</Text>}
+        </View>
       </View>
       <TodayWinStrip tasks={allTasks} designMode={designMode} chicPattern={chicPattern} onRestore={(id) => onRestore(id)} />
 
@@ -818,11 +817,12 @@ function HomeScreen({
           <Text style={styles.emptyTitle}>最初のタスクを追加しよう</Text>
           <Text style={styles.emptyCopy}>忘れたくないことを、ここに置いておけます。</Text>
         </Pressable>
-      ) : displayTasks.map((task) => (
-        <View key={task.id} style={[styles.taskCard, designMode === 'minimal' && styles.taskCardMinimal, designMode === 'chic' && styles.taskCardChic, designMode === 'companion' && styles.taskCardCompanion, task.done && styles.taskCardDone]}>
-          {designMode === 'chic' && <View style={[styles.chicTaskRibbon, { backgroundColor: categoryColors[task.category] }]} />}
+      ) : displayTasks.map((task) => { const chicPalette = getChicTaskPatternPalette(task.category); return (
+        <View key={task.id} style={[styles.taskCard, designMode === 'minimal' && styles.taskCardMinimal, designMode === 'chic' && styles.taskCardChic, designMode === 'chic' && { backgroundColor: chicPalette.background }, designMode === 'companion' && styles.taskCardCompanion, task.done && designMode !== 'chic' && styles.taskCardDone, task.done && designMode === 'chic' && styles.taskCardChicDone]}>
+          {designMode === 'chic' && <ChicPatternDecor pattern={chicPattern} accent={chicPalette.accent} warm={chicPalette.warm} density="compact" />}
+          <View style={[styles.taskCardInner, designMode === 'chic' && styles.taskCardInnerChic, task.done && designMode === 'chic' && styles.taskCardInnerChicDone]}>
           {designMode === 'companion' && <Text style={styles.companionTaskMark}>{task.done ? '✦' : '•'}</Text>}
-          <Pressable style={[styles.check, task.done && styles.checkDone, selectionMode && selectedTaskIds.includes(task.id) && styles.selectionChecked]} onPress={() => selectionMode ? onToggleSelection(task.id) : onToggle(task.id)}>
+          <Pressable style={[styles.check, task.done && styles.checkDone, task.done && designMode === 'chic' && { backgroundColor: '#D986A1', borderColor: '#D986A1' }, selectionMode && selectedTaskIds.includes(task.id) && styles.selectionChecked]} onPress={() => selectionMode ? onToggleSelection(task.id) : onToggle(task.id)}>
             <Text style={styles.checkMark}>{selectionMode ? (selectedTaskIds.includes(task.id) ? '✓' : '') : (task.done ? completionIcon : '')}</Text>
           </Pressable>
           <View style={styles.taskBody}>
@@ -830,7 +830,7 @@ function HomeScreen({
             {task.navigationEnabled && !task.done && <View style={styles.inlineUrgency}><Text style={styles.inlineUrgencyText}>{getUrgencyStatus(task, now)}</Text><Text style={styles.inlineRisk}>{getLateRiskMessage(task, now)}</Text></View>}
             <View style={styles.taskInfoRow}>
               <View style={[styles.priorityPill, task.priority === '高' && styles.priorityHigh]}><Text style={[styles.priorityText, task.priority === '高' && styles.priorityHighText]}>{task.priority === '高' ? '！重要' : task.priority}</Text></View>
-              <View style={[styles.categoryPill, { backgroundColor: categoryColors[task.category] }]}><Text style={styles.categoryText}>{task.category}</Text></View>
+              <View style={[styles.categoryPill, { backgroundColor: categoryColors[task.category] }, designMode === 'chic' && styles.categoryPillChic, designMode === 'chic' && { borderColor: chicPalette.accent }]}><Text style={[styles.categoryText, designMode === 'chic' && { color: chicPalette.accent }]}>{task.category}</Text></View>
               {task.repeatRule && task.repeatRule !== 'none' && <View style={styles.routinePill}><Text style={styles.routinePillText}>↻ {repeatOptions.find((option) => option.id === task.repeatRule)?.label}</Text></View>}
               {task.scheduledDate && <Text style={styles.taskMeta}>▣ {task.scheduledDate.slice(5).replace('-', '/')}</Text>}
               {task.remindAt && <Text style={styles.taskMeta}>◷ {task.remindDate?.slice(5).replace('-', '/')} {task.remindAt}</Text>}
@@ -840,8 +840,9 @@ function HomeScreen({
           </View>
           {!selectionMode && <Pressable style={styles.taskBucketButton} onPress={() => setBucketTask(task)}><Text style={styles.taskBucketButtonText}>{(task.bucket ?? 'now') === 'now' ? '今やる' : task.bucket === 'later' ? 'あとで' : '待ち'}⌄</Text></Pressable>}
           {!selectionMode && <Pressable style={styles.taskMoreButton} onPress={() => setActionTask(task)} hitSlop={8}><Text style={styles.taskMoreText}>•••</Text></Pressable>}
+          </View>
         </View>
-      ))}
+      ); })}
       <Modal visible={Boolean(bucketTask)} transparent animationType="fade" onRequestClose={() => setBucketTask(null)}>
         <Pressable style={styles.bucketModalBackdrop} onPress={() => setBucketTask(null)}>
           <View style={styles.bucketModalCard}>
@@ -934,9 +935,8 @@ function TimelineScreen({
   };
   return (
     <>
-      <Text numberOfLines={2} style={[styles.hero, styles.timeHero]}>時間に追われる前に、先回り。</Text>
+      {designMode === 'chic' ? <View style={styles.chicTimeHero}><ChicPatternDecor pattern={chicPattern} accent="#D986A1" warm="#A997C8" /><View style={styles.chicTimeHeroPaper}><Text numberOfLines={2} style={[styles.hero, styles.timeHero, { marginBottom: 0 }]}>時間に追われる前に、先回り。</Text></View></View> : <Text numberOfLines={2} style={[styles.hero, styles.timeHero]}>時間に追われる前に、先回り。</Text>}
       <View style={[styles.timeTabs, designMode === 'minimal' && styles.timeTabsMinimal, designMode === 'chic' && styles.timeTabsChic, designMode === 'companion' && styles.timeTabsCompanion]}>
-        {designMode === 'chic' && <View pointerEvents="none" style={styles.timeTabPatternBand}><ChicPatternDecor pattern={chicPattern} accent="#D986A1" warm="#A997C8" /></View>}
         {(['departure', 'deadline', 'calendar', 'focus'] as TimeTab[]).map((tab) => <Pressable key={tab} style={[styles.timeTab, designMode === 'minimal' && styles.timeTabMinimal, timeTab === tab && styles.timeTabActive, timeTab === tab && { backgroundColor: theme.colors.primaryAccent, borderColor: theme.colors.primaryAccent }]} onPress={() => setTimeTab(tab)}><Text style={[styles.timeTabText, { color: theme.colors.secondaryText }, timeTab === tab && styles.timeTabTextActive]}>{tab === 'departure' ? '出発' : tab === 'deadline' ? '締切' : tab === 'calendar' ? '予定表' : '集中'}</Text></Pressable>)}
       </View>
 
@@ -1182,38 +1182,34 @@ function ModeHomeHero({ designMode, tasks, dangerousTask, now, completedCount, r
       <View style={styles.sceneFloor} />
     </View>;
   }
-  const pattern = getChicDailyPattern(now);
+  const pattern = getChicPatternVisual('floral');
   const chicMessage = completedCount > 0 ? `${completedCount}つ終わった、いい感じ` : dangerousTask ? '今ならまだ余裕あり' : '今日を少し整えよう';
   return <View style={[styles.chicHero, { backgroundColor: pattern.background }]}>
-    <ChicPatternDecor pattern={pattern.pattern} accent={pattern.accent} warm={pattern.warm} />
+    <ChicPatternDecor pattern="floral" accent={pattern.accent} warm={pattern.warm} />
     <View style={styles.chicPaperPanel}>
-      <Text style={styles.chicKicker}>{pattern.label.toUpperCase()}</Text>
+      <Text style={styles.chicKicker}>今日のメモ</Text>
       <Text style={styles.chicHeadline}>{chicMessage}</Text>
       <Text style={styles.chicFlow}>{nextTask ? `次は「${nextTask.title}」だけ` : '完璧じゃなくて、戻れたらOK'}</Text>
       <View style={styles.chicSummary}>
-        <Text style={styles.chicSummaryStrong}>{completedCount}</Text><Text style={styles.chicSummaryText}> completed</Text>
+        <Text style={styles.chicSummaryStrong}>{completedCount}</Text><Text style={styles.chicSummaryText}> 完了</Text>
         <Text style={styles.chicSummaryDot}> ✦ </Text>
-        <Text style={styles.chicSummaryStrong}>{remaining}</Text><Text style={styles.chicSummaryText}> remaining</Text>
+        <Text style={styles.chicSummaryStrong}>{remaining}</Text><Text style={styles.chicSummaryText}> 残り</Text>
       </View>
     </View>
   </View>;
 }
 
-function ChicPatternDecor({ pattern, accent, warm }: { pattern: ChicPattern | 'flower' | 'stripe'; accent: string; warm: string }) {
-  if (pattern === 'check' || pattern === 'stripe') {
-    return <View pointerEvents="none" style={styles.patternLayer}>
-      {[0, 1, 2, 3, 4, 5].map((item) => <View key={item} style={[styles.patternStripe, { backgroundColor: item % 2 ? warm : accent, left: -55 + item * 83 }]} />)}
-    </View>;
-  }
-  if (pattern === 'dot') {
-    return <View pointerEvents="none" style={styles.patternLayer}>
-      {Array.from({ length: 24 }, (_, item) => <View key={item} style={[styles.patternDot, { backgroundColor: item % 3 ? warm : accent, left: 14 + (item % 6) * 61, top: 12 + Math.floor(item / 6) * 51 }]} />)}
-    </View>;
-  }
+function ChicPatternDecor({ pattern, accent, warm, density = 'regular' }: { pattern: ChicPattern | 'flower' | 'stripe'; accent: string; warm: string; density?: 'regular' | 'compact' }) {
+  const compact = density === 'compact';
+  const checkCell = compact ? 14 : 16;
+  if (pattern === 'check' || pattern === 'stripe') return <View pointerEvents="none" style={[styles.patternLayer, { backgroundColor: '#FFF9F6' }]}>
+    {Array.from({ length: 40 }, (_, index) => <React.Fragment key={index}><View style={[styles.checkVerticalBand, { left: index * checkCell, width: checkCell / 2, backgroundColor: `${accent}38` }]} /><View style={[styles.checkHorizontalBand, { top: index * checkCell, height: checkCell / 2, backgroundColor: `${warm}38` }]} /></React.Fragment>)}
+  </View>;
+  if (pattern === 'dot') return <View pointerEvents="none" style={styles.patternLayer}>
+    {Array.from({ length: compact ? 160 : 144 }, (_, index) => { const columns = compact ? 22 : 18; const spacingX = compact ? 20 : 25; const spacingY = compact ? 18 : 22; const row = Math.floor(index / columns); const column = index % columns; const size = index % 3 === 0 ? (compact ? 5 : 6) : index % 2 === 0 ? 4 : 3; return <View key={index} style={[styles.patternDotSmall, { width: size, height: size, borderRadius: size / 2, backgroundColor: index % 2 ? warm : accent, left: 4 + column * spacingX + (row % 2 ? spacingX / 2 : 0), top: 5 + row * spacingY }]} />; })}
+  </View>;
   return <View pointerEvents="none" style={styles.patternLayer}>
-    {Array.from({ length: 10 }, (_, item) => <View key={item} style={[styles.patternFlower, { left: 9 + (item % 5) * 75, top: 10 + Math.floor(item / 5) * 91, transform: [{ scale: item % 2 ? 0.72 : 1 }] }]}>
-      <View style={[styles.flowerPetal, styles.flowerTop, { backgroundColor: accent }]} /><View style={[styles.flowerPetal, styles.flowerRight, { backgroundColor: warm }]} /><View style={[styles.flowerPetal, styles.flowerBottom, { backgroundColor: accent }]} /><View style={[styles.flowerPetal, styles.flowerLeft, { backgroundColor: warm }]} /><View style={styles.flowerCenter} />
-    </View>)}
+    {Array.from({ length: compact ? 130 : 96 }, (_, index) => { const columns = compact ? 20 : 16; const spacingX = compact ? 25 : 32; const spacingY = compact ? 23 : 29; const row = Math.floor(index / columns); const column = index % columns; const scale = (index % 4 === 0 ? 0.82 : index % 5 === 0 ? 1.08 : 0.95) * (compact ? 0.82 : 1); return <View key={index} style={[styles.patternFlowerSmall, { left: 4 + column * spacingX + (row % 2 ? spacingX / 2 : 0), top: 4 + row * spacingY, transform: [{ scale }, { rotate: `${index % 6 === 0 ? 18 : index % 7 === 0 ? -12 : 0}deg` }] }]}><View style={[styles.flowerPetalSmall, styles.flowerSmallTop, { backgroundColor: accent }]} /><View style={[styles.flowerPetalSmall, styles.flowerSmallRight, { backgroundColor: warm }]} /><View style={[styles.flowerPetalSmall, styles.flowerSmallBottom, { backgroundColor: accent }]} /><View style={[styles.flowerPetalSmall, styles.flowerSmallLeft, { backgroundColor: warm }]} /><View style={styles.flowerCenterSmall} /></View>; })}
   </View>;
 }
 
@@ -1330,7 +1326,7 @@ function WidgetScreen({
           {designModes.map((mode) => (
             <Pressable key={mode.id} style={[styles.modeChoice, designMode === mode.id && styles.modeChoiceActive]} onPress={() => onDesignMode(mode.id)}>
               <View style={[styles.modeMiniPreview, mode.id === 'minimal' && styles.modeMiniMinimal, mode.id === 'chic' && styles.modeMiniChic, mode.id === 'companion' && styles.modeMiniCompanion]}>
-                {mode.id === 'minimal' ? <><View style={styles.modeMiniBlackBlock} /><Text style={styles.modeMiniNumber}>03</Text><View style={styles.modeMiniLine} /></> : mode.id === 'chic' ? <><View style={styles.modeMiniGlass} /><View style={styles.modeMiniFlower}><Text>✿</Text></View><Text style={styles.modeMiniSparkle}>✦</Text></> : <><View style={styles.modeMiniSun} /><Text style={styles.modeMiniEgg}>🥚</Text><View style={styles.modeMiniGround} /></>}
+                {mode.id === 'minimal' ? <><View style={styles.modeMiniBlackBlock} /><Text style={styles.modeMiniNumber}>03</Text><View style={styles.modeMiniLine} /></> : mode.id === 'chic' ? <><ChicPatternDecor pattern={chicPattern} accent="#D986A1" warm="#A997C8" /><View style={styles.modeMiniGlass} /><Text style={styles.modeMiniSparkle}>✦</Text></> : <><View style={styles.modeMiniSun} /><Text style={styles.modeMiniEgg}>🥚</Text><View style={styles.modeMiniGround} /></>}
               </View>
               <Text style={[styles.modeName, designMode === mode.id && styles.modeNameActive]}>{mode.name}</Text>
               <Text style={styles.modeDescription}>{mode.description}</Text>
@@ -1638,7 +1634,7 @@ function TodayWinStrip({ tasks, designMode, chicPattern, onRestore }: { tasks: T
   const details = <Modal visible={detailsOpen} transparent animationType="slide" onRequestClose={() => setDetailsOpen(false)}><Pressable style={styles.modalBackdrop} onPress={() => setDetailsOpen(false)}><Pressable style={[styles.modalSheet, { backgroundColor: theme.colors.screenBackground, borderRadius: theme.radius.modal }]} onPress={(event) => event.stopPropagation()}>{designMode === 'chic' && <View pointerEvents="none" style={styles.completedModalPattern}><ChicPatternDecor pattern={chicPattern} accent="#D986A1" warm="#A997C8" /></View>}{designMode === 'companion' && <Text style={styles.completedCompanionReaction}>🥚 できたこと、ちゃんと覚えてるよ</Text>}<View style={styles.modalHandle} /><Text style={styles.modalTitle}>今日できたこと</Text>{completed.length === 0 ? <Text style={styles.emptyCopy}>完了したタスクはまだありません。</Text> : completed.map((task) => <View key={task.id} style={[styles.completedDetailRow, designMode === 'minimal' && styles.completedDetailRowMinimal]}><Text style={[styles.completedDetailIcon, { color: theme.colors.primaryAccent }]}>{designMode === 'minimal' ? '✓' : designMode === 'chic' ? '✿' : '★'}</Text><View style={{ flex: 1 }}><Text style={styles.taskTitle}>{task.title}</Text><Text style={styles.taskMeta}>{task.category}</Text></View><Pressable style={[styles.restoreButton, { backgroundColor: theme.colors.softAccent }]} onPress={() => onRestore(task.id)}><Text style={[styles.restoreButtonText, { color: theme.colors.primaryAccent }]}>元に戻す</Text></Pressable></View>)}<Pressable style={[styles.primaryButton, { backgroundColor: theme.colors.primaryAccent, borderRadius: theme.radius.button }]} onPress={() => setDetailsOpen(false)}><Text style={styles.primaryButtonText}>閉じる</Text></Pressable></Pressable></Pressable></Modal>;
   if (designMode === 'minimal') return <><Pressable style={styles.todayMinimalWin} onPress={() => setDetailsOpen(true)}><View><Text style={styles.minimalAchievementLabel}>今日できたこと</Text><Text style={styles.todayWinCount}>{String(count).padStart(2, '0')}</Text><Text style={styles.todayWinComment}>{count}件完了</Text></View><View style={styles.todayMiniMeter}>{Array.from({ length: 6 }, (_, item) => <View key={item} style={[styles.todayMiniTick, item < Math.min(6, count) && styles.todayMiniTickDone]} />)}</View></Pressable>{details}</>;
   const item = designMode === 'chic' ? '✿' : '🍪';
-  return <><Pressable style={styles.todayWinStrip} onPress={() => setDetailsOpen(true)}><View style={{ flex: 1 }}><Text style={styles.vesselLabelTop}>{designMode === 'chic' ? '小さな達成' : '相棒の宝もの'}</Text><Text style={styles.todayWinComment}>{count === 0 ? '最初のひとつを待っています' : `${count}つ終わった、いい感じ`}</Text><Text style={styles.todayWinHint}>瓶をタップして今日の完了を見る</Text></View><View style={styles.miniJarWrap}><View style={styles.miniJarLid} /><View style={[styles.miniJar, designMode === 'companion' && styles.miniJarCompanion]}>{Array.from({ length: Math.min(12, count) }, (_, index) => <Text key={index} style={[styles.miniJarItem, { left: 8 + (index % 3) * 22, bottom: 4 + Math.floor(index / 3) * 14 }]}>{index % 2 ? '✦' : '●'}</Text>)}</View>{dropVisible && <Animated.Text style={[styles.fallingTreasure, fallingStyle]}>{item}</Animated.Text>}</View></Pressable>{details}</>;
+  return <><Pressable style={[styles.todayWinStrip, designMode === 'chic' && styles.todayWinStripChic, designMode === 'companion' && styles.todayWinStripCompanion]} onPress={() => setDetailsOpen(true)}>{designMode === 'chic' && <ChicPatternDecor pattern={chicPattern} accent="#D986A1" warm="#A997C8" />}<View style={designMode === 'chic' ? styles.todayWinsPaper : styles.todayWinsPlain}><View style={{ flex: 1 }}><Text style={styles.vesselLabelTop}>{designMode === 'chic' ? '小さな達成' : '相棒の宝もの'}</Text><Text style={styles.todayWinComment}>{count === 0 ? '最初のひとつを待っています' : `${count}つ終わった、いい感じ`}</Text><Text style={styles.todayWinHint}>瓶をタップして今日の完了を見る</Text></View><View style={styles.miniJarWrap}><View style={styles.miniJarLid} /><View style={[styles.miniJar, designMode === 'chic' && styles.miniJarChicGlass, designMode === 'companion' && styles.miniJarCompanion]}>{Array.from({ length: Math.min(12, count) }, (_, index) => <Text key={index} style={[styles.miniJarItem, { left: 8 + (index % 3) * 22, bottom: 4 + Math.floor(index / 3) * 14, color: index % 3 === 0 ? '#F3C7D5' : index % 3 === 1 ? '#DCCBF0' : '#F5E1A4' }]}>{index % 2 ? '✦' : '●'}</Text>)}</View>{dropVisible && <Animated.Text style={[styles.fallingTreasure, fallingStyle]}>{item}</Animated.Text>}</View></View></Pressable>{details}</>;
 }
 
 function AchievementVessel({ tasks, designMode, scope = 'month', compact = false }: { tasks: Task[]; designMode: ThemeMode; scope?: 'today' | 'month'; compact?: boolean }) {
@@ -1840,16 +1836,18 @@ const styles = StyleSheet.create({
   chicOrbTwo: { position: 'absolute', width: 105, height: 105, borderRadius: 53, backgroundColor: '#D1F3E4', right: 34, bottom: -52, opacity: 0.85 },
   chicKicker: { color: '#7358B9', fontSize: 9, fontWeight: '900', letterSpacing: 1.7 },
   chicPatternSymbol: { position: 'absolute', right: 25, top: 53, color: '#FFFFFF', fontSize: 39, fontWeight: '300', opacity: 0.8 },
-  patternLayer: { ...StyleSheet.absoluteFillObject, overflow: 'hidden', borderRadius: 26 },
-  patternDot: { position: 'absolute', width: 15, height: 15, borderRadius: 8, opacity: 0.78 },
-  patternStripe: { position: 'absolute', width: 34, height: 310, top: -58, transform: [{ rotate: '28deg' }], opacity: 0.62 },
-  patternFlower: { position: 'absolute', width: 42, height: 42, opacity: 0.72 },
-  flowerPetal: { position: 'absolute', width: 17, height: 21, borderRadius: 12 },
-  flowerTop: { left: 12, top: 0 },
-  flowerRight: { right: 0, top: 11, transform: [{ rotate: '90deg' }] },
-  flowerBottom: { left: 12, bottom: 0 },
-  flowerLeft: { left: 0, top: 11, transform: [{ rotate: '90deg' }] },
-  flowerCenter: { position: 'absolute', left: 16, top: 16, width: 10, height: 10, borderRadius: 5, backgroundColor: '#FFF8E5' },
+  patternLayer: { ...StyleSheet.absoluteFillObject, overflow: 'hidden' },
+  patternDotSmall: { position: 'absolute', opacity: 0.42 },
+  patternFlowerSmall: { position: 'absolute', width: 13, height: 13, opacity: 0.48 },
+  flowerPetalSmall: { position: 'absolute', width: 5, height: 5, borderRadius: 3 },
+  flowerSmallTop: { left: 4, top: 0 },
+  flowerSmallRight: { right: 0, top: 4 },
+  flowerSmallBottom: { left: 4, bottom: 0 },
+  flowerSmallLeft: { left: 0, top: 4 },
+  flowerCenterSmall: { position: 'absolute', left: 5, top: 5, width: 3, height: 3, borderRadius: 2, backgroundColor: '#C6A467' },
+  checkPatternBase: { backgroundColor: '#FFF9F6' },
+  checkVerticalBand: { position: 'absolute', top: 0, bottom: 0, width: 8, backgroundColor: 'rgba(232,184,199,0.22)' },
+  checkHorizontalBand: { position: 'absolute', left: 0, right: 0, height: 8, backgroundColor: 'rgba(232,184,199,0.22)' },
   chicHeadline: { color: '#342B4A', fontSize: 29, lineHeight: 38, fontWeight: '900', letterSpacing: -1.1, marginTop: 15 },
   chicFlow: { color: '#71657E', fontSize: 11, fontWeight: '700', marginTop: 7, maxWidth: '78%' },
   chicSummary: { flexDirection: 'row', alignItems: 'baseline', marginTop: 19 },
@@ -1917,11 +1915,14 @@ const styles = StyleSheet.create({
   emptyIcon: { color: colors.violet, fontSize: 30, marginBottom: 8 },
   emptyTitle: { color: colors.ink, fontSize: 16, fontWeight: '800' },
   emptyCopy: { color: colors.muted, fontSize: 12, textAlign: 'center', marginTop: 6 },
-  taskCard: { minHeight: 70, backgroundColor: colors.surface, borderRadius: 19, paddingHorizontal: 15, marginBottom: 10, flexDirection: 'row', alignItems: 'center' },
+  taskCard: { minHeight: 70, backgroundColor: colors.surface, borderRadius: 19, paddingHorizontal: 15, marginBottom: 10, flexDirection: 'row', alignItems: 'center', position: 'relative' },
+  taskCardInner: { flex: 1, minHeight: 70, flexDirection: 'row', alignItems: 'center' },
   taskCardMinimal: { borderRadius: 8, borderWidth: 1, borderColor: '#DDDDDD', shadowOpacity: 0 },
-  taskCardChic: { backgroundColor: '#FFFDF8', borderRadius: 22, borderWidth: 2, borderColor: '#FFFFFF', shadowColor: '#CE8EAA', shadowOpacity: 0.09, shadowRadius: 11, shadowOffset: { width: 0, height: 5 } },
+  taskCardChic: { minHeight: 82, paddingHorizontal: 0, paddingVertical: 6, paddingLeft: 6, borderRadius: 23, borderWidth: 0, overflow: 'hidden', shadowColor: '#B88FA1', shadowOpacity: 0.08, shadowRadius: 9, shadowOffset: { width: 0, height: 4 } },
+  taskCardInnerChic: { flex: 0, width: '90%', minHeight: 70, borderRadius: 18, paddingHorizontal: 10, backgroundColor: 'rgba(255,255,255,0.86)', zIndex: 2 },
+  taskCardChicDone: { opacity: 1 },
+  taskCardInnerChicDone: { opacity: 0.82 },
   taskCardCompanion: { borderRadius: 23, borderWidth: 1, borderColor: '#F0DFB8' },
-  chicTaskRibbon: { position: 'absolute', left: 0, top: 13, bottom: 13, width: 5, borderTopRightRadius: 5, borderBottomRightRadius: 5 },
   companionTaskMark: { color: '#D99B40', fontSize: 15, marginRight: 7, fontWeight: '900' },
   taskCardDone: { opacity: 0.55, backgroundColor: '#EFEEE9' },
   check: { width: 29, height: 29, borderRadius: 10, borderWidth: 2, borderColor: '#D8D3DE', alignItems: 'center', justifyContent: 'center', marginRight: 13 },
@@ -1943,6 +1944,7 @@ const styles = StyleSheet.create({
   priorityText: { color: colors.muted, fontSize: 9, fontWeight: '900' },
   priorityHighText: { color: colors.coral },
   categoryPill: { borderRadius: 9, paddingHorizontal: 8, paddingVertical: 3 },
+  categoryPillChic: { backgroundColor: 'rgba(255,255,255,0.72)', borderWidth: 1 },
   categoryText: { color: colors.ink, fontSize: 9, fontWeight: '800' },
   routinePill: { backgroundColor: '#E8F5EE', borderRadius: 9, paddingHorizontal: 7, paddingVertical: 3 },
   routinePillText: { color: '#357457', fontSize: 9, fontWeight: '900' },
@@ -1950,11 +1952,12 @@ const styles = StyleSheet.create({
   delete: { color: '#B2ACB8', fontSize: 22, padding: 8 },
   formCard: { backgroundColor: colors.surface, borderRadius: 24, padding: 20, marginBottom: 16 },
   timeHero: { fontSize: 28, lineHeight: 36, flexShrink: 1 },
+  chicTimeHero: { minHeight: 150, borderRadius: 26, backgroundColor: '#FFF3F5', padding: 15, marginBottom: 14, overflow: 'hidden' },
+  chicTimeHeroPaper: { flex: 1, borderRadius: 23, backgroundColor: 'rgba(255,255,255,0.89)', paddingHorizontal: 18, justifyContent: 'center', zIndex: 2 },
   timeTabs: { flexDirection: 'row', backgroundColor: '#EDE9F1', borderRadius: 17, padding: 4, marginBottom: 22, overflow: 'hidden' },
   timeTabsMinimal: { borderRadius: 0, padding: 0, backgroundColor: 'transparent', borderTopWidth: 1, borderBottomWidth: 1, borderColor: '#CFCFCA' },
   timeTabsChic: { backgroundColor: '#FFF3F5', borderRadius: 22, borderWidth: 1, borderColor: '#F0DFE5' },
   timeTabsCompanion: { backgroundColor: '#FFF2DE', borderRadius: 24, borderWidth: 1, borderColor: '#F0DFC9' },
-  timeTabPatternBand: { position: 'absolute', right: 0, top: 0, bottom: 0, width: '22%', opacity: 0.55 },
   timeTab: { flex: 1, borderRadius: 13, paddingVertical: 12, alignItems: 'center' },
   timeTabMinimal: { borderRadius: 0, borderRightWidth: 1, borderColor: '#CFCFCA' },
   timeTabActive: { backgroundColor: colors.surface, shadowColor: '#433850', shadowOpacity: 0.08, shadowRadius: 6 },
@@ -2214,10 +2217,14 @@ const styles = StyleSheet.create({
   todayMiniTick: { width: 5, height: 8, backgroundColor: '#DDDDDD' },
   todayMiniTickDone: { height: 28, backgroundColor: '#111111' },
   todayWinStrip: { paddingHorizontal: 4, paddingVertical: 7, marginBottom: 14, flexDirection: 'row', alignItems: 'center' },
+  todayWinStripChic: { minHeight: 118, borderRadius: 24, backgroundColor: '#FFF3F5', padding: 10, overflow: 'hidden' },
   todayWinStripCompanion: { backgroundColor: '#FFF0C9', borderColor: '#F0D69B' },
+  todayWinsPaper: { flex: 1, minHeight: 96, borderRadius: 20, backgroundColor: 'rgba(255,255,255,0.88)', paddingHorizontal: 14, flexDirection: 'row', alignItems: 'center', zIndex: 2 },
+  todayWinsPlain: { flex: 1, flexDirection: 'row', alignItems: 'center' },
   miniJarWrap: { width: 82, height: 78, alignItems: 'center', justifyContent: 'flex-end', position: 'relative' },
   miniJarLid: { width: 47, height: 9, borderRadius: 4, backgroundColor: '#CDAE7B', zIndex: 2 },
   miniJar: { width: 72, height: 56, borderRadius: 17, borderTopLeftRadius: 11, borderTopRightRadius: 11, backgroundColor: 'rgba(255,255,255,0.55)', borderWidth: 2, borderColor: '#FFFFFF', position: 'relative', overflow: 'hidden' },
+  miniJarChicGlass: { backgroundColor: 'rgba(255,255,255,0.62)', borderColor: 'rgba(217,134,161,0.28)', shadowColor: '#D986A1', shadowOpacity: 0.15, shadowRadius: 7, shadowOffset: { width: 0, height: 4 } },
   miniJarCompanion: { backgroundColor: 'rgba(255,242,194,0.66)', borderColor: '#E5C57B' },
   miniJarItem: { position: 'absolute', fontSize: 13 },
   fallingTreasure: { position: 'absolute', top: 0, right: 31, fontSize: 17, zIndex: 4 },
@@ -2225,7 +2232,7 @@ const styles = StyleSheet.create({
   completedDetailIcon: { color: colors.violet, fontSize: 20, fontWeight: '900' },
   completedDetailRowMinimal: { borderRadius: 0, borderWidth: 0, borderBottomWidth: 1, borderBottomColor: '#CFCFCA' },
   completedCompanionReaction: { color: '#7C5C3E', fontSize: 10, fontWeight: '800', backgroundColor: '#FFF2DE', borderRadius: 14, padding: 10, marginBottom: 10 },
-  completedModalPattern: { position: 'absolute', width: '30%', height: 100, right: 0, top: 0, overflow: 'hidden', opacity: 0.6 },
+  completedModalPattern: { position: 'absolute', width: '100%', height: 108, left: 0, top: 0, overflow: 'hidden', opacity: 0.45 },
   todayWinCount: { color: '#171715', fontSize: 32, lineHeight: 35, fontWeight: '900' },
   restoreButton: { height: 30, borderRadius: 9, backgroundColor: '#F1EDF5', paddingHorizontal: 9, alignItems: 'center', justifyContent: 'center' },
   restoreButtonText: { color: colors.violet, fontSize: 8, fontWeight: '900' },
@@ -2251,7 +2258,7 @@ const styles = StyleSheet.create({
   guideStepCopy: { color: colors.muted, fontSize: 8, fontWeight: '600', marginTop: 2 },
   compactTodayHeader: { minHeight: 42, borderRadius: 14, backgroundColor: '#FFFFFF', paddingHorizontal: 13, paddingVertical: 9, marginBottom: 8, flexDirection: 'row', alignItems: 'center', gap: 10, borderWidth: 1, borderColor: '#EEE9F2' },
   compactTodayHeaderMinimal: { borderRadius: 2, borderColor: '#1A1A1A', backgroundColor: '#F8F8F8' },
-  compactTodayHeaderChic: { minHeight: 58, borderRadius: 20, backgroundColor: '#FFF0F6', borderColor: '#FFD1E1', shadowColor: '#D96C9B', shadowOpacity: 0.1, shadowRadius: 10 },
+  compactTodayHeaderChic: { minHeight: 138, borderRadius: 26, backgroundColor: '#FFF3F5', borderColor: '#F0DFE5', shadowColor: '#D986A1', shadowOpacity: 0.1, shadowRadius: 10, padding: 14 },
   compactTodayHeaderCompanion: { minHeight: 182, borderRadius: 28, backgroundColor: '#FFF2DE', borderColor: '#F0DFC9', alignItems: 'flex-start', paddingTop: 18, overflow: 'hidden' },
   compactTodayTime: { color: colors.ink, fontSize: 27, lineHeight: 29, fontWeight: '800', letterSpacing: -1.2 },
   compactTodayDate: { color: colors.muted, fontSize: 8, fontWeight: '800', marginTop: 2 },
@@ -2260,6 +2267,9 @@ const styles = StyleSheet.create({
   compactTodayKickerChic: { color: '#C9507B', letterSpacing: 1.1 },
   compactTodayKickerCompanion: { color: '#9A6A20', letterSpacing: 0.8 },
   compactTodayCopy: { flex: 1, color: colors.ink, fontSize: 11, fontWeight: '800' },
+  todayHeaderInner: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10, zIndex: 2 },
+  chicTodayPaper: { flex: 1, minHeight: 108, flexDirection: 'row', alignItems: 'center', gap: 10, padding: 15, borderRadius: 24, backgroundColor: 'rgba(255,255,255,0.89)', zIndex: 2 },
+  chicTodayStats: { color: '#8B7B82', fontSize: 9, fontWeight: '800', marginTop: 8 },
   todayMinimalIndex: { width: 34, height: 29, backgroundColor: '#111111', alignItems: 'center', justifyContent: 'center' },
   todayMinimalIndexText: { color: '#FFFFFF', fontSize: 12, fontWeight: '900', letterSpacing: 1 },
   todayChicMark: { width: 36, height: 36, borderRadius: 18, backgroundColor: '#FFD1E1', alignItems: 'center', justifyContent: 'center' },
