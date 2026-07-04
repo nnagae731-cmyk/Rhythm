@@ -1,0 +1,33 @@
+{
+  "expo": {
+    "name": "Rhythm",
+    "slug": "rhythm",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "scheme": "rhythm",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "app.rhythm.daily"
+    },
+    "android": {
+      "package": "app.rhythm.daily",
+      "permissions": ["POST_NOTIFICATIONS", "SCHEDULE_EXACT_ALARM"]
+    },
+    "plugins": [
+      [
+        "expo-calendar",
+        {
+          "calendarPermission": "カレンダーの予定をRhythmの出発プランへ変換するために使用します。"
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "color": "#7559E8",
+          "defaultChannel": "reminders"
+        }
+      ]
+    ]
+  }
+}
