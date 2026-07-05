@@ -5,6 +5,7 @@ import * as Notifications from 'expo-notifications';
 import { StatusBar } from 'expo-status-bar';
 import React, { useEffect, useMemo, useState } from 'react';
 import { ChicPattern, DesignMode, getThemeTokens } from './theme';
+import { applyCompanionGrowthEvent, CompanionGrowthStage, CompanionGrowthState, DEFAULT_COMPANION_GROWTH_STATE, getCompanionGrowthStage, getCompanionStageStatus } from './companionGrowth';
 import {
   Alert,
   Animated,
@@ -75,6 +76,7 @@ type PersistedState = {
   designMode: DesignMode;
   taskTemplates?: string[];
   chicPattern?: ChicPattern;
+  companionGrowth?: CompanionGrowthState;
 };
 
 const STORAGE_KEY = 'rhythm-mvp-state-v1';
@@ -108,6 +110,12 @@ const chicTaskPatternPalettes: Record<Category, ChicTaskPatternPalette> = {
   その他: { background: '#FFF9EE', accent: '#C6A467', warm: '#E8D5A7' },
 };
 function getChicTaskPatternPalette(category: Category) { return chicTaskPatternPalettes[category]; }
+const chicUtilityPalettes = {
+  departure: { background: '#FFF3F3', accent: '#D986A1', warm: '#F3B6A8' },
+  deadline: { background: '#FFF8ED', accent: '#C6A467', warm: '#E7C987' },
+  calendar: { background: '#F7F2FC', accent: '#A997C8', warm: '#DCCBF0' },
+  focus: { background: '#F1FAF7', accent: '#8FC9BD', warm: '#C9E8E0' },
+};
 
 const colors = {
   background: '#F8F5EF',
@@ -350,6 +358,7 @@ export default function App() {
   const [completionIcon, setCompletionIcon] = useState('✓');
   const [designMode, setDesignMode] = useState<DesignMode>('chic');
   const [chicPattern, setChicPattern] = useState<ChicPattern>('floral');
+  const [companionGrowth, setCompanionGrowth] = useState<CompanionGrowthState>(DEFAULT_COMPANION_GROWTH_STATE);
   const [taskTemplates, setTaskTemplates] = useState<string[]>(['朝の支度', '持ち物を確認', '連絡を返す', '薬を飲む']);
   const [guideOpen, setGuideOpen] = useState(false);
   const theme = useMemo(() => getThemeTokens(designMode), [designMode]);
@@ -360,6 +369,20 @@ export default function App() {
   const [now, setNow] = useState(new Date());
   const [premiumOpen, setPremiumOpen] = useState(false);
   const [hydrated, setHydrated] = useState(false);
+  const companionGrowthStage = getCompanionGrowthStage(companionGrowth.growthPoints);
+
+  const completeTaskIds = React.useCallback((ids: string[]) => {
+    setTasks((current) => {
+      const eligibleIds = new Set(current.filter((task) => ids.includes(task.id) && !task.done).map((task) => task.id));
+      if (eligibleIds.size === 0) return current;
+      const next = completeTasksWithRepeats(current, ids);
+      const newlyCompleted = next.filter((task) => eligibleIds.has(task.id) && task.done && task.completedAt);
+      if (newlyCompleted.length > 0) {
+        setCompanionGrowth((growth) => newlyCompleted.reduce((result, task) => applyCompanionGrowthEvent(result, 'task_completed', `task_completed:${task.id}:${task.completedAt}`, new Date(task.completedAt!)), growth));
+      }
+      return next;
+    });
+  }, []);
 
   useEffect(() => {
     AsyncStorage.getItem(STORAGE_KEY)
@@ -374,6 +397,7 @@ export default function App() {
         if (saved.completionIcon) setCompletionIcon(saved.completionIcon);
         if (saved.designMode) setDesignMode(saved.designMode);
         setChicPattern(saved.chicPattern ?? 'floral');
+        setCompanionGrowth(saved.companionGrowth ?? DEFAULT_COMPANION_GROWTH_STATE);
         if (saved.taskTemplates) setTaskTemplates(saved.taskTemplates);
       })
       .catch(() => Alert.alert('保存データを読み込めませんでした'))
@@ -384,7 +408,7 @@ export default function App() {
       if (typeof taskId !== 'string') return;
 
       if (response.actionIdentifier === 'DONE') {
-        setTasks((current) => completeTasksWithRepeats(current, [taskId]));
+        completeTaskIds([taskId]);
       }
 
       if (response.actionIdentifier === 'SNOOZE') {
@@ -404,7 +428,7 @@ export default function App() {
     });
 
     return () => responseSubscription.remove();
-  }, []);
+  }, [completeTaskIds]);
 
   useEffect(() => {
     const timer = setInterval(() => setNow(new Date()), 30_000);
@@ -413,9 +437,9 @@ export default function App() {
 
   useEffect(() => {
     if (!hydrated) return;
-    const state: PersistedState = { tasks, plan, departurePlans, widgetSize, showCompleted, completionIcon, designMode, taskTemplates, chicPattern };
+    const state: PersistedState = { tasks, plan, departurePlans, widgetSize, showCompleted, completionIcon, designMode, taskTemplates, chicPattern, companionGrowth };
     AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(state)).catch(() => undefined);
-  }, [tasks, plan, departurePlans, widgetSize, showCompleted, completionIcon, designMode, taskTemplates, chicPattern, hydrated]);
+  }, [tasks, plan, departurePlans, widgetSize, showCompleted, completionIcon, designMode, taskTemplates, chicPattern, companionGrowth, hydrated]);
 
   const timeline = useMemo(() => {
     const arrival = parseClock(plan.arrival);
@@ -601,11 +625,12 @@ export default function App() {
               dangerousTask={dangerousTask}
               designMode={designMode}
               chicPattern={chicPattern}
+              companionGrowthStage={companionGrowthStage}
               completionIcon={completionIcon}
               selectionMode={selectionMode}
               selectedTaskIds={selectedTaskIds}
               onAdd={() => setAddOpen(true)}
-              onToggle={(id) => setTasks((current) => completeTasksWithRepeats(current, [id]))}
+              onToggle={(id) => completeTaskIds([id])}
               onEdit={(task) => setEditingTask(task)}
               onToggleSelection={(id) => setSelectedTaskIds((current) => current.includes(id) ? current.filter((item) => item !== id) : [...current, id])}
               onSelectionMode={() => {
@@ -613,7 +638,7 @@ export default function App() {
                 setSelectedTaskIds([]);
               }}
               onCompleteSelected={() => {
-                setTasks((current) => completeTasksWithRepeats(current, selectedTaskIds));
+                completeTaskIds(selectedTaskIds);
                 setSelectionMode(false);
                 setSelectedTaskIds([]);
               }}
@@ -670,7 +695,7 @@ export default function App() {
           )}
 
           {screen === 'history' && (
-            <HistoryScreen tasks={tasks} completionIcon={completionIcon} designMode={designMode} onRestore={(id) => setTasks((current) => current.map((task) => task.id === id ? { ...task, done: false, completedAt: undefined } : task))} />
+            <HistoryScreen tasks={tasks} completionIcon={completionIcon} designMode={designMode} chicPattern={chicPattern} onRestore={(id) => setTasks((current) => current.map((task) => task.id === id ? { ...task, done: false, completedAt: undefined } : task))} />
           )}
         </ScrollView>
 
@@ -713,6 +738,7 @@ function HomeScreen({
   completionIcon,
   designMode,
   chicPattern,
+  companionGrowthStage,
   selectionMode,
   selectedTaskIds,
   onAdd,
@@ -736,6 +762,7 @@ function HomeScreen({
   dangerousTask?: Task;
   designMode: DesignMode;
   chicPattern: ChicPattern;
+  companionGrowthStage: CompanionGrowthStage;
   completionIcon: string;
   selectionMode: boolean;
   selectedTaskIds: string[];
@@ -768,8 +795,8 @@ function HomeScreen({
         <View style={designMode === 'chic' ? styles.chicTodayPaper : styles.todayHeaderInner}>
           {designMode === 'minimal' && <View style={styles.todayMinimalIndex}><Text style={styles.todayMinimalIndexText}>{String(tasks.filter((task) => (task.bucket ?? 'now') === 'now').length).padStart(2, '0')}</Text></View>}
           {designMode === 'chic' && <View style={styles.todayChicMark}><Text style={styles.todayChicMarkText}>✿</Text></View>}
-          {designMode === 'companion' && <View style={styles.todayCompanionFace}><Text style={styles.todayCompanionFaceText}>🥚</Text><View style={styles.companionFutureExp}><View style={styles.companionFutureExpFill} /></View></View>}
-          <View style={{ flex: 1 }}><Text style={[styles.compactTodayKicker, designMode === 'chic' && styles.compactTodayKickerChic, designMode === 'companion' && styles.compactTodayKickerCompanion]}>{designMode === 'minimal' ? '今日の優先' : designMode === 'chic' ? '今日のメモ' : '相棒から'}</Text><Text numberOfLines={2} style={styles.compactTodayCopy}>{remaining === 0 ? (designMode === 'companion' ? '相棒も大満足。今日の分は完了！' : '今日の分は完了。いい感じ') : designMode === 'companion' ? `相棒と「今やる」${tasks.filter((task) => (task.bucket ?? 'now') === 'now').length}件から` : `まずは、今やる${tasks.filter((task) => (task.bucket ?? 'now') === 'now').length}件から`}</Text>{designMode === 'chic' && <Text style={styles.chicTodayStats}>完了 {allTasks.filter((task) => task.done && task.completedAt && dateKey(task.completedAt) === dateKey(now)).length}　残り {remaining}</Text>}</View>
+          {designMode === 'companion' && <View style={styles.todayCompanionFace}><Text style={styles.todayCompanionFaceText}>🥚</Text></View>}
+          <View style={{ flex: 1 }}><Text style={[styles.compactTodayKicker, designMode === 'chic' && styles.compactTodayKickerChic, designMode === 'companion' && styles.compactTodayKickerCompanion]}>{designMode === 'minimal' ? '今日の優先' : designMode === 'chic' ? '今日のメモ' : '相棒から'}</Text><Text numberOfLines={2} style={styles.compactTodayCopy}>{designMode === 'companion' ? getCompanionStageStatus(companionGrowthStage) : remaining === 0 ? '今日の分は完了。いい感じ' : `まずは、今やる${tasks.filter((task) => (task.bucket ?? 'now') === 'now').length}件から`}</Text>{designMode === 'chic' && <Text style={styles.chicTodayStats}>完了 {allTasks.filter((task) => task.done && task.completedAt && dateKey(task.completedAt) === dateKey(now)).length}　残り {remaining}</Text>}</View>
           {designMode === 'chic' && <Text style={styles.todayChicSpark}>✦</Text>}
         </View>
       </View>
@@ -792,9 +819,9 @@ function HomeScreen({
       })}</View>
 
       <View style={styles.homeToolRow}>
-        <Pressable style={[styles.homeToolCard, designMode === 'minimal' && styles.homeToolCardMinimal, designMode === 'chic' && styles.homeToolCardChic, designMode === 'companion' && styles.homeToolCardCompanion]} onPress={() => onOpenTime('departure')}><Text style={styles.homeToolIcon}>↗</Text><Text style={styles.homeToolTitle}>出発</Text><Text numberOfLines={1} style={styles.homeToolMeta}>{timeline.leave}</Text></Pressable>
-        <Pressable style={[styles.homeToolCard, designMode === 'minimal' && styles.homeToolCardMinimal, designMode === 'chic' && styles.homeToolCardChic, designMode === 'companion' && styles.homeToolCardCompanion]} onPress={() => onOpenTime('calendar')}><Text style={styles.homeToolIcon}>▦</Text><Text style={styles.homeToolTitle}>予定表</Text><Text style={styles.homeToolMeta}>月を見る</Text></Pressable>
-        <Pressable style={[styles.homeToolCard, designMode === 'minimal' && styles.homeToolCardMinimal, designMode === 'chic' && styles.homeToolCardChic, designMode === 'companion' && styles.homeToolCardCompanion]} onPress={() => onOpenTime('focus')}><Text style={styles.homeToolIcon}>◉</Text><Text style={styles.homeToolTitle}>集中</Text><Text style={styles.homeToolMeta}>今だけ</Text></Pressable>
+        <HomeToolCard designMode={designMode} chicPattern={chicPattern} kind="departure" icon="↗" title="出発" meta={timeline.leave} onPress={() => onOpenTime('departure')} />
+        <HomeToolCard designMode={designMode} chicPattern={chicPattern} kind="calendar" icon="▦" title="予定表" meta="月を見る" onPress={() => onOpenTime('calendar')} />
+        <HomeToolCard designMode={designMode} chicPattern={chicPattern} kind="focus" icon="◉" title="集中" meta="今だけ" onPress={() => onOpenTime('focus')} />
       </View>
 
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterChips}>
@@ -812,10 +839,8 @@ function HomeScreen({
 
       {displayTasks.length === 0 ? (
         <Pressable style={[styles.emptyCard, designMode === 'minimal' && styles.emptyCardMinimal, designMode === 'chic' && styles.emptyCardChic, designMode === 'companion' && styles.emptyCardCompanion]} onPress={onAdd}>
-          {designMode === 'chic' && <View pointerEvents="none" style={styles.emptyChicPattern}><ChicPatternDecor pattern={chicPattern} accent="#D986A1" warm="#A997C8" /></View>}
-          <Text style={styles.emptyIcon}>○</Text>
-          <Text style={styles.emptyTitle}>最初のタスクを追加しよう</Text>
-          <Text style={styles.emptyCopy}>忘れたくないことを、ここに置いておけます。</Text>
+          {designMode === 'chic' && <ChicPatternDecor pattern={chicPattern} accent="#D986A1" warm="#A997C8" />}
+          <View style={designMode === 'chic' ? styles.emptyChicGlass : styles.emptyPlainContent}><Text style={styles.emptyIcon}>○</Text><Text style={styles.emptyTitle}>最初のタスクを追加しよう</Text><Text style={styles.emptyCopy}>忘れたくないことを、ここに置いておけます。</Text></View>
         </Pressable>
       ) : displayTasks.map((task) => { const chicPalette = getChicTaskPatternPalette(task.category); return (
         <View key={task.id} style={[styles.taskCard, designMode === 'minimal' && styles.taskCardMinimal, designMode === 'chic' && styles.taskCardChic, designMode === 'chic' && { backgroundColor: chicPalette.background }, designMode === 'companion' && styles.taskCardCompanion, task.done && designMode !== 'chic' && styles.taskCardDone, task.done && designMode === 'chic' && styles.taskCardChicDone]}>
@@ -868,6 +893,21 @@ function HomeScreen({
       </Modal>
     </>
   );
+}
+
+function HomeToolCard({ designMode, chicPattern, kind, icon, title, meta, onPress }: { designMode: DesignMode; chicPattern: ChicPattern; kind: 'departure' | 'calendar' | 'focus'; icon: string; title: string; meta: string; onPress: () => void }) {
+  const palette = chicUtilityPalettes[kind];
+  return <Pressable style={[styles.homeToolCard, designMode === 'minimal' && styles.homeToolCardMinimal, designMode === 'chic' && styles.homeToolCardChic, designMode === 'chic' && { backgroundColor: palette.background }, designMode === 'companion' && styles.homeToolCardCompanion]} onPress={onPress}>
+    {designMode === 'chic' && <ChicPatternDecor pattern={chicPattern} accent={palette.accent} warm={palette.warm} density="compact" />}
+    <View style={designMode === 'chic' ? styles.homeToolGlass : styles.homeToolPlain}><Text style={[styles.homeToolIcon, designMode === 'chic' && { color: palette.accent }]}>{icon}</Text><Text style={styles.homeToolTitle}>{title}</Text><Text numberOfLines={1} style={styles.homeToolMeta}>{meta}</Text></View>
+  </Pressable>;
+}
+
+function TimeTabButton({ tab, active, designMode, chicPattern, themeAccent, secondaryText, onPress }: { tab: TimeTab; active: boolean; designMode: DesignMode; chicPattern: ChicPattern; themeAccent: string; secondaryText: string; onPress: () => void }) {
+  const palette = chicUtilityPalettes[tab];
+  const label = tab === 'departure' ? '出発' : tab === 'deadline' ? '締切' : tab === 'calendar' ? '予定表' : '集中';
+  if (designMode === 'chic') return <Pressable style={[styles.timeTab, styles.timeTabChicPattern, { backgroundColor: palette.background }, active && { borderColor: palette.accent, borderWidth: 2 }]} onPress={onPress}><ChicPatternDecor pattern={chicPattern} accent={palette.accent} warm={palette.warm} density="compact" /><View style={[styles.timeTabGlassLabel, active && styles.timeTabGlassLabelActive]}><Text style={[styles.timeTabText, { color: active ? palette.accent : '#8B7B82' }]}>{label}</Text>{active && <Text style={[styles.timeTabMarker, { color: palette.accent }]}>●</Text>}</View></Pressable>;
+  return <Pressable style={[styles.timeTab, designMode === 'minimal' && styles.timeTabMinimal, active && styles.timeTabActive, active && { backgroundColor: themeAccent, borderColor: themeAccent }]} onPress={onPress}><Text style={[styles.timeTabText, { color: secondaryText }, active && styles.timeTabTextActive]}>{label}</Text></Pressable>;
 }
 
 function TimelineScreen({
@@ -937,7 +977,7 @@ function TimelineScreen({
     <>
       {designMode === 'chic' ? <View style={styles.chicTimeHero}><ChicPatternDecor pattern={chicPattern} accent="#D986A1" warm="#A997C8" /><View style={styles.chicTimeHeroPaper}><Text numberOfLines={2} style={[styles.hero, styles.timeHero, { marginBottom: 0 }]}>時間に追われる前に、先回り。</Text></View></View> : <Text numberOfLines={2} style={[styles.hero, styles.timeHero]}>時間に追われる前に、先回り。</Text>}
       <View style={[styles.timeTabs, designMode === 'minimal' && styles.timeTabsMinimal, designMode === 'chic' && styles.timeTabsChic, designMode === 'companion' && styles.timeTabsCompanion]}>
-        {(['departure', 'deadline', 'calendar', 'focus'] as TimeTab[]).map((tab) => <Pressable key={tab} style={[styles.timeTab, designMode === 'minimal' && styles.timeTabMinimal, timeTab === tab && styles.timeTabActive, timeTab === tab && { backgroundColor: theme.colors.primaryAccent, borderColor: theme.colors.primaryAccent }]} onPress={() => setTimeTab(tab)}><Text style={[styles.timeTabText, { color: theme.colors.secondaryText }, timeTab === tab && styles.timeTabTextActive]}>{tab === 'departure' ? '出発' : tab === 'deadline' ? '締切' : tab === 'calendar' ? '予定表' : '集中'}</Text></Pressable>)}
+        {(['departure', 'deadline', 'calendar', 'focus'] as TimeTab[]).map((tab) => <TimeTabButton key={tab} tab={tab} active={timeTab === tab} designMode={designMode} chicPattern={chicPattern} themeAccent={theme.colors.primaryAccent} secondaryText={theme.colors.secondaryText} onPress={() => setTimeTab(tab)} />)}
       </View>
 
       {timeTab === 'focus' ? <FocusMode tasks={tasks} designMode={designMode} /> : timeTab === 'calendar' ? <TaskScheduleCalendar tasks={tasks} plans={plans} now={now} designMode={designMode} chicPattern={chicPattern} onEditTask={onEditTask} onEditPlan={onEdit} /> : timeTab === 'deadline' ? <>
@@ -1178,7 +1218,7 @@ function ModeHomeHero({ designMode, tasks, dangerousTask, now, completedCount, r
     return <View style={styles.companionScene}>
       <View style={styles.sceneSun} />
       <View style={styles.sceneCloud}><Text style={styles.sceneCloudText}>{companionMessage}</Text></View>
-      <CompanionCard completedCount={completedCount} remaining={remaining} />
+      <CompanionCard remaining={remaining} />
       <View style={styles.sceneFloor} />
     </View>;
   }
@@ -1213,7 +1253,7 @@ function ChicPatternDecor({ pattern, accent, warm, density = 'regular' }: { patt
   </View>;
 }
 
-function CompanionCard({ completedCount, remaining }: { completedCount: number; remaining: number }) {
+function CompanionCard({ remaining }: { remaining: number }) {
   const float = React.useRef(new Animated.Value(0)).current;
   useEffect(() => {
     const animation = Animated.loop(Animated.sequence([
@@ -1224,14 +1264,12 @@ function CompanionCard({ completedCount, remaining }: { completedCount: number; 
     return () => animation.stop();
   }, [float]);
   const translateY = float.interpolate({ inputRange: [0, 1], outputRange: [0, -7] });
-  const stage = completedCount >= 5 ? 'もうすぐ生まれそう！' : completedCount >= 2 ? '卵があたたかくなってきた' : '今日の一歩を待っているよ';
   return <View style={styles.companionCard}>
     <Animated.View style={[styles.eggBubble, { transform: [{ translateY }] }]}><Text style={styles.eggEmoji}>🥚</Text></Animated.View>
     <View style={{ flex: 1 }}>
       <Text style={styles.companionEyebrow}>YOUR COMPANION</Text>
-      <Text style={styles.companionTitle}>{stage}</Text>
+      <Text style={styles.companionTitle}>今日も一緒に進もう</Text>
       <Text style={styles.companionCopy}>{remaining === 0 ? '今日は全部できたね ✦' : `あと${remaining}件。一緒にやってみよう`}</Text>
-      <View style={styles.expTrack}><View style={[styles.expFill, { width: `${Math.min(100, completedCount * 20)}%` }]} /></View>
     </View>
   </View>;
 }
@@ -1634,10 +1672,10 @@ function TodayWinStrip({ tasks, designMode, chicPattern, onRestore }: { tasks: T
   const details = <Modal visible={detailsOpen} transparent animationType="slide" onRequestClose={() => setDetailsOpen(false)}><Pressable style={styles.modalBackdrop} onPress={() => setDetailsOpen(false)}><Pressable style={[styles.modalSheet, { backgroundColor: theme.colors.screenBackground, borderRadius: theme.radius.modal }]} onPress={(event) => event.stopPropagation()}>{designMode === 'chic' && <View pointerEvents="none" style={styles.completedModalPattern}><ChicPatternDecor pattern={chicPattern} accent="#D986A1" warm="#A997C8" /></View>}{designMode === 'companion' && <Text style={styles.completedCompanionReaction}>🥚 できたこと、ちゃんと覚えてるよ</Text>}<View style={styles.modalHandle} /><Text style={styles.modalTitle}>今日できたこと</Text>{completed.length === 0 ? <Text style={styles.emptyCopy}>完了したタスクはまだありません。</Text> : completed.map((task) => <View key={task.id} style={[styles.completedDetailRow, designMode === 'minimal' && styles.completedDetailRowMinimal]}><Text style={[styles.completedDetailIcon, { color: theme.colors.primaryAccent }]}>{designMode === 'minimal' ? '✓' : designMode === 'chic' ? '✿' : '★'}</Text><View style={{ flex: 1 }}><Text style={styles.taskTitle}>{task.title}</Text><Text style={styles.taskMeta}>{task.category}</Text></View><Pressable style={[styles.restoreButton, { backgroundColor: theme.colors.softAccent }]} onPress={() => onRestore(task.id)}><Text style={[styles.restoreButtonText, { color: theme.colors.primaryAccent }]}>元に戻す</Text></Pressable></View>)}<Pressable style={[styles.primaryButton, { backgroundColor: theme.colors.primaryAccent, borderRadius: theme.radius.button }]} onPress={() => setDetailsOpen(false)}><Text style={styles.primaryButtonText}>閉じる</Text></Pressable></Pressable></Pressable></Modal>;
   if (designMode === 'minimal') return <><Pressable style={styles.todayMinimalWin} onPress={() => setDetailsOpen(true)}><View><Text style={styles.minimalAchievementLabel}>今日できたこと</Text><Text style={styles.todayWinCount}>{String(count).padStart(2, '0')}</Text><Text style={styles.todayWinComment}>{count}件完了</Text></View><View style={styles.todayMiniMeter}>{Array.from({ length: 6 }, (_, item) => <View key={item} style={[styles.todayMiniTick, item < Math.min(6, count) && styles.todayMiniTickDone]} />)}</View></Pressable>{details}</>;
   const item = designMode === 'chic' ? '✿' : '🍪';
-  return <><Pressable style={[styles.todayWinStrip, designMode === 'chic' && styles.todayWinStripChic, designMode === 'companion' && styles.todayWinStripCompanion]} onPress={() => setDetailsOpen(true)}>{designMode === 'chic' && <ChicPatternDecor pattern={chicPattern} accent="#D986A1" warm="#A997C8" />}<View style={designMode === 'chic' ? styles.todayWinsPaper : styles.todayWinsPlain}><View style={{ flex: 1 }}><Text style={styles.vesselLabelTop}>{designMode === 'chic' ? '小さな達成' : '相棒の宝もの'}</Text><Text style={styles.todayWinComment}>{count === 0 ? '最初のひとつを待っています' : `${count}つ終わった、いい感じ`}</Text><Text style={styles.todayWinHint}>瓶をタップして今日の完了を見る</Text></View><View style={styles.miniJarWrap}><View style={styles.miniJarLid} /><View style={[styles.miniJar, designMode === 'chic' && styles.miniJarChicGlass, designMode === 'companion' && styles.miniJarCompanion]}>{Array.from({ length: Math.min(12, count) }, (_, index) => <Text key={index} style={[styles.miniJarItem, { left: 8 + (index % 3) * 22, bottom: 4 + Math.floor(index / 3) * 14, color: index % 3 === 0 ? '#F3C7D5' : index % 3 === 1 ? '#DCCBF0' : '#F5E1A4' }]}>{index % 2 ? '✦' : '●'}</Text>)}</View>{dropVisible && <Animated.Text style={[styles.fallingTreasure, fallingStyle]}>{item}</Animated.Text>}</View></View></Pressable>{details}</>;
+  return <><Pressable style={[styles.todayWinStrip, designMode === 'chic' && styles.todayWinStripChic, designMode === 'companion' && styles.todayWinStripCompanion]} onPress={() => setDetailsOpen(true)}>{designMode === 'chic' && <ChicPatternDecor pattern={chicPattern} accent="#D986A1" warm="#A997C8" />}<View style={designMode === 'chic' ? styles.todayWinsPaper : styles.todayWinsPlain}><View style={[{ flex: 1 }, designMode === 'chic' && styles.todayWinsTextPlate]}><Text style={styles.vesselLabelTop}>{designMode === 'chic' ? '小さな達成' : '相棒の宝もの'}</Text><Text style={styles.todayWinComment}>{count === 0 ? '最初のひとつを待っています' : `${count}つ終わった、いい感じ`}</Text><Text style={styles.todayWinHint}>瓶をタップして今日の完了を見る</Text></View><View style={styles.miniJarWrap}><View style={styles.miniJarLid} /><View style={[styles.miniJar, designMode === 'chic' && styles.miniJarChicGlass, designMode === 'companion' && styles.miniJarCompanion]}>{Array.from({ length: Math.min(12, count) }, (_, index) => <Text key={index} style={[styles.miniJarItem, { left: 8 + (index % 3) * 22, bottom: 4 + Math.floor(index / 3) * 14, color: index % 3 === 0 ? '#F3C7D5' : index % 3 === 1 ? '#DCCBF0' : '#F5E1A4' }]}>{index % 2 ? '✦' : '●'}</Text>)}</View>{dropVisible && <Animated.Text style={[styles.fallingTreasure, fallingStyle]}>{item}</Animated.Text>}</View></View></Pressable>{details}</>;
 }
 
-function AchievementVessel({ tasks, designMode, scope = 'month', compact = false }: { tasks: Task[]; designMode: ThemeMode; scope?: 'today' | 'month'; compact?: boolean }) {
+function AchievementVessel({ tasks, designMode, chicPattern = 'floral', scope = 'month', compact = false }: { tasks: Task[]; designMode: ThemeMode; chicPattern?: ChicPattern; scope?: 'today' | 'month'; compact?: boolean }) {
   const now = new Date();
   const completed = tasks.filter((task) => {
     if (!task.completedAt) return false;
@@ -1648,8 +1686,9 @@ function AchievementVessel({ tasks, designMode, scope = 'month', compact = false
   if (designMode === 'minimal') {
     return <View style={[styles.minimalAchievement, compact && styles.minimalAchievementCompact]}><View><Text style={styles.minimalAchievementLabel}>{scope === 'today' ? '今日できたこと' : '今月の記録'}</Text><Text style={[styles.minimalAchievementNumber, compact && styles.minimalAchievementNumberCompact]}>{String(completed.length).padStart(2, '0')}</Text><Text style={styles.taskMeta}>{completed.length}件完了</Text></View><View style={styles.minimalAchievementBars}>{Array.from({ length: 10 }, (_, item) => <View key={item} style={[styles.minimalAchievementBar, item < Math.min(10, completed.length) && styles.minimalAchievementBarFilled]} />)}</View></View>;
   }
-  return <View style={[styles.vesselScene, compact && styles.vesselSceneCompact, designMode === 'companion' && styles.vesselSceneCompanion]}>
-    <View style={styles.vesselLabel}><Text style={styles.vesselLabelTop}>{scope === 'today' ? 'TODAY’S LITTLE WINS' : 'THIS MONTH’S WINS'}</Text><Text style={[styles.vesselLabelTitle, compact && styles.vesselLabelTitleCompact]}>{completed.length}個のできた！</Text></View>
+  return <View style={[styles.vesselScene, compact && styles.vesselSceneCompact, designMode === 'chic' && styles.vesselSceneChic, designMode === 'companion' && styles.vesselSceneCompanion]}>
+    {designMode === 'chic' && <ChicPatternDecor pattern={chicPattern} accent="#D986A1" warm="#A997C8" />}
+    <View style={[styles.vesselLabel, designMode === 'chic' && styles.vesselLabelChic]}><Text style={styles.vesselLabelTop}>{scope === 'today' ? '今日の小さな達成' : designMode === 'chic' ? '今月の小さな達成' : '今月のできたこと'}</Text><Text style={[styles.vesselLabelTitle, compact && styles.vesselLabelTitleCompact]}>{completed.length}個のできた！</Text></View>
     <View style={styles.jarLid} />
     <View style={[styles.jarBody, compact && styles.jarBodyCompact, designMode === 'companion' && styles.jarBodyCompanion]}>
       {visible.map((task, index) => <View key={task.id} style={[styles.jarTreasure, { left: 13 + (index % 6) * 39, bottom: 10 + Math.floor(index / 6) * 35, transform: [{ rotate: `${(index % 5) * 8 - 16}deg` }] }]}><Text style={styles.jarTreasureText}>{designMode === 'chic' ? (index % 3 === 0 ? '✿' : index % 3 === 1 ? '★' : '●') : (index % 2 ? '★' : '🍪')}</Text></View>)}
@@ -1659,7 +1698,7 @@ function AchievementVessel({ tasks, designMode, scope = 'month', compact = false
   </View>;
 }
 
-function HistoryScreen({ tasks, completionIcon, designMode, onRestore }: { tasks: Task[]; completionIcon: string; designMode: ThemeMode; onRestore: (id: string) => void }) {
+function HistoryScreen({ tasks, completionIcon, designMode, chicPattern, onRestore }: { tasks: Task[]; completionIcon: string; designMode: ThemeMode; chicPattern: ChicPattern; onRestore: (id: string) => void }) {
   const now = new Date();
   const [selectedKey, setSelectedKey] = useState(dateKey(now));
   const [historySearch, setHistorySearch] = useState('');
@@ -1687,7 +1726,7 @@ function HistoryScreen({ tasks, completionIcon, designMode, onRestore }: { tasks
     <>
       <Text style={styles.hero}>{designMode === 'minimal' ? '今月の記録' : designMode === 'chic' ? '今月の小さな達成' : '今月の相棒との記録'}</Text>
       <View style={styles.historySearchBox}><Text style={styles.taskSearchIcon}>⌕</Text><TextInput value={historySearch} onChangeText={setHistorySearch} placeholder="過去に完了したタスクを検索" placeholderTextColor="#A29DAA" style={styles.taskSearchInput} />{historySearch.length > 0 && <Pressable onPress={() => setHistorySearch('')}><Text style={styles.historySearchClear}>×</Text></Pressable>}</View>
-      <AchievementVessel tasks={tasks} designMode={designMode} scope="month" />
+      <AchievementVessel tasks={tasks} designMode={designMode} chicPattern={chicPattern} scope="month" />
       <View style={styles.monthStats}>
         <View style={styles.monthStat}><Text style={styles.monthStatNumber}>{monthlyCount}</Text><Text style={styles.monthStatLabel}>今月の完了</Text></View>
         <View style={styles.monthStat}><Text style={styles.monthStatNumber}>{activeDays}</Text><Text style={styles.monthStatLabel}>活動した日</Text></View>
@@ -1868,8 +1907,6 @@ const styles = StyleSheet.create({
   companionEyebrow: { color: '#B2782B', fontSize: 8, fontWeight: '900', letterSpacing: 1.1 },
   companionTitle: { color: '#5D402C', fontSize: 15, fontWeight: '900', marginTop: 4 },
   companionCopy: { color: '#8C684C', fontSize: 10, fontWeight: '700', marginTop: 4 },
-  expTrack: { height: 6, borderRadius: 4, backgroundColor: '#F1DDAA', marginTop: 10, overflow: 'hidden' },
-  expFill: { height: 6, borderRadius: 4, backgroundColor: '#F5A647' },
   urgencyCard: { backgroundColor: colors.violetSoft, borderRadius: 22, padding: 17, marginBottom: 14, borderWidth: 1.5, borderColor: '#DCD2FF' },
   urgencyCardFeatured: { marginBottom: 15 },
   urgencyCardDanger: { backgroundColor: colors.coralSoft, borderColor: '#FFC6BD' },
@@ -1911,7 +1948,8 @@ const styles = StyleSheet.create({
   emptyCardMinimal: { borderRadius: 2, borderStyle: 'solid', borderColor: '#171715', backgroundColor: '#FFFFFF' },
   emptyCardChic: { borderRadius: 26, borderStyle: 'solid', borderColor: '#F0DFE5', backgroundColor: '#FFFFFF' },
   emptyCardCompanion: { borderRadius: 28, borderStyle: 'solid', borderColor: '#F0DFC9', backgroundColor: '#FFF2DE' },
-  emptyChicPattern: { position: 'absolute', right: 0, bottom: 0, width: '28%', height: '100%', overflow: 'hidden' },
+  emptyPlainContent: { alignItems: 'center' },
+  emptyChicGlass: { width: '72%', alignSelf: 'flex-start', backgroundColor: 'rgba(255,255,255,0.84)', borderRadius: 20, paddingHorizontal: 20, paddingVertical: 22, alignItems: 'center', zIndex: 2 },
   emptyIcon: { color: colors.violet, fontSize: 30, marginBottom: 8 },
   emptyTitle: { color: colors.ink, fontSize: 16, fontWeight: '800' },
   emptyCopy: { color: colors.muted, fontSize: 12, textAlign: 'center', marginTop: 6 },
@@ -1919,7 +1957,7 @@ const styles = StyleSheet.create({
   taskCardInner: { flex: 1, minHeight: 70, flexDirection: 'row', alignItems: 'center' },
   taskCardMinimal: { borderRadius: 8, borderWidth: 1, borderColor: '#DDDDDD', shadowOpacity: 0 },
   taskCardChic: { minHeight: 82, paddingHorizontal: 0, paddingVertical: 6, paddingLeft: 6, borderRadius: 23, borderWidth: 0, overflow: 'hidden', shadowColor: '#B88FA1', shadowOpacity: 0.08, shadowRadius: 9, shadowOffset: { width: 0, height: 4 } },
-  taskCardInnerChic: { flex: 0, width: '90%', minHeight: 70, borderRadius: 18, paddingHorizontal: 10, backgroundColor: 'rgba(255,255,255,0.86)', zIndex: 2 },
+  taskCardInnerChic: { flex: 0, width: '84%', minHeight: 70, borderRadius: 18, paddingHorizontal: 7, backgroundColor: 'rgba(255,255,255,0.84)', zIndex: 2 },
   taskCardChicDone: { opacity: 1 },
   taskCardInnerChicDone: { opacity: 0.82 },
   taskCardCompanion: { borderRadius: 23, borderWidth: 1, borderColor: '#F0DFB8' },
@@ -1952,14 +1990,18 @@ const styles = StyleSheet.create({
   delete: { color: '#B2ACB8', fontSize: 22, padding: 8 },
   formCard: { backgroundColor: colors.surface, borderRadius: 24, padding: 20, marginBottom: 16 },
   timeHero: { fontSize: 28, lineHeight: 36, flexShrink: 1 },
-  chicTimeHero: { minHeight: 150, borderRadius: 26, backgroundColor: '#FFF3F5', padding: 15, marginBottom: 14, overflow: 'hidden' },
-  chicTimeHeroPaper: { flex: 1, borderRadius: 23, backgroundColor: 'rgba(255,255,255,0.89)', paddingHorizontal: 18, justifyContent: 'center', zIndex: 2 },
+  chicTimeHero: { minHeight: 170, borderRadius: 26, backgroundColor: '#FFF3F5', padding: 15, marginBottom: 14, overflow: 'hidden' },
+  chicTimeHeroPaper: { width: '68%', minHeight: 112, alignSelf: 'flex-start', borderRadius: 21, backgroundColor: 'rgba(255,255,255,0.84)', paddingHorizontal: 18, justifyContent: 'center', zIndex: 2 },
   timeTabs: { flexDirection: 'row', backgroundColor: '#EDE9F1', borderRadius: 17, padding: 4, marginBottom: 22, overflow: 'hidden' },
   timeTabsMinimal: { borderRadius: 0, padding: 0, backgroundColor: 'transparent', borderTopWidth: 1, borderBottomWidth: 1, borderColor: '#CFCFCA' },
-  timeTabsChic: { backgroundColor: '#FFF3F5', borderRadius: 22, borderWidth: 1, borderColor: '#F0DFE5' },
+  timeTabsChic: { backgroundColor: 'transparent', borderRadius: 0, padding: 0, gap: 5, overflow: 'visible' },
   timeTabsCompanion: { backgroundColor: '#FFF2DE', borderRadius: 24, borderWidth: 1, borderColor: '#F0DFC9' },
   timeTab: { flex: 1, borderRadius: 13, paddingVertical: 12, alignItems: 'center' },
   timeTabMinimal: { borderRadius: 0, borderRightWidth: 1, borderColor: '#CFCFCA' },
+  timeTabChicPattern: { minHeight: 52, borderRadius: 15, paddingVertical: 6, paddingHorizontal: 3, overflow: 'hidden', borderWidth: 1, borderColor: 'rgba(217,134,161,0.18)' },
+  timeTabGlassLabel: { minWidth: '72%', alignSelf: 'center', borderRadius: 10, paddingHorizontal: 6, paddingVertical: 5, backgroundColor: 'rgba(255,255,255,0.82)', alignItems: 'center', zIndex: 2 },
+  timeTabGlassLabelActive: { backgroundColor: 'rgba(255,255,255,0.94)' },
+  timeTabMarker: { position: 'absolute', right: 4, top: 2, fontSize: 5 },
   timeTabActive: { backgroundColor: colors.surface, shadowColor: '#433850', shadowOpacity: 0.08, shadowRadius: 6 },
   timeTabText: { color: colors.muted, fontSize: 13, fontWeight: '900' },
   timeTabTextActive: { color: colors.violet },
@@ -2191,21 +2233,23 @@ const styles = StyleSheet.create({
   minimalAchievementBars: { flexDirection: 'row', alignItems: 'flex-end', gap: 4, height: 43 },
   minimalAchievementBar: { width: 5, height: 12, backgroundColor: '#3B3B3B' },
   minimalAchievementBarFilled: { height: 38, backgroundColor: '#FFFFFF' },
-  vesselScene: { backgroundColor: '#FFF0F5', borderRadius: 28, padding: 18, alignItems: 'center', marginBottom: 20, borderWidth: 2, borderColor: '#FFFFFF' },
+  vesselScene: { backgroundColor: '#FFF0F5', borderRadius: 28, padding: 18, alignItems: 'center', marginBottom: 20, borderWidth: 2, borderColor: '#FFFFFF', position: 'relative', overflow: 'hidden' },
+  vesselSceneChic: { backgroundColor: '#FFF3F5', borderColor: '#F0DFE5' },
   vesselSceneCompact: { marginTop: 14, marginBottom: 4, padding: 12, borderRadius: 22 },
   vesselSceneCompanion: { backgroundColor: '#FFF0C9', borderColor: '#F0D69B' },
   vesselLabel: { alignItems: 'center', marginBottom: 9 },
+  vesselLabelChic: { backgroundColor: 'rgba(255,255,255,0.82)', borderRadius: 18, paddingHorizontal: 16, paddingVertical: 9, zIndex: 2 },
   vesselLabelTop: { color: colors.muted, fontSize: 8, fontWeight: '900', letterSpacing: 1.3 },
   vesselLabelTitle: { color: colors.ink, fontSize: 19, fontWeight: '900', marginTop: 3 },
   vesselLabelTitleCompact: { fontSize: 15 },
-  jarLid: { width: 116, height: 18, borderRadius: 7, backgroundColor: '#D7B98B', zIndex: 2 },
-  jarBody: { width: 264, height: 132, borderRadius: 34, borderTopLeftRadius: 22, borderTopRightRadius: 22, backgroundColor: 'rgba(255,255,255,0.58)', borderWidth: 3, borderColor: 'rgba(255,255,255,0.92)', overflow: 'hidden', position: 'relative' },
+  jarLid: { width: 116, height: 18, borderRadius: 7, backgroundColor: '#D7B98B', zIndex: 3 },
+  jarBody: { width: 264, height: 132, borderRadius: 34, borderTopLeftRadius: 22, borderTopRightRadius: 22, backgroundColor: 'rgba(255,255,255,0.58)', borderWidth: 3, borderColor: 'rgba(255,255,255,0.92)', overflow: 'hidden', position: 'relative', zIndex: 2 },
   jarBodyCompact: { width: 244, height: 82, borderRadius: 27, borderTopLeftRadius: 18, borderTopRightRadius: 18 },
   jarBodyCompanion: { backgroundColor: 'rgba(255,248,223,0.72)', borderColor: '#E5C982' },
   jarTreasure: { position: 'absolute', width: 31, height: 31, borderRadius: 12, backgroundColor: 'rgba(255,255,255,0.9)', alignItems: 'center', justifyContent: 'center' },
   jarTreasureText: { fontSize: 17 },
   jarEmptyText: { color: colors.muted, fontSize: 10, fontWeight: '700', textAlign: 'center', marginTop: 55 },
-  vesselCaption: { color: colors.muted, fontSize: 10, fontWeight: '700', marginTop: 11 },
+  vesselCaption: { color: colors.muted, fontSize: 10, fontWeight: '700', marginTop: 11, zIndex: 2 },
   monthStats: { flexDirection: 'row', gap: 8, marginBottom: 18 },
   monthStat: { flex: 1, backgroundColor: colors.surface, borderRadius: 17, paddingVertical: 13, alignItems: 'center' },
   monthStatNumber: { color: colors.violet, fontSize: 22, fontWeight: '900' },
@@ -2219,7 +2263,8 @@ const styles = StyleSheet.create({
   todayWinStrip: { paddingHorizontal: 4, paddingVertical: 7, marginBottom: 14, flexDirection: 'row', alignItems: 'center' },
   todayWinStripChic: { minHeight: 118, borderRadius: 24, backgroundColor: '#FFF3F5', padding: 10, overflow: 'hidden' },
   todayWinStripCompanion: { backgroundColor: '#FFF0C9', borderColor: '#F0D69B' },
-  todayWinsPaper: { flex: 1, minHeight: 96, borderRadius: 20, backgroundColor: 'rgba(255,255,255,0.88)', paddingHorizontal: 14, flexDirection: 'row', alignItems: 'center', zIndex: 2 },
+  todayWinsPaper: { flex: 1, minHeight: 96, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', zIndex: 2 },
+  todayWinsTextPlate: { flex: 0, width: '58%', backgroundColor: 'rgba(255,255,255,0.82)', borderRadius: 18, paddingHorizontal: 13, paddingVertical: 12 },
   todayWinsPlain: { flex: 1, flexDirection: 'row', alignItems: 'center' },
   miniJarWrap: { width: 82, height: 78, alignItems: 'center', justifyContent: 'flex-end', position: 'relative' },
   miniJarLid: { width: 47, height: 9, borderRadius: 4, backgroundColor: '#CDAE7B', zIndex: 2 },
@@ -2268,7 +2313,7 @@ const styles = StyleSheet.create({
   compactTodayKickerCompanion: { color: '#9A6A20', letterSpacing: 0.8 },
   compactTodayCopy: { flex: 1, color: colors.ink, fontSize: 11, fontWeight: '800' },
   todayHeaderInner: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10, zIndex: 2 },
-  chicTodayPaper: { flex: 1, minHeight: 108, flexDirection: 'row', alignItems: 'center', gap: 10, padding: 15, borderRadius: 24, backgroundColor: 'rgba(255,255,255,0.89)', zIndex: 2 },
+  chicTodayPaper: { flex: 0, width: '68%', minHeight: 108, alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: 8, padding: 13, borderRadius: 21, backgroundColor: 'rgba(255,255,255,0.84)', zIndex: 2 },
   chicTodayStats: { color: '#8B7B82', fontSize: 9, fontWeight: '800', marginTop: 8 },
   todayMinimalIndex: { width: 34, height: 29, backgroundColor: '#111111', alignItems: 'center', justifyContent: 'center' },
   todayMinimalIndexText: { color: '#FFFFFF', fontSize: 12, fontWeight: '900', letterSpacing: 1 },
@@ -2277,8 +2322,6 @@ const styles = StyleSheet.create({
   todayChicSpark: { color: '#E5A34A', fontSize: 17, paddingRight: 2 },
   todayCompanionFace: { width: 92, height: 105, borderRadius: 35, backgroundColor: 'rgba(255,255,255,0.78)', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#F0D69B', zIndex: 2 },
   todayCompanionFaceText: { fontSize: 52 },
-  companionFutureExp: { position: 'absolute', left: 14, right: 14, bottom: 10, height: 5, borderRadius: 3, backgroundColor: '#F7E1B8', overflow: 'hidden' },
-  companionFutureExpFill: { width: '24%', height: '100%', backgroundColor: '#F1B65A' },
   companionHabitatSun: { position: 'absolute', width: 80, height: 80, borderRadius: 40, backgroundColor: '#FFE4BD', right: 20, top: 16 },
   companionHabitatFloor: { position: 'absolute', left: -30, right: -30, height: 72, borderRadius: 90, backgroundColor: '#DCEFE8', bottom: -38 },
   chicHeaderPatternCutout: { position: 'absolute', width: '31%', right: 0, top: 0, bottom: 0, overflow: 'hidden' },
@@ -2297,10 +2340,12 @@ const styles = StyleSheet.create({
   timelineShortcutMeta: { color: colors.muted, fontSize: 8, fontWeight: '700', marginTop: 3 },
   timelineShortcutArrow: { color: colors.violet, fontSize: 22, fontWeight: '700' },
   homeToolRow: { flexDirection: 'row', gap: 7, marginBottom: 11 },
-  homeToolCard: { flex: 1, minHeight: 69, borderRadius: 16, padding: 10, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#E8E1EC' },
+  homeToolCard: { flex: 1, minHeight: 76, borderRadius: 16, padding: 10, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#E8E1EC', position: 'relative', overflow: 'hidden' },
   homeToolCardMinimal: { borderRadius: 2, borderColor: '#1A1A1A', backgroundColor: '#F7F7F7' },
-  homeToolCardChic: { borderRadius: 19, backgroundColor: '#FFF1F6', borderColor: '#FFD6E3' },
+  homeToolCardChic: { borderRadius: 21, padding: 6, borderColor: 'rgba(217,134,161,0.18)' },
   homeToolCardCompanion: { borderRadius: 19, backgroundColor: '#FFF1C9', borderColor: '#EACF8D' },
+  homeToolGlass: { width: '72%', minHeight: 63, alignSelf: 'flex-start', borderRadius: 16, backgroundColor: 'rgba(255,255,255,0.82)', paddingHorizontal: 9, paddingVertical: 8, zIndex: 2 },
+  homeToolPlain: { flex: 1 },
   homeToolIcon: { color: colors.violet, fontSize: 14, fontWeight: '900' },
   homeToolTitle: { color: colors.ink, fontSize: 11, fontWeight: '900', marginTop: 4 },
   homeToolMeta: { color: colors.muted, fontSize: 8, fontWeight: '700', marginTop: 2 },
