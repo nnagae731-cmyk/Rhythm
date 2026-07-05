@@ -37,7 +37,7 @@ export function AnalysisScreen({ events, designMode, planTier, recordContent, on
 
   return <>
     <View style={[styles.hero, designMode === 'minimal' && styles.heroMinimal, designMode === 'chic' && styles.heroChic, designMode === 'companion' && styles.heroCompanion]}>
-      <Text style={styles.kicker}>最近の記録から</Text><Text style={styles.title}>自分のリズムを知る</Text><Text style={styles.heroCopy}>できたことと、動いた時間を少しずつ振り返ります。</Text>
+      <Text style={[styles.kicker, designMode === 'minimal' && styles.kickerMinimal]}>最近の記録から</Text><Text style={[styles.title, designMode === 'minimal' && styles.titleMinimal]}>自分のリズムを知る</Text><Text style={[styles.heroCopy, designMode === 'minimal' && styles.heroCopyMinimal]}>できたことと、動いた時間を少しずつ振り返ります。</Text>
     </View>
     <View style={styles.tabs}>{([['records', '記録'], ['time', '時間'], ['behavior', '行動']] as [AnalysisTab, string][]).map(([id, label]) => <Pressable key={id} style={[styles.tab, tab === id && { backgroundColor: theme.colors.primaryAccent }]} onPress={() => setTab(id)}><Text style={[styles.tabText, tab === id && styles.tabTextActive]}>{label}{id !== 'records' && planTier === 'free' ? ' ♢' : ''}</Text></Pressable>)}</View>
     {tab === 'records' ? recordContent : !premium ? <PremiumGate onPremium={onPremium} /> : tab === 'time' ? <>
@@ -66,6 +66,7 @@ const styles = StyleSheet.create({
   heroChic: { backgroundColor: '#FCE9EF', borderWidth: 1, borderColor: '#F2CAD7' },
   heroCompanion: { backgroundColor: '#FFF0C9', borderColor: '#EBCB80', borderWidth: 1 },
   kicker: { color: '#80798B', fontSize: 10, fontWeight: '800', letterSpacing: 1 }, title: { color: '#292530', fontSize: 28, fontWeight: '900', marginTop: 5 }, heroCopy: { color: '#6F6878', fontSize: 12, marginTop: 7, lineHeight: 19 },
+  kickerMinimal: { color: '#A8A8A8' }, titleMinimal: { color: '#FFFFFF' }, heroCopyMinimal: { color: '#CFCFCF' },
   tabs: { flexDirection: 'row', gap: 7, marginBottom: 20 }, tab: { flex: 1, paddingVertical: 11, backgroundColor: '#EEEAF0', borderRadius: 12, alignItems: 'center' }, tabText: { color: '#625D68', fontWeight: '800' }, tabTextActive: { color: '#FFF' },
   sectionTitle: { color: '#292530', fontSize: 21, fontWeight: '900' }, sectionCopy: { color: '#797280', fontSize: 12, lineHeight: 18, marginTop: 5, marginBottom: 14 }, grid: { gap: 10 }, behaviorList: { gap: 10 },
   metricCard: { padding: 17, borderRadius: 18, borderWidth: 1, backgroundColor: '#FFF' }, metricMinimal: { borderRadius: 1, borderColor: '#222', borderLeftWidth: 5 }, metricChic: { backgroundColor: 'rgba(255,255,255,0.84)' }, metricCompanion: { backgroundColor: '#FFF9E9' }, metricLabel: { color: '#756F7C', fontSize: 11, fontWeight: '900' }, metricValue: { fontSize: 25, fontWeight: '900', marginTop: 8 }, metricSummary: { color: '#5E5864', fontSize: 12, marginTop: 5 }, sample: { color: '#938C98', fontSize: 10, fontWeight: '700', marginTop: 9 },

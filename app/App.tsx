@@ -968,7 +968,7 @@ export default function App() {
         onClose={() => setEditingTask(null)}
         onSave={updateTask}
       />
-      <PremiumModal visible={premiumOpen} onClose={() => setPremiumOpen(false)} />
+      <PremiumModal visible={premiumOpen} designMode={designMode} chicPattern={effectiveChicPattern} onClose={() => setPremiumOpen(false)} />
       <GuideModal visible={guideOpen} onClose={() => setGuideOpen(false)} />
     </SafeAreaView>
   );
@@ -1371,9 +1371,9 @@ function FocusMode({ tasks, designMode, onFocusCompleted, onBehaviorEvent }: { t
     if (!activeSession) return;
     const actualAt = new Date();
     const session = createCompletedFocusSession({ id: activeSession.id, taskId: activeSession.taskId, taskTitle: activeSession.taskTitle, durationMinutes: activeSession.plannedDurationMinutes, startedAt: activeSession.startedAt, completedAt: actualAt });
-    behaviorCallbackRef.current(createFocusCompletedBehaviorEvent({ sessionId: activeSession.id, taskId: activeSession.taskId, taskTitle: activeSession.taskTitle, plannedDurationMinutes: activeSession.plannedDurationMinutes, focusStartedAt: activeSession.startedAt, actualAt }));
     sessionRef.current = undefined;
     endAtRef.current = undefined;
+    behaviorCallbackRef.current(createFocusCompletedBehaviorEvent({ sessionId: activeSession.id, taskId: activeSession.taskId, taskTitle: activeSession.taskTitle, plannedDurationMinutes: activeSession.plannedDurationMinutes, focusStartedAt: activeSession.startedAt, actualAt }));
     setRunning(false);
     setSecondsLeft(0);
     completionCallbackRef.current(session);
@@ -1383,10 +1383,14 @@ function FocusMode({ tasks, designMode, onFocusCompleted, onBehaviorEvent }: { t
   const stopActiveSession = React.useCallback(() => {
     const activeSession = sessionRef.current;
     if (!activeSession) return;
-    behaviorCallbackRef.current(createFocusStoppedEvent({ sessionId: activeSession.id, taskId: activeSession.taskId, taskTitle: activeSession.taskTitle, plannedDurationMinutes: activeSession.plannedDurationMinutes, focusStartedAt: activeSession.startedAt, actualAt: new Date() }));
     sessionRef.current = undefined;
     endAtRef.current = undefined;
+    behaviorCallbackRef.current(createFocusStoppedEvent({ sessionId: activeSession.id, taskId: activeSession.taskId, taskTitle: activeSession.taskTitle, plannedDurationMinutes: activeSession.plannedDurationMinutes, focusStartedAt: activeSession.startedAt, actualAt: new Date() }));
   }, []);
+
+  useEffect(() => () => {
+    stopActiveSession();
+  }, [stopActiveSession]);
 
   useEffect(() => {
     if (!running) return;
@@ -1427,8 +1431,9 @@ function FocusMode({ tasks, designMode, onFocusCompleted, onBehaviorEvent }: { t
     if (!sessionRef.current) {
       const startedAt = new Date();
       const id = createFocusSessionId(startedAt, Math.random().toString(36).slice(2, 10));
-      sessionRef.current = { id, startedAt, taskId: selectedTask?.id, taskTitle: selectedTask?.title, plannedDurationMinutes: duration };
-      behaviorCallbackRef.current(createFocusStartedEvent({ sessionId: id, taskId: selectedTask?.id, taskTitle: selectedTask?.title, plannedDurationMinutes: duration, occurredAt: startedAt }));
+      const plannedDurationMinutes = Math.max(1, Math.ceil(nextSeconds / 60));
+      sessionRef.current = { id, startedAt, taskId: selectedTask?.id, taskTitle: selectedTask?.title, plannedDurationMinutes };
+      behaviorCallbackRef.current(createFocusStartedEvent({ sessionId: id, taskId: selectedTask?.id, taskTitle: selectedTask?.title, plannedDurationMinutes, occurredAt: startedAt }));
     }
     setSecondsLeft(nextSeconds);
     endAtRef.current = Date.now() + nextSeconds * 1000;
@@ -2218,27 +2223,52 @@ function GuideModal({ visible, onClose }: { visible: boolean; onClose: () => voi
   return <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}><Pressable style={styles.modalBackdrop} onPress={onClose}><Pressable style={styles.modalSheet} onPress={(event) => event.stopPropagation()}><View style={styles.modalHandle} /><Text style={styles.modalTitle}>Rhythmの使い方</Text><Text style={styles.guideIntro}>迷ったら、この順番だけで大丈夫。</Text>{steps.map(([number, title, copy]) => <View key={number} style={styles.guideStep}><View style={styles.guideStepNumber}><Text style={styles.guideStepNumberText}>{number}</Text></View><View style={{ flex: 1 }}><Text style={styles.guideStepTitle}>{title}</Text><Text style={styles.guideStepCopy}>{copy}</Text></View></View>)}<Pressable style={styles.primaryButton} onPress={onClose}><Text style={styles.primaryButtonText}>わかった</Text></Pressable></Pressable></Pressable></Modal>;
 }
 
-function PremiumModal({ visible, onClose }: { visible: boolean; onClose: () => void }) {
-  return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-      <Pressable style={styles.modalBackdrop} onPress={onClose}>
-        <Pressable style={styles.modalSheet} onPress={(event) => event.stopPropagation()}>
-          <View style={styles.modalHandle} />
-          <Text style={styles.premiumSun}>☀︎</Text>
-          <Text style={[styles.modalTitle, { textAlign: 'center' }]}>Rhythm Premium</Text>
-          <Text style={styles.premiumModalCopy}>予定と行動をつないで、Rhythmが少し先に動きます。</Text>
-          <Text style={styles.benefit}>▣  いつものカレンダーと連携</Text>
-          <Text style={styles.benefit}>▣  7日より先の予定を確認</Text>
-          <Text style={styles.benefit}>▣  通知スルー防止</Text>
-          <Text style={styles.benefit}>▣  全期間の履歴と検索</Text>
-          <Text style={styles.benefit}>▣  時間のズレを確認</Text>
-          <Text style={styles.benefit}>▣  最近の行動傾向を確認</Text>
-          <View style={styles.notReadyPill}><Text style={styles.notReadyText}>今後の強化予定：行動時間の自動補正・詳しい分析</Text></View>
-          <Pressable style={styles.primaryButton} onPress={onClose}><Text style={styles.primaryButtonText}>戻る</Text></Pressable>
-        </Pressable>
+type PremiumPreviewKind = 'calendar' | 'nudge' | 'time' | 'behavior' | 'month' | 'recovery';
+
+function PremiumMiniPreview({ kind, designMode }: { kind: PremiumPreviewKind; designMode: DesignMode }) {
+  if (kind === 'calendar') return <View style={styles.premiumPreview}><Text style={styles.previewImageLabel}>予定表の表示イメージ</Text>{[['09:00', '朝会', '外部予定'], ['11:00', '資料提出', 'Rhythm'], ['14:00', '病院訪問', '外部予定'], ['18:30', 'ピラティス', '外部予定']].map(([time, title, source]) => <View key={`${time}-${title}`} style={styles.previewScheduleRow}><Text style={styles.previewTime}>{time}</Text><Text style={styles.previewScheduleTitle}>{title}</Text><Text style={[styles.previewSource, source === 'Rhythm' && styles.previewSourceRhythm]}>{source}</Text></View>)}<View style={styles.previewFlow}><Text style={styles.previewFlowText}>14:00 病院訪問</Text><Text style={styles.previewArrow}>↓</Text><Text style={styles.previewFlowButton}>出発を考える</Text></View></View>;
+  if (kind === 'nudge') return <View style={styles.premiumPreview}><Text style={styles.previewImageLabel}>通知の表示イメージ</Text>{[['09:00', '忘れてない？', '資料を送る'], ['09:05', 'そろそろ始められそう？', 'もう一度確認'], ['09:08', 'まだ終わってなければ', '今確認しよう']].map(([time, title, copy], index) => <View key={time} style={[styles.previewNotification, index > 0 && styles.previewNotificationLater]}><Text style={styles.previewNotificationTime}>{time}</Text><View style={{ flex: 1 }}><Text style={styles.previewNotificationTitle}>{title}</Text><Text style={styles.previewNotificationCopy}>{copy}</Text></View></View>)}</View>;
+  if (kind === 'time') return <View style={styles.premiumPreview}><Text style={styles.previewImageLabel}>表示イメージ</Text><Text style={styles.previewMetricLabel}>準備開始</Text><View style={styles.previewTimeCompare}><View><Text style={styles.previewCompareLabel}>予定</Text><Text style={styles.previewCompareValue}>12:10</Text></View><Text style={styles.previewCompareArrow}>→</Text><View><Text style={styles.previewCompareLabel}>実際</Text><Text style={styles.previewCompareValue}>12:24</Text></View></View><Text style={styles.previewMetricBig}>平均14分遅め</Text><Text style={styles.previewRecordCount}>記録 8回</Text></View>;
+  if (kind === 'behavior') return <View style={styles.premiumPreview}><Text style={styles.previewImageLabel}>表示イメージ</Text><Text style={styles.previewMetricLabel}>最近の行動</Text><View style={styles.previewInsightRow}><Text style={styles.previewInsightLabel}>動き始め</Text><Text style={styles.previewInsightValue}>通知から平均17分で反応</Text></View><View style={styles.previewInsightRow}><Text style={styles.previewInsightLabel}>集中</Text><Text style={styles.previewInsightValue}>15分が比較的続きやすい傾向</Text></View><View style={styles.previewInsightRow}><Text style={styles.previewInsightLabel}>延長</Text><Text style={styles.previewInsightValue}>8回中5回はその後完了</Text></View></View>;
+  if (kind === 'month') return <View style={styles.premiumPreview}><Text style={styles.previewImageLabel}>予定表の表示イメージ</Text><View style={styles.previewPlanCompare}><View style={styles.previewFreeWeek}><Text style={styles.previewCompareTag}>無料・今日から7日</Text><View style={styles.previewWeekRow}>{['6', '7', '8', '9', '10', '11', '12'].map((day) => <Text key={day} style={styles.previewWeekDay}>7/{day}</Text>)}</View></View><Text style={styles.previewArrow}>↓</Text><View style={styles.previewMonth}><Text style={styles.previewMonthTitle}>2026年 7月</Text><Text style={styles.previewMonthWeek}>日  月  火  水  木  金  土</Text><Text style={styles.previewMonthDays}>         1    2    3    4{`\n`} 5    6    7    8    9  10  11{`\n`}12  13  14  15  16  17  18{`\n`}19  20  21  22  23  24  25</Text></View></View></View>;
+  return <View style={styles.premiumPreview}><Text style={styles.previewImageLabel}>立て直しの表示イメージ</Text><View style={styles.previewDanger}><Text style={styles.previewDangerText}>予定どおりは厳しい</Text></View><View style={styles.previewRecoveryGrid}>{['今から出発', '到着予定を変更', '遅れる連絡', '予定を組み直す'].map((label) => <View key={label} style={styles.previewRecoveryOption}><Text style={styles.previewRecoveryText}>{label}</Text></View>)}</View>{designMode === 'companion' && <Text style={styles.previewCompanion}>🥚 ここから一緒に戻ろう</Text>}</View>;
+}
+
+function PremiumFeatureBlock({ number, kind, title, description, designMode, chicPattern }: { number: string; kind: PremiumPreviewKind; title: string; description: string; designMode: DesignMode; chicPattern: ChicPattern }) {
+  return <View style={[styles.premiumFeatureBlock, designMode === 'minimal' && styles.premiumFeatureMinimal, designMode === 'chic' && styles.premiumFeatureChic, designMode === 'companion' && styles.premiumFeatureCompanion]}>
+    {designMode === 'chic' && <ChicPatternDecor pattern={chicPattern} accent="#D986A1" warm="#A997C8" />}
+    <View style={styles.premiumFeatureInner}>
+      <View style={styles.premiumFeatureTop}><Text style={[styles.premiumFeatureNumber, designMode === 'minimal' && styles.premiumFeatureNumberMinimal]}>{number}</Text><Text style={styles.premiumFeatureLabel}>Premium機能</Text>{designMode === 'companion' && (number === '01' || number === '06') && <Text style={styles.premiumFeatureBuddy}>🥚</Text>}</View>
+      <PremiumMiniPreview kind={kind} designMode={designMode} />
+      <View style={[styles.premiumFeatureTextPlate, designMode === 'minimal' && styles.premiumFeatureTextMinimal, designMode === 'chic' && styles.premiumFeatureTextChic]}><Text style={[styles.premiumFeatureTitle, designMode === 'minimal' && styles.premiumFeatureTitleMinimal]}>{title}</Text><Text style={[styles.premiumFeatureDescription, designMode === 'minimal' && styles.premiumFeatureDescriptionMinimal]}>{description}</Text></View>
+    </View>
+  </View>;
+}
+
+function PremiumModal({ visible, designMode, chicPattern, onClose }: { visible: boolean; designMode: DesignMode; chicPattern: ChicPattern; onClose: () => void }) {
+  const theme = getThemeTokens(designMode);
+  const features: Array<{ kind: PremiumPreviewKind; title: string; description: string }> = [
+    { kind: 'calendar', title: 'いつもの予定を、Rhythmにまとめる', description: '普段使っているカレンダーの予定も、Rhythmの予定表にまとめて表示。予定を見ながら、何時に準備して何時に出るかを考えられます。' },
+    { kind: 'nudge', title: '通知を見逃しても、そのままにしない', description: '1回の通知で動けなくても、Rhythmがもう一度確認。「見たけど後回し」を減らします。' },
+    { kind: 'time', title: '予定と実際のズレが分かる', description: '準備や出発が、予定よりどのくらいズレているかを記録。感覚ではなく、最近の実際の行動から確認できます。' },
+    { kind: 'behavior', title: '自分が動きやすい形を知る', description: '通知・集中・延長の記録から、最近の動き方を振り返れます。性格診断ではなく、実際の行動だけを使います。' },
+    { kind: 'month', title: '7日より先まで見渡す', description: '無料版は今日から7日間。Premiumでは月単位で先の予定まで確認できます。' },
+    { kind: 'recovery', title: '遅れた時も、ここから立て直す', description: '遅れたことを責めるのではなく、今からできる行動を表示。予定が崩れても、すぐに戻れる形を考えます。' },
+  ];
+  return <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+    <Pressable style={styles.modalBackdrop} onPress={onClose}>
+      <Pressable style={[styles.modalSheet, styles.premiumModalSheet, { backgroundColor: theme.colors.screenBackground }]} onPress={(event) => event.stopPropagation()}>
+        <View style={styles.modalHandle} />
+        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.premiumModalScroll}>
+          <View style={[styles.premiumIntro, designMode === 'minimal' && styles.premiumIntroMinimal, designMode === 'chic' && styles.premiumIntroChic, designMode === 'companion' && styles.premiumIntroCompanion]}>{designMode === 'chic' && <ChicPatternDecor pattern={chicPattern} accent="#D986A1" warm="#A997C8" />}<View style={[styles.premiumIntroPlate, designMode === 'minimal' && styles.premiumIntroPlateMinimal]}><Text style={[styles.premiumIntroBrand, designMode === 'minimal' && styles.premiumIntroBrandMinimal]}>Rhythm Premium</Text><Text style={[styles.premiumIntroTitle, designMode === 'minimal' && styles.premiumIntroTitleMinimal]}>Rhythmが、あなたより少し先に動く。</Text><Text style={[styles.premiumIntroCopy, designMode === 'minimal' && styles.premiumIntroCopyMinimal]}>予定と実際の行動をつないで、間に合うための時間を少しずつ整えます。</Text></View></View>
+          {features.map((feature, index) => <PremiumFeatureBlock key={feature.kind} number={String(index + 1).padStart(2, '0')} {...feature} designMode={designMode} chicPattern={chicPattern} />)}
+          <View style={styles.premiumHistoryNote}><Text style={styles.premiumHistoryTitle}>過去の記録も、あとから振り返れる</Text><Text style={styles.premiumHistoryCopy}>Premiumでは7日を超えた完了記録や、集中・出発の記録も確認できます。</Text><View style={styles.premiumHistoryRows}><Text style={styles.premiumHistoryRow}>7/03　資料提出　完了</Text><Text style={styles.premiumHistoryRow}>7/02　15分集中</Text><Text style={styles.premiumHistoryRow}>7/01　13:03 出発</Text></View></View>
+          <View style={styles.premiumFuture}><Text style={styles.premiumFutureTitle}>今後の強化予定</Text><Text style={styles.premiumFutureCopy}>記録された実績を使った、支度時間や通知タイミングの自動調整、より高度な時間提案。</Text></View>
+          <Pressable style={[styles.primaryButton, { backgroundColor: theme.colors.primaryAccent }]} onPress={onClose}><Text style={styles.primaryButtonText}>Rhythmに戻る</Text></Pressable>
+        </ScrollView>
       </Pressable>
-    </Modal>
-  );
+    </Pressable>
+  </Modal>;
 }
 
 function BottomNav({ screen, designMode, onChange }: { screen: Screen; designMode: DesignMode; onChange: (screen: Screen) => void }) {
@@ -2652,6 +2682,53 @@ const styles = StyleSheet.create({
   cancelText: { color: colors.muted, fontSize: 13, fontWeight: '800', textAlign: 'center', paddingTop: 18 },
   premiumSun: { color: colors.coral, fontSize: 48, textAlign: 'center' },
   premiumModalCopy: { color: colors.muted, fontSize: 13, lineHeight: 20, textAlign: 'center', marginBottom: 12 },
+  premiumModalSheet: { paddingHorizontal: 14, paddingBottom: 0 },
+  premiumModalScroll: { paddingHorizontal: 5, paddingBottom: 30 },
+  premiumIntro: { position: 'relative', overflow: 'hidden', borderRadius: 24, padding: 12, marginBottom: 16, backgroundColor: '#F2EAFE' },
+  premiumIntroMinimal: { borderRadius: 1, backgroundColor: '#111111', borderTopWidth: 5, borderTopColor: '#777777' },
+  premiumIntroChic: { backgroundColor: '#F7DCE6', borderWidth: 1, borderColor: '#EABCCB' },
+  premiumIntroCompanion: { backgroundColor: '#FFF0C9', borderWidth: 1, borderColor: '#E8CB83' },
+  premiumIntroPlate: { zIndex: 2, backgroundColor: 'rgba(255,255,255,0.84)', borderRadius: 17, padding: 17 },
+  premiumIntroPlateMinimal: { backgroundColor: 'transparent', borderRadius: 0 },
+  premiumIntroBrand: { color: '#6D52B5', fontSize: 12, fontWeight: '900', letterSpacing: 0.5 },
+  premiumIntroBrandMinimal: { color: '#A8A8A8' },
+  premiumIntroTitle: { color: '#2E2934', fontSize: 24, lineHeight: 31, fontWeight: '900', marginTop: 7 },
+  premiumIntroTitleMinimal: { color: '#FFFFFF' },
+  premiumIntroCopy: { color: '#6F6876', fontSize: 12, lineHeight: 19, marginTop: 8 },
+  premiumIntroCopyMinimal: { color: '#CFCFCF' },
+  premiumFeatureBlock: { position: 'relative', overflow: 'hidden', borderRadius: 22, backgroundColor: '#F2EEFA', borderWidth: 1, borderColor: '#DDD4EA', marginBottom: 14 },
+  premiumFeatureMinimal: { borderRadius: 1, backgroundColor: '#F5F5F2', borderColor: '#1A1A1A', borderLeftWidth: 5 },
+  premiumFeatureChic: { backgroundColor: '#F7DDE6', borderColor: '#E9BECB' },
+  premiumFeatureCompanion: { backgroundColor: '#FFF4D7', borderColor: '#E9D194' },
+  premiumFeatureInner: { zIndex: 2, padding: 13 },
+  premiumFeatureTop: { flexDirection: 'row', alignItems: 'center', marginBottom: 10 },
+  premiumFeatureNumber: { color: '#776789', fontSize: 18, fontWeight: '300', marginRight: 9 },
+  premiumFeatureNumberMinimal: { color: '#111111', fontSize: 25, fontWeight: '900' },
+  premiumFeatureLabel: { color: '#6952A8', backgroundColor: 'rgba(255,255,255,0.82)', borderRadius: 10, paddingHorizontal: 9, paddingVertical: 4, fontSize: 9, fontWeight: '900' },
+  premiumFeatureBuddy: { marginLeft: 'auto', fontSize: 18 },
+  premiumFeatureTextPlate: { marginTop: 10, paddingHorizontal: 3, paddingBottom: 2 },
+  premiumFeatureTextMinimal: { borderTopWidth: 1, borderTopColor: '#A4A4A4', paddingTop: 11 },
+  premiumFeatureTextChic: { alignSelf: 'stretch', backgroundColor: 'rgba(255,255,255,0.84)', borderRadius: 13, padding: 12 },
+  premiumFeatureTitle: { color: '#302A36', fontSize: 17, lineHeight: 23, fontWeight: '900' },
+  premiumFeatureTitleMinimal: { color: '#111111' },
+  premiumFeatureDescription: { color: '#6E6675', fontSize: 11, lineHeight: 18, marginTop: 6 },
+  premiumFeatureDescriptionMinimal: { color: '#444444' },
+  premiumPreview: { backgroundColor: '#FFFFFF', borderRadius: 15, borderWidth: 1, borderColor: '#E2DDE7', padding: 12 },
+  previewImageLabel: { color: '#9A929F', fontSize: 8, fontWeight: '900', letterSpacing: 0.6, marginBottom: 8 },
+  previewScheduleRow: { flexDirection: 'row', alignItems: 'center', minHeight: 28, borderBottomWidth: 1, borderBottomColor: '#EEEAF0' },
+  previewTime: { color: '#3D3743', fontSize: 10, fontWeight: '900', width: 42 },
+  previewScheduleTitle: { color: '#3D3743', fontSize: 11, fontWeight: '800', flex: 1 },
+  previewSource: { color: '#775FA9', backgroundColor: '#EEE7F8', borderRadius: 7, paddingHorizontal: 6, paddingVertical: 3, fontSize: 7, fontWeight: '900' },
+  previewSourceRhythm: { color: '#8C5568', backgroundColor: '#F9DFE8' },
+  previewFlow: { alignItems: 'center', marginTop: 9 }, previewFlowText: { color: '#4E4755', fontSize: 9, fontWeight: '800' }, previewArrow: { color: '#83778D', fontSize: 13, lineHeight: 15 }, previewFlowButton: { color: '#FFFFFF', backgroundColor: '#6F58B5', borderRadius: 9, paddingHorizontal: 14, paddingVertical: 6, fontSize: 9, fontWeight: '900' },
+  previewNotification: { flexDirection: 'row', gap: 9, padding: 9, backgroundColor: '#F3F0F5', borderRadius: 11, borderWidth: 1, borderColor: '#E3DEE7' },
+  previewNotificationLater: { marginTop: 6, marginLeft: 13 }, previewNotificationTime: { color: '#6F6575', fontSize: 9, fontWeight: '900' }, previewNotificationTitle: { color: '#332E38', fontSize: 10, fontWeight: '900' }, previewNotificationCopy: { color: '#817987', fontSize: 8, marginTop: 2 },
+  previewMetricLabel: { color: '#655E6C', fontSize: 10, fontWeight: '900' }, previewTimeCompare: { flexDirection: 'row', justifyContent: 'space-around', alignItems: 'center', marginTop: 10 }, previewCompareLabel: { color: '#918996', fontSize: 8, fontWeight: '800' }, previewCompareValue: { color: '#302A36', fontSize: 20, fontWeight: '900' }, previewCompareArrow: { color: '#A89EB0', fontSize: 17 }, previewMetricBig: { color: '#B65D78', fontSize: 22, fontWeight: '900', marginTop: 12 }, previewRecordCount: { color: '#928A98', fontSize: 8, fontWeight: '800', marginTop: 4 },
+  previewInsightRow: { flexDirection: 'row', alignItems: 'center', borderTopWidth: 1, borderTopColor: '#ECE7EF', paddingVertical: 8 }, previewInsightLabel: { color: '#6D6474', fontSize: 9, fontWeight: '900', width: 54 }, previewInsightValue: { color: '#3D3743', fontSize: 9, fontWeight: '700', flex: 1 },
+  previewPlanCompare: { alignItems: 'center' }, previewFreeWeek: { width: '100%' }, previewCompareTag: { color: '#655E6C', fontSize: 8, fontWeight: '900', marginBottom: 6 }, previewWeekRow: { flexDirection: 'row', justifyContent: 'space-between' }, previewWeekDay: { color: '#4B4550', fontSize: 7, borderWidth: 1, borderColor: '#DDD7E1', paddingHorizontal: 3, paddingVertical: 5 }, previewMonth: { width: '100%', backgroundColor: '#F5F1F7', borderRadius: 10, padding: 9 }, previewMonthTitle: { color: '#3B3541', fontSize: 10, fontWeight: '900' }, previewMonthWeek: { color: '#8B828F', fontSize: 8, marginTop: 6 }, previewMonthDays: { color: '#49424F', fontSize: 9, lineHeight: 16, fontWeight: '700' },
+  previewDanger: { backgroundColor: '#FFE3E1', borderRadius: 9, padding: 8, marginBottom: 8 }, previewDangerText: { color: '#A84646', fontSize: 11, fontWeight: '900', textAlign: 'center' }, previewRecoveryGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 }, previewRecoveryOption: { width: '48%', backgroundColor: '#F0EBF5', borderRadius: 9, paddingVertical: 8, paddingHorizontal: 5 }, previewRecoveryText: { color: '#554A61', fontSize: 8, fontWeight: '900', textAlign: 'center' }, previewCompanion: { color: '#80642E', fontSize: 9, fontWeight: '800', marginTop: 9, textAlign: 'center' },
+  premiumHistoryNote: { borderWidth: 1, borderColor: '#CFC7D5', borderRadius: 14, padding: 14, marginTop: 3, backgroundColor: 'rgba(255,255,255,0.62)' }, premiumHistoryTitle: { color: '#332E38', fontSize: 15, fontWeight: '900' }, premiumHistoryCopy: { color: '#736B79', fontSize: 10, lineHeight: 17, marginTop: 5 }, premiumHistoryRows: { marginTop: 9, borderTopWidth: 1, borderTopColor: '#DED8E2', paddingTop: 6 }, premiumHistoryRow: { color: '#5B5361', fontSize: 9, paddingVertical: 3 },
+  premiumFuture: { backgroundColor: '#EEE8F5', borderRadius: 14, padding: 14, marginVertical: 14 }, premiumFutureTitle: { color: '#5E4A79', fontSize: 13, fontWeight: '900' }, premiumFutureCopy: { color: '#746A7E', fontSize: 10, lineHeight: 17, marginTop: 5 },
   benefit: { color: colors.ink, fontSize: 13, fontWeight: '700', paddingVertical: 7 },
   notReadyPill: { alignSelf: 'center', backgroundColor: colors.violetSoft, borderRadius: 16, paddingHorizontal: 14, paddingVertical: 8, marginVertical: 14 },
   notReadyText: { color: colors.violet, fontSize: 11, fontWeight: '900' },
