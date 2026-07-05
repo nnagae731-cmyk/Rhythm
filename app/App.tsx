@@ -5,7 +5,7 @@ import * as Notifications from 'expo-notifications';
 import { StatusBar } from 'expo-status-bar';
 import React, { useEffect, useMemo, useState } from 'react';
 import { ChicPattern, DesignMode, getThemeTokens } from './theme';
-import { applyCompanionGrowthEvent, CompanionGrowthStage, CompanionGrowthState, DEFAULT_COMPANION_GROWTH_STATE, getCompanionGrowthStage, getCompanionStageStatus } from './companionGrowth';
+import { applyCompanionGrowthEvent, CompanionGrowthStage, CompanionGrowthState, DEFAULT_COMPANION_GROWTH_STATE, getCompanionGrowthStage, getCompanionStageStatus, hasTaskCompletionBeenAwarded } from './companionGrowth';
 import {
   Alert,
   Animated,
@@ -218,6 +218,18 @@ function completeTasksWithRepeats(current: Task[], ids: string[]) {
   return [...nextTasks, ...updated];
 }
 
+type TaskCompletionResult = { tasks: Task[]; newlyCompleted: Task[] };
+
+function completeTasksAndCollectEvents(current: Task[], ids: string[]): TaskCompletionResult {
+  const eligibleIds = new Set(current.filter((task) => ids.includes(task.id) && !task.done).map((task) => task.id));
+  if (eligibleIds.size === 0) return { tasks: current, newlyCompleted: [] };
+  const tasks = completeTasksWithRepeats(current, ids);
+  return {
+    tasks,
+    newlyCompleted: tasks.filter((task) => eligibleIds.has(task.id) && task.done && task.completedAt),
+  };
+}
+
 function deadlineLabel(task: Task) {
   if (!task.deadlineDate) return undefined;
   const date = dateForReminder(task.deadlineDate, task.deadlineTime ?? '23:59');
@@ -351,6 +363,7 @@ export default function App() {
   const [screen, setScreen] = useState<Screen>('home');
   const [timelineInitialTab, setTimelineInitialTab] = useState<TimeTab>('departure');
   const [tasks, setTasks] = useState<Task[]>([]);
+  const tasksRef = React.useRef<Task[]>([]);
   const [plan, setPlan] = useState<DeparturePlan>(initialPlan);
   const [departurePlans, setDeparturePlans] = useState<DeparturePlan[]>([]);
   const [widgetSize, setWidgetSize] = useState<WidgetSize>('medium');
@@ -372,17 +385,15 @@ export default function App() {
   const companionGrowthStage = getCompanionGrowthStage(companionGrowth.growthPoints);
 
   const completeTaskIds = React.useCallback((ids: string[]) => {
-    setTasks((current) => {
-      const eligibleIds = new Set(current.filter((task) => ids.includes(task.id) && !task.done).map((task) => task.id));
-      if (eligibleIds.size === 0) return current;
-      const next = completeTasksWithRepeats(current, ids);
-      const newlyCompleted = next.filter((task) => eligibleIds.has(task.id) && task.done && task.completedAt);
-      if (newlyCompleted.length > 0) {
-        setCompanionGrowth((growth) => newlyCompleted.reduce((result, task) => applyCompanionGrowthEvent(result, 'task_completed', `task_completed:${task.id}:${task.completedAt}`, new Date(task.completedAt!)), growth));
-      }
-      return next;
-    });
+    const result = completeTasksAndCollectEvents(tasksRef.current, ids);
+    if (result.tasks === tasksRef.current) return;
+    tasksRef.current = result.tasks;
+    setTasks(result.tasks);
+    if (result.newlyCompleted.length === 0) return;
+    setCompanionGrowth((growth) => result.newlyCompleted.reduce((current, task) => hasTaskCompletionBeenAwarded(current, task.id) ? current : applyCompanionGrowthEvent(current, 'task_completed', `task_completed:${task.id}`, new Date(task.completedAt!)), growth));
   }, []);
+
+  useEffect(() => { tasksRef.current = tasks; }, [tasks]);
 
   useEffect(() => {
     AsyncStorage.getItem(STORAGE_KEY)

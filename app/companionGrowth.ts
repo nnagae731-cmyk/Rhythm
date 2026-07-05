@@ -68,6 +68,12 @@ export function applyCompanionGrowthEvent(current: CompanionGrowthState, type: C
   return next;
 }
 
+export function hasTaskCompletionBeenAwarded(current: CompanionGrowthState, taskId: string): boolean {
+  const currentKey = `task_completed:${taskId}`;
+  const legacyPrefix = `${currentKey}:`;
+  return current.awardedEventKeys.some((key) => key === currentKey || key.startsWith(legacyPrefix));
+}
+
 export function hasCompanionStageAdvanced(previous: CompanionGrowthStage, current: CompanionGrowthStage): boolean {
   return companionStageIndex[current] > companionStageIndex[previous];
 }
