@@ -3,6 +3,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { analyzeDepartureDelay, analyzeFocusDuration, analyzeNotificationResponse, analyzePreparationStartDelay, analyzeSnoozeBehavior, AnalysisResult } from './behaviorAnalysis';
 import { BehaviorEvent } from './behaviorEvents';
 import { hasPremiumAccess, PlanTier } from './premiumAccess';
+import { PremiumGuideFeatureId } from './premiumGuide';
 import { DesignMode, getThemeTokens } from './theme';
 
 type AnalysisTab = 'records' | 'time' | 'behavior';
@@ -25,7 +26,7 @@ function PremiumGate({ onPremium }: { onPremium: () => void }) {
   return <Pressable style={styles.premiumGate} onPress={onPremium}><Text style={styles.premiumLock}>♢</Text><Text style={styles.premiumTitle}>Rhythm Premium</Text><Text style={styles.premiumCopy}>実際の記録から、時間のズレや最近の行動傾向を確認できます。</Text><Text style={styles.premiumButton}>詳しく見る</Text></Pressable>;
 }
 
-export function AnalysisScreen({ events, designMode, planTier, recordContent, onPremium }: { events: BehaviorEvent[]; designMode: DesignMode; planTier: PlanTier; recordContent: ReactNode; onPremium: () => void }) {
+export function AnalysisScreen({ events, designMode, planTier, recordContent, onPremium }: { events: BehaviorEvent[]; designMode: DesignMode; planTier: PlanTier; recordContent: ReactNode; onPremium: (featureId?: PremiumGuideFeatureId) => void }) {
   const [tab, setTab] = useState<AnalysisTab>('records');
   const preparation = useMemo(() => analyzePreparationStartDelay(events), [events]);
   const departure = useMemo(() => analyzeDepartureDelay(events), [events]);
@@ -40,7 +41,7 @@ export function AnalysisScreen({ events, designMode, planTier, recordContent, on
       <Text style={[styles.kicker, designMode === 'minimal' && styles.kickerMinimal]}>最近の記録から</Text><Text style={[styles.title, designMode === 'minimal' && styles.titleMinimal]}>自分のリズムを知る</Text><Text style={[styles.heroCopy, designMode === 'minimal' && styles.heroCopyMinimal]}>できたことと、動いた時間を少しずつ振り返ります。</Text>
     </View>
     <View style={styles.tabs}>{([['records', '記録'], ['time', '時間'], ['behavior', '行動']] as [AnalysisTab, string][]).map(([id, label]) => <Pressable key={id} style={[styles.tab, tab === id && { backgroundColor: theme.colors.primaryAccent }]} onPress={() => setTab(id)}><Text style={[styles.tabText, tab === id && styles.tabTextActive]}>{label}{id !== 'records' && planTier === 'free' ? ' ♢' : ''}</Text></Pressable>)}</View>
-    {tab === 'records' ? recordContent : !premium ? <PremiumGate onPremium={onPremium} /> : tab === 'time' ? <>
+    {tab === 'records' ? recordContent : !premium ? <PremiumGate onPremium={() => onPremium(tab === 'time' ? 'time' : 'behavior')} /> : tab === 'time' ? <>
       <Text style={styles.sectionTitle}>時間のズレを見つける</Text><Text style={styles.sectionCopy}>通知から動くまでの時間や、支度・出発のズレを確認できます。</Text>
       <View style={styles.grid}>
         <MetricCard title="準備開始" value={preparation.averageMinutes === undefined ? undefined : `${Math.abs(preparation.averageMinutes)}分${preparation.averageMinutes > 2 ? '遅め' : preparation.averageMinutes < -2 ? '早め' : 'ほぼ予定どおり'}`} result={preparation} designMode={designMode} />

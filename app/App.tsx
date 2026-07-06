@@ -12,6 +12,8 @@ import { createDepartureCheckIn, DepartureCheckIn } from './departureCheckIn';
 import { getEffectiveChicPattern, getEffectiveNudgeMode, hasPremiumAccess, isWithinFreeHistory, PlanTier } from './premiumAccess';
 import { AnalysisScreen } from './AnalysisScreen';
 import { appendBehaviorEvent, appendBehaviorEvents, BehaviorEvent, createDeparturePreparationStartedEvent, createDepartureStartedEvent, createFocusCompletedBehaviorEvent, createFocusStartedEvent, createFocusStoppedEvent, createNotificationActionEvent, createNotificationScheduledEvent, createTaskCompletedBehaviorEvent, NotificationAction } from './behaviorEvents';
+import { DEFAULT_PREMIUM_GUIDE_FEATURE, PremiumGuideFeatureId } from './premiumGuide';
+import { createPremiumTaskTemplate, hasSameTemplateSettings, PremiumTaskTemplate, summarizePremiumTaskTemplate } from './taskTemplates';
 import {
   Alert,
   Animated,
@@ -88,7 +90,9 @@ type PersistedState = {
   focusSessions?: FocusSession[];
   departureCheckIns?: DepartureCheckIn[];
   devPremiumPreview?: boolean;
+  devPlanTier?: PlanTier;
   behaviorEvents?: BehaviorEvent[];
+  savedTaskTemplates?: PremiumTaskTemplate[];
 };
 
 const STORAGE_KEY = 'rhythm-mvp-state-v1';
@@ -421,6 +425,7 @@ export default function App() {
   const pendingNotificationBehaviorActionsRef = React.useRef<Array<{ notificationInstanceId: string; action: NotificationAction; taskId?: string; actualAt: Date }>>([]);
   const [recoveryTargetPlanId, setRecoveryTargetPlanId] = useState<string>();
   const [taskTemplates, setTaskTemplates] = useState<string[]>(['朝の支度', '持ち物を確認', '連絡を返す', '薬を飲む']);
+  const [savedTaskTemplates, setSavedTaskTemplates] = useState<PremiumTaskTemplate[]>([]);
   const [guideOpen, setGuideOpen] = useState(false);
   const theme = useMemo(() => getThemeTokens(designMode), [designMode]);
   const [addOpen, setAddOpen] = useState(false);
@@ -429,11 +434,35 @@ export default function App() {
   const [selectedTaskIds, setSelectedTaskIds] = useState<string[]>([]);
   const [now, setNow] = useState(new Date());
   const [premiumOpen, setPremiumOpen] = useState(false);
-  const [devPremiumPreview, setDevPremiumPreview] = useState(false);
+  const [premiumTargetFeature, setPremiumTargetFeature] = useState<PremiumGuideFeatureId>(DEFAULT_PREMIUM_GUIDE_FEATURE);
+  const [devPlanTier, setDevPlanTier] = useState<PlanTier>('free');
   const [hydrated, setHydrated] = useState(false);
-  const planTier: PlanTier = __DEV__ && devPremiumPreview ? 'premium' : 'free';
+  const planTier: PlanTier = __DEV__ ? devPlanTier : 'free';
   const effectiveChicPattern = getEffectiveChicPattern(planTier, chicPattern) as ChicPattern;
   const companionGrowthStage = getCompanionGrowthStage(companionGrowth.growthPoints);
+
+  const openPremiumFeature = React.useCallback((featureId: PremiumGuideFeatureId = DEFAULT_PREMIUM_GUIDE_FEATURE) => {
+    setPremiumTargetFeature(featureId);
+    setPremiumOpen(true);
+  }, []);
+
+  const saveTaskAsTemplate = React.useCallback((task: Task) => {
+    if (!hasPremiumAccess(planTier, 'saved_task_templates')) {
+      openPremiumFeature('templates');
+      return;
+    }
+    const template = createPremiumTaskTemplate(task, `template:${Date.now()}:${Math.random().toString(36).slice(2, 8)}`, new Date());
+    if (savedTaskTemplates.some((current) => hasSameTemplateSettings(current, template))) {
+      Alert.alert('保存済みです', '同じ設定のマイひな型は保存済みです。');
+      return;
+    }
+    setSavedTaskTemplates((current) => [template, ...current]);
+    Alert.alert('マイひな型に保存しました', task.title);
+  }, [openPremiumFeature, planTier, savedTaskTemplates]);
+
+  const deleteSavedTaskTemplate = React.useCallback((template: PremiumTaskTemplate) => {
+    Alert.alert('このマイひな型を削除しますか？', template.title, [{ text: 'キャンセル', style: 'cancel' }, { text: '削除', style: 'destructive', onPress: () => setSavedTaskTemplates((current) => current.filter((item) => item.id !== template.id)) }]);
+  }, []);
 
   const recordBehaviorEvent = React.useCallback((next: BehaviorEvent) => {
     if (!hydratedRef.current) {
@@ -528,8 +557,9 @@ export default function App() {
         const loadedBehaviorEvents = saved.behaviorEvents ?? [];
         behaviorEventsRef.current = loadedBehaviorEvents;
         setBehaviorEvents(loadedBehaviorEvents);
-        if (__DEV__) setDevPremiumPreview(saved.devPremiumPreview ?? false);
+        if (__DEV__) setDevPlanTier(saved.devPlanTier === 'premium' || saved.devPlanTier === 'free' ? saved.devPlanTier : saved.devPremiumPreview === true ? 'premium' : 'free');
         if (saved.taskTemplates) setTaskTemplates(saved.taskTemplates);
+        setSavedTaskTemplates(saved.savedTaskTemplates ?? []);
       })
       .catch(() => Alert.alert('保存データを読み込めませんでした'))
       .finally(() => {
@@ -580,7 +610,7 @@ export default function App() {
 
       if (action === 'OPEN_RECOVERY') {
         if (!hasPremiumAccess(planTier, 'late_recovery')) {
-          setPremiumOpen(true);
+          openPremiumFeature('recovery');
           return;
         }
         if (typeof departurePlanId === 'string') setRecoveryTargetPlanId(departurePlanId);
@@ -636,7 +666,7 @@ export default function App() {
     });
 
     return () => responseSubscription.remove();
-  }, [completeTaskIds, markDeparturePlanAsDeparted, planTier, recordBehaviorEvent, recordNotificationBehaviorAction]);
+  }, [completeTaskIds, markDeparturePlanAsDeparted, openPremiumFeature, planTier, recordBehaviorEvent, recordNotificationBehaviorAction]);
 
   useEffect(() => {
     const timer = setInterval(() => setNow(new Date()), 30_000);
@@ -645,9 +675,9 @@ export default function App() {
 
   useEffect(() => {
     if (!hydrated) return;
-    const state: PersistedState = { tasks, plan, departurePlans, widgetSize, showCompleted, completionIcon, designMode, taskTemplates, chicPattern, companionGrowth, recoveryHistory, focusSessions, departureCheckIns, behaviorEvents, devPremiumPreview: __DEV__ ? devPremiumPreview : undefined };
+    const state: PersistedState = { tasks, plan, departurePlans, widgetSize, showCompleted, completionIcon, designMode, taskTemplates, savedTaskTemplates, chicPattern, companionGrowth, recoveryHistory, focusSessions, departureCheckIns, behaviorEvents, devPlanTier: __DEV__ ? devPlanTier : undefined };
     AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(state)).catch(() => undefined);
-  }, [tasks, plan, departurePlans, widgetSize, showCompleted, completionIcon, designMode, taskTemplates, chicPattern, companionGrowth, recoveryHistory, focusSessions, departureCheckIns, behaviorEvents, devPremiumPreview, hydrated]);
+  }, [tasks, plan, departurePlans, widgetSize, showCompleted, completionIcon, designMode, taskTemplates, savedTaskTemplates, chicPattern, companionGrowth, recoveryHistory, focusSessions, departureCheckIns, behaviorEvents, devPlanTier, hydrated]);
 
   const timeline = useMemo(() => {
     const arrival = parseClock(plan.arrival);
@@ -876,6 +906,7 @@ export default function App() {
               }}
               onDelete={(id) => setTasks((current) => current.filter((task) => task.id !== id))}
               onDuplicate={(task) => setTasks((current) => [{ ...task, id: `${Date.now()}-copy`, title: `${task.title}（コピー）`, done: false, completedAt: undefined }, ...current])}
+              onSaveTemplate={saveTaskAsTemplate}
               onPostpone={(id) => setTasks((current) => current.map((task) => task.id === id ? { ...task, scheduledDate: todayInputValue(1), bucket: 'later' } : task))}
               onRestore={(id) => setTasks((current) => current.map((task) => task.id === id ? { ...task, done: false, completedAt: undefined } : task))}
               onBucket={(id, bucket) => setTasks((current) => current.map((task) => task.id === id ? { ...task, bucket } : task))}
@@ -902,7 +933,7 @@ export default function App() {
               onEdit={(item) => setPlan(item)}
               onDelete={(id) => setDeparturePlans((current) => current.filter((item) => item.id !== id))}
               onEditTask={(task) => setEditingTask(task)}
-              onPremium={() => setPremiumOpen(true)}
+              onPremium={openPremiumFeature}
               onRecovery={applyRecovery}
               onRecoveryClosed={() => setRecoveryTargetPlanId(undefined)}
               onFocusCompleted={completeFocusSession}
@@ -930,16 +961,18 @@ export default function App() {
               onDesignMode={setDesignMode}
               onChicPattern={(pattern) => {
                 const feature = pattern === 'dot' ? 'chic_dot' : pattern === 'check' ? 'chic_check' : undefined;
-                if (feature && !hasPremiumAccess(planTier, feature)) { setPremiumOpen(true); return; }
+                if (feature && !hasPremiumAccess(planTier, feature)) { openPremiumFeature(); return; }
                 setChicPattern(pattern);
               }}
               templates={taskTemplates}
+              savedTemplates={savedTaskTemplates}
               onAddTemplate={(title) => setTaskTemplates((current) => current.includes(title) ? current : [...current, title])}
               onDeleteTemplate={(title) => setTaskTemplates((current) => current.filter((item) => item !== title))}
               onGuide={() => setGuideOpen(true)}
-              onPremium={() => setPremiumOpen(true)}
-              devPremiumPreview={devPremiumPreview}
-              onDevPremiumPreview={setDevPremiumPreview}
+              onPremium={openPremiumFeature}
+              onDeleteSavedTemplate={deleteSavedTaskTemplate}
+              devPlanTier={devPlanTier}
+              onDevPlanTier={setDevPlanTier}
             />
           )}
 
@@ -948,8 +981,8 @@ export default function App() {
               events={behaviorEvents}
               designMode={designMode}
               planTier={planTier}
-              onPremium={() => setPremiumOpen(true)}
-              recordContent={<HistoryScreen tasks={tasks} recoveryHistory={recoveryHistory} focusSessions={focusSessions} departureCheckIns={departureCheckIns} completionIcon={completionIcon} designMode={designMode} chicPattern={effectiveChicPattern} planTier={planTier} onPremium={() => setPremiumOpen(true)} onRestore={(id) => setTasks((current) => current.map((task) => task.id === id ? { ...task, done: false, completedAt: undefined } : task))} />}
+              onPremium={openPremiumFeature}
+              recordContent={<HistoryScreen tasks={tasks} recoveryHistory={recoveryHistory} focusSessions={focusSessions} departureCheckIns={departureCheckIns} completionIcon={completionIcon} designMode={designMode} chicPattern={effectiveChicPattern} planTier={planTier} onPremium={openPremiumFeature} onSaveTemplate={saveTaskAsTemplate} onRestore={(id) => setTasks((current) => current.map((task) => task.id === id ? { ...task, done: false, completedAt: undefined } : task))} />}
             />
           )}
         </ScrollView>
@@ -957,18 +990,19 @@ export default function App() {
         <BottomNav screen={screen} designMode={designMode} onChange={setScreen} />
       </View>
 
-      <TaskModal visible={addOpen} templates={taskTemplates} designMode={designMode} planTier={planTier} onPremium={() => setPremiumOpen(true)} onClose={() => setAddOpen(false)} onSave={addTask} />
+      <TaskModal visible={addOpen} templates={taskTemplates} savedTemplates={savedTaskTemplates} designMode={designMode} planTier={planTier} onPremium={openPremiumFeature} onClose={() => setAddOpen(false)} onSave={addTask} />
       <TaskModal
         visible={editingTask !== null}
         task={editingTask ?? undefined}
         templates={taskTemplates}
+        savedTemplates={savedTaskTemplates}
         designMode={designMode}
         planTier={planTier}
-        onPremium={() => setPremiumOpen(true)}
+        onPremium={openPremiumFeature}
         onClose={() => setEditingTask(null)}
         onSave={updateTask}
       />
-      <PremiumModal visible={premiumOpen} designMode={designMode} chicPattern={effectiveChicPattern} onClose={() => setPremiumOpen(false)} />
+      <PremiumModal visible={premiumOpen} initialFeatureId={premiumTargetFeature} designMode={designMode} chicPattern={effectiveChicPattern} onClose={() => setPremiumOpen(false)} />
       <GuideModal visible={guideOpen} onClose={() => setGuideOpen(false)} />
     </SafeAreaView>
   );
@@ -1006,6 +1040,7 @@ function HomeScreen({
   onCompleteSelected,
   onDelete,
   onDuplicate,
+  onSaveTemplate,
   onPostpone,
   onRestore,
   onBucket,
@@ -1031,6 +1066,7 @@ function HomeScreen({
   onCompleteSelected: () => void;
   onDelete: (id: string) => void;
   onDuplicate: (task: Task) => void;
+  onSaveTemplate: (task: Task) => void;
   onPostpone: (id: string) => void;
   onRestore: (id: string) => void;
   onBucket: (id: string, bucket: TaskBucket) => void;
@@ -1145,6 +1181,7 @@ function HomeScreen({
               <Pressable style={styles.taskActionOption} onPress={() => { if (actionTask) onPostpone(actionTask.id); setActionTask(null); }}><Text style={styles.taskActionIcon}>→</Text><Text style={styles.taskActionLabel}>明日へ</Text></Pressable>
               <Pressable style={[styles.taskActionOption, styles.taskActionDelete]} onPress={() => { if (actionTask) onDelete(actionTask.id); setActionTask(null); }}><Text style={[styles.taskActionIcon, styles.taskActionDeleteText]}>×</Text><Text style={[styles.taskActionLabel, styles.taskActionDeleteText]}>削除</Text></Pressable>
             </View>
+            <Pressable style={styles.taskTemplateSaveAction} onPress={() => { if (actionTask) onSaveTemplate(actionTask); setActionTask(null); }}><View><Text style={styles.taskTemplateSaveTitle}>設定ごとひな型に保存</Text><Text style={styles.taskTemplateSaveCopy}>カテゴリ・通知・間に合うナビも再利用</Text></View><Text style={styles.taskTemplateSavePremium}>Premium</Text></Pressable>
           </View>
         </Pressable>
       </Modal>
@@ -1210,7 +1247,7 @@ function TimelineScreen({
   onEdit: (plan: DeparturePlan) => void;
   onDelete: (id: string) => void;
   onEditTask: (task: Task) => void;
-  onPremium: () => void;
+  onPremium: (featureId?: PremiumGuideFeatureId) => void;
   onRecovery: (record: RecoveryRecord) => void;
   onRecoveryClosed: () => void;
   onFocusCompleted: (session: FocusSession) => void;
@@ -1233,7 +1270,7 @@ function TimelineScreen({
   const deadlineTasks = [...tasks].filter((task) => !task.done && task.deadlineDate).sort((a, b) => (getTargetDate(a)?.getTime() ?? Infinity) - (getTargetDate(b)?.getTime() ?? Infinity));
   const importCalendarEvents = async () => {
     if (!hasPremiumAccess(planTier, 'external_calendar')) {
-      onPremium();
+      onPremium('calendar');
       return;
     }
     setCalendarLoading(true);
@@ -1297,7 +1334,7 @@ function TimelineScreen({
             {departureEvent && <Text style={styles.taskMeta}>出発 {formatLiveTime(new Date(departureEvent.actualAt ?? departureEvent.occurredAt))}</Text>}
             {checkIn && <Text style={styles.taskMeta}>出発済み {formatLiveTime(new Date(checkIn.departedAt))} · {checkIn.onTime ? '予定どおり' : '遅れて出発'}</Text>}
           </View>
-          <View style={styles.departureCountdownRight}><Text style={styles.departureCountdownValue}>{checkIn ? '出発済み' : passed ? '終了' : countdownToDate(moments.leave, now)}</Text>{!preparationEvent && item.id && <Pressable style={styles.recoveryMiniButton} onPress={() => onPreparationStarted(item.id!)}><Text style={styles.recoveryMiniButtonText}>準備を始めた</Text></Pressable>}{!checkIn && item.id && <Pressable style={styles.recoveryMiniButton} onPress={() => onDeparted(item.id!)}><Text style={styles.recoveryMiniButtonText}>今から出発</Text></Pressable>}{!checkIn && moments.leave.getTime() <= now.getTime() && <Pressable style={styles.recoveryMiniButton} onPress={() => hasPremiumAccess(planTier, 'late_recovery') ? setRecoveryPlan(item) : onPremium()}><Text style={styles.recoveryMiniButtonText}>立て直す {hasPremiumAccess(planTier, 'late_recovery') ? '' : 'Premium'}</Text></Pressable>}<View style={styles.departureActions}><Pressable onPress={() => onEdit(item)}><Text style={styles.departureEdit}>編集</Text></Pressable><Pressable onPress={() => item.id && onDelete(item.id)}><Text style={styles.departureDelete}>×</Text></Pressable></View></View>
+          <View style={styles.departureCountdownRight}><Text style={styles.departureCountdownValue}>{checkIn ? '出発済み' : passed ? '終了' : countdownToDate(moments.leave, now)}</Text>{!preparationEvent && item.id && <Pressable style={styles.recoveryMiniButton} onPress={() => onPreparationStarted(item.id!)}><Text style={styles.recoveryMiniButtonText}>準備を始めた</Text></Pressable>}{!checkIn && item.id && <Pressable style={styles.recoveryMiniButton} onPress={() => onDeparted(item.id!)}><Text style={styles.recoveryMiniButtonText}>今から出発</Text></Pressable>}{!checkIn && moments.leave.getTime() <= now.getTime() && <Pressable style={styles.recoveryMiniButton} onPress={() => hasPremiumAccess(planTier, 'late_recovery') ? setRecoveryPlan(item) : onPremium('recovery')}><Text style={styles.recoveryMiniButtonText}>立て直す {hasPremiumAccess(planTier, 'late_recovery') ? '' : 'Premium'}</Text></Pressable>}<View style={styles.departureActions}><Pressable onPress={() => onEdit(item)}><Text style={styles.departureEdit}>編集</Text></Pressable><Pressable onPress={() => item.id && onDelete(item.id)}><Text style={styles.departureDelete}>×</Text></Pressable></View></View>
         </View>;
       })}
 
@@ -1339,7 +1376,7 @@ function TimelineScreen({
       </Pressable>
       </>}
 
-      <Pressable style={[styles.premiumCard, { backgroundColor: designMode === 'minimal' ? '#FFFFFF' : designMode === 'chic' ? '#FFF0F2' : '#FFF0DC', borderColor: theme.colors.border, borderWidth: 1, borderRadius: theme.radius.large }]} onPress={onPremium}>
+      <Pressable style={[styles.premiumCard, { backgroundColor: designMode === 'minimal' ? '#FFFFFF' : designMode === 'chic' ? '#FFF0F2' : '#FFF0DC', borderColor: theme.colors.border, borderWidth: 1, borderRadius: theme.radius.large }]} onPress={() => onPremium()}>
         <View style={styles.premiumText}>
           <Text style={[styles.premiumBadge, { color: theme.colors.primaryAccent }]}>PREMIUM</Text>
           <Text style={styles.premiumTitle}>寝坊防止モード</Text>
@@ -1347,7 +1384,7 @@ function TimelineScreen({
         </View>
         <Text style={[styles.lock, { color: theme.colors.primaryAccent }]}>▣</Text>
       </Pressable>
-      <RecoveryModal visible={Boolean(recoveryPlan)} plan={recoveryPlan} now={now} designMode={designMode} onPremium={onPremium} onClose={() => { setRecoveryPlan(undefined); onRecoveryClosed(); }} onApply={(record) => { onRecovery(record); setRecoveryPlan(undefined); }} />
+      <RecoveryModal visible={Boolean(recoveryPlan)} plan={recoveryPlan} now={now} designMode={designMode} onPremium={() => onPremium('recovery')} onClose={() => { setRecoveryPlan(undefined); onRecoveryClosed(); }} onApply={(record) => { onRecovery(record); setRecoveryPlan(undefined); }} />
     </>
   );
 }
@@ -1488,7 +1525,7 @@ function RecoveryModal({ visible, plan, now, designMode, onClose, onApply, onPre
   return <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}><Pressable style={styles.modalBackdrop} onPress={onClose}><Pressable style={[styles.modalSheet, { backgroundColor: theme.colors.screenBackground, borderRadius: theme.radius.modal }]} onPress={(event) => event.stopPropagation()}><ScrollView showsVerticalScrollIndicator={false}><View style={styles.modalHandle} /><View style={[styles.recoveryHeader, { backgroundColor: theme.colors.softAccent }]}><Text style={[styles.recoveryEyebrow, { color: theme.colors.primaryAccent }]}>遅れても、ここから立て直せます</Text><Text style={styles.recoveryTitle}>{plan.title}</Text><Text style={styles.recoverySummary}>予定到着 {plan.arrival}　→　今出ると {estimatedArrival}ごろ</Text></View><Text style={styles.recoveryPrompt}>次の行動を選んでください</Text>{options.map((option) => { const locked = option.action === 'delay_arrival' || option.action === 'reschedule'; return <Pressable key={option.action} style={[styles.recoveryOption, { borderColor: theme.colors.border }]} onPress={() => { if (locked) { onClose(); onPremium(); } else void applyOption(option); }}><View style={[styles.recoveryOptionIcon, { backgroundColor: theme.colors.secondarySurface }]}><Text style={[styles.recoveryOptionIconText, { color: theme.colors.primaryAccent }]}>{option.action === 'leave_now' ? '↗' : option.action === 'delay_arrival' ? '◷' : option.action === 'contact' ? '✉' : '↻'}</Text></View><View style={{ flex: 1 }}><Text style={styles.recoveryOptionTitle}>{option.title}</Text><Text style={styles.recoveryOptionCopy}>{option.description}</Text></View><Text style={[styles.recoveryOptionArrow, { color: theme.colors.primaryAccent }]}>{locked ? '▣' : '›'}</Text></Pressable>; })}<Text style={styles.recoveryNote}>位置情報や経路検索はまだ使わず、登録済みの移動時間から計算しています。</Text><Pressable onPress={onClose}><Text style={styles.cancelText}>閉じる</Text></Pressable></ScrollView></Pressable></Pressable></Modal>;
 }
 
-function TaskScheduleCalendar({ tasks, plans, externalEvents, now, designMode, chicPattern, planTier, onPremium, onEditTask, onEditPlan }: { tasks: Task[]; plans: DeparturePlan[]; externalEvents: Calendar.Event[]; now: Date; designMode: DesignMode; chicPattern: ChicPattern; planTier: PlanTier; onPremium: () => void; onEditTask: (task: Task) => void; onEditPlan: (plan: DeparturePlan) => void }) {
+function TaskScheduleCalendar({ tasks, plans, externalEvents, now, designMode, chicPattern, planTier, onPremium, onEditTask, onEditPlan }: { tasks: Task[]; plans: DeparturePlan[]; externalEvents: Calendar.Event[]; now: Date; designMode: DesignMode; chicPattern: ChicPattern; planTier: PlanTier; onPremium: (featureId?: PremiumGuideFeatureId) => void; onEditTask: (task: Task) => void; onEditPlan: (plan: DeparturePlan) => void }) {
   const theme = getThemeTokens(designMode);
   const [monthDate, setMonthDate] = useState(() => new Date(now.getFullYear(), now.getMonth(), 1));
   const [selectedDate, setSelectedDate] = useState(dateKey(now));
@@ -1520,7 +1557,7 @@ function TaskScheduleCalendar({ tasks, plans, externalEvents, now, designMode, c
     const freePlans = plans.filter((item) => item.date === freeSelected);
     return <>
       <View style={[styles.scheduleCalendarCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border, borderRadius: designMode === 'minimal' ? 2 : theme.radius.large }]}>
-        <View style={styles.scheduleCalendarHeader}><View><Text style={styles.scheduleMonthTitle}>これから7日間</Text><Text style={styles.scheduleMonthCopy}>今日から6日後までの予定</Text></View><Pressable onPress={onPremium}><Text style={styles.scheduleAgendaEdit}>月表示 Premium</Text></Pressable></View>
+        <View style={styles.scheduleCalendarHeader}><View><Text style={styles.scheduleMonthTitle}>これから7日間</Text><Text style={styles.scheduleMonthCopy}>今日から6日後までの予定</Text></View><Pressable onPress={() => onPremium('month')}><Text style={styles.scheduleAgendaEdit}>月表示 Premium</Text></Pressable></View>
         <View style={styles.scheduleGrid}>{freeDates.map(({ date, key }) => {
           const selected = key === freeSelected;
           const count = tasks.filter((task) => !task.done && taskDates(task).includes(key)).length + plans.filter((item) => item.date === key).length;
@@ -1724,13 +1761,15 @@ function WidgetScreen({
   onDesignMode,
   onChicPattern,
   templates,
+  savedTemplates,
   onAddTemplate,
   onDeleteTemplate,
   onGuide,
   onPremium,
+  onDeleteSavedTemplate,
   planTier,
-  devPremiumPreview,
-  onDevPremiumPreview,
+  devPlanTier,
+  onDevPlanTier,
 }: {
   tasks: Task[];
   timeline: { start: string; leave: string; arrival: string };
@@ -1747,13 +1786,15 @@ function WidgetScreen({
   onDesignMode: (mode: DesignMode) => void;
   onChicPattern: (pattern: ChicPattern) => void;
   templates: string[];
+  savedTemplates: PremiumTaskTemplate[];
   onAddTemplate: (title: string) => void;
   onDeleteTemplate: (title: string) => void;
   onGuide: () => void;
-  onPremium: () => void;
+  onPremium: (featureId?: PremiumGuideFeatureId) => void;
+  onDeleteSavedTemplate: (template: PremiumTaskTemplate) => void;
   planTier: PlanTier;
-  devPremiumPreview: boolean;
-  onDevPremiumPreview: (value: boolean) => void;
+  devPlanTier: PlanTier;
+  onDevPlanTier: (value: PlanTier) => void;
 }) {
   const [newTemplate, setNewTemplate] = useState('');
   const previewTasks = tasks.filter((task) => showCompleted || !task.done).slice(0, size === 'small' ? 2 : 3);
@@ -1761,7 +1802,7 @@ function WidgetScreen({
   return (
     <>
       <Text style={styles.hero}>Rhythmを、私仕様に。</Text>
-      {__DEV__ && <View style={styles.settingsCard}><View style={styles.switchRow}><View style={{ flex: 1 }}><Text style={styles.settingsTitle}>開発用 Premiumプレビュー</Text><Text style={styles.switchCopy}>課金前の機能表示を確認します</Text></View><Switch value={devPremiumPreview} onValueChange={onDevPremiumPreview} /></View><Text style={styles.taskMeta}>現在：{planTier === 'premium' ? 'Premium表示' : '無料表示'}（購入状態ではありません）</Text></View>}
+      {__DEV__ && <View style={styles.settingsCard}><Text style={styles.settingsTitle}>開発用 利用プラン</Text><Text style={styles.switchCopy}>Expo Goで無料版とPremium版の実機能を切り替えます。</Text><Text style={styles.devPlanLabel}>現在の利用プラン</Text><View style={styles.devPlanChoices}>{(['free', 'premium'] as PlanTier[]).map((tier) => <Pressable key={tier} style={[styles.devPlanChoice, devPlanTier === tier && { backgroundColor: getThemeTokens(designMode).colors.primaryAccent, borderColor: getThemeTokens(designMode).colors.primaryAccent }]} onPress={() => onDevPlanTier(tier)}><Text style={[styles.devPlanChoiceText, devPlanTier === tier && styles.devPlanChoiceTextActive]}>{tier === 'free' ? '無料' : 'Premium'}</Text></Pressable>)}</View><Text style={styles.devPlanCurrent}>現在：{devPlanTier === 'premium' ? 'Premium' : '無料'}</Text></View>}
       <View style={styles.modeCard}>
         <Text style={styles.settingsTitle}>デザインモード</Text>
         <View style={styles.modeChoices}>
@@ -1784,6 +1825,10 @@ function WidgetScreen({
         <Text style={styles.switchCopy}>よく登録するタスクを自分用に保存できます</Text>
         <View style={styles.templateAddRow}><TextInput value={newTemplate} onChangeText={setNewTemplate} placeholder="例：水筒をバッグに入れる" placeholderTextColor="#A29DAA" style={styles.templateInput} /><Pressable style={styles.templateAddButton} onPress={() => { const clean = newTemplate.trim(); if (!clean) return; onAddTemplate(clean); setNewTemplate(''); }}><Text style={styles.templateAddButtonText}>追加</Text></Pressable></View>
         <View style={styles.templateList}>{templates.map((item) => <View key={item} style={styles.templateRow}><Text style={styles.templateRowText}>{item}</Text><Pressable onPress={() => onDeleteTemplate(item)}><Text style={styles.templateDelete}>×</Text></Pressable></View>)}</View>
+      </View>
+      <View style={styles.settingsCard}>
+        <View style={styles.historyHeader}><View><Text style={styles.settingsTitle}>マイひな型</Text><Text style={styles.switchCopy}>設定ごと保存して、次回そのまま呼び出す</Text></View><Text style={styles.taskTemplateSavePremium}>Premium</Text></View>
+        {hasPremiumAccess(planTier, 'saved_task_templates') ? savedTemplates.length === 0 ? <Text style={styles.savedTemplateEmpty}>タスクの「•••」から「設定ごとひな型に保存」を選べます。</Text> : savedTemplates.map((template) => <View key={template.id} style={styles.savedTemplateSettingRow}><View style={{ flex: 1 }}><Text style={styles.savedTemplateSettingTitle}>{template.title}</Text><Text style={styles.savedTemplateSettingCopy}>{summarizePremiumTaskTemplate(template)}</Text></View><Pressable onPress={() => onDeleteSavedTemplate(template)}><Text style={styles.templateDelete}>削除</Text></Pressable></View>) : <Pressable style={styles.savedTemplateLocked} onPress={() => onPremium('templates')}><View style={{ flex: 1 }}><Text style={styles.savedTemplateLockedTitle}>この機能を見る</Text><Text style={styles.savedTemplateLockedCopy}>保存済みデータは無料へ戻っても消えません</Text></View><Text style={styles.guideCardArrow}>›</Text></Pressable>}
       </View>
       <Text style={styles.settingsSectionLabel}>ウィジェット設定</Text>
       <Text style={styles.previewLabel}>WIDGET PREVIEW</Text>
@@ -1846,7 +1891,7 @@ function WidgetScreen({
             </Pressable>
           ))}
         </View>
-        <Pressable style={styles.lockedSetting} onPress={onPremium}>
+        <Pressable style={styles.lockedSetting} onPress={() => onPremium()}>
           <View>
             <Text style={styles.switchTitle}>カスタムテーマ</Text>
             <Text style={styles.switchCopy}>色・背景・フォントを自由に変更</Text>
@@ -1879,7 +1924,7 @@ function NotificationManagerCard() {
   </View>;
 }
 
-function TaskModal({ visible, task, templates, designMode, planTier, onPremium, onClose, onSave }: { visible: boolean; task?: Task; templates: string[]; designMode: DesignMode; planTier: PlanTier; onPremium: () => void; onClose: () => void; onSave: (title: string, category: Category, priority: Priority, remindDate?: string, remindAt?: string, deadlineDate?: string, deadlineTime?: string, deadlineNotifyBefore?: number, navigationEnabled?: boolean, preparationMinutes?: number, travelMinutes?: number, bufferMinutes?: number, repeatRule?: RepeatRule, nudgeMode?: NudgeMode, scheduledDate?: string) => void }) {
+function TaskModal({ visible, task, templates, savedTemplates, designMode, planTier, onPremium, onClose, onSave }: { visible: boolean; task?: Task; templates: string[]; savedTemplates: PremiumTaskTemplate[]; designMode: DesignMode; planTier: PlanTier; onPremium: (featureId?: PremiumGuideFeatureId) => void; onClose: () => void; onSave: (title: string, category: Category, priority: Priority, remindDate?: string, remindAt?: string, deadlineDate?: string, deadlineTime?: string, deadlineNotifyBefore?: number, navigationEnabled?: boolean, preparationMinutes?: number, travelMinutes?: number, bufferMinutes?: number, repeatRule?: RepeatRule, nudgeMode?: NudgeMode, scheduledDate?: string) => void }) {
   const theme = getThemeTokens(designMode);
   const [title, setTitle] = useState('');
   const [remind, setRemind] = useState(false);
@@ -1937,6 +1982,26 @@ function TaskModal({ visible, task, templates, designMode, planTier, onPremium, 
     onSave(clean, category, priority, remind ? remindDate : undefined, remind ? time : undefined, hasDeadline ? deadlineDate : undefined, hasDeadline ? deadlineTime : undefined, hasDeadline && deadlineNotify ? deadlineNotifyBefore : undefined, hasDeadline && navigationEnabled, preparationMinutes, travelMinutes, bufferMinutes, repeatRule, nudgeMode, scheduledDate);
   };
 
+  const applySavedTemplate = (template: PremiumTaskTemplate) => {
+    setTitle(template.title);
+    setCategory(template.category);
+    setPriority(template.priority);
+    setRepeatRule(template.repeatRule);
+    setRemind(Boolean(template.remindAt));
+    setTime(template.remindAt ?? '09:00');
+    setRemindDate(todayInputValue());
+    setNudgeMode(template.nudgeMode);
+    setNavigationEnabled(template.navigationEnabled);
+    setPreparationMinutes(template.preparationMinutes ?? 30);
+    setTravelMinutes(template.travelMinutes ?? 30);
+    setBufferMinutes(template.bufferMinutes ?? 10);
+    setScheduledDate(todayInputValue());
+    setHasDeadline(false);
+    setDeadlineDate(todayInputValue());
+    setDeadlineTime('23:59');
+    setDeadlineNotify(false);
+  };
+
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <KeyboardAvoidingView style={styles.keyboardView} behavior={Platform.OS === 'ios' ? 'padding' : 'height'} keyboardVerticalOffset={8}>
@@ -1945,7 +2010,8 @@ function TaskModal({ visible, task, templates, designMode, planTier, onPremium, 
           <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false} contentContainerStyle={styles.modalScroll}>
           <View style={styles.modalHandle} />
           <Text style={styles.modalTitle}>{task ? 'タスクを編集' : '新しいタスク'}</Text>
-          {!task && templates.length > 0 && <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.taskTemplates}>{templates.map((item) => <Pressable key={item} style={styles.taskTemplateChip} onPress={() => setTitle(item)}><Text style={styles.taskTemplateText}>＋ {item}</Text></Pressable>)}</ScrollView>}
+          {!task && templates.length > 0 && <><Text style={styles.templateGroupLabel}>クイックひな型</Text><ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.taskTemplates}>{templates.map((item) => <Pressable key={item} style={styles.taskTemplateChip} onPress={() => setTitle(item)}><Text style={styles.taskTemplateText}>＋ {item}</Text></Pressable>)}</ScrollView></>}
+          {!task && (hasPremiumAccess(planTier, 'saved_task_templates') ? <View style={styles.savedTemplatePicker}><Text style={styles.templateGroupLabel}>マイひな型</Text>{savedTemplates.length === 0 ? <Text style={styles.savedTemplateEmpty}>タスクの「•••」から設定ごと保存できます。</Text> : <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.savedTemplateChips}>{savedTemplates.map((template) => <Pressable key={template.id} style={styles.savedTemplateChip} onPress={() => applySavedTemplate(template)}><Text numberOfLines={1} style={styles.savedTemplateChipTitle}>{template.title}</Text><Text numberOfLines={2} style={styles.savedTemplateChipCopy}>{summarizePremiumTaskTemplate(template)}</Text><Text style={styles.savedTemplateChoose}>選ぶ ›</Text></Pressable>)}</ScrollView>}</View> : <Pressable style={styles.savedTemplateLocked} onPress={() => onPremium('templates')}><View style={{ flex: 1 }}><Text style={styles.savedTemplateLockedTitle}>マイひな型</Text><Text style={styles.savedTemplateLockedCopy}>一度作った設定を、次からそのまま使う</Text></View><Text style={styles.taskTemplateSavePremium}>Premium機能</Text></Pressable>)}
           <Text style={styles.fieldLabel}>やること・忘れたくないこと</Text>
           <TextInput
             autoFocus
@@ -2060,7 +2126,7 @@ function TaskModal({ visible, task, templates, designMode, planTier, onPremium, 
               </View>
               <Text style={[styles.numberLabel, { marginTop: 13, marginBottom: 8 }]}>通知スルー防止</Text>
               <View style={styles.nudgeChoices}>
-                {([{ id: 'once', label: '1回', copy: '通常' }, { id: 'repeat', label: '2回', copy: 'Premium' }, { id: 'strong', label: '3回', copy: 'Premium' }] as { id: NudgeMode; label: string; copy: string }[]).map((item) => { const locked = item.id !== 'once' && !hasPremiumAccess(planTier, item.id === 'repeat' ? 'repeat_nudge' : 'strong_nudge'); return <Pressable key={item.id} style={[styles.nudgeChoice, nudgeMode === item.id && styles.nudgeChoiceActive]} onPress={() => locked ? onPremium() : setNudgeMode(item.id)}><Text style={[styles.nudgeChoiceTitle, nudgeMode === item.id && styles.nudgeChoiceTitleActive]}>{item.label}{locked ? ' 🔒' : ''}</Text><Text style={[styles.nudgeChoiceCopy, nudgeMode === item.id && styles.nudgeChoiceCopyActive]}>{item.copy}</Text></Pressable>; })}
+                {([{ id: 'once', label: '1回', copy: '通常' }, { id: 'repeat', label: '2回', copy: 'Premium' }, { id: 'strong', label: '3回', copy: 'Premium' }] as { id: NudgeMode; label: string; copy: string }[]).map((item) => { const locked = item.id !== 'once' && !hasPremiumAccess(planTier, item.id === 'repeat' ? 'repeat_nudge' : 'strong_nudge'); return <Pressable key={item.id} style={[styles.nudgeChoice, nudgeMode === item.id && styles.nudgeChoiceActive]} onPress={() => locked ? onPremium('nudge') : setNudgeMode(item.id)}><Text style={[styles.nudgeChoiceTitle, nudgeMode === item.id && styles.nudgeChoiceTitleActive]}>{item.label}{locked ? ' 🔒' : ''}</Text><Text style={[styles.nudgeChoiceCopy, nudgeMode === item.id && styles.nudgeChoiceCopyActive]}>{item.copy}</Text></Pressable>; })}
               </View>
             </View>
           )}
@@ -2124,7 +2190,7 @@ function AchievementVessel({ tasks, designMode, chicPattern = 'floral', scope = 
   </View>;
 }
 
-function HistoryScreen({ tasks, recoveryHistory, focusSessions, departureCheckIns, completionIcon, designMode, chicPattern, planTier, onPremium, onRestore }: { tasks: Task[]; recoveryHistory: RecoveryRecord[]; focusSessions: FocusSession[]; departureCheckIns: DepartureCheckIn[]; completionIcon: string; designMode: ThemeMode; chicPattern: ChicPattern; planTier: PlanTier; onPremium: () => void; onRestore: (id: string) => void }) {
+function HistoryScreen({ tasks, recoveryHistory, focusSessions, departureCheckIns, completionIcon, designMode, chicPattern, planTier, onPremium, onSaveTemplate, onRestore }: { tasks: Task[]; recoveryHistory: RecoveryRecord[]; focusSessions: FocusSession[]; departureCheckIns: DepartureCheckIn[]; completionIcon: string; designMode: ThemeMode; chicPattern: ChicPattern; planTier: PlanTier; onPremium: (featureId?: PremiumGuideFeatureId) => void; onSaveTemplate: (task: Task) => void; onRestore: (id: string) => void }) {
   const now = new Date();
   const [selectedKey, setSelectedKey] = useState(dateKey(now));
   const [historySearch, setHistorySearch] = useState('');
@@ -2158,7 +2224,7 @@ function HistoryScreen({ tasks, recoveryHistory, focusSessions, departureCheckIn
   return (
     <>
       <Text style={styles.hero}>{premiumHistory ? (designMode === 'minimal' ? '今月の記録' : designMode === 'chic' ? '今月の小さな達成' : '今月の相棒との記録') : '直近7日間のできたこと'}</Text>
-      {premiumHistory ? <View style={styles.historySearchBox}><Text style={styles.taskSearchIcon}>⌕</Text><TextInput value={historySearch} onChangeText={setHistorySearch} placeholder="過去に完了したタスクを検索" placeholderTextColor="#A29DAA" style={styles.taskSearchInput} />{historySearch.length > 0 && <Pressable onPress={() => setHistorySearch('')}><Text style={styles.historySearchClear}>×</Text></Pressable>}</View> : <Pressable style={styles.guideCard} onPress={onPremium}><View><Text style={styles.guideCardTitle}>全期間の履歴と検索</Text><Text style={styles.guideCardCopy}>Premiumで月表示・詳細検索を利用できます</Text></View><Text style={styles.guideCardArrow}>›</Text></Pressable>}
+      {premiumHistory ? <View style={styles.historySearchBox}><Text style={styles.taskSearchIcon}>⌕</Text><TextInput value={historySearch} onChangeText={setHistorySearch} placeholder="過去に完了したタスクを検索" placeholderTextColor="#A29DAA" style={styles.taskSearchInput} />{historySearch.length > 0 && <Pressable onPress={() => setHistorySearch('')}><Text style={styles.historySearchClear}>×</Text></Pressable>}</View> : <Pressable style={styles.guideCard} onPress={() => onPremium('month')}><View><Text style={styles.guideCardTitle}>全期間の履歴と検索</Text><Text style={styles.guideCardCopy}>Premiumで月表示・詳細検索を利用できます</Text></View><Text style={styles.guideCardArrow}>›</Text></Pressable>}
       {premiumHistory && <AchievementVessel tasks={tasks} designMode={designMode} chicPattern={chicPattern} scope="month" />}
       {premiumHistory && <View style={styles.monthStats}>
         <View style={styles.monthStat}><Text style={styles.monthStatNumber}>{monthlyCount}</Text><Text style={styles.monthStatLabel}>今月の完了</Text></View>
@@ -2202,7 +2268,7 @@ function HistoryScreen({ tasks, recoveryHistory, focusSessions, departureCheckIn
             <Text style={styles.taskTitle}>{task.title}</Text>
             <Text style={styles.taskMeta}>{task.category} ・ {task.completedAt ? dateKey(task.completedAt).replaceAll('-', '.') : ''}</Text>
           </View>
-          <Pressable style={styles.restoreButton} onPress={() => onRestore(task.id)}><Text style={styles.restoreButtonText}>元に戻す</Text></Pressable>
+          <View style={styles.historyTaskActions}><Pressable style={styles.historyTemplateButton} onPress={() => onSaveTemplate(task)}><Text style={styles.historyTemplateButtonText}>ひな型</Text><Text style={styles.historyTemplatePremium}>Premium</Text></Pressable><Pressable style={styles.restoreButton} onPress={() => onRestore(task.id)}><Text style={styles.restoreButtonText}>元に戻す</Text></Pressable></View>
         </View>
       ))}
       {visibleRecoveryHistory.length > 0 && <View style={styles.recoveryHistorySection}><View style={styles.historyHeader}><Text style={styles.sectionTitle}>立て直した記録</Text><Text style={styles.sectionSub}>{visibleRecoveryHistory.length}回</Text></View>{visibleRecoveryHistory.slice(0, 5).map((record) => <View key={record.id} style={styles.recoveryHistoryRow}><View style={styles.recoveryHistoryIcon}><Text style={styles.recoveryHistoryIconText}>↻</Text></View><View style={{ flex: 1 }}><Text style={styles.taskTitle}>{record.planTitle}</Text><Text style={styles.taskMeta}>{record.action === 'leave_now' ? '今すぐ出発' : record.action === 'delay_arrival' ? '到着予定を変更' : record.action === 'contact' ? '遅れる連絡' : '予定を組み直し'} ・ 見込み {record.estimatedArrival}</Text></View></View>)}</View>}
@@ -2223,7 +2289,17 @@ function GuideModal({ visible, onClose }: { visible: boolean; onClose: () => voi
   return <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}><Pressable style={styles.modalBackdrop} onPress={onClose}><Pressable style={styles.modalSheet} onPress={(event) => event.stopPropagation()}><View style={styles.modalHandle} /><Text style={styles.modalTitle}>Rhythmの使い方</Text><Text style={styles.guideIntro}>迷ったら、この順番だけで大丈夫。</Text>{steps.map(([number, title, copy]) => <View key={number} style={styles.guideStep}><View style={styles.guideStepNumber}><Text style={styles.guideStepNumberText}>{number}</Text></View><View style={{ flex: 1 }}><Text style={styles.guideStepTitle}>{title}</Text><Text style={styles.guideStepCopy}>{copy}</Text></View></View>)}<Pressable style={styles.primaryButton} onPress={onClose}><Text style={styles.primaryButtonText}>わかった</Text></Pressable></Pressable></Pressable></Modal>;
 }
 
-type PremiumPreviewKind = 'calendar' | 'nudge' | 'time' | 'behavior' | 'month' | 'recovery';
+type PremiumPreviewKind = PremiumGuideFeatureId;
+
+const PREMIUM_GUIDE_FEATURES: Array<{ id: PremiumGuideFeatureId; kind: PremiumPreviewKind; title: string; description: string }> = [
+  { id: 'calendar', kind: 'calendar', title: 'いつもの予定を、Rhythmにまとめる', description: '普段使っているカレンダーの予定も、Rhythmの予定表にまとめて表示。予定を見ながら、何時に準備して何時に出るかを考えられます。' },
+  { id: 'nudge', kind: 'nudge', title: '通知を見逃しても、そのままにしない', description: '1回の通知で動けなくても、Rhythmがもう一度確認。「見たけど後回し」を減らします。' },
+  { id: 'time', kind: 'time', title: '予定と実際のズレが分かる', description: '準備や出発が、予定よりどのくらいズレているかを記録。感覚ではなく、最近の実際の行動から確認できます。' },
+  { id: 'behavior', kind: 'behavior', title: '自分が動きやすい形を知る', description: '通知・集中・延長の記録から、最近の動き方を振り返れます。性格診断ではなく、実際の行動だけを使います。' },
+  { id: 'month', kind: 'month', title: '7日より先まで見渡す', description: '無料版は今日から7日間。Premiumでは月単位で先の予定と、7日を超えた完了・集中・出発記録を確認できます。' },
+  { id: 'recovery', kind: 'recovery', title: '遅れた時も、ここから立て直す', description: '遅れたことを責めるのではなく、今からできる行動を表示。予定が崩れても、すぐに戻れる形を考えます。' },
+  { id: 'templates', kind: 'templates', title: '一度作った設定を、次からそのまま使う', description: '登録済みタスクを、カテゴリ・優先度・通知時刻・間に合うナビの時間設定と一緒に保存。次からはひな型を選び、内容を確認するだけで登録できます。' },
+];
 
 function PremiumMiniPreview({ kind, designMode }: { kind: PremiumPreviewKind; designMode: DesignMode }) {
   if (kind === 'calendar') return <View style={styles.premiumPreview}><Text style={styles.previewImageLabel}>予定表の表示イメージ</Text>{[['09:00', '朝会', '外部予定'], ['11:00', '資料提出', 'Rhythm'], ['14:00', '病院訪問', '外部予定'], ['18:30', 'ピラティス', '外部予定']].map(([time, title, source]) => <View key={`${time}-${title}`} style={styles.previewScheduleRow}><Text style={styles.previewTime}>{time}</Text><Text style={styles.previewScheduleTitle}>{title}</Text><Text style={[styles.previewSource, source === 'Rhythm' && styles.previewSourceRhythm]}>{source}</Text></View>)}<View style={styles.previewFlow}><Text style={styles.previewFlowText}>14:00 病院訪問</Text><Text style={styles.previewArrow}>↓</Text><Text style={styles.previewFlowButton}>出発を考える</Text></View></View>;
@@ -2231,6 +2307,7 @@ function PremiumMiniPreview({ kind, designMode }: { kind: PremiumPreviewKind; de
   if (kind === 'time') return <View style={styles.premiumPreview}><Text style={styles.previewImageLabel}>表示イメージ</Text><Text style={styles.previewMetricLabel}>準備開始</Text><View style={styles.previewTimeCompare}><View><Text style={styles.previewCompareLabel}>予定</Text><Text style={styles.previewCompareValue}>12:10</Text></View><Text style={styles.previewCompareArrow}>→</Text><View><Text style={styles.previewCompareLabel}>実際</Text><Text style={styles.previewCompareValue}>12:24</Text></View></View><Text style={styles.previewMetricBig}>平均14分遅め</Text><Text style={styles.previewRecordCount}>記録 8回</Text></View>;
   if (kind === 'behavior') return <View style={styles.premiumPreview}><Text style={styles.previewImageLabel}>表示イメージ</Text><Text style={styles.previewMetricLabel}>最近の行動</Text><View style={styles.previewInsightRow}><Text style={styles.previewInsightLabel}>動き始め</Text><Text style={styles.previewInsightValue}>通知から平均17分で反応</Text></View><View style={styles.previewInsightRow}><Text style={styles.previewInsightLabel}>集中</Text><Text style={styles.previewInsightValue}>15分が比較的続きやすい傾向</Text></View><View style={styles.previewInsightRow}><Text style={styles.previewInsightLabel}>延長</Text><Text style={styles.previewInsightValue}>8回中5回はその後完了</Text></View></View>;
   if (kind === 'month') return <View style={styles.premiumPreview}><Text style={styles.previewImageLabel}>予定表の表示イメージ</Text><View style={styles.previewPlanCompare}><View style={styles.previewFreeWeek}><Text style={styles.previewCompareTag}>無料・今日から7日</Text><View style={styles.previewWeekRow}>{['6', '7', '8', '9', '10', '11', '12'].map((day) => <Text key={day} style={styles.previewWeekDay}>7/{day}</Text>)}</View></View><Text style={styles.previewArrow}>↓</Text><View style={styles.previewMonth}><Text style={styles.previewMonthTitle}>2026年 7月</Text><Text style={styles.previewMonthWeek}>日  月  火  水  木  金  土</Text><Text style={styles.previewMonthDays}>         1    2    3    4{`\n`} 5    6    7    8    9  10  11{`\n`}12  13  14  15  16  17  18{`\n`}19  20  21  22  23  24  25</Text></View></View></View>;
+  if (kind === 'templates') return <View style={styles.premiumPreview}><Text style={styles.previewImageLabel}>表示イメージ</Text><View style={styles.previewTemplateSource}><Text style={styles.previewTemplateTitle}>病院訪問の準備</Text><Text style={styles.previewTemplateMeta}>予定　優先度 高　通知 09:00</Text><Text style={styles.previewTemplateMeta}>準備30分　移動40分　余裕15分</Text><Text style={styles.previewTemplateSave}>設定ごとひな型に保存</Text></View><Text style={styles.previewArrow}>↓</Text><View style={styles.previewTemplateSaved}><View><Text style={styles.previewCompareTag}>マイひな型</Text><Text style={styles.previewTemplateTitle}>病院訪問の準備</Text></View><Text style={styles.previewTemplateChoose}>選ぶ ›</Text></View><Text style={styles.previewTemplateReady}>設定済みでフォームへ反映</Text>{designMode === 'companion' && <Text style={styles.previewCompanion}>🥚 また使えるように覚えておくね</Text>}</View>;
   return <View style={styles.premiumPreview}><Text style={styles.previewImageLabel}>立て直しの表示イメージ</Text><View style={styles.previewDanger}><Text style={styles.previewDangerText}>予定どおりは厳しい</Text></View><View style={styles.previewRecoveryGrid}>{['今から出発', '到着予定を変更', '遅れる連絡', '予定を組み直す'].map((label) => <View key={label} style={styles.previewRecoveryOption}><Text style={styles.previewRecoveryText}>{label}</Text></View>)}</View>{designMode === 'companion' && <Text style={styles.previewCompanion}>🥚 ここから一緒に戻ろう</Text>}</View>;
 }
 
@@ -2245,27 +2322,29 @@ function PremiumFeatureBlock({ number, kind, title, description, designMode, chi
   </View>;
 }
 
-function PremiumModal({ visible, designMode, chicPattern, onClose }: { visible: boolean; designMode: DesignMode; chicPattern: ChicPattern; onClose: () => void }) {
+function PremiumModal({ visible, initialFeatureId, designMode, chicPattern, onClose }: { visible: boolean; initialFeatureId: PremiumGuideFeatureId; designMode: DesignMode; chicPattern: ChicPattern; onClose: () => void }) {
   const theme = getThemeTokens(designMode);
-  const features: Array<{ kind: PremiumPreviewKind; title: string; description: string }> = [
-    { kind: 'calendar', title: 'いつもの予定を、Rhythmにまとめる', description: '普段使っているカレンダーの予定も、Rhythmの予定表にまとめて表示。予定を見ながら、何時に準備して何時に出るかを考えられます。' },
-    { kind: 'nudge', title: '通知を見逃しても、そのままにしない', description: '1回の通知で動けなくても、Rhythmがもう一度確認。「見たけど後回し」を減らします。' },
-    { kind: 'time', title: '予定と実際のズレが分かる', description: '準備や出発が、予定よりどのくらいズレているかを記録。感覚ではなく、最近の実際の行動から確認できます。' },
-    { kind: 'behavior', title: '自分が動きやすい形を知る', description: '通知・集中・延長の記録から、最近の動き方を振り返れます。性格診断ではなく、実際の行動だけを使います。' },
-    { kind: 'month', title: '7日より先まで見渡す', description: '無料版は今日から7日間。Premiumでは月単位で先の予定まで確認できます。' },
-    { kind: 'recovery', title: '遅れた時も、ここから立て直す', description: '遅れたことを責めるのではなく、今からできる行動を表示。予定が崩れても、すぐに戻れる形を考えます。' },
-  ];
+  const carouselRef = React.useRef<ScrollView>(null);
+  const [pageWidth, setPageWidth] = useState(0);
+  const initialIndex = Math.max(0, PREMIUM_GUIDE_FEATURES.findIndex((feature) => feature.id === initialFeatureId));
+  const [currentFeatureIndex, setCurrentFeatureIndex] = useState(initialIndex);
+  useEffect(() => {
+    if (!visible) return;
+    const nextIndex = Math.max(0, PREMIUM_GUIDE_FEATURES.findIndex((feature) => feature.id === initialFeatureId));
+    setCurrentFeatureIndex(nextIndex);
+    if (pageWidth > 0) requestAnimationFrame(() => carouselRef.current?.scrollTo({ x: nextIndex * pageWidth, animated: false }));
+  }, [initialFeatureId, pageWidth, visible]);
   return <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
     <Pressable style={styles.modalBackdrop} onPress={onClose}>
       <Pressable style={[styles.modalSheet, styles.premiumModalSheet, { backgroundColor: theme.colors.screenBackground }]} onPress={(event) => event.stopPropagation()}>
         <View style={styles.modalHandle} />
-        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.premiumModalScroll}>
-          <View style={[styles.premiumIntro, designMode === 'minimal' && styles.premiumIntroMinimal, designMode === 'chic' && styles.premiumIntroChic, designMode === 'companion' && styles.premiumIntroCompanion]}>{designMode === 'chic' && <ChicPatternDecor pattern={chicPattern} accent="#D986A1" warm="#A997C8" />}<View style={[styles.premiumIntroPlate, designMode === 'minimal' && styles.premiumIntroPlateMinimal]}><Text style={[styles.premiumIntroBrand, designMode === 'minimal' && styles.premiumIntroBrandMinimal]}>Rhythm Premium</Text><Text style={[styles.premiumIntroTitle, designMode === 'minimal' && styles.premiumIntroTitleMinimal]}>Rhythmが、あなたより少し先に動く。</Text><Text style={[styles.premiumIntroCopy, designMode === 'minimal' && styles.premiumIntroCopyMinimal]}>予定と実際の行動をつないで、間に合うための時間を少しずつ整えます。</Text></View></View>
-          {features.map((feature, index) => <PremiumFeatureBlock key={feature.kind} number={String(index + 1).padStart(2, '0')} {...feature} designMode={designMode} chicPattern={chicPattern} />)}
-          <View style={styles.premiumHistoryNote}><Text style={styles.premiumHistoryTitle}>過去の記録も、あとから振り返れる</Text><Text style={styles.premiumHistoryCopy}>Premiumでは7日を超えた完了記録や、集中・出発の記録も確認できます。</Text><View style={styles.premiumHistoryRows}><Text style={styles.premiumHistoryRow}>7/03　資料提出　完了</Text><Text style={styles.premiumHistoryRow}>7/02　15分集中</Text><Text style={styles.premiumHistoryRow}>7/01　13:03 出発</Text></View></View>
-          <View style={styles.premiumFuture}><Text style={styles.premiumFutureTitle}>今後の強化予定</Text><Text style={styles.premiumFutureCopy}>記録された実績を使った、支度時間や通知タイミングの自動調整、より高度な時間提案。</Text></View>
-          <Pressable style={[styles.primaryButton, { backgroundColor: theme.colors.primaryAccent }]} onPress={onClose}><Text style={styles.primaryButtonText}>Rhythmに戻る</Text></Pressable>
-        </ScrollView>
+        <View style={styles.premiumCarouselHeader}><Text style={styles.premiumCarouselBrand}>Rhythm Premium</Text><Text style={styles.premiumCarouselCopy}>Rhythmが、あなたより少し先に動く。</Text></View>
+        <View style={styles.premiumCarouselArea} onLayout={(event) => setPageWidth(Math.round(event.nativeEvent.layout.width))}>
+          {pageWidth > 0 && <ScrollView ref={carouselRef} horizontal pagingEnabled showsHorizontalScrollIndicator={false} contentOffset={{ x: initialIndex * pageWidth, y: 0 }} onMomentumScrollEnd={(event) => { const next = Math.round(event.nativeEvent.contentOffset.x / pageWidth); setCurrentFeatureIndex(Math.max(0, Math.min(PREMIUM_GUIDE_FEATURES.length - 1, next))); }}>
+            {PREMIUM_GUIDE_FEATURES.map((feature, index) => <ScrollView key={feature.id} style={{ width: pageWidth }} contentContainerStyle={styles.premiumSlideScroll} showsVerticalScrollIndicator={false}><PremiumFeatureBlock number={String(index + 1).padStart(2, '0')} {...feature} designMode={designMode} chicPattern={chicPattern} />{feature.id === 'month' && <View style={styles.premiumHistoryNote}><Text style={styles.premiumHistoryTitle}>過去の記録も、あとから振り返れる</Text><Text style={styles.premiumHistoryCopy}>7日を超えた完了記録や、集中・出発の記録も確認できます。</Text></View>}</ScrollView>)}
+          </ScrollView>}
+        </View>
+        <View style={styles.premiumCarouselFooter}><Text style={styles.premiumSwipeHint}>横にスライドして他の機能を見る</Text><Text style={styles.premiumPageNumber}>{designMode === 'minimal' ? String(currentFeatureIndex + 1).padStart(2, '0') : currentFeatureIndex + 1} / {designMode === 'minimal' ? String(PREMIUM_GUIDE_FEATURES.length).padStart(2, '0') : PREMIUM_GUIDE_FEATURES.length}</Text><View style={styles.premiumIndicators}>{PREMIUM_GUIDE_FEATURES.map((feature, index) => <View key={feature.id} style={[styles.premiumIndicator, index === currentFeatureIndex && { backgroundColor: theme.colors.primaryAccent, width: 18 }]} />)}</View><Pressable style={[styles.premiumCloseButton, { borderColor: theme.colors.primaryAccent }]} onPress={onClose}><Text style={[styles.premiumCloseButtonText, { color: theme.colors.primaryAccent }]}>Rhythmに戻る</Text></Pressable></View>
       </Pressable>
     </Pressable>
   </Modal>;
@@ -2682,7 +2761,7 @@ const styles = StyleSheet.create({
   cancelText: { color: colors.muted, fontSize: 13, fontWeight: '800', textAlign: 'center', paddingTop: 18 },
   premiumSun: { color: colors.coral, fontSize: 48, textAlign: 'center' },
   premiumModalCopy: { color: colors.muted, fontSize: 13, lineHeight: 20, textAlign: 'center', marginBottom: 12 },
-  premiumModalSheet: { paddingHorizontal: 14, paddingBottom: 0 },
+  premiumModalSheet: { paddingHorizontal: 14, paddingBottom: 0, height: '92%' },
   premiumModalScroll: { paddingHorizontal: 5, paddingBottom: 30 },
   premiumIntro: { position: 'relative', overflow: 'hidden', borderRadius: 24, padding: 12, marginBottom: 16, backgroundColor: '#F2EAFE' },
   premiumIntroMinimal: { borderRadius: 1, backgroundColor: '#111111', borderTopWidth: 5, borderTopColor: '#777777' },
@@ -2729,6 +2808,53 @@ const styles = StyleSheet.create({
   previewDanger: { backgroundColor: '#FFE3E1', borderRadius: 9, padding: 8, marginBottom: 8 }, previewDangerText: { color: '#A84646', fontSize: 11, fontWeight: '900', textAlign: 'center' }, previewRecoveryGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 }, previewRecoveryOption: { width: '48%', backgroundColor: '#F0EBF5', borderRadius: 9, paddingVertical: 8, paddingHorizontal: 5 }, previewRecoveryText: { color: '#554A61', fontSize: 8, fontWeight: '900', textAlign: 'center' }, previewCompanion: { color: '#80642E', fontSize: 9, fontWeight: '800', marginTop: 9, textAlign: 'center' },
   premiumHistoryNote: { borderWidth: 1, borderColor: '#CFC7D5', borderRadius: 14, padding: 14, marginTop: 3, backgroundColor: 'rgba(255,255,255,0.62)' }, premiumHistoryTitle: { color: '#332E38', fontSize: 15, fontWeight: '900' }, premiumHistoryCopy: { color: '#736B79', fontSize: 10, lineHeight: 17, marginTop: 5 }, premiumHistoryRows: { marginTop: 9, borderTopWidth: 1, borderTopColor: '#DED8E2', paddingTop: 6 }, premiumHistoryRow: { color: '#5B5361', fontSize: 9, paddingVertical: 3 },
   premiumFuture: { backgroundColor: '#EEE8F5', borderRadius: 14, padding: 14, marginVertical: 14 }, premiumFutureTitle: { color: '#5E4A79', fontSize: 13, fontWeight: '900' }, premiumFutureCopy: { color: '#746A7E', fontSize: 10, lineHeight: 17, marginTop: 5 },
+  premiumCarouselHeader: { paddingHorizontal: 8, paddingBottom: 10 },
+  premiumCarouselBrand: { color: '#312B37', fontSize: 19, fontWeight: '900' },
+  premiumCarouselCopy: { color: '#766E7C', fontSize: 11, marginTop: 3 },
+  premiumCarouselArea: { flex: 1, overflow: 'hidden' },
+  premiumSlideScroll: { paddingHorizontal: 4, paddingBottom: 8 },
+  premiumCarouselFooter: { paddingHorizontal: 8, paddingTop: 6, paddingBottom: 10, alignItems: 'center' },
+  premiumSwipeHint: { color: '#88808D', fontSize: 9, fontWeight: '700' },
+  premiumPageNumber: { color: '#403946', fontSize: 13, fontWeight: '900', marginTop: 5 },
+  premiumIndicators: { flexDirection: 'row', gap: 5, alignItems: 'center', marginTop: 6 },
+  premiumIndicator: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#D5CFD9' },
+  premiumCloseButton: { width: '100%', borderWidth: 1, paddingVertical: 10, alignItems: 'center', marginTop: 9 },
+  premiumCloseButtonText: { fontSize: 12, fontWeight: '900' },
+  previewTemplateSource: { borderWidth: 1, borderColor: '#DDD7E1', padding: 10, borderRadius: 10 },
+  previewTemplateTitle: { color: '#352F3B', fontSize: 12, fontWeight: '900' },
+  previewTemplateMeta: { color: '#756D7B', fontSize: 8, marginTop: 4 },
+  previewTemplateSave: { color: '#FFFFFF', backgroundColor: '#7057B3', fontSize: 8, fontWeight: '900', textAlign: 'center', paddingVertical: 7, marginTop: 8, borderRadius: 7 },
+  previewTemplateSaved: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#F4EFF7', padding: 9, borderRadius: 9 },
+  previewTemplateChoose: { color: '#6C54AA', fontSize: 9, fontWeight: '900' },
+  previewTemplateReady: { color: '#5B5262', fontSize: 9, fontWeight: '800', textAlign: 'center', marginTop: 7 },
+  taskTemplateSaveAction: { marginTop: 10, borderWidth: 1, borderColor: '#CFC4DB', backgroundColor: '#F7F2FA', padding: 13, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  taskTemplateSaveTitle: { color: '#3B3341', fontSize: 13, fontWeight: '900' },
+  taskTemplateSaveCopy: { color: '#7D7383', fontSize: 9, marginTop: 3 },
+  taskTemplateSavePremium: { color: '#6F52B5', fontSize: 9, fontWeight: '900' },
+  templateGroupLabel: { color: '#6A6270', fontSize: 10, fontWeight: '900', marginTop: 8, marginBottom: 7 },
+  savedTemplatePicker: { marginBottom: 8 },
+  savedTemplateEmpty: { color: '#857D8A', fontSize: 10, lineHeight: 16, paddingVertical: 8 },
+  savedTemplateChips: { gap: 8, paddingBottom: 5 },
+  savedTemplateChip: { width: 190, borderWidth: 1, borderColor: '#D9D0E2', backgroundColor: '#FBF8FD', padding: 11, borderRadius: 13 },
+  savedTemplateChipTitle: { color: '#352F3B', fontSize: 12, fontWeight: '900' },
+  savedTemplateChipCopy: { color: '#786F7E', fontSize: 9, lineHeight: 14, marginTop: 4 },
+  savedTemplateChoose: { color: '#6D52B5', fontSize: 9, fontWeight: '900', marginTop: 7 },
+  savedTemplateLocked: { flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: '#D7CCDF', backgroundColor: '#F8F3FA', padding: 12, marginVertical: 8, borderRadius: 12 },
+  savedTemplateLockedTitle: { color: '#403746', fontSize: 12, fontWeight: '900' },
+  savedTemplateLockedCopy: { color: '#817687', fontSize: 9, lineHeight: 14, marginTop: 3 },
+  savedTemplateSettingRow: { flexDirection: 'row', alignItems: 'center', borderTopWidth: 1, borderTopColor: '#E4DFE7', paddingVertical: 10 },
+  savedTemplateSettingTitle: { color: '#39323F', fontSize: 12, fontWeight: '900' },
+  savedTemplateSettingCopy: { color: '#7B7280', fontSize: 9, lineHeight: 14, marginTop: 3 },
+  devPlanLabel: { color: '#6E6674', fontSize: 10, fontWeight: '900', marginTop: 14, marginBottom: 7 },
+  devPlanChoices: { flexDirection: 'row', gap: 8 },
+  devPlanChoice: { flex: 1, borderWidth: 1, borderColor: '#D1CAD6', backgroundColor: '#F5F2F6', paddingVertical: 11, alignItems: 'center', borderRadius: 10 },
+  devPlanChoiceText: { color: '#5C5561', fontSize: 12, fontWeight: '900' },
+  devPlanChoiceTextActive: { color: '#FFFFFF' },
+  devPlanCurrent: { color: '#4B4450', fontSize: 10, fontWeight: '900', marginTop: 9 },
+  historyTaskActions: { alignItems: 'flex-end', gap: 5 },
+  historyTemplateButton: { borderWidth: 1, borderColor: '#D2C7DA', paddingHorizontal: 9, paddingVertical: 5, alignItems: 'center' },
+  historyTemplateButtonText: { color: '#55475E', fontSize: 9, fontWeight: '900' },
+  historyTemplatePremium: { color: '#8061B5', fontSize: 6, fontWeight: '900' },
   benefit: { color: colors.ink, fontSize: 13, fontWeight: '700', paddingVertical: 7 },
   notReadyPill: { alignSelf: 'center', backgroundColor: colors.violetSoft, borderRadius: 16, paddingHorizontal: 14, paddingVertical: 8, marginVertical: 14 },
   notReadyText: { color: colors.violet, fontSize: 11, fontWeight: '900' },

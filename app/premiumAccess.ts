@@ -14,7 +14,8 @@ export type PremiumFeature =
   | 'late_recovery'
   | 'focus_analysis'
   | 'time_analysis'
-  | 'behavior_analysis';
+  | 'behavior_analysis'
+  | 'saved_task_templates';
 
 export const FREE_SCHEDULE_DAYS = 7;
 
