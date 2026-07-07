@@ -2362,7 +2362,15 @@ function PremiumMiniPreview({ kind, designMode }: { kind: PremiumPreviewKind; de
   return <View style={styles.premiumPreview}><Text style={styles.previewImageLabel}>立て直しの表示イメージ</Text><View style={styles.previewDanger}><Text style={styles.previewDangerText}>予定どおりは厳しい</Text></View><View style={styles.previewRecoveryGrid}>{['今から出発', '到着予定を変更', '遅れる連絡', '予定を組み直す'].map((label) => <View key={label} style={styles.previewRecoveryOption}><Text style={styles.previewRecoveryText}>{label}</Text></View>)}</View>{designMode === 'companion' && <Text style={styles.previewCompanion}>🥚 ここから一緒に戻ろう</Text>}</View>;
 }
 
-function PremiumFeatureBlock({ number, kind, title, description, designMode, chicPattern }: { number: string; kind: PremiumPreviewKind; title: string; description: string; designMode: DesignMode; chicPattern: ChicPattern }) {
+function PremiumFeatureEntryCard({ number, title, active, designMode, chicPattern, onPress }: { number: string; title: string; active: boolean; designMode: DesignMode; chicPattern: ChicPattern; onPress: () => void }) {
+  return <Pressable onPress={onPress} style={[styles.premiumEntryCard, active && styles.premiumEntryCardActive, designMode === 'minimal' && styles.premiumEntryCardMinimal, designMode === 'chic' && styles.premiumEntryCardChic]}>
+    {designMode === 'chic' && <View pointerEvents="none" style={styles.premiumEntryPattern}><ChicPatternDecor pattern={chicPattern} accent="#D986A1" warm="#A997C8" density="compact" /></View>}
+    <Text style={[styles.premiumEntryNumber, active && styles.premiumEntryNumberActive]}>{number}</Text>
+    <Text numberOfLines={2} style={[styles.premiumEntryTitle, active && styles.premiumEntryTitleActive]}>{title}</Text>
+  </Pressable>;
+}
+
+function PremiumFeatureDetail({ number, kind, title, description, designMode, chicPattern }: { number: string; kind: PremiumPreviewKind; title: string; description: string; designMode: DesignMode; chicPattern: ChicPattern }) {
   return <View style={[styles.premiumFeatureBlock, designMode === 'minimal' && styles.premiumFeatureMinimal, designMode === 'chic' && styles.premiumFeatureChic, designMode === 'companion' && styles.premiumFeatureCompanion]}>
     {designMode === 'chic' && <ChicPatternDecor pattern={chicPattern} accent="#D986A1" warm="#A997C8" />}
     <View style={styles.premiumFeatureInner}>
@@ -2376,17 +2384,32 @@ function PremiumFeatureBlock({ number, kind, title, description, designMode, chi
 function PremiumModal({ visible, initialFeatureId, designMode, chicPattern, onClose }: { visible: boolean; initialFeatureId: PremiumGuideFeatureId; designMode: DesignMode; chicPattern: ChicPattern; onClose: () => void }) {
   const theme = getThemeTokens(designMode);
   const initialIndex = Math.max(0, PREMIUM_GUIDE_FEATURES.findIndex((feature) => feature.id === initialFeatureId));
-  const orderedFeatures = [...PREMIUM_GUIDE_FEATURES.slice(initialIndex), ...PREMIUM_GUIDE_FEATURES.slice(0, initialIndex)];
+  const [selectedFeatureId, setSelectedFeatureId] = useState<PremiumGuideFeatureId>(initialFeatureId);
+  useEffect(() => {
+    if (!visible) return;
+    setSelectedFeatureId(initialFeatureId);
+  }, [initialFeatureId, visible]);
+  const selectedFeature = PREMIUM_GUIDE_FEATURES.find((feature) => feature.id === selectedFeatureId) ?? PREMIUM_GUIDE_FEATURES[initialIndex] ?? PREMIUM_GUIDE_FEATURES[0]!;
+  const selectedIndex = Math.max(0, PREMIUM_GUIDE_FEATURES.findIndex((feature) => feature.id === selectedFeature.id));
   return <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
     <Pressable style={styles.modalBackdrop} onPress={onClose}>
       <Pressable style={[styles.modalSheet, styles.premiumModalSheet, { backgroundColor: theme.colors.screenBackground }]} onPress={(event) => event.stopPropagation()}>
         <View style={styles.modalHandle} />
-        <View style={styles.premiumCarouselHeader}><Text style={styles.premiumCarouselBrand}>Rhythm Premium</Text><Text style={styles.premiumCarouselCopy}>Rhythmが、あなたより少し先に動く。</Text></View>
-        <ScrollView style={styles.premiumCarouselArea} contentContainerStyle={styles.premiumGuideScroll} showsVerticalScrollIndicator={false}>
-          <Text style={styles.premiumSwipeHint}>下へスクロールして、Premiumの機能をすべて確認できます</Text>
-          {orderedFeatures.map((feature) => { const index = PREMIUM_GUIDE_FEATURES.findIndex((item) => item.id === feature.id); return <View key={feature.id} style={styles.premiumGuideSection}><PremiumFeatureBlock number={String(index + 1).padStart(2, '0')} {...feature} designMode={designMode} chicPattern={chicPattern} />{feature.id === 'month' && <View style={styles.premiumHistoryNote}><Text style={styles.premiumHistoryTitle}>過去の記録も、あとから振り返れる</Text><Text style={styles.premiumHistoryCopy}>7日を超えた完了記録や、集中・出発の記録も確認できます。</Text></View>}</View>; })}
-          <Pressable style={[styles.premiumCloseButton, { borderColor: theme.colors.primaryAccent }]} onPress={onClose}><Text style={[styles.premiumCloseButtonText, { color: theme.colors.primaryAccent }]}>Rhythmに戻る</Text></Pressable>
-        </ScrollView>
+        <View style={styles.premiumCarouselHeader}>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.premiumCarouselBrand}>Rhythm Premium</Text>
+            <Text style={styles.premiumCarouselCopy}>Rhythmが、あなたより少し先に動く。</Text>
+          </View>
+          <Pressable style={[styles.premiumHeaderClose, { borderColor: theme.colors.primaryAccent }]} onPress={onClose}><Text style={[styles.premiumCloseButtonText, { color: theme.colors.primaryAccent }]}>閉じる</Text></Pressable>
+        </View>
+        <View style={styles.premiumFeaturePicker}>
+          {PREMIUM_GUIDE_FEATURES.map((feature, index) => <PremiumFeatureEntryCard key={feature.id} number={String(index + 1).padStart(2, '0')} title={feature.title} active={feature.id === selectedFeature.id} designMode={designMode} chicPattern={chicPattern} onPress={() => setSelectedFeatureId(feature.id)} />)}
+        </View>
+        <View style={styles.premiumFeatureStage}>
+          <PremiumFeatureDetail number={String(selectedIndex + 1).padStart(2, '0')} kind={selectedFeature.kind} title={selectedFeature.title} description={selectedFeature.description} designMode={designMode} chicPattern={chicPattern} />
+          {selectedFeature.id === 'month' && <View style={styles.premiumHistoryNote}><Text style={styles.premiumHistoryTitle}>過去の記録も、あとから振り返れる</Text><Text style={styles.premiumHistoryCopy}>7日を超えた完了記録や、集中・出発の記録も確認できます。</Text></View>}
+        </View>
+        <Pressable style={[styles.premiumCloseButton, { borderColor: theme.colors.primaryAccent }]} onPress={onClose}><Text style={[styles.premiumCloseButtonText, { color: theme.colors.primaryAccent }]}>Rhythmに戻る</Text></Pressable>
       </Pressable>
     </Pressable>
   </Modal>;
@@ -2858,6 +2881,18 @@ const styles = StyleSheet.create({
   premiumCarouselBrand: { color: '#312B37', fontSize: 19, fontWeight: '900' },
   premiumCarouselCopy: { color: '#766E7C', fontSize: 11, marginTop: 3 },
   premiumCarouselArea: { flex: 1, overflow: 'hidden' },
+  premiumHeaderClose: { minWidth: 74, borderWidth: 1, borderRadius: 12, paddingVertical: 8, paddingHorizontal: 10, alignItems: 'center', justifyContent: 'center' },
+  premiumFeaturePicker: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 10 },
+  premiumFeatureStage: { marginBottom: 10 },
+  premiumEntryCard: { width: '48%', minHeight: 74, borderRadius: 16, borderWidth: 1, borderColor: '#DDD7E1', backgroundColor: '#FFF', padding: 10, overflow: 'hidden' },
+  premiumEntryCardActive: { borderColor: '#6F58B5', backgroundColor: '#F1ECFF' },
+  premiumEntryCardMinimal: { borderRadius: 2, borderColor: '#1A1A1A', backgroundColor: '#F8F8F8' },
+  premiumEntryCardChic: { backgroundColor: '#FFF7FA', borderColor: '#F0D5DF' },
+  premiumEntryPattern: { position: 'absolute', right: -4, top: -4, left: -4, bottom: -4, opacity: 0.18 },
+  premiumEntryNumber: { color: '#8F8797', fontSize: 9, fontWeight: '900' },
+  premiumEntryNumberActive: { color: '#6F58B5' },
+  premiumEntryTitle: { color: '#3A3340', fontSize: 11, lineHeight: 15, fontWeight: '900', marginTop: 9 },
+  premiumEntryTitleActive: { color: '#2A2440' },
   premiumGuideScroll: { paddingHorizontal: 4, paddingBottom: 24 },
   premiumGuideSection: { marginBottom: 12 },
   premiumSlideScroll: { paddingHorizontal: 4, paddingBottom: 8 },

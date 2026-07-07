@@ -5,6 +5,8 @@
   "main": "index.js",
   "scripts": {
     "start": "expo start",
+    "start:free": "set EXPO_PUBLIC_RHYTHM_PLAN=free&& expo start --port 8086",
+    "start:premium": "set EXPO_PUBLIC_RHYTHM_PLAN=premium&& expo start --port 8087",
     "android": "expo start --android",
     "ios": "expo start --ios",
     "web": "expo start --web",
