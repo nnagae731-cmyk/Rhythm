@@ -5,13 +5,13 @@ import * as Notifications from 'expo-notifications';
 import { StatusBar } from 'expo-status-bar';
 import React, { useEffect, useMemo, useState } from 'react';
 import { ChicPattern, DesignMode, getThemeTokens } from './theme';
-import { applyCompanionGrowthEvent, CompanionGrowthStage, CompanionGrowthState, DEFAULT_COMPANION_GROWTH_STATE, getCompanionGrowthStage, getCompanionStageStatus, hasTaskCompletionBeenAwarded } from './companionGrowth';
+import { applyCompanionGrowthEvent, CompanionGrowthState, DEFAULT_COMPANION_GROWTH_STATE, hasTaskCompletionBeenAwarded } from './companionGrowth';
 import { createRecoveryRecord, getRecoveryOptions, RecoveryOption, RecoveryRecord } from './recovery';
 import { createCompletedFocusSession, createFocusSessionId, FocusSession } from './focusSession';
 import { createDepartureCheckIn, DepartureCheckIn } from './departureCheckIn';
 import { getEffectiveChicPattern, getEffectiveNudgeMode, hasPremiumAccess, isWithinFreeHistory, PlanTier } from './premiumAccess';
 import { AnalysisScreen } from './AnalysisScreen';
-import { appendBehaviorEvent, appendBehaviorEvents, BehaviorEvent, createDeparturePreparationStartedEvent, createDepartureStartedEvent, createFocusCompletedBehaviorEvent, createFocusStartedEvent, createFocusStoppedEvent, createNotificationActionEvent, createNotificationScheduledEvent, createTaskCompletedBehaviorEvent, NotificationAction } from './behaviorEvents';
+import { appendBehaviorEvent, appendBehaviorEvents, BehaviorEvent, createDeparturePreparationStartedEvent, createDepartureStartedEvent, createFocusCompletedBehaviorEvent, createFocusStartedEvent, createFocusStoppedEvent, createNotificationActionEvent, createNotificationScheduledEvent, createTaskCompletedBehaviorEvent, createTaskStartedBehaviorEvent, NotificationAction } from './behaviorEvents';
 import { DEFAULT_PREMIUM_GUIDE_FEATURE, PremiumGuideFeatureId } from './premiumGuide';
 import { createPremiumTaskTemplate, hasSameTemplateSettings, PremiumTaskTemplate, summarizePremiumTaskTemplate } from './taskTemplates';
 import {
@@ -108,7 +108,6 @@ const completionIcons = ['✓', '★', '♥', '✿', '☀'];
 const designModes: { id: DesignMode; name: string; description: string }[] = [
   { id: 'minimal', name: 'Minimal', description: '静かで端正' },
   { id: 'chic', name: 'Chic', description: '淡くおしゃれ' },
-  { id: 'companion', name: 'Companion', description: '相棒と一緒' },
 ];
 const categoryColors: Record<Category, string> = {
   仕事: '#E9E4FF',
@@ -363,7 +362,7 @@ async function ensureNotifications() {
   await Notifications.setNotificationCategoryAsync('TASK_ACTIONS', [
     {
       identifier: 'DONE',
-      buttonTitle: '完了',
+      buttonTitle: '終わった',
       options: { opensAppToForeground: false },
     },
     {
@@ -371,15 +370,10 @@ async function ensureNotifications() {
       buttonTitle: '10分後',
       options: { opensAppToForeground: false },
     },
-    {
-      identifier: 'LATER',
-      buttonTitle: 'あとで',
-      options: { opensAppToForeground: false },
-    },
   ]);
   await Notifications.setNotificationCategoryAsync('DEPARTURE_ACTIONS', [
     { identifier: 'DEPARTED', buttonTitle: '出発した', options: { opensAppToForeground: false } },
-    { identifier: 'OPEN_TIME', buttonTitle: 'タイムを開く', options: { opensAppToForeground: true } },
+    { identifier: 'OPEN_TIME', buttonTitle: '今見る', options: { opensAppToForeground: true } },
     { identifier: 'OPEN_RECOVERY', buttonTitle: '立て直す', options: { opensAppToForeground: true } },
     { identifier: 'DEPARTURE_SNOOZE', buttonTitle: '5分後', options: { opensAppToForeground: false } },
   ]);
@@ -435,12 +429,11 @@ export default function App() {
   const [now, setNow] = useState(new Date());
   const [premiumOpen, setPremiumOpen] = useState(false);
   const [premiumTargetFeature, setPremiumTargetFeature] = useState<PremiumGuideFeatureId>(DEFAULT_PREMIUM_GUIDE_FEATURE);
-  const [devPlanTier, setDevPlanTier] = useState<PlanTier>('free');
   const [hydrated, setHydrated] = useState(false);
-  const planTier: PlanTier = __DEV__ ? devPlanTier : 'free';
+  const planTier: PlanTier = process.env.EXPO_PUBLIC_RHYTHM_PLAN === 'premium' ? 'premium' : 'free';
+  const planTierRef = React.useRef<PlanTier>(planTier);
+  const uiDesignMode = designMode === 'companion' ? 'chic' : designMode;
   const effectiveChicPattern = getEffectiveChicPattern(planTier, chicPattern) as ChicPattern;
-  const companionGrowthStage = getCompanionGrowthStage(companionGrowth.growthPoints);
-
   const openPremiumFeature = React.useCallback((featureId: PremiumGuideFeatureId = DEFAULT_PREMIUM_GUIDE_FEATURE) => {
     setPremiumTargetFeature(featureId);
     setPremiumOpen(true);
@@ -530,6 +523,7 @@ export default function App() {
   useEffect(() => { departurePlansRef.current = departurePlans; }, [departurePlans]);
   useEffect(() => { departureCheckInsRef.current = departureCheckIns; }, [departureCheckIns]);
   useEffect(() => { behaviorEventsRef.current = behaviorEvents; }, [behaviorEvents]);
+  useEffect(() => { planTierRef.current = planTier; }, [planTier]);
 
   useEffect(() => {
     AsyncStorage.getItem(STORAGE_KEY)
@@ -549,7 +543,8 @@ export default function App() {
         if (saved.widgetSize) setWidgetSize(saved.widgetSize);
         if (typeof saved.showCompleted === 'boolean') setShowCompleted(saved.showCompleted);
         if (saved.completionIcon) setCompletionIcon(saved.completionIcon);
-        if (saved.designMode) setDesignMode(saved.designMode);
+        if (saved.designMode === 'minimal' || saved.designMode === 'chic') setDesignMode(saved.designMode);
+        else setDesignMode('chic');
         setChicPattern(saved.chicPattern ?? 'floral');
         setCompanionGrowth(saved.companionGrowth ?? DEFAULT_COMPANION_GROWTH_STATE);
         setRecoveryHistory(saved.recoveryHistory ?? []);
@@ -557,7 +552,6 @@ export default function App() {
         const loadedBehaviorEvents = saved.behaviorEvents ?? [];
         behaviorEventsRef.current = loadedBehaviorEvents;
         setBehaviorEvents(loadedBehaviorEvents);
-        if (__DEV__) setDevPlanTier(saved.devPlanTier === 'premium' || saved.devPlanTier === 'free' ? saved.devPlanTier : saved.devPremiumPreview === true ? 'premium' : 'free');
         if (saved.taskTemplates) setTaskTemplates(saved.taskTemplates);
         setSavedTaskTemplates(saved.savedTaskTemplates ?? []);
       })
@@ -609,7 +603,7 @@ export default function App() {
       }
 
       if (action === 'OPEN_RECOVERY') {
-        if (!hasPremiumAccess(planTier, 'late_recovery')) {
+        if (!hasPremiumAccess(planTierRef.current, 'late_recovery')) {
           openPremiumFeature('recovery');
           return;
         }
@@ -666,7 +660,7 @@ export default function App() {
     });
 
     return () => responseSubscription.remove();
-  }, [completeTaskIds, markDeparturePlanAsDeparted, openPremiumFeature, planTier, recordBehaviorEvent, recordNotificationBehaviorAction]);
+  }, [completeTaskIds, markDeparturePlanAsDeparted, openPremiumFeature, recordBehaviorEvent, recordNotificationBehaviorAction]);
 
   useEffect(() => {
     const timer = setInterval(() => setNow(new Date()), 30_000);
@@ -675,9 +669,9 @@ export default function App() {
 
   useEffect(() => {
     if (!hydrated) return;
-    const state: PersistedState = { tasks, plan, departurePlans, widgetSize, showCompleted, completionIcon, designMode, taskTemplates, savedTaskTemplates, chicPattern, companionGrowth, recoveryHistory, focusSessions, departureCheckIns, behaviorEvents, devPlanTier: __DEV__ ? devPlanTier : undefined };
+    const state: PersistedState = { tasks, plan, departurePlans, widgetSize, showCompleted, completionIcon, designMode, taskTemplates, savedTaskTemplates, chicPattern, companionGrowth, recoveryHistory, focusSessions, departureCheckIns, behaviorEvents };
     AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(state)).catch(() => undefined);
-  }, [tasks, plan, departurePlans, widgetSize, showCompleted, completionIcon, designMode, taskTemplates, savedTaskTemplates, chicPattern, companionGrowth, recoveryHistory, focusSessions, departureCheckIns, behaviorEvents, devPlanTier, hydrated]);
+  }, [tasks, plan, departurePlans, widgetSize, showCompleted, completionIcon, designMode, taskTemplates, savedTaskTemplates, chicPattern, companionGrowth, recoveryHistory, focusSessions, departureCheckIns, behaviorEvents, hydrated]);
 
   const timeline = useMemo(() => {
     const arrival = parseClock(plan.arrival);
@@ -768,7 +762,7 @@ export default function App() {
       await Notifications.scheduleNotificationAsync({
         identifier: notificationInstanceId,
         content: {
-          title: index === 0 ? '忘れてない？' : index === offsets.length - 1 ? 'まだ終わってなければ、今確認しよう' : 'そろそろ始められそう？',
+          title: index === 0 ? '終わった？' : index === offsets.length - 1 ? 'まだなら、今確認しよう' : 'そろそろ終われそう？',
           body: task.title,
           categoryIdentifier: 'TASK_ACTIONS',
           data: { taskId: task.id, notificationInstanceId, notificationKind: 'task_reminder', nudgeIndex: index },
@@ -812,25 +806,25 @@ export default function App() {
       {
         id: 'prepare',
         before: targetPlan.travelMinutes + targetPlan.bufferMinutes + targetPlan.preparationMinutes,
-        title: '準備を始めよう',
+        title: '準備、始めた？',
         body: `${timeline.leave}に出発すると安心です`,
       },
       {
         id: 'ten_minutes',
         before: targetPlan.travelMinutes + targetPlan.bufferMinutes + 10,
-        title: 'あと10分で出発',
+        title: 'そろそろ出発しよう',
         body: `${targetPlan.title}の持ち物を確認しよう`,
       },
       {
         id: 'leave_now',
         before: targetPlan.travelMinutes + targetPlan.bufferMinutes,
-        title: '今出れば間に合います',
+        title: '出発した？',
         body: `${timeline.arrival}到着予定です`,
       },
       {
         id: 'late_warning',
         before: Math.max(0, targetPlan.travelMinutes + targetPlan.bufferMinutes - 5),
-        title: '出発時刻を5分過ぎています',
+        title: 'まだなら、今出よう',
         body: '急いで出発するか、予定を組み直してください',
       },
     ].filter((stage) => stage.id !== 'late_warning' || hasPremiumAccess(planTier, 'late_recovery'));
@@ -871,27 +865,33 @@ export default function App() {
   };
 
   return (
-    <SafeAreaView style={[styles.safe, { backgroundColor: theme.colors.screenBackground }, designMode === 'minimal' && styles.safeMinimal, designMode === 'chic' && styles.safeChic, designMode === 'companion' && styles.safeCompanion]}>
+    <SafeAreaView style={[styles.safe, { backgroundColor: theme.colors.screenBackground }, uiDesignMode === 'minimal' && styles.safeMinimal, uiDesignMode === 'chic' && styles.safeChic]}>
       <StatusBar style="dark" />
       <View style={styles.app}>
-        <Header designMode={designMode} now={now} />
+        <Header designMode={uiDesignMode} now={now} />
 
         <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
           {screen === 'home' && (
             <HomeScreen
               tasks={visibleTasks}
               allTasks={tasks}
+              behaviorEvents={behaviorEvents}
               remaining={remaining}
               timeline={displayTimeline}
               now={now}
               dangerousTask={dangerousTask}
-              designMode={designMode}
+              designMode={uiDesignMode}
               chicPattern={effectiveChicPattern}
-              companionGrowthStage={companionGrowthStage}
               completionIcon={completionIcon}
               selectionMode={selectionMode}
               selectedTaskIds={selectedTaskIds}
               onAdd={() => setAddOpen(true)}
+              onQuickAdd={(title) => addTask(title, 'その他', '中')}
+              onStartTask={(taskId) => {
+                const task = tasksRef.current.find((item) => item.id === taskId);
+                if (!task) return;
+                recordBehaviorEvent(createTaskStartedBehaviorEvent({ taskId: task.id, taskTitle: task.title, occurredAt: new Date() }));
+              }}
               onToggle={(id) => completeTaskIds([id])}
               onEdit={(task) => setEditingTask(task)}
               onToggleSelection={(id) => setSelectedTaskIds((current) => current.includes(id) ? current.filter((item) => item !== id) : [...current, id])}
@@ -923,7 +923,7 @@ export default function App() {
               behaviorEvents={behaviorEvents}
               tasks={tasks}
               now={now}
-              designMode={designMode}
+              designMode={uiDesignMode}
               chicPattern={effectiveChicPattern}
               planTier={planTier}
               initialTab={timelineInitialTab}
@@ -952,7 +952,7 @@ export default function App() {
               size={widgetSize}
               showCompleted={showCompleted}
               completionIcon={completionIcon}
-              designMode={designMode}
+              designMode={uiDesignMode}
               chicPattern={effectiveChicPattern}
               planTier={planTier}
               onSize={setWidgetSize}
@@ -971,38 +971,36 @@ export default function App() {
               onGuide={() => setGuideOpen(true)}
               onPremium={openPremiumFeature}
               onDeleteSavedTemplate={deleteSavedTaskTemplate}
-              devPlanTier={devPlanTier}
-              onDevPlanTier={setDevPlanTier}
             />
           )}
 
           {screen === 'analysis' && (
             <AnalysisScreen
               events={behaviorEvents}
-              designMode={designMode}
+              designMode={uiDesignMode}
               planTier={planTier}
               onPremium={openPremiumFeature}
-              recordContent={<HistoryScreen tasks={tasks} recoveryHistory={recoveryHistory} focusSessions={focusSessions} departureCheckIns={departureCheckIns} completionIcon={completionIcon} designMode={designMode} chicPattern={effectiveChicPattern} planTier={planTier} onPremium={openPremiumFeature} onSaveTemplate={saveTaskAsTemplate} onRestore={(id) => setTasks((current) => current.map((task) => task.id === id ? { ...task, done: false, completedAt: undefined } : task))} />}
+              recordContent={<HistoryScreen tasks={tasks} recoveryHistory={recoveryHistory} focusSessions={focusSessions} departureCheckIns={departureCheckIns} completionIcon={completionIcon} designMode={uiDesignMode} chicPattern={effectiveChicPattern} planTier={planTier} onPremium={openPremiumFeature} onSaveTemplate={saveTaskAsTemplate} onRestore={(id) => setTasks((current) => current.map((task) => task.id === id ? { ...task, done: false, completedAt: undefined } : task))} />}
             />
           )}
         </ScrollView>
 
-        <BottomNav screen={screen} designMode={designMode} onChange={setScreen} />
+        <BottomNav screen={screen} designMode={uiDesignMode} onChange={setScreen} />
       </View>
 
-      <TaskModal visible={addOpen} templates={taskTemplates} savedTemplates={savedTaskTemplates} designMode={designMode} planTier={planTier} onPremium={openPremiumFeature} onClose={() => setAddOpen(false)} onSave={addTask} />
+      <TaskModal visible={addOpen} templates={taskTemplates} savedTemplates={savedTaskTemplates} designMode={uiDesignMode} planTier={planTier} onPremium={openPremiumFeature} onClose={() => setAddOpen(false)} onSave={addTask} />
       <TaskModal
         visible={editingTask !== null}
         task={editingTask ?? undefined}
         templates={taskTemplates}
         savedTemplates={savedTaskTemplates}
-        designMode={designMode}
+        designMode={uiDesignMode}
         planTier={planTier}
         onPremium={openPremiumFeature}
         onClose={() => setEditingTask(null)}
         onSave={updateTask}
       />
-      <PremiumModal visible={premiumOpen} initialFeatureId={premiumTargetFeature} designMode={designMode} chicPattern={effectiveChicPattern} onClose={() => setPremiumOpen(false)} />
+      <PremiumModal visible={premiumOpen} initialFeatureId={premiumTargetFeature} designMode={uiDesignMode} chicPattern={effectiveChicPattern} onClose={() => setPremiumOpen(false)} />
       <GuideModal visible={guideOpen} onClose={() => setGuideOpen(false)} />
     </SafeAreaView>
   );
@@ -1022,6 +1020,7 @@ function Header({ designMode, now }: { designMode: ThemeMode; now: Date }) {
 function HomeScreen({
   tasks,
   allTasks,
+  behaviorEvents,
   remaining,
   timeline,
   now,
@@ -1029,10 +1028,11 @@ function HomeScreen({
   completionIcon,
   designMode,
   chicPattern,
-  companionGrowthStage,
   selectionMode,
   selectedTaskIds,
   onAdd,
+  onQuickAdd,
+  onStartTask,
   onToggle,
   onEdit,
   onToggleSelection,
@@ -1048,17 +1048,19 @@ function HomeScreen({
 }: {
   tasks: Task[];
   allTasks: Task[];
+  behaviorEvents: BehaviorEvent[];
   remaining: number;
   timeline: { start: string; leave: string; arrival: string };
   now: Date;
   dangerousTask?: Task;
   designMode: DesignMode;
   chicPattern: ChicPattern;
-  companionGrowthStage: CompanionGrowthStage;
   completionIcon: string;
   selectionMode: boolean;
   selectedTaskIds: string[];
   onAdd: () => void;
+  onQuickAdd: (title: string) => void;
+  onStartTask: (id: string) => void;
   onToggle: (id: string) => void;
   onEdit: (task: Task) => void;
   onToggleSelection: (id: string) => void;
@@ -1072,28 +1074,79 @@ function HomeScreen({
   onBucket: (id: string, bucket: TaskBucket) => void;
   onOpenTime: (tab: TimeTab) => void;
 }) {
+  const priorityOrder: Record<Priority, number> = { 高: 0, 中: 1, 低: 2 };
   const [categoryFilter, setCategoryFilter] = useState<'すべて' | Category>('すべて');
   const [bucketFilter, setBucketFilter] = useState<TaskBucket>('now');
   const [bucketTask, setBucketTask] = useState<Task | null>(null);
   const [actionTask, setActionTask] = useState<Task | null>(null);
+  const [quickTitle, setQuickTitle] = useState('');
+  const [statusMessage, setStatusMessage] = useState('');
   const bucketTasks = tasks.filter((task) => (task.bucket ?? 'now') === bucketFilter);
   const categoryTasks = categoryFilter === 'すべて' ? bucketTasks : bucketTasks.filter((task) => task.category === categoryFilter);
-  const priorityOrder: Record<Priority, number> = { 高: 0, 中: 1, 低: 2 };
   const displayTasks = [...categoryTasks].sort((a, b) => priorityOrder[a.priority] - priorityOrder[b.priority]);
+  const nextNowTask = [...allTasks]
+    .filter((task) => !task.done && (task.bucket ?? 'now') === 'now')
+    .sort((a, b) => priorityOrder[a.priority] - priorityOrder[b.priority])[0];
+  const startedTaskIds = useMemo(() => new Set(behaviorEvents.filter((event) => event.type === 'task_started' && event.taskId).map((event) => event.taskId as string)), [behaviorEvents]);
+  const isStarted = Boolean(nextNowTask && startedTaskIds.has(nextNowTask.id));
+  const handleQuickAdd = () => {
+    const title = quickTitle.trim();
+    if (!title) return;
+    onQuickAdd(title);
+    setQuickTitle('');
+  };
   return (
     <>
       <View style={[styles.compactTodayHeader, designMode === 'minimal' && styles.compactTodayHeaderMinimal, designMode === 'chic' && styles.compactTodayHeaderChic, designMode === 'companion' && styles.compactTodayHeaderCompanion]}>
         {designMode === 'chic' && <ChicPatternDecor pattern={chicPattern} accent="#D986A1" warm="#A997C8" />}
-        {designMode === 'companion' && <><View pointerEvents="none" style={styles.companionHabitatSun} /><View pointerEvents="none" style={styles.companionHabitatFloor} /></>}
         <View style={designMode === 'chic' ? styles.chicTodayPaper : styles.todayHeaderInner}>
-          {designMode === 'minimal' && <View style={styles.todayMinimalIndex}><Text style={styles.todayMinimalIndexText}>{String(tasks.filter((task) => (task.bucket ?? 'now') === 'now').length).padStart(2, '0')}</Text></View>}
+          {designMode === 'minimal' && <View style={styles.todayMinimalIndex}><Text style={styles.todayMinimalIndexText}>{String(allTasks.filter((task) => (task.bucket ?? 'now') === 'now' && !task.done).length).padStart(2, '0')}</Text></View>}
           {designMode === 'chic' && <View style={styles.todayChicMark}><Text style={styles.todayChicMarkText}>✿</Text></View>}
-          {designMode === 'companion' && <View style={styles.todayCompanionFace}><Text style={styles.todayCompanionFaceText}>🥚</Text></View>}
-          <View style={{ flex: 1 }}><Text style={[styles.compactTodayKicker, designMode === 'chic' && styles.compactTodayKickerChic, designMode === 'companion' && styles.compactTodayKickerCompanion]}>{designMode === 'minimal' ? '今日の優先' : designMode === 'chic' ? '今日のメモ' : '相棒から'}</Text><Text numberOfLines={2} style={styles.compactTodayCopy}>{designMode === 'companion' ? getCompanionStageStatus(companionGrowthStage) : remaining === 0 ? '今日の分は完了。いい感じ' : `まずは、今やる${tasks.filter((task) => (task.bucket ?? 'now') === 'now').length}件から`}</Text>{designMode === 'chic' && <Text style={styles.chicTodayStats}>完了 {allTasks.filter((task) => task.done && task.completedAt && dateKey(task.completedAt) === dateKey(now)).length}　残り {remaining}</Text>}</View>
-          {designMode === 'chic' && <Text style={styles.todayChicSpark}>✦</Text>}
+          <View style={{ flex: 1 }}>
+            <Text style={[styles.compactTodayKicker, designMode === 'chic' && styles.compactTodayKickerChic]}>{nextNowTask ? '今はこれ' : '今日のはじまり'}</Text>
+            <Text numberOfLines={2} style={styles.compactTodayCopy}>{nextNowTask ? nextNowTask.title : remaining === 0 ? '今日の分は完了。いい感じ' : '次にやる1つをここで決めます'}</Text>
+            {nextNowTask ? <Text style={styles.quickReplyHint}>{isStarted ? '終わったらここで完了できます' : '始めるか、少し待つかを選べます'}</Text> : <Text style={styles.quickReplyHint}>ここから、今日の1つを追加できます</Text>}
+            {designMode === 'chic' && <Text style={styles.chicTodayStats}>完了 {allTasks.filter((task) => task.done && task.completedAt && dateKey(task.completedAt) === dateKey(now)).length}　残り {remaining}</Text>}
+          </View>
         </View>
       </View>
       <TodayWinStrip tasks={allTasks} designMode={designMode} chicPattern={chicPattern} onRestore={(id) => onRestore(id)} />
+
+      <View style={[styles.quickAddCard, designMode === 'minimal' && styles.quickAddCardMinimal, designMode === 'chic' && styles.quickAddCardChic]}>
+        <Text style={styles.quickAddTitle}>やることを追加</Text>
+        <TextInput
+          value={quickTitle}
+          onChangeText={setQuickTitle}
+          placeholder="明日18時に洗濯物を取り込む"
+          placeholderTextColor="#A29DAA"
+          style={styles.quickAddInput}
+          returnKeyType="done"
+          onSubmitEditing={handleQuickAdd}
+        />
+        <Text style={styles.quickAddHint}>キーボードのマイクから音声でも入力できます</Text>
+        <Pressable style={styles.quickAddButton} onPress={handleQuickAdd}><Text style={styles.quickAddButtonText}>登録</Text></Pressable>
+      </View>
+
+      {nextNowTask && (
+        <View style={[styles.nowActionCard, designMode === 'minimal' && styles.nowActionCardMinimal, designMode === 'chic' && styles.nowActionCardChic]}>
+          <Text style={styles.nowActionLabel}>{isStarted ? '終わった？' : 'このタスク、始める？'}</Text>
+          <Text numberOfLines={2} style={styles.nowActionTitle}>{nextNowTask.title}</Text>
+          <View style={styles.nowActionButtons}>
+            {isStarted ? (
+              <>
+                <Pressable style={styles.nowActionPrimary} onPress={() => onToggle(nextNowTask.id)}><Text style={styles.nowActionPrimaryText}>終わった</Text></Pressable>
+                <Pressable style={styles.nowActionSecondary} onPress={() => setStatusMessage('まだ続けても大丈夫。10分後にもう一度確認します。')}><Text style={styles.nowActionSecondaryText}>まだ続ける</Text></Pressable>
+              </>
+            ) : (
+              <>
+                <Pressable style={styles.nowActionPrimary} onPress={() => onStartTask(nextNowTask.id)}><Text style={styles.nowActionPrimaryText}>始める</Text></Pressable>
+                <Pressable style={styles.nowActionSecondary} onPress={() => setStatusMessage('今の時間から次を考えます。') }><Text style={styles.nowActionSecondaryText}>まだ</Text></Pressable>
+              </>
+            )}
+          </View>
+          {!!statusMessage && <Text style={styles.nowActionNote}>{statusMessage}</Text>}
+        </View>
+      )}
 
       <View style={[styles.sectionHeader, designMode === 'minimal' && styles.sectionHeaderMinimal]}>
         <View>
@@ -1261,6 +1314,7 @@ function TimelineScreen({
   const [calendarEvents, setCalendarEvents] = useState<Calendar.Event[]>([]);
   const [calendarLoading, setCalendarLoading] = useState(false);
   const [recoveryPlan, setRecoveryPlan] = useState<DeparturePlan>();
+  const [statusMessage, setStatusMessage] = useState('');
   useEffect(() => setTimeTab(initialTab), [initialTab]);
   useEffect(() => {
     if (!recoveryTargetPlanId) return;
@@ -1334,9 +1388,10 @@ function TimelineScreen({
             {departureEvent && <Text style={styles.taskMeta}>出発 {formatLiveTime(new Date(departureEvent.actualAt ?? departureEvent.occurredAt))}</Text>}
             {checkIn && <Text style={styles.taskMeta}>出発済み {formatLiveTime(new Date(checkIn.departedAt))} · {checkIn.onTime ? '予定どおり' : '遅れて出発'}</Text>}
           </View>
-          <View style={styles.departureCountdownRight}><Text style={styles.departureCountdownValue}>{checkIn ? '出発済み' : passed ? '終了' : countdownToDate(moments.leave, now)}</Text>{!preparationEvent && item.id && <Pressable style={styles.recoveryMiniButton} onPress={() => onPreparationStarted(item.id!)}><Text style={styles.recoveryMiniButtonText}>準備を始めた</Text></Pressable>}{!checkIn && item.id && <Pressable style={styles.recoveryMiniButton} onPress={() => onDeparted(item.id!)}><Text style={styles.recoveryMiniButtonText}>今から出発</Text></Pressable>}{!checkIn && moments.leave.getTime() <= now.getTime() && <Pressable style={styles.recoveryMiniButton} onPress={() => hasPremiumAccess(planTier, 'late_recovery') ? setRecoveryPlan(item) : onPremium('recovery')}><Text style={styles.recoveryMiniButtonText}>立て直す {hasPremiumAccess(planTier, 'late_recovery') ? '' : 'Premium'}</Text></Pressable>}<View style={styles.departureActions}><Pressable onPress={() => onEdit(item)}><Text style={styles.departureEdit}>編集</Text></Pressable><Pressable onPress={() => item.id && onDelete(item.id)}><Text style={styles.departureDelete}>×</Text></Pressable></View></View>
+          <View style={styles.departureCountdownRight}><Text style={styles.departureCountdownValue}>{checkIn ? '出発済み' : passed ? '終了' : countdownToDate(moments.leave, now)}</Text>{!preparationEvent && item.id && <View style={styles.twoChoiceRow}><Pressable style={styles.recoveryMiniButton} onPress={() => onPreparationStarted(item.id!)}><Text style={styles.recoveryMiniButtonText}>準備した</Text></Pressable><Pressable style={styles.recoveryMiniButtonSecondary} onPress={() => setStatusMessage('今の時間から、次に準備するタイミングを考えます。')}><Text style={styles.recoveryMiniButtonSecondaryText}>まだ</Text></Pressable></View>}{!checkIn && item.id && <View style={styles.twoChoiceRow}><Pressable style={styles.recoveryMiniButton} onPress={() => onDeparted(item.id!)}><Text style={styles.recoveryMiniButtonText}>出発した</Text></Pressable><Pressable style={styles.recoveryMiniButtonSecondary} onPress={() => setStatusMessage('5分後にもう一度確認します。')}><Text style={styles.recoveryMiniButtonSecondaryText}>まだ</Text></Pressable></View>}{!checkIn && moments.leave.getTime() <= now.getTime() && <Pressable style={styles.recoveryMiniButton} onPress={() => hasPremiumAccess(planTier, 'late_recovery') ? setRecoveryPlan(item) : onPremium('recovery')}><Text style={styles.recoveryMiniButtonText}>立て直す {hasPremiumAccess(planTier, 'late_recovery') ? '' : 'Premium'}</Text></Pressable>}<View style={styles.departureActions}><Pressable onPress={() => onEdit(item)}><Text style={styles.departureEdit}>編集</Text></Pressable><Pressable onPress={() => item.id && onDelete(item.id)}><Text style={styles.departureDelete}>×</Text></Pressable></View></View>
         </View>;
       })}
+      {!!statusMessage && <Text style={styles.timelineStatusMessage}>{statusMessage}</Text>}
 
       <Text style={[styles.sectionTitle, { marginTop: 20, marginBottom: 10 }]}>{plan.id ? '予定を編集' : '予定を追加'}</Text>
       <View style={styles.formCard}>
@@ -1768,8 +1823,6 @@ function WidgetScreen({
   onPremium,
   onDeleteSavedTemplate,
   planTier,
-  devPlanTier,
-  onDevPlanTier,
 }: {
   tasks: Task[];
   timeline: { start: string; leave: string; arrival: string };
@@ -1793,8 +1846,6 @@ function WidgetScreen({
   onPremium: (featureId?: PremiumGuideFeatureId) => void;
   onDeleteSavedTemplate: (template: PremiumTaskTemplate) => void;
   planTier: PlanTier;
-  devPlanTier: PlanTier;
-  onDevPlanTier: (value: PlanTier) => void;
 }) {
   const [newTemplate, setNewTemplate] = useState('');
   const previewTasks = tasks.filter((task) => showCompleted || !task.done).slice(0, size === 'small' ? 2 : 3);
@@ -1802,7 +1853,7 @@ function WidgetScreen({
   return (
     <>
       <Text style={styles.hero}>Rhythmを、私仕様に。</Text>
-      {__DEV__ && <View style={styles.settingsCard}><Text style={styles.settingsTitle}>開発用 利用プラン</Text><Text style={styles.switchCopy}>Expo Goで無料版とPremium版の実機能を切り替えます。</Text><Text style={styles.devPlanLabel}>現在の利用プラン</Text><View style={styles.devPlanChoices}>{(['free', 'premium'] as PlanTier[]).map((tier) => <Pressable key={tier} style={[styles.devPlanChoice, devPlanTier === tier && { backgroundColor: getThemeTokens(designMode).colors.primaryAccent, borderColor: getThemeTokens(designMode).colors.primaryAccent }]} onPress={() => onDevPlanTier(tier)}><Text style={[styles.devPlanChoiceText, devPlanTier === tier && styles.devPlanChoiceTextActive]}>{tier === 'free' ? '無料' : 'Premium'}</Text></Pressable>)}</View><Text style={styles.devPlanCurrent}>現在：{devPlanTier === 'premium' ? 'Premium' : '無料'}</Text></View>}
+      {__DEV__ && <View style={styles.settingsCard}><Text style={styles.settingsTitle}>Expo Go 確認環境</Text><Text style={styles.switchCopy}>このQRコードは、利用プランが固定された確認用環境です。</Text><Text style={styles.devPlanCurrent}>現在：{planTier === 'premium' ? 'Premium版' : '無料版'}</Text></View>}
       <View style={styles.modeCard}>
         <Text style={styles.settingsTitle}>デザインモード</Text>
         <View style={styles.modeChoices}>
@@ -2324,27 +2375,18 @@ function PremiumFeatureBlock({ number, kind, title, description, designMode, chi
 
 function PremiumModal({ visible, initialFeatureId, designMode, chicPattern, onClose }: { visible: boolean; initialFeatureId: PremiumGuideFeatureId; designMode: DesignMode; chicPattern: ChicPattern; onClose: () => void }) {
   const theme = getThemeTokens(designMode);
-  const carouselRef = React.useRef<ScrollView>(null);
-  const [pageWidth, setPageWidth] = useState(0);
   const initialIndex = Math.max(0, PREMIUM_GUIDE_FEATURES.findIndex((feature) => feature.id === initialFeatureId));
-  const [currentFeatureIndex, setCurrentFeatureIndex] = useState(initialIndex);
-  useEffect(() => {
-    if (!visible) return;
-    const nextIndex = Math.max(0, PREMIUM_GUIDE_FEATURES.findIndex((feature) => feature.id === initialFeatureId));
-    setCurrentFeatureIndex(nextIndex);
-    if (pageWidth > 0) requestAnimationFrame(() => carouselRef.current?.scrollTo({ x: nextIndex * pageWidth, animated: false }));
-  }, [initialFeatureId, pageWidth, visible]);
+  const orderedFeatures = [...PREMIUM_GUIDE_FEATURES.slice(initialIndex), ...PREMIUM_GUIDE_FEATURES.slice(0, initialIndex)];
   return <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
     <Pressable style={styles.modalBackdrop} onPress={onClose}>
       <Pressable style={[styles.modalSheet, styles.premiumModalSheet, { backgroundColor: theme.colors.screenBackground }]} onPress={(event) => event.stopPropagation()}>
         <View style={styles.modalHandle} />
         <View style={styles.premiumCarouselHeader}><Text style={styles.premiumCarouselBrand}>Rhythm Premium</Text><Text style={styles.premiumCarouselCopy}>Rhythmが、あなたより少し先に動く。</Text></View>
-        <View style={styles.premiumCarouselArea} onLayout={(event) => setPageWidth(Math.round(event.nativeEvent.layout.width))}>
-          {pageWidth > 0 && <ScrollView ref={carouselRef} horizontal pagingEnabled showsHorizontalScrollIndicator={false} contentOffset={{ x: initialIndex * pageWidth, y: 0 }} onMomentumScrollEnd={(event) => { const next = Math.round(event.nativeEvent.contentOffset.x / pageWidth); setCurrentFeatureIndex(Math.max(0, Math.min(PREMIUM_GUIDE_FEATURES.length - 1, next))); }}>
-            {PREMIUM_GUIDE_FEATURES.map((feature, index) => <ScrollView key={feature.id} style={{ width: pageWidth }} contentContainerStyle={styles.premiumSlideScroll} showsVerticalScrollIndicator={false}><PremiumFeatureBlock number={String(index + 1).padStart(2, '0')} {...feature} designMode={designMode} chicPattern={chicPattern} />{feature.id === 'month' && <View style={styles.premiumHistoryNote}><Text style={styles.premiumHistoryTitle}>過去の記録も、あとから振り返れる</Text><Text style={styles.premiumHistoryCopy}>7日を超えた完了記録や、集中・出発の記録も確認できます。</Text></View>}</ScrollView>)}
-          </ScrollView>}
-        </View>
-        <View style={styles.premiumCarouselFooter}><Text style={styles.premiumSwipeHint}>横にスライドして他の機能を見る</Text><Text style={styles.premiumPageNumber}>{designMode === 'minimal' ? String(currentFeatureIndex + 1).padStart(2, '0') : currentFeatureIndex + 1} / {designMode === 'minimal' ? String(PREMIUM_GUIDE_FEATURES.length).padStart(2, '0') : PREMIUM_GUIDE_FEATURES.length}</Text><View style={styles.premiumIndicators}>{PREMIUM_GUIDE_FEATURES.map((feature, index) => <View key={feature.id} style={[styles.premiumIndicator, index === currentFeatureIndex && { backgroundColor: theme.colors.primaryAccent, width: 18 }]} />)}</View><Pressable style={[styles.premiumCloseButton, { borderColor: theme.colors.primaryAccent }]} onPress={onClose}><Text style={[styles.premiumCloseButtonText, { color: theme.colors.primaryAccent }]}>Rhythmに戻る</Text></Pressable></View>
+        <ScrollView style={styles.premiumCarouselArea} contentContainerStyle={styles.premiumGuideScroll} showsVerticalScrollIndicator={false}>
+          <Text style={styles.premiumSwipeHint}>下へスクロールして、Premiumの機能をすべて確認できます</Text>
+          {orderedFeatures.map((feature) => { const index = PREMIUM_GUIDE_FEATURES.findIndex((item) => item.id === feature.id); return <View key={feature.id} style={styles.premiumGuideSection}><PremiumFeatureBlock number={String(index + 1).padStart(2, '0')} {...feature} designMode={designMode} chicPattern={chicPattern} />{feature.id === 'month' && <View style={styles.premiumHistoryNote}><Text style={styles.premiumHistoryTitle}>過去の記録も、あとから振り返れる</Text><Text style={styles.premiumHistoryCopy}>7日を超えた完了記録や、集中・出発の記録も確認できます。</Text></View>}</View>; })}
+          <Pressable style={[styles.premiumCloseButton, { borderColor: theme.colors.primaryAccent }]} onPress={onClose}><Text style={[styles.premiumCloseButtonText, { color: theme.colors.primaryAccent }]}>Rhythmに戻る</Text></Pressable>
+        </ScrollView>
       </Pressable>
     </Pressable>
   </Modal>;
@@ -2561,6 +2603,10 @@ const styles = StyleSheet.create({
   departureDelete: { color: colors.muted, fontSize: 18, fontWeight: '700' },
   recoveryMiniButton: { alignSelf: 'flex-end', marginTop: 6, borderRadius: 9, backgroundColor: '#FFF0E4', paddingHorizontal: 9, paddingVertical: 5 },
   recoveryMiniButtonText: { color: '#B86A34', fontSize: 8, fontWeight: '900' },
+  recoveryMiniButtonSecondary: { alignSelf: 'flex-end', marginTop: 6, borderRadius: 9, backgroundColor: '#F4F0F6', paddingHorizontal: 9, paddingVertical: 5 },
+  recoveryMiniButtonSecondaryText: { color: colors.ink, fontSize: 8, fontWeight: '900' },
+  twoChoiceRow: { flexDirection: 'row', gap: 6, justifyContent: 'flex-end' },
+  timelineStatusMessage: { color: colors.muted, fontSize: 9, fontWeight: '700', marginTop: 8, marginBottom: 10 },
   recoveryHeader: { borderRadius: 20, padding: 16, marginBottom: 18 },
   recoveryEyebrow: { fontSize: 9, fontWeight: '900' },
   recoveryTitle: { color: colors.ink, fontSize: 22, lineHeight: 28, fontWeight: '900', marginTop: 7 },
@@ -2812,9 +2858,15 @@ const styles = StyleSheet.create({
   premiumCarouselBrand: { color: '#312B37', fontSize: 19, fontWeight: '900' },
   premiumCarouselCopy: { color: '#766E7C', fontSize: 11, marginTop: 3 },
   premiumCarouselArea: { flex: 1, overflow: 'hidden' },
+  premiumGuideScroll: { paddingHorizontal: 4, paddingBottom: 24 },
+  premiumGuideSection: { marginBottom: 12 },
   premiumSlideScroll: { paddingHorizontal: 4, paddingBottom: 8 },
   premiumCarouselFooter: { paddingHorizontal: 8, paddingTop: 6, paddingBottom: 10, alignItems: 'center' },
   premiumSwipeHint: { color: '#88808D', fontSize: 9, fontWeight: '700' },
+  premiumCarouselControls: { width: '100%', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 5 },
+  premiumCarouselControl: { minWidth: 70, paddingVertical: 7, paddingHorizontal: 10, alignItems: 'center' },
+  premiumCarouselControlDisabled: { opacity: 0.25 },
+  premiumCarouselControlText: { color: '#655E6A', fontSize: 12, fontWeight: '900' },
   premiumPageNumber: { color: '#403946', fontSize: 13, fontWeight: '900', marginTop: 5 },
   premiumIndicators: { flexDirection: 'row', gap: 5, alignItems: 'center', marginTop: 6 },
   premiumIndicator: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#D5CFD9' },
@@ -2979,6 +3031,26 @@ const styles = StyleSheet.create({
   compactTodayKickerChic: { color: '#C9507B', letterSpacing: 1.1 },
   compactTodayKickerCompanion: { color: '#9A6A20', letterSpacing: 0.8 },
   compactTodayCopy: { flex: 1, color: colors.ink, fontSize: 11, fontWeight: '800' },
+  quickReplyHint: { color: colors.muted, fontSize: 8, fontWeight: '700', marginTop: 3 },
+  quickAddCard: { backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#E8E1EC', borderRadius: 18, padding: 14, marginBottom: 12 },
+  quickAddCardMinimal: { borderRadius: 2, borderColor: '#1A1A1A', backgroundColor: '#F8F8F8' },
+  quickAddCardChic: { backgroundColor: '#FFF7FA', borderColor: '#F2D7E1' },
+  quickAddTitle: { color: colors.ink, fontSize: 12, fontWeight: '900', marginBottom: 8 },
+  quickAddInput: { minHeight: 44, borderRadius: 12, borderWidth: 1, borderColor: '#DDD7E1', backgroundColor: '#FFF', paddingHorizontal: 12, color: colors.ink, fontSize: 13, fontWeight: '700' },
+  quickAddHint: { color: colors.muted, fontSize: 8, fontWeight: '700', marginTop: 6 },
+  quickAddButton: { alignSelf: 'flex-end', minWidth: 74, height: 34, borderRadius: 10, backgroundColor: colors.violet, alignItems: 'center', justifyContent: 'center', marginTop: 10 },
+  quickAddButtonText: { color: '#FFFFFF', fontSize: 11, fontWeight: '900' },
+  nowActionCard: { backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#E8E1EC', borderRadius: 20, padding: 16, marginBottom: 12 },
+  nowActionCardMinimal: { borderRadius: 2, borderColor: '#1A1A1A', backgroundColor: '#FFFFFF' },
+  nowActionCardChic: { backgroundColor: '#FFF4F7', borderColor: '#F0D5DF' },
+  nowActionLabel: { color: colors.violet, fontSize: 9, fontWeight: '900', letterSpacing: 1.1 },
+  nowActionTitle: { color: colors.ink, fontSize: 20, fontWeight: '900', marginTop: 7, lineHeight: 26 },
+  nowActionButtons: { flexDirection: 'row', gap: 8, marginTop: 14 },
+  nowActionPrimary: { flex: 1, height: 44, borderRadius: 12, backgroundColor: colors.ink, alignItems: 'center', justifyContent: 'center' },
+  nowActionSecondary: { flex: 1, height: 44, borderRadius: 12, backgroundColor: '#F4F0F6', alignItems: 'center', justifyContent: 'center' },
+  nowActionPrimaryText: { color: '#FFFFFF', fontSize: 13, fontWeight: '900' },
+  nowActionSecondaryText: { color: colors.ink, fontSize: 13, fontWeight: '900' },
+  nowActionNote: { color: colors.muted, fontSize: 8, fontWeight: '700', marginTop: 8 },
   todayHeaderInner: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10, zIndex: 2 },
   chicTodayPaper: { flex: 0, width: '68%', minHeight: 108, alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: 8, padding: 13, borderRadius: 21, backgroundColor: 'rgba(255,255,255,0.84)', zIndex: 2 },
   chicTodayStats: { color: '#8B7B82', fontSize: 9, fontWeight: '800', marginTop: 8 },
