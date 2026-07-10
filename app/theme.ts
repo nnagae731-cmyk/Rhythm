@@ -1,4 +1,4 @@
-export type DesignMode = 'minimal' | 'chic' | 'companion';
+export type DesignMode = 'minimal' | 'chic';
 export type ChicPattern = 'floral' | 'dot' | 'check';
 
 export type ThemeTokens = {
@@ -25,12 +25,6 @@ export function getThemeTokens(mode: DesignMode): ThemeTokens {
     colors: { screenBackground: '#F4F4F2', surface: '#FFFFFF', secondarySurface: '#ECECEA', primaryText: '#171715', secondaryText: '#777772', primaryAccent: '#1D1D1B', secondaryAccent: '#555550', softAccent: '#E5E5E1', border: '#CFCFCA', success: '#446552', warning: '#80633E', danger: '#9A4646' },
     radius: { large: 4, small: 2, button: 4, chip: 4, modal: 8 },
     shadow: { color: '#000000', opacity: 0, radius: 0, y: 0 },
-  };
-  if (mode === 'companion') return {
-    ...shared,
-    colors: { screenBackground: '#FFF9F1', surface: '#FFFFFF', secondarySurface: '#FFF2DE', primaryText: '#3E352F', secondaryText: '#88786E', primaryAccent: '#F3A46F', secondaryAccent: '#8FC9BD', softAccent: '#FFE4BD', border: '#F0DFC9', success: '#6BA38A', warning: '#D39850', danger: '#CB7272' },
-    radius: { large: 28, small: 22, button: 20, chip: 999, modal: 30 },
-    shadow: { color: '#9F704B', opacity: 0.12, radius: 16, y: 7 },
   };
   return {
     ...shared,
