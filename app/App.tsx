@@ -1,17 +1,16 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
+﻿import AsyncStorage from '@react-native-async-storage/async-storage';
 import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import * as Calendar from 'expo-calendar';
 import * as Notifications from 'expo-notifications';
 import { StatusBar } from 'expo-status-bar';
 import React, { useEffect, useMemo, useState } from 'react';
 import { ChicPattern, DesignMode, getThemeTokens } from './theme';
-import { applyCompanionGrowthEvent, CompanionGrowthState, DEFAULT_COMPANION_GROWTH_STATE, hasTaskCompletionBeenAwarded } from './companionGrowth';
 import { createRecoveryRecord, getRecoveryOptions, RecoveryOption, RecoveryRecord } from './recovery';
 import { createCompletedFocusSession, createFocusSessionId, FocusSession } from './focusSession';
 import { createDepartureCheckIn, DepartureCheckIn } from './departureCheckIn';
 import { getEffectiveChicPattern, getEffectiveNudgeMode, hasPremiumAccess, isWithinFreeHistory, PlanTier } from './premiumAccess';
 import { AnalysisScreen } from './AnalysisScreen';
-import { appendBehaviorEvent, appendBehaviorEvents, BehaviorEvent, createDeparturePreparationStartedEvent, createDepartureStartedEvent, createFocusCompletedBehaviorEvent, createFocusStartedEvent, createFocusStoppedEvent, createNotificationActionEvent, createNotificationScheduledEvent, createTaskCompletedBehaviorEvent, createTaskStartedBehaviorEvent, NotificationAction } from './behaviorEvents';
+import { appendBehaviorEvent, appendBehaviorEvents, BehaviorEvent, createDeparturePreparationStartedEvent, createDepartureStartedEvent, createFocusCompletedBehaviorEvent, createFocusStartedEvent, createFocusStoppedEvent, createNotificationActionEvent, createNotificationScheduledEvent, createTaskCompletedBehaviorEvent, NotificationAction } from './behaviorEvents';
 import { DEFAULT_PREMIUM_GUIDE_FEATURE, PremiumGuideFeatureId } from './premiumGuide';
 import { createPremiumTaskTemplate, hasSameTemplateSettings, PremiumTaskTemplate, summarizePremiumTaskTemplate } from './taskTemplates';
 import {
@@ -85,7 +84,6 @@ type PersistedState = {
   designMode: DesignMode;
   taskTemplates?: string[];
   chicPattern?: ChicPattern;
-  companionGrowth?: CompanionGrowthState;
   recoveryHistory?: RecoveryRecord[];
   focusSessions?: FocusSession[];
   departureCheckIns?: DepartureCheckIn[];
@@ -410,7 +408,6 @@ export default function App() {
   const [completionIcon, setCompletionIcon] = useState('✓');
   const [designMode, setDesignMode] = useState<DesignMode>('chic');
   const [chicPattern, setChicPattern] = useState<ChicPattern>('floral');
-  const [companionGrowth, setCompanionGrowth] = useState<CompanionGrowthState>(DEFAULT_COMPANION_GROWTH_STATE);
   const [recoveryHistory, setRecoveryHistory] = useState<RecoveryRecord[]>([]);
   const [focusSessions, setFocusSessions] = useState<FocusSession[]>([]);
   const [behaviorEvents, setBehaviorEvents] = useState<BehaviorEvent[]>([]);
@@ -432,7 +429,7 @@ export default function App() {
   const [hydrated, setHydrated] = useState(false);
   const planTier: PlanTier = process.env.EXPO_PUBLIC_RHYTHM_PLAN === 'premium' ? 'premium' : 'free';
   const planTierRef = React.useRef<PlanTier>(planTier);
-  const uiDesignMode = designMode === 'companion' ? 'chic' : designMode;
+  const uiDesignMode = designMode;
   const effectiveChicPattern = getEffectiveChicPattern(planTier, chicPattern) as ChicPattern;
   const openPremiumFeature = React.useCallback((featureId: PremiumGuideFeatureId = DEFAULT_PREMIUM_GUIDE_FEATURE) => {
     setPremiumTargetFeature(featureId);
@@ -486,7 +483,6 @@ export default function App() {
     if (result.newlyCompleted.length === 0) return;
     result.newlyCompleted.forEach((task) => { void cancelPendingTaskNotifications(task.id); });
     result.newlyCompleted.forEach((task) => recordBehaviorEvent(createTaskCompletedBehaviorEvent({ taskId: task.id, taskTitle: task.title, occurredAt: new Date(task.completedAt!), source })));
-    setCompanionGrowth((growth) => result.newlyCompleted.reduce((current, task) => hasTaskCompletionBeenAwarded(current, task.id) ? current : applyCompanionGrowthEvent(current, 'task_completed', `task_completed:${task.id}`, new Date(task.completedAt!)), growth));
   }, [recordBehaviorEvent]);
 
   const markDeparturePlanAsDeparted = React.useCallback((planId: string, source: 'manual' | 'notification' = 'manual') => {
@@ -508,9 +504,6 @@ export default function App() {
     setDepartureCheckIns(next);
     recordBehaviorEvent(createDepartureStartedEvent({ planId: target.id, planTitle: target.title, planDate: target.date, scheduledAt: moments.leave, actualAt, source }));
     void cancelPendingDepartureNotifications(target.id);
-    if (record.onTime) {
-      setCompanionGrowth((growth) => applyCompanionGrowthEvent(growth, 'departure_on_time', `departure_on_time:${target.id}:${target.date}`, new Date(record.departedAt)));
-    }
   }, [recordBehaviorEvent]);
 
   const markDeparturePreparationStarted = React.useCallback((planId: string) => {
@@ -546,7 +539,6 @@ export default function App() {
         if (saved.designMode === 'minimal' || saved.designMode === 'chic') setDesignMode(saved.designMode);
         else setDesignMode('chic');
         setChicPattern(saved.chicPattern ?? 'floral');
-        setCompanionGrowth(saved.companionGrowth ?? DEFAULT_COMPANION_GROWTH_STATE);
         setRecoveryHistory(saved.recoveryHistory ?? []);
         setFocusSessions(saved.focusSessions ?? []);
         const loadedBehaviorEvents = saved.behaviorEvents ?? [];
@@ -583,7 +575,6 @@ export default function App() {
       const notificationInstanceIdValue = response.notification.request.content.data?.notificationInstanceId;
       const notificationInstanceId = typeof notificationInstanceIdValue === 'string' ? notificationInstanceIdValue : response.notification.request.identifier;
       const action = response.actionIdentifier;
-      const responseKey = `notification_action:${response.notification.request.identifier}`;
 
       if (action === 'DEPARTED') {
         if (typeof departurePlanId !== 'string') return;
@@ -625,10 +616,6 @@ export default function App() {
       if (action === 'DONE' || action === 'SNOOZE') {
         recordNotificationBehaviorAction({ notificationInstanceId, action: action === 'DONE' ? 'completed' : 'snoozed', taskId, actualAt: new Date() });
       }
-      if (action === 'DONE' || action === 'SNOOZE' || action === 'LATER') {
-        setCompanionGrowth((growth) => applyCompanionGrowthEvent(growth, 'notification_action', responseKey));
-      }
-
       if (action === 'DONE') {
         if (!hydratedRef.current) {
           pendingNotificationCompletionIdsRef.current.push(taskId);
@@ -669,9 +656,9 @@ export default function App() {
 
   useEffect(() => {
     if (!hydrated) return;
-    const state: PersistedState = { tasks, plan, departurePlans, widgetSize, showCompleted, completionIcon, designMode, taskTemplates, savedTaskTemplates, chicPattern, companionGrowth, recoveryHistory, focusSessions, departureCheckIns, behaviorEvents };
+    const state: PersistedState = { tasks, plan, departurePlans, widgetSize, showCompleted, completionIcon, designMode, taskTemplates, savedTaskTemplates, chicPattern, recoveryHistory, focusSessions, departureCheckIns, behaviorEvents };
     AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(state)).catch(() => undefined);
-  }, [tasks, plan, departurePlans, widgetSize, showCompleted, completionIcon, designMode, taskTemplates, savedTaskTemplates, chicPattern, companionGrowth, recoveryHistory, focusSessions, departureCheckIns, behaviorEvents, hydrated]);
+  }, [tasks, plan, departurePlans, widgetSize, showCompleted, completionIcon, designMode, taskTemplates, savedTaskTemplates, chicPattern, recoveryHistory, focusSessions, departureCheckIns, behaviorEvents, hydrated]);
 
   const timeline = useMemo(() => {
     const arrival = parseClock(plan.arrival);
@@ -855,13 +842,11 @@ export default function App() {
   const applyRecovery = (record: RecoveryRecord) => {
     setRecoveryHistory((current) => current.some((item) => item.id === record.id) ? current : [record, ...current].slice(0, 200));
     if (record.newArrival) setDeparturePlans((current) => current.map((item) => item.id === record.planId ? { ...item, arrival: record.newArrival! } : item));
-    setCompanionGrowth((growth) => applyCompanionGrowthEvent(growth, 'recovery_used', `recovery_used:${record.id}`, new Date(record.occurredAt)));
     setRecoveryTargetPlanId(undefined);
   };
 
   const completeFocusSession = (session: FocusSession) => {
     setFocusSessions((current) => current.some((item) => item.id === session.id) ? current : [session, ...current].slice(0, 300));
-    setCompanionGrowth((growth) => applyCompanionGrowthEvent(growth, 'focus_completed', `focus_completed:${session.id}`, new Date(session.completedAt)));
   };
 
   return (
@@ -875,7 +860,6 @@ export default function App() {
             <HomeScreen
               tasks={visibleTasks}
               allTasks={tasks}
-              behaviorEvents={behaviorEvents}
               remaining={remaining}
               timeline={displayTimeline}
               now={now}
@@ -887,11 +871,6 @@ export default function App() {
               selectedTaskIds={selectedTaskIds}
               onAdd={() => setAddOpen(true)}
               onQuickAdd={(title) => addTask(title, 'その他', '中')}
-              onStartTask={(taskId) => {
-                const task = tasksRef.current.find((item) => item.id === taskId);
-                if (!task) return;
-                recordBehaviorEvent(createTaskStartedBehaviorEvent({ taskId: task.id, taskTitle: task.title, occurredAt: new Date() }));
-              }}
               onToggle={(id) => completeTaskIds([id])}
               onEdit={(task) => setEditingTask(task)}
               onToggleSelection={(id) => setSelectedTaskIds((current) => current.includes(id) ? current.filter((item) => item !== id) : [...current, id])}
@@ -1008,10 +987,10 @@ export default function App() {
 
 function Header({ designMode, now }: { designMode: ThemeMode; now: Date }) {
   return (
-    <View style={[styles.header, designMode === 'minimal' && styles.headerMinimal, designMode === 'companion' && styles.headerCompanion]}>
+    <View style={[styles.header, designMode === 'minimal' && styles.headerMinimal, ]}>
       <View>
         <Text style={styles.dateLabel}>{formatLiveDate(now)} · {formatLiveTime(now)}</Text>
-        <Text style={[styles.brand, designMode === 'minimal' && styles.brandMinimal]}>{designMode === 'companion' ? 'Rhythm ✦' : 'Rhythm'}</Text>
+        <Text style={[styles.brand, designMode === 'minimal' && styles.brandMinimal]}>{false ? 'Rhythm ✦' : 'Rhythm'}</Text>
       </View>
     </View>
   );
@@ -1020,7 +999,6 @@ function Header({ designMode, now }: { designMode: ThemeMode; now: Date }) {
 function HomeScreen({
   tasks,
   allTasks,
-  behaviorEvents,
   remaining,
   timeline,
   now,
@@ -1032,7 +1010,6 @@ function HomeScreen({
   selectedTaskIds,
   onAdd,
   onQuickAdd,
-  onStartTask,
   onToggle,
   onEdit,
   onToggleSelection,
@@ -1048,7 +1025,6 @@ function HomeScreen({
 }: {
   tasks: Task[];
   allTasks: Task[];
-  behaviorEvents: BehaviorEvent[];
   remaining: number;
   timeline: { start: string; leave: string; arrival: string };
   now: Date;
@@ -1060,7 +1036,6 @@ function HomeScreen({
   selectedTaskIds: string[];
   onAdd: () => void;
   onQuickAdd: (title: string) => void;
-  onStartTask: (id: string) => void;
   onToggle: (id: string) => void;
   onEdit: (task: Task) => void;
   onToggleSelection: (id: string) => void;
@@ -1080,15 +1055,12 @@ function HomeScreen({
   const [bucketTask, setBucketTask] = useState<Task | null>(null);
   const [actionTask, setActionTask] = useState<Task | null>(null);
   const [quickTitle, setQuickTitle] = useState('');
-  const [statusMessage, setStatusMessage] = useState('');
   const bucketTasks = tasks.filter((task) => (task.bucket ?? 'now') === bucketFilter);
   const categoryTasks = categoryFilter === 'すべて' ? bucketTasks : bucketTasks.filter((task) => task.category === categoryFilter);
   const displayTasks = [...categoryTasks].sort((a, b) => priorityOrder[a.priority] - priorityOrder[b.priority]);
   const nextNowTask = [...allTasks]
     .filter((task) => !task.done && (task.bucket ?? 'now') === 'now')
     .sort((a, b) => priorityOrder[a.priority] - priorityOrder[b.priority])[0];
-  const startedTaskIds = useMemo(() => new Set(behaviorEvents.filter((event) => event.type === 'task_started' && event.taskId).map((event) => event.taskId as string)), [behaviorEvents]);
-  const isStarted = Boolean(nextNowTask && startedTaskIds.has(nextNowTask.id));
   const handleQuickAdd = () => {
     const title = quickTitle.trim();
     if (!title) return;
@@ -1097,7 +1069,7 @@ function HomeScreen({
   };
   return (
     <>
-      <View style={[styles.compactTodayHeader, designMode === 'minimal' && styles.compactTodayHeaderMinimal, designMode === 'chic' && styles.compactTodayHeaderChic, designMode === 'companion' && styles.compactTodayHeaderCompanion]}>
+      <View style={[styles.compactTodayHeader, designMode === 'minimal' && styles.compactTodayHeaderMinimal, designMode === 'chic' && styles.compactTodayHeaderChic, ]}>
         {designMode === 'chic' && <ChicPatternDecor pattern={chicPattern} accent="#D986A1" warm="#A997C8" />}
         <View style={designMode === 'chic' ? styles.chicTodayPaper : styles.todayHeaderInner}>
           {designMode === 'minimal' && <View style={styles.todayMinimalIndex}><Text style={styles.todayMinimalIndexText}>{String(allTasks.filter((task) => (task.bucket ?? 'now') === 'now' && !task.done).length).padStart(2, '0')}</Text></View>}
@@ -1105,7 +1077,6 @@ function HomeScreen({
           <View style={{ flex: 1 }}>
             <Text style={[styles.compactTodayKicker, designMode === 'chic' && styles.compactTodayKickerChic]}>{nextNowTask ? '今はこれ' : '今日のはじまり'}</Text>
             <Text numberOfLines={2} style={styles.compactTodayCopy}>{nextNowTask ? nextNowTask.title : remaining === 0 ? '今日の分は完了。いい感じ' : '次にやる1つをここで決めます'}</Text>
-            {nextNowTask ? <Text style={styles.quickReplyHint}>{isStarted ? '終わったらここで完了できます' : '始めるか、少し待つかを選べます'}</Text> : <Text style={styles.quickReplyHint}>ここから、今日の1つを追加できます</Text>}
             {designMode === 'chic' && <Text style={styles.chicTodayStats}>完了 {allTasks.filter((task) => task.done && task.completedAt && dateKey(task.completedAt) === dateKey(now)).length}　残り {remaining}</Text>}
           </View>
         </View>
@@ -1127,27 +1098,6 @@ function HomeScreen({
         <Pressable style={styles.quickAddButton} onPress={handleQuickAdd}><Text style={styles.quickAddButtonText}>登録</Text></Pressable>
       </View>
 
-      {nextNowTask && (
-        <View style={[styles.nowActionCard, designMode === 'minimal' && styles.nowActionCardMinimal, designMode === 'chic' && styles.nowActionCardChic]}>
-          <Text style={styles.nowActionLabel}>{isStarted ? '終わった？' : 'このタスク、始める？'}</Text>
-          <Text numberOfLines={2} style={styles.nowActionTitle}>{nextNowTask.title}</Text>
-          <View style={styles.nowActionButtons}>
-            {isStarted ? (
-              <>
-                <Pressable style={styles.nowActionPrimary} onPress={() => onToggle(nextNowTask.id)}><Text style={styles.nowActionPrimaryText}>終わった</Text></Pressable>
-                <Pressable style={styles.nowActionSecondary} onPress={() => setStatusMessage('まだ続けても大丈夫。10分後にもう一度確認します。')}><Text style={styles.nowActionSecondaryText}>まだ続ける</Text></Pressable>
-              </>
-            ) : (
-              <>
-                <Pressable style={styles.nowActionPrimary} onPress={() => onStartTask(nextNowTask.id)}><Text style={styles.nowActionPrimaryText}>始める</Text></Pressable>
-                <Pressable style={styles.nowActionSecondary} onPress={() => setStatusMessage('今の時間から次を考えます。') }><Text style={styles.nowActionSecondaryText}>まだ</Text></Pressable>
-              </>
-            )}
-          </View>
-          {!!statusMessage && <Text style={styles.nowActionNote}>{statusMessage}</Text>}
-        </View>
-      )}
-
       <View style={[styles.sectionHeader, designMode === 'minimal' && styles.sectionHeaderMinimal]}>
         <View>
           <Text style={styles.sectionTitle}>今日のタスク</Text>
@@ -1161,7 +1111,7 @@ function HomeScreen({
 
       <View style={styles.bucketTabs}>{([{ id: 'now', label: '今やる' }, { id: 'later', label: 'あとで' }, { id: 'waiting', label: '待ち' }] as { id: TaskBucket; label: string }[]).map((item) => {
         const count = tasks.filter((task) => (task.bucket ?? 'now') === item.id).length;
-        return <Pressable key={item.id} style={[styles.bucketTab, designMode === 'minimal' && styles.bucketTabMinimal, designMode === 'chic' && styles.bucketTabChic, designMode === 'companion' && styles.bucketTabCompanion, bucketFilter === item.id && styles.bucketTabActive, bucketFilter === item.id && designMode === 'chic' && styles.bucketTabActiveChic, bucketFilter === item.id && designMode === 'companion' && styles.bucketTabActiveCompanion]} onPress={() => setBucketFilter(item.id)}><Text style={[styles.bucketTabText, bucketFilter === item.id && styles.bucketTabTextActive]}>{item.label} {count}</Text></Pressable>;
+        return <Pressable key={item.id} style={[styles.bucketTab, designMode === 'minimal' && styles.bucketTabMinimal, designMode === 'chic' && styles.bucketTabChic, bucketFilter === item.id && styles.bucketTabActive, bucketFilter === item.id && designMode === 'chic' && styles.bucketTabActiveChic]} onPress={() => setBucketFilter(item.id)}><Text style={[styles.bucketTabText, bucketFilter === item.id && styles.bucketTabTextActive]}>{item.label} {count}</Text></Pressable>;
       })}</View>
 
       <View style={styles.homeToolRow}>
@@ -1184,15 +1134,14 @@ function HomeScreen({
       )}
 
       {displayTasks.length === 0 ? (
-        <Pressable style={[styles.emptyCard, designMode === 'minimal' && styles.emptyCardMinimal, designMode === 'chic' && styles.emptyCardChic, designMode === 'companion' && styles.emptyCardCompanion]} onPress={onAdd}>
+        <Pressable style={[styles.emptyCard, designMode === 'minimal' && styles.emptyCardMinimal, designMode === 'chic' && styles.emptyCardChic, ]} onPress={onAdd}>
           {designMode === 'chic' && <ChicPatternDecor pattern={chicPattern} accent="#D986A1" warm="#A997C8" />}
           <View style={designMode === 'chic' ? styles.emptyChicGlass : styles.emptyPlainContent}><Text style={styles.emptyIcon}>○</Text><Text style={styles.emptyTitle}>最初のタスクを追加しよう</Text><Text style={styles.emptyCopy}>忘れたくないことを、ここに置いておけます。</Text></View>
         </Pressable>
       ) : displayTasks.map((task) => { const chicPalette = getChicTaskPatternPalette(task.category); return (
-        <View key={task.id} style={[styles.taskCard, designMode === 'minimal' && styles.taskCardMinimal, designMode === 'chic' && styles.taskCardChic, designMode === 'chic' && { backgroundColor: chicPalette.background }, designMode === 'companion' && styles.taskCardCompanion, task.done && designMode !== 'chic' && styles.taskCardDone, task.done && designMode === 'chic' && styles.taskCardChicDone]}>
+        <View key={task.id} style={[styles.taskCard, designMode === 'minimal' && styles.taskCardMinimal, designMode === 'chic' && styles.taskCardChic, designMode === 'chic' && { backgroundColor: chicPalette.background }, task.done && designMode !== 'chic' && styles.taskCardDone, task.done && designMode === 'chic' && styles.taskCardChicDone]}>
           {designMode === 'chic' && <ChicPatternDecor pattern={chicPattern} accent={chicPalette.accent} warm={chicPalette.warm} density="compact" />}
           <View style={[styles.taskCardInner, designMode === 'chic' && styles.taskCardInnerChic, task.done && designMode === 'chic' && styles.taskCardInnerChicDone]}>
-          {designMode === 'companion' && <Text style={styles.companionTaskMark}>{task.done ? '✦' : '•'}</Text>}
           <Pressable style={[styles.check, task.done && styles.checkDone, task.done && designMode === 'chic' && { backgroundColor: '#D986A1', borderColor: '#D986A1' }, selectionMode && selectedTaskIds.includes(task.id) && styles.selectionChecked]} onPress={() => selectionMode ? onToggleSelection(task.id) : onToggle(task.id)}>
             <Text style={styles.checkMark}>{selectionMode ? (selectedTaskIds.includes(task.id) ? '✓' : '') : (task.done ? completionIcon : '')}</Text>
           </Pressable>
@@ -1244,7 +1193,7 @@ function HomeScreen({
 
 function HomeToolCard({ designMode, chicPattern, kind, icon, title, meta, onPress }: { designMode: DesignMode; chicPattern: ChicPattern; kind: 'departure' | 'calendar' | 'focus'; icon: string; title: string; meta: string; onPress: () => void }) {
   const palette = chicUtilityPalettes[kind];
-  return <Pressable style={[styles.homeToolCard, designMode === 'minimal' && styles.homeToolCardMinimal, designMode === 'chic' && styles.homeToolCardChic, designMode === 'chic' && { backgroundColor: palette.background }, designMode === 'companion' && styles.homeToolCardCompanion]} onPress={onPress}>
+  return <Pressable style={[styles.homeToolCard, designMode === 'minimal' && styles.homeToolCardMinimal, designMode === 'chic' && styles.homeToolCardChic, designMode === 'chic' && { backgroundColor: palette.background }, ]} onPress={onPress}>
     {designMode === 'chic' && <ChicPatternDecor pattern={chicPattern} accent={palette.accent} warm={palette.warm} density="compact" />}
     <View style={designMode === 'chic' ? styles.homeToolGlass : styles.homeToolPlain}><Text style={[styles.homeToolIcon, designMode === 'chic' && { color: palette.accent }]}>{icon}</Text><Text style={styles.homeToolTitle}>{title}</Text><Text numberOfLines={1} style={styles.homeToolMeta}>{meta}</Text></View>
   </Pressable>;
@@ -1354,7 +1303,7 @@ function TimelineScreen({
   return (
     <>
       {designMode === 'chic' ? <View style={styles.chicTimeHero}><ChicPatternDecor pattern={chicPattern} accent="#D986A1" warm="#A997C8" /><View style={styles.chicTimeHeroPaper}><Text numberOfLines={2} style={[styles.hero, styles.timeHero, { marginBottom: 0 }]}>時間に追われる前に、先回り。</Text></View></View> : <Text numberOfLines={2} style={[styles.hero, styles.timeHero]}>時間に追われる前に、先回り。</Text>}
-      <View style={[styles.timeTabs, designMode === 'minimal' && styles.timeTabsMinimal, designMode === 'chic' && styles.timeTabsChic, designMode === 'companion' && styles.timeTabsCompanion]}>
+      <View style={[styles.timeTabs, designMode === 'minimal' && styles.timeTabsMinimal, designMode === 'chic' && styles.timeTabsChic, ]}>
         {(['departure', 'deadline', 'calendar', 'focus'] as TimeTab[]).map((tab) => <TimeTabButton key={tab} tab={tab} active={timeTab === tab} designMode={designMode} chicPattern={chicPattern} themeAccent={theme.colors.primaryAccent} secondaryText={theme.colors.secondaryText} onPress={() => setTimeTab(tab)} />)}
       </View>
 
@@ -1539,20 +1488,19 @@ function FocusMode({ tasks, designMode, onFocusCompleted, onBehaviorEvent }: { t
   const isChic = designMode === 'chic';
   const modeCopy = isMinimal ? '今はこれだけ' : isChic ? '静かな時間を、ひとつだけ。' : '相棒も隣でいっしょに集中！';
   return <>
-    <View style={[styles.focusHero, isChic && styles.focusHeroChic, designMode === 'companion' && styles.focusHeroCompanion]}>
+    <View style={[styles.focusHero, isChic && styles.focusHeroChic, ]}>
       {isChic && <><View style={styles.focusChicFlowerOne}><Text>✿</Text></View><View style={styles.focusChicFlowerTwo}><Text>✦</Text></View></>}
-      {designMode === 'companion' && <View style={styles.focusCompanionBubble}><Text style={styles.focusCompanionEmoji}>🥚</Text><Text style={styles.focusCompanionSpeech}>{running ? 'しーっ、集中中…' : 'いっしょに始めよう！'}</Text></View>}
       <Text style={[styles.focusEyebrow, !isMinimal && styles.focusEyebrowLight]}>{running ? '集中中' : '集中タイマー'}</Text>
       <Text style={[styles.focusTitle, !isMinimal && styles.focusTitleLight]}>{selectedTask?.title ?? '集中するタスクを選ぼう'}</Text>
       <Text style={[styles.focusCopy, !isMinimal && styles.focusCopyLight]}>{modeCopy}</Text>
-      <View style={[styles.focusTimerRing, isChic && styles.focusTimerRingChic, designMode === 'companion' && styles.focusTimerRingCompanion]}>
+      <View style={[styles.focusTimerRing, isChic && styles.focusTimerRingChic, ]}>
         <Text style={[styles.focusTime, !isMinimal && styles.focusTimeLight]}>{String(minutes).padStart(2, '0')}:{String(seconds).padStart(2, '0')}</Text>
-        <Text style={[styles.focusTimerState, isChic && styles.focusTimerStateChic, designMode === 'companion' && styles.focusTimerStateCompanion]}>{running ? '集中中' : secondsLeft === 0 ? 'できた！' : '準備OK'}</Text>
+        <Text style={[styles.focusTimerState, isChic && styles.focusTimerStateChic, ]}>{running ? '集中中' : secondsLeft === 0 ? 'できた！' : '準備OK'}</Text>
       </View>
-      <View style={[styles.focusProgressTrack, !isMinimal && styles.focusProgressTrackLight]}><View style={[styles.focusProgressFill, isChic && styles.focusProgressFillChic, designMode === 'companion' && styles.focusProgressFillCompanion, { width: `${Math.max(2, progress * 100)}%` }]} /></View>
+      <View style={[styles.focusProgressTrack, !isMinimal && styles.focusProgressTrackLight]}><View style={[styles.focusProgressFill, isChic && styles.focusProgressFillChic, { width: `${Math.max(2, progress * 100)}%` }]} /></View>
       <View style={styles.focusActions}>
         <Pressable style={[styles.focusResetButton, !isMinimal && styles.focusResetButtonLight]} onPress={reset}><Text style={[styles.focusResetText, !isMinimal && styles.focusResetTextLight]}>リセット</Text></Pressable>
-        <Pressable style={[styles.focusStartButton, isChic && styles.focusStartButtonChic, designMode === 'companion' && styles.focusStartButtonCompanion]} onPress={toggleTimer}><Text style={styles.focusStartText}>{running ? '一時停止' : secondsLeft === 0 ? 'もう一度' : 'スタート'}</Text></Pressable>
+        <Pressable style={[styles.focusStartButton, isChic && styles.focusStartButtonChic, ]} onPress={toggleTimer}><Text style={styles.focusStartText}>{running ? '一時停止' : secondsLeft === 0 ? 'もう一度' : 'スタート'}</Text></Pressable>
       </View>
     </View>
     <Text style={styles.focusSectionTitle}>集中時間</Text>
@@ -1702,15 +1650,6 @@ function ModeHomeHero({ designMode, tasks, dangerousTask, now, completedCount, r
       </View>
     </View>;
   }
-  if (designMode === 'companion') {
-    const companionMessage = dangerousTask ? (urgencyLevel(getUrgencyStatus(dangerousTask, now)) >= 3 ? '相棒が玄関で待ってる！' : '相棒が準備を始めたよ') : remaining === 0 ? '今日は一緒に全部できたね！' : '今日はここから再開しよう';
-    return <View style={styles.companionScene}>
-      <View style={styles.sceneSun} />
-      <View style={styles.sceneCloud}><Text style={styles.sceneCloudText}>{companionMessage}</Text></View>
-      <CompanionCard remaining={remaining} />
-      <View style={styles.sceneFloor} />
-    </View>;
-  }
   const pattern = getChicPatternVisual('floral');
   const chicMessage = completedCount > 0 ? `${completedCount}つ終わった、いい感じ` : dangerousTask ? '今ならまだ余裕あり' : '今日を少し整えよう';
   return <View style={[styles.chicHero, { backgroundColor: pattern.background }]}>
@@ -1739,27 +1678,6 @@ function ChicPatternDecor({ pattern, accent, warm, density = 'regular' }: { patt
   </View>;
   return <View pointerEvents="none" style={styles.patternLayer}>
     {Array.from({ length: compact ? 130 : 96 }, (_, index) => { const columns = compact ? 20 : 16; const spacingX = compact ? 25 : 32; const spacingY = compact ? 23 : 29; const row = Math.floor(index / columns); const column = index % columns; const scale = (index % 4 === 0 ? 0.82 : index % 5 === 0 ? 1.08 : 0.95) * (compact ? 0.82 : 1); return <View key={index} style={[styles.patternFlowerSmall, { left: 4 + column * spacingX + (row % 2 ? spacingX / 2 : 0), top: 4 + row * spacingY, transform: [{ scale }, { rotate: `${index % 6 === 0 ? 18 : index % 7 === 0 ? -12 : 0}deg` }] }]}><View style={[styles.flowerPetalSmall, styles.flowerSmallTop, { backgroundColor: accent }]} /><View style={[styles.flowerPetalSmall, styles.flowerSmallRight, { backgroundColor: warm }]} /><View style={[styles.flowerPetalSmall, styles.flowerSmallBottom, { backgroundColor: accent }]} /><View style={[styles.flowerPetalSmall, styles.flowerSmallLeft, { backgroundColor: warm }]} /><View style={styles.flowerCenterSmall} /></View>; })}
-  </View>;
-}
-
-function CompanionCard({ remaining }: { remaining: number }) {
-  const float = React.useRef(new Animated.Value(0)).current;
-  useEffect(() => {
-    const animation = Animated.loop(Animated.sequence([
-      Animated.timing(float, { toValue: 1, duration: 1500, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
-      Animated.timing(float, { toValue: 0, duration: 1500, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
-    ]));
-    animation.start();
-    return () => animation.stop();
-  }, [float]);
-  const translateY = float.interpolate({ inputRange: [0, 1], outputRange: [0, -7] });
-  return <View style={styles.companionCard}>
-    <Animated.View style={[styles.eggBubble, { transform: [{ translateY }] }]}><Text style={styles.eggEmoji}>🥚</Text></Animated.View>
-    <View style={{ flex: 1 }}>
-      <Text style={styles.companionEyebrow}>YOUR COMPANION</Text>
-      <Text style={styles.companionTitle}>今日も一緒に進もう</Text>
-      <Text style={styles.companionCopy}>{remaining === 0 ? '今日は全部できたね ✦' : `あと${remaining}件。一緒にやってみよう`}</Text>
-    </View>
   </View>;
 }
 
@@ -1859,7 +1777,7 @@ function WidgetScreen({
         <View style={styles.modeChoices}>
           {designModes.map((mode) => (
             <Pressable key={mode.id} style={[styles.modeChoice, designMode === mode.id && styles.modeChoiceActive]} onPress={() => onDesignMode(mode.id)}>
-              <View style={[styles.modeMiniPreview, mode.id === 'minimal' && styles.modeMiniMinimal, mode.id === 'chic' && styles.modeMiniChic, mode.id === 'companion' && styles.modeMiniCompanion]}>
+              <View style={[styles.modeMiniPreview, mode.id === 'minimal' && styles.modeMiniMinimal, mode.id === 'chic' && styles.modeMiniChic, ]}>
                 {mode.id === 'minimal' ? <><View style={styles.modeMiniBlackBlock} /><Text style={styles.modeMiniNumber}>03</Text><View style={styles.modeMiniLine} /></> : mode.id === 'chic' ? <><ChicPatternDecor pattern={chicPattern} accent="#D986A1" warm="#A997C8" /><View style={styles.modeMiniGlass} /><Text style={styles.modeMiniSparkle}>✦</Text></> : <><View style={styles.modeMiniSun} /><Text style={styles.modeMiniEgg}>🥚</Text><View style={styles.modeMiniGround} /></>}
               </View>
               <Text style={[styles.modeName, designMode === mode.id && styles.modeNameActive]}>{mode.name}</Text>
@@ -1884,15 +1802,15 @@ function WidgetScreen({
       <Text style={styles.settingsSectionLabel}>ウィジェット設定</Text>
       <Text style={styles.previewLabel}>WIDGET PREVIEW</Text>
 
-      <View style={[styles.phonePreview, designMode === 'minimal' && styles.phonePreviewMinimal, designMode === 'chic' && { backgroundColor: patternVisual.accent }, designMode === 'companion' && styles.phonePreviewCompanion]}>
+      <View style={[styles.phonePreview, designMode === 'minimal' && styles.phonePreviewMinimal, designMode === 'chic' && { backgroundColor: patternVisual.accent }, ]}>
         <Text style={styles.phoneClock}>9:41</Text>
-        <View style={[styles.widget, size === 'small' && styles.widgetSmall, designMode === 'minimal' && styles.widgetMinimal, designMode === 'chic' && { backgroundColor: patternVisual.background }, designMode === 'companion' && styles.widgetCompanion]}>
+        <View style={[styles.widget, size === 'small' && styles.widgetSmall, designMode === 'minimal' && styles.widgetMinimal, designMode === 'chic' && { backgroundColor: patternVisual.background }, ]}>
           {designMode === 'chic' && <ChicPatternDecor pattern={chicPattern} accent={patternVisual.accent} warm={patternVisual.warm} />}
           {designMode === 'chic' && <View pointerEvents="none" style={styles.widgetChicWash} />}
           <View style={styles.widgetTop}>
             <View>
-              <Text style={[styles.widgetBrand, designMode === 'minimal' && styles.widgetBrandMinimal]}>{designMode === 'companion' ? 'My Rhythm ✦' : 'Rhythm'}</Text>
-              <Text style={styles.widgetDate}>{designMode === 'minimal' ? 'SAT / JUL 04' : designMode === 'companion' ? 'WITH YOUR BUDDY' : 'TODAY'}</Text>
+              <Text style={[styles.widgetBrand, designMode === 'minimal' && styles.widgetBrandMinimal]}>Rhythm</Text>
+              <Text style={styles.widgetDate}>{designMode === 'minimal' ? 'SAT / JUL 04' : 'TODAY'}</Text>
             </View>
             <View style={styles.widgetDeparture}>
               <Text style={styles.widgetDepartureLabel}>出発まで</Text>
@@ -1900,7 +1818,7 @@ function WidgetScreen({
             </View>
           </View>
           <View style={styles.widgetDivider} />
-          {designMode === 'companion' && <Text style={styles.widgetCompanionEgg}>🥚</Text>}
+          
           {dangerousTask && <View style={styles.widgetUrgency}>
             <Text style={styles.widgetUrgencyStatus}>{getUrgencyStatus(dangerousTask, now)}</Text>
             <Text numberOfLines={1} style={styles.widgetUrgencyAction}>{getNextBestAction(dangerousTask, now)}</Text>
@@ -2212,10 +2130,10 @@ function TodayWinStrip({ tasks, designMode, chicPattern, onRestore }: { tasks: T
     previous.current = count;
   }, [count, drop]);
   const fallingStyle = { transform: [{ translateY: drop.interpolate({ inputRange: [0, 1], outputRange: [-38, 18] }) }, { scale: drop.interpolate({ inputRange: [0, 1], outputRange: [1.25, 0.82] }) }], opacity: drop };
-  const details = <Modal visible={detailsOpen} transparent animationType="slide" onRequestClose={() => setDetailsOpen(false)}><Pressable style={styles.modalBackdrop} onPress={() => setDetailsOpen(false)}><Pressable style={[styles.modalSheet, { backgroundColor: theme.colors.screenBackground, borderRadius: theme.radius.modal }]} onPress={(event) => event.stopPropagation()}>{designMode === 'chic' && <View pointerEvents="none" style={styles.completedModalPattern}><ChicPatternDecor pattern={chicPattern} accent="#D986A1" warm="#A997C8" /></View>}{designMode === 'companion' && <Text style={styles.completedCompanionReaction}>🥚 できたこと、ちゃんと覚えてるよ</Text>}<View style={styles.modalHandle} /><Text style={styles.modalTitle}>今日できたこと</Text>{completed.length === 0 ? <Text style={styles.emptyCopy}>完了したタスクはまだありません。</Text> : completed.map((task) => <View key={task.id} style={[styles.completedDetailRow, designMode === 'minimal' && styles.completedDetailRowMinimal]}><Text style={[styles.completedDetailIcon, { color: theme.colors.primaryAccent }]}>{designMode === 'minimal' ? '✓' : designMode === 'chic' ? '✿' : '★'}</Text><View style={{ flex: 1 }}><Text style={styles.taskTitle}>{task.title}</Text><Text style={styles.taskMeta}>{task.category}</Text></View><Pressable style={[styles.restoreButton, { backgroundColor: theme.colors.softAccent }]} onPress={() => onRestore(task.id)}><Text style={[styles.restoreButtonText, { color: theme.colors.primaryAccent }]}>元に戻す</Text></Pressable></View>)}<Pressable style={[styles.primaryButton, { backgroundColor: theme.colors.primaryAccent, borderRadius: theme.radius.button }]} onPress={() => setDetailsOpen(false)}><Text style={styles.primaryButtonText}>閉じる</Text></Pressable></Pressable></Pressable></Modal>;
+  const details = <Modal visible={detailsOpen} transparent animationType="slide" onRequestClose={() => setDetailsOpen(false)}><Pressable style={styles.modalBackdrop} onPress={() => setDetailsOpen(false)}><Pressable style={[styles.modalSheet, { backgroundColor: theme.colors.screenBackground, borderRadius: theme.radius.modal }]} onPress={(event) => event.stopPropagation()}>{designMode === 'chic' && <View pointerEvents="none" style={styles.completedModalPattern}><ChicPatternDecor pattern={chicPattern} accent="#D986A1" warm="#A997C8" /></View>}<View style={styles.modalHandle} /><Text style={styles.modalTitle}>今日できたこと</Text>{completed.length === 0 ? <Text style={styles.emptyCopy}>完了したタスクはまだありません。</Text> : completed.map((task) => <View key={task.id} style={[styles.completedDetailRow, designMode === 'minimal' && styles.completedDetailRowMinimal]}><Text style={[styles.completedDetailIcon, { color: theme.colors.primaryAccent }]}>{designMode === 'minimal' ? '✓' : designMode === 'chic' ? '✿' : '★'}</Text><View style={{ flex: 1 }}><Text style={styles.taskTitle}>{task.title}</Text><Text style={styles.taskMeta}>{task.category}</Text></View><Pressable style={[styles.restoreButton, { backgroundColor: theme.colors.softAccent }]} onPress={() => onRestore(task.id)}><Text style={[styles.restoreButtonText, { color: theme.colors.primaryAccent }]}>元に戻す</Text></Pressable></View>)}<Pressable style={[styles.primaryButton, { backgroundColor: theme.colors.primaryAccent, borderRadius: theme.radius.button }]} onPress={() => setDetailsOpen(false)}><Text style={styles.primaryButtonText}>閉じる</Text></Pressable></Pressable></Pressable></Modal>;
   if (designMode === 'minimal') return <><Pressable style={styles.todayMinimalWin} onPress={() => setDetailsOpen(true)}><View><Text style={styles.minimalAchievementLabel}>今日できたこと</Text><Text style={styles.todayWinCount}>{String(count).padStart(2, '0')}</Text><Text style={styles.todayWinComment}>{count}件完了</Text></View><View style={styles.todayMiniMeter}>{Array.from({ length: 6 }, (_, item) => <View key={item} style={[styles.todayMiniTick, item < Math.min(6, count) && styles.todayMiniTickDone]} />)}</View></Pressable>{details}</>;
   const item = designMode === 'chic' ? '✿' : '🍪';
-  return <><Pressable style={[styles.todayWinStrip, designMode === 'chic' && styles.todayWinStripChic, designMode === 'companion' && styles.todayWinStripCompanion]} onPress={() => setDetailsOpen(true)}>{designMode === 'chic' && <ChicPatternDecor pattern={chicPattern} accent="#D986A1" warm="#A997C8" />}<View style={designMode === 'chic' ? styles.todayWinsPaper : styles.todayWinsPlain}><View style={[{ flex: 1 }, designMode === 'chic' && styles.todayWinsTextPlate]}><Text style={styles.vesselLabelTop}>{designMode === 'chic' ? '小さな達成' : '相棒の宝もの'}</Text><Text style={styles.todayWinComment}>{count === 0 ? '最初のひとつを待っています' : `${count}つ終わった、いい感じ`}</Text><Text style={styles.todayWinHint}>瓶をタップして今日の完了を見る</Text></View><View style={styles.miniJarWrap}><View style={styles.miniJarLid} /><View style={[styles.miniJar, designMode === 'chic' && styles.miniJarChicGlass, designMode === 'companion' && styles.miniJarCompanion]}>{Array.from({ length: Math.min(12, count) }, (_, index) => <Text key={index} style={[styles.miniJarItem, { left: 8 + (index % 3) * 22, bottom: 4 + Math.floor(index / 3) * 14, color: index % 3 === 0 ? '#F3C7D5' : index % 3 === 1 ? '#DCCBF0' : '#F5E1A4' }]}>{index % 2 ? '✦' : '●'}</Text>)}</View>{dropVisible && <Animated.Text style={[styles.fallingTreasure, fallingStyle]}>{item}</Animated.Text>}</View></View></Pressable>{details}</>;
+  return <><Pressable style={[styles.todayWinStrip, designMode === 'chic' && styles.todayWinStripChic, ]} onPress={() => setDetailsOpen(true)}>{designMode === 'chic' && <ChicPatternDecor pattern={chicPattern} accent="#D986A1" warm="#A997C8" />}<View style={designMode === 'chic' ? styles.todayWinsPaper : styles.todayWinsPlain}><View style={[{ flex: 1 }, designMode === 'chic' && styles.todayWinsTextPlate]}><Text style={styles.vesselLabelTop}>{designMode === 'chic' ? '小さな達成' : '相棒の宝もの'}</Text><Text style={styles.todayWinComment}>{count === 0 ? '最初のひとつを待っています' : `${count}つ終わった、いい感じ`}</Text><Text style={styles.todayWinHint}>瓶をタップして今日の完了を見る</Text></View><View style={styles.miniJarWrap}><View style={styles.miniJarLid} /><View style={[styles.miniJar, designMode === 'chic' && styles.miniJarChicGlass, ]}>{Array.from({ length: Math.min(12, count) }, (_, index) => <Text key={index} style={[styles.miniJarItem, { left: 8 + (index % 3) * 22, bottom: 4 + Math.floor(index / 3) * 14, color: index % 3 === 0 ? '#F3C7D5' : index % 3 === 1 ? '#DCCBF0' : '#F5E1A4' }]}>{index % 2 ? '✦' : '●'}</Text>)}</View>{dropVisible && <Animated.Text style={[styles.fallingTreasure, fallingStyle]}>{item}</Animated.Text>}</View></View></Pressable>{details}</>;
 }
 
 function AchievementVessel({ tasks, designMode, chicPattern = 'floral', scope = 'month', compact = false }: { tasks: Task[]; designMode: ThemeMode; chicPattern?: ChicPattern; scope?: 'today' | 'month'; compact?: boolean }) {
@@ -2229,11 +2147,11 @@ function AchievementVessel({ tasks, designMode, chicPattern = 'floral', scope = 
   if (designMode === 'minimal') {
     return <View style={[styles.minimalAchievement, compact && styles.minimalAchievementCompact]}><View><Text style={styles.minimalAchievementLabel}>{scope === 'today' ? '今日できたこと' : '今月の記録'}</Text><Text style={[styles.minimalAchievementNumber, compact && styles.minimalAchievementNumberCompact]}>{String(completed.length).padStart(2, '0')}</Text><Text style={styles.taskMeta}>{completed.length}件完了</Text></View><View style={styles.minimalAchievementBars}>{Array.from({ length: 10 }, (_, item) => <View key={item} style={[styles.minimalAchievementBar, item < Math.min(10, completed.length) && styles.minimalAchievementBarFilled]} />)}</View></View>;
   }
-  return <View style={[styles.vesselScene, compact && styles.vesselSceneCompact, designMode === 'chic' && styles.vesselSceneChic, designMode === 'companion' && styles.vesselSceneCompanion]}>
+  return <View style={[styles.vesselScene, compact && styles.vesselSceneCompact, designMode === 'chic' && styles.vesselSceneChic, ]}>
     {designMode === 'chic' && <ChicPatternDecor pattern={chicPattern} accent="#D986A1" warm="#A997C8" />}
     <View style={[styles.vesselLabel, designMode === 'chic' && styles.vesselLabelChic]}><Text style={styles.vesselLabelTop}>{scope === 'today' ? '今日の小さな達成' : designMode === 'chic' ? '今月の小さな達成' : '今月のできたこと'}</Text><Text style={[styles.vesselLabelTitle, compact && styles.vesselLabelTitleCompact]}>{completed.length}個のできた！</Text></View>
     <View style={styles.jarLid} />
-    <View style={[styles.jarBody, compact && styles.jarBodyCompact, designMode === 'companion' && styles.jarBodyCompanion]}>
+    <View style={[styles.jarBody, compact && styles.jarBodyCompact, ]}>
       {visible.map((task, index) => <View key={task.id} style={[styles.jarTreasure, { left: 13 + (index % 6) * 39, bottom: 10 + Math.floor(index / 6) * 35, transform: [{ rotate: `${(index % 5) * 8 - 16}deg` }] }]}><Text style={styles.jarTreasureText}>{designMode === 'chic' ? (index % 3 === 0 ? '✿' : index % 3 === 1 ? '★' : '●') : (index % 2 ? '★' : '🍪')}</Text></View>)}
       {visible.length === 0 && <Text style={styles.jarEmptyText}>最初のひとつを待っています</Text>}
     </View>
@@ -2358,8 +2276,8 @@ function PremiumMiniPreview({ kind, designMode }: { kind: PremiumPreviewKind; de
   if (kind === 'time') return <View style={styles.premiumPreview}><Text style={styles.previewImageLabel}>表示イメージ</Text><Text style={styles.previewMetricLabel}>準備開始</Text><View style={styles.previewTimeCompare}><View><Text style={styles.previewCompareLabel}>予定</Text><Text style={styles.previewCompareValue}>12:10</Text></View><Text style={styles.previewCompareArrow}>→</Text><View><Text style={styles.previewCompareLabel}>実際</Text><Text style={styles.previewCompareValue}>12:24</Text></View></View><Text style={styles.previewMetricBig}>平均14分遅め</Text><Text style={styles.previewRecordCount}>記録 8回</Text></View>;
   if (kind === 'behavior') return <View style={styles.premiumPreview}><Text style={styles.previewImageLabel}>表示イメージ</Text><Text style={styles.previewMetricLabel}>最近の行動</Text><View style={styles.previewInsightRow}><Text style={styles.previewInsightLabel}>動き始め</Text><Text style={styles.previewInsightValue}>通知から平均17分で反応</Text></View><View style={styles.previewInsightRow}><Text style={styles.previewInsightLabel}>集中</Text><Text style={styles.previewInsightValue}>15分が比較的続きやすい傾向</Text></View><View style={styles.previewInsightRow}><Text style={styles.previewInsightLabel}>延長</Text><Text style={styles.previewInsightValue}>8回中5回はその後完了</Text></View></View>;
   if (kind === 'month') return <View style={styles.premiumPreview}><Text style={styles.previewImageLabel}>予定表の表示イメージ</Text><View style={styles.previewPlanCompare}><View style={styles.previewFreeWeek}><Text style={styles.previewCompareTag}>無料・今日から7日</Text><View style={styles.previewWeekRow}>{['6', '7', '8', '9', '10', '11', '12'].map((day) => <Text key={day} style={styles.previewWeekDay}>7/{day}</Text>)}</View></View><Text style={styles.previewArrow}>↓</Text><View style={styles.previewMonth}><Text style={styles.previewMonthTitle}>2026年 7月</Text><Text style={styles.previewMonthWeek}>日  月  火  水  木  金  土</Text><Text style={styles.previewMonthDays}>         1    2    3    4{`\n`} 5    6    7    8    9  10  11{`\n`}12  13  14  15  16  17  18{`\n`}19  20  21  22  23  24  25</Text></View></View></View>;
-  if (kind === 'templates') return <View style={styles.premiumPreview}><Text style={styles.previewImageLabel}>表示イメージ</Text><View style={styles.previewTemplateSource}><Text style={styles.previewTemplateTitle}>病院訪問の準備</Text><Text style={styles.previewTemplateMeta}>予定　優先度 高　通知 09:00</Text><Text style={styles.previewTemplateMeta}>準備30分　移動40分　余裕15分</Text><Text style={styles.previewTemplateSave}>設定ごとひな型に保存</Text></View><Text style={styles.previewArrow}>↓</Text><View style={styles.previewTemplateSaved}><View><Text style={styles.previewCompareTag}>マイひな型</Text><Text style={styles.previewTemplateTitle}>病院訪問の準備</Text></View><Text style={styles.previewTemplateChoose}>選ぶ ›</Text></View><Text style={styles.previewTemplateReady}>設定済みでフォームへ反映</Text>{designMode === 'companion' && <Text style={styles.previewCompanion}>🥚 また使えるように覚えておくね</Text>}</View>;
-  return <View style={styles.premiumPreview}><Text style={styles.previewImageLabel}>立て直しの表示イメージ</Text><View style={styles.previewDanger}><Text style={styles.previewDangerText}>予定どおりは厳しい</Text></View><View style={styles.previewRecoveryGrid}>{['今から出発', '到着予定を変更', '遅れる連絡', '予定を組み直す'].map((label) => <View key={label} style={styles.previewRecoveryOption}><Text style={styles.previewRecoveryText}>{label}</Text></View>)}</View>{designMode === 'companion' && <Text style={styles.previewCompanion}>🥚 ここから一緒に戻ろう</Text>}</View>;
+  if (kind === 'templates') return <View style={styles.premiumPreview}><Text style={styles.previewImageLabel}>表示イメージ</Text><View style={styles.previewTemplateSource}><Text style={styles.previewTemplateTitle}>病院訪問の準備</Text><Text style={styles.previewTemplateMeta}>予定　優先度 高　通知 09:00</Text><Text style={styles.previewTemplateMeta}>準備30分　移動40分　余裕15分</Text><Text style={styles.previewTemplateSave}>設定ごとひな型に保存</Text></View><Text style={styles.previewArrow}>↓</Text><View style={styles.previewTemplateSaved}><View><Text style={styles.previewCompareTag}>マイひな型</Text><Text style={styles.previewTemplateTitle}>病院訪問の準備</Text></View><Text style={styles.previewTemplateChoose}>選ぶ ›</Text></View><Text style={styles.previewTemplateReady}>設定済みでフォームへ反映</Text></View>;
+  return <View style={styles.premiumPreview}><Text style={styles.previewImageLabel}>立て直しの表示イメージ</Text><View style={styles.previewDanger}><Text style={styles.previewDangerText}>予定どおりは厳しい</Text></View><View style={styles.previewRecoveryGrid}>{['今から出発', '到着予定を変更', '遅れる連絡', '予定を組み直す'].map((label) => <View key={label} style={styles.previewRecoveryOption}><Text style={styles.previewRecoveryText}>{label}</Text></View>)}</View></View>;
 }
 
 function PremiumFeatureEntryCard({ number, title, active, designMode, chicPattern, onPress }: { number: string; title: string; active: boolean; designMode: DesignMode; chicPattern: ChicPattern; onPress: () => void }) {
@@ -2371,10 +2289,10 @@ function PremiumFeatureEntryCard({ number, title, active, designMode, chicPatter
 }
 
 function PremiumFeatureDetail({ number, kind, title, description, designMode, chicPattern }: { number: string; kind: PremiumPreviewKind; title: string; description: string; designMode: DesignMode; chicPattern: ChicPattern }) {
-  return <View style={[styles.premiumFeatureBlock, designMode === 'minimal' && styles.premiumFeatureMinimal, designMode === 'chic' && styles.premiumFeatureChic, designMode === 'companion' && styles.premiumFeatureCompanion]}>
+  return <View style={[styles.premiumFeatureBlock, designMode === 'minimal' && styles.premiumFeatureMinimal, designMode === 'chic' && styles.premiumFeatureChic, ]}>
     {designMode === 'chic' && <ChicPatternDecor pattern={chicPattern} accent="#D986A1" warm="#A997C8" />}
     <View style={styles.premiumFeatureInner}>
-      <View style={styles.premiumFeatureTop}><Text style={[styles.premiumFeatureNumber, designMode === 'minimal' && styles.premiumFeatureNumberMinimal]}>{number}</Text><Text style={styles.premiumFeatureLabel}>Premium機能</Text>{designMode === 'companion' && (number === '01' || number === '06') && <Text style={styles.premiumFeatureBuddy}>🥚</Text>}</View>
+      <View style={styles.premiumFeatureTop}><Text style={[styles.premiumFeatureNumber, designMode === 'minimal' && styles.premiumFeatureNumberMinimal]}>{number}</Text><Text style={styles.premiumFeatureLabel}>Premium機能</Text></View>
       <PremiumMiniPreview kind={kind} designMode={designMode} />
       <View style={[styles.premiumFeatureTextPlate, designMode === 'minimal' && styles.premiumFeatureTextMinimal, designMode === 'chic' && styles.premiumFeatureTextChic]}><Text style={[styles.premiumFeatureTitle, designMode === 'minimal' && styles.premiumFeatureTitleMinimal]}>{title}</Text><Text style={[styles.premiumFeatureDescription, designMode === 'minimal' && styles.premiumFeatureDescriptionMinimal]}>{description}</Text></View>
     </View>
@@ -2424,7 +2342,7 @@ function BottomNav({ screen, designMode, onChange }: { screen: Screen; designMod
     { id: 'settings', icon: '⚙', label: '設定' },
   ];
   return (
-    <View style={[styles.bottomNav, designMode === 'minimal' && styles.bottomNavMinimal, designMode === 'chic' && styles.bottomNavChic, designMode === 'companion' && styles.bottomNavCompanion]}>
+    <View style={[styles.bottomNav, designMode === 'minimal' && styles.bottomNavMinimal, designMode === 'chic' && styles.bottomNavChic, ]}>
       {items.map((item) => {
         const active = item.id === screen;
         return (
@@ -2442,20 +2360,16 @@ const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.background },
   safeMinimal: { backgroundColor: '#F2F2F2' },
   safeChic: { backgroundColor: '#FFF8F3' },
-  safeCompanion: { backgroundColor: '#FFF8E9' },
   app: { flex: 1, width: '100%', maxWidth: 560, alignSelf: 'center' },
   header: { paddingHorizontal: 22, paddingTop: 14, paddingBottom: 8, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   headerMinimal: { paddingTop: 18, paddingBottom: 14, borderBottomWidth: 1, borderBottomColor: '#1C1C1C' },
-  headerCompanion: { paddingTop: 16, paddingBottom: 12 },
   dateLabel: { color: colors.muted, fontSize: 10, fontWeight: '800', letterSpacing: 1.25 },
   brand: { color: colors.ink, fontSize: 29, fontWeight: '900', letterSpacing: -1.2 },
   brandMinimal: { color: '#111111', letterSpacing: -1.5 },
   remainingPill: { backgroundColor: colors.mint, borderRadius: 20, paddingHorizontal: 13, paddingVertical: 8 },
   remainingPillMinimal: { backgroundColor: '#1A1A1A', borderRadius: 3 },
-  remainingPillCompanion: { backgroundColor: '#FFE4A6', borderRadius: 14 },
   remainingText: { color: '#337256', fontSize: 12, fontWeight: '800' },
   remainingTextMinimal: { color: '#FFFFFF', letterSpacing: 0.8 },
-  remainingTextCompanion: { color: '#7A5427' },
   content: { paddingHorizontal: 22, paddingTop: 12, paddingBottom: 118 },
   hero: { color: colors.ink, fontSize: 30, lineHeight: 38, fontWeight: '900', letterSpacing: -1.2, marginBottom: 22 },
   minimalHero: { marginBottom: 24, paddingTop: 10 },
@@ -2500,20 +2414,14 @@ const styles = StyleSheet.create({
   chicSummaryStrong: { color: '#6F52B5', fontSize: 17, fontWeight: '900' },
   chicSummaryText: { color: '#827593', fontSize: 9, fontWeight: '700' },
   chicSummaryDot: { color: '#F19A89', fontSize: 11 },
-  companionScene: { position: 'relative', backgroundColor: '#FFF0C9', borderRadius: 32, padding: 13, paddingTop: 47, marginBottom: 20, overflow: 'hidden', borderWidth: 1, borderColor: '#F1D99C' },
   sceneSun: { position: 'absolute', width: 66, height: 66, borderRadius: 33, backgroundColor: '#FFD66F', right: 20, top: 17, opacity: 0.75 },
   sceneCloud: { position: 'absolute', left: 18, top: 13, backgroundColor: '#FFFFFF', borderRadius: 14, paddingHorizontal: 12, paddingVertical: 7 },
   sceneCloudText: { color: '#8B6849', fontSize: 9, fontWeight: '800' },
   sceneFloor: { height: 18, backgroundColor: '#D9C58E', marginHorizontal: -13, marginBottom: -13, marginTop: -12, opacity: 0.6 },
   departureMini: { backgroundColor: colors.ink, borderRadius: 24, padding: 20, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 30 },
   departureMinimal: { backgroundColor: '#171717', borderRadius: 10 },
-  departureCompanion: { backgroundColor: '#6B4B35', borderRadius: 26 },
-  companionCard: { backgroundColor: '#FFF0C9', borderRadius: 26, padding: 17, flexDirection: 'row', alignItems: 'center', gap: 14, marginBottom: 15, borderWidth: 1.5, borderColor: '#F4D994' },
   eggBubble: { width: 76, height: 76, borderRadius: 26, backgroundColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center', shadowColor: '#A17133', shadowOpacity: 0.12, shadowRadius: 10, shadowOffset: { width: 0, height: 5 } },
   eggEmoji: { fontSize: 43 },
-  companionEyebrow: { color: '#B2782B', fontSize: 8, fontWeight: '900', letterSpacing: 1.1 },
-  companionTitle: { color: '#5D402C', fontSize: 15, fontWeight: '900', marginTop: 4 },
-  companionCopy: { color: '#8C684C', fontSize: 10, fontWeight: '700', marginTop: 4 },
   urgencyCard: { backgroundColor: colors.violetSoft, borderRadius: 22, padding: 17, marginBottom: 14, borderWidth: 1.5, borderColor: '#DCD2FF' },
   urgencyCardFeatured: { marginBottom: 15 },
   urgencyCardDanger: { backgroundColor: colors.coralSoft, borderColor: '#FFC6BD' },
@@ -2554,7 +2462,6 @@ const styles = StyleSheet.create({
   emptyCard: { minHeight: 164, backgroundColor: colors.surface, borderRadius: 22, paddingVertical: 28, paddingHorizontal: 24, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: colors.line, borderStyle: 'dashed', overflow: 'hidden' },
   emptyCardMinimal: { borderRadius: 2, borderStyle: 'solid', borderColor: '#171715', backgroundColor: '#FFFFFF' },
   emptyCardChic: { borderRadius: 26, borderStyle: 'solid', borderColor: '#F0DFE5', backgroundColor: '#FFFFFF' },
-  emptyCardCompanion: { borderRadius: 28, borderStyle: 'solid', borderColor: '#F0DFC9', backgroundColor: '#FFF2DE' },
   emptyPlainContent: { alignItems: 'center' },
   emptyChicGlass: { width: '72%', alignSelf: 'flex-start', backgroundColor: 'rgba(255,255,255,0.84)', borderRadius: 20, paddingHorizontal: 20, paddingVertical: 22, alignItems: 'center', zIndex: 2 },
   emptyIcon: { color: colors.violet, fontSize: 30, marginBottom: 8 },
@@ -2567,8 +2474,6 @@ const styles = StyleSheet.create({
   taskCardInnerChic: { flex: 0, width: '84%', minHeight: 70, borderRadius: 18, paddingHorizontal: 7, backgroundColor: 'rgba(255,255,255,0.84)', zIndex: 2 },
   taskCardChicDone: { opacity: 1 },
   taskCardInnerChicDone: { opacity: 0.82 },
-  taskCardCompanion: { borderRadius: 23, borderWidth: 1, borderColor: '#F0DFB8' },
-  companionTaskMark: { color: '#D99B40', fontSize: 15, marginRight: 7, fontWeight: '900' },
   taskCardDone: { opacity: 0.55, backgroundColor: '#EFEEE9' },
   check: { width: 29, height: 29, borderRadius: 10, borderWidth: 2, borderColor: '#D8D3DE', alignItems: 'center', justifyContent: 'center', marginRight: 13 },
   checkDone: { backgroundColor: colors.violet, borderColor: colors.violet },
@@ -2602,7 +2507,6 @@ const styles = StyleSheet.create({
   timeTabs: { flexDirection: 'row', backgroundColor: '#EDE9F1', borderRadius: 17, padding: 4, marginBottom: 22, overflow: 'hidden' },
   timeTabsMinimal: { borderRadius: 0, padding: 0, backgroundColor: 'transparent', borderTopWidth: 1, borderBottomWidth: 1, borderColor: '#CFCFCA' },
   timeTabsChic: { backgroundColor: 'transparent', borderRadius: 0, padding: 0, gap: 5, overflow: 'visible' },
-  timeTabsCompanion: { backgroundColor: '#FFF2DE', borderRadius: 24, borderWidth: 1, borderColor: '#F0DFC9' },
   timeTab: { flex: 1, borderRadius: 13, paddingVertical: 12, alignItems: 'center' },
   timeTabMinimal: { borderRadius: 0, borderRightWidth: 1, borderColor: '#CFCFCA' },
   timeTabChicPattern: { minHeight: 52, borderRadius: 15, paddingVertical: 6, paddingHorizontal: 3, overflow: 'hidden', borderWidth: 1, borderColor: 'rgba(217,134,161,0.18)' },
@@ -2700,7 +2604,6 @@ const styles = StyleSheet.create({
   modeMiniPreview: { width: '100%', height: 70, borderRadius: 10, marginBottom: 8, overflow: 'hidden', position: 'relative' },
   modeMiniMinimal: { backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#171715', borderRadius: 2 },
   modeMiniChic: { backgroundColor: '#FFF3F5', borderWidth: 1, borderColor: '#F0DFE5', borderRadius: 16 },
-  modeMiniCompanion: { backgroundColor: '#FFF2DE', borderWidth: 1, borderColor: '#F0DFC9', borderRadius: 18 },
   modeMiniBlackBlock: { position: 'absolute', left: 7, top: 7, width: 24, height: 17, backgroundColor: '#171715' },
   modeMiniNumber: { position: 'absolute', right: 8, top: 5, color: '#171715', fontSize: 24, fontWeight: '900' },
   modeMiniLine: { position: 'absolute', left: 7, right: 7, bottom: 12, height: 1, backgroundColor: '#171715' },
@@ -2719,15 +2622,12 @@ const styles = StyleSheet.create({
   patternChoiceTextActive: { color: '#D986A1' },
   phonePreview: { backgroundColor: '#D9D1EA', borderRadius: 35, padding: 22, paddingBottom: 34, minHeight: 350, alignItems: 'center', marginBottom: 18 },
   phonePreviewMinimal: { backgroundColor: '#D7D7D7', borderRadius: 14 },
-  phonePreviewCompanion: { backgroundColor: '#E6D4A8', borderRadius: 38 },
   phoneClock: { color: colors.ink, fontSize: 30, fontWeight: '500', marginBottom: 30 },
   widget: { width: '100%', maxWidth: 340, minHeight: 190, backgroundColor: colors.surface, borderRadius: 26, padding: 18, shadowColor: '#3B3151', shadowOpacity: 0.16, shadowRadius: 18, shadowOffset: { width: 0, height: 9 } },
   widgetMinimal: { borderRadius: 10, shadowOpacity: 0, borderWidth: 1, borderColor: '#DADADA' },
-  widgetCompanion: { backgroundColor: '#FFF9E9', borderColor: '#EED59B', borderWidth: 1.5 },
   widgetChicWash: { ...StyleSheet.absoluteFillObject, margin: 9, borderRadius: 19, backgroundColor: 'rgba(255,255,255,0.78)' },
   widgetChicOrb: { position: 'absolute', width: 82, height: 82, borderRadius: 41, right: -21, top: -28, opacity: 0.65 },
   widgetChicSymbol: { position: 'absolute', right: 20, top: 10, color: '#FFFFFF', fontSize: 24, opacity: 0.9 },
-  widgetCompanionEgg: { position: 'absolute', right: 14, bottom: 10, fontSize: 26, opacity: 0.9 },
   widgetSmall: { maxWidth: 210, minHeight: 190 },
   widgetTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
   widgetBrand: { color: colors.ink, fontSize: 19, fontWeight: '900' },
@@ -2835,7 +2735,6 @@ const styles = StyleSheet.create({
   premiumIntro: { position: 'relative', overflow: 'hidden', borderRadius: 24, padding: 12, marginBottom: 16, backgroundColor: '#F2EAFE' },
   premiumIntroMinimal: { borderRadius: 1, backgroundColor: '#111111', borderTopWidth: 5, borderTopColor: '#777777' },
   premiumIntroChic: { backgroundColor: '#F7DCE6', borderWidth: 1, borderColor: '#EABCCB' },
-  premiumIntroCompanion: { backgroundColor: '#FFF0C9', borderWidth: 1, borderColor: '#E8CB83' },
   premiumIntroPlate: { zIndex: 2, backgroundColor: 'rgba(255,255,255,0.84)', borderRadius: 17, padding: 17 },
   premiumIntroPlateMinimal: { backgroundColor: 'transparent', borderRadius: 0 },
   premiumIntroBrand: { color: '#6D52B5', fontSize: 12, fontWeight: '900', letterSpacing: 0.5 },
@@ -2847,7 +2746,6 @@ const styles = StyleSheet.create({
   premiumFeatureBlock: { position: 'relative', overflow: 'hidden', borderRadius: 22, backgroundColor: '#F2EEFA', borderWidth: 1, borderColor: '#DDD4EA', marginBottom: 14 },
   premiumFeatureMinimal: { borderRadius: 1, backgroundColor: '#F5F5F2', borderColor: '#1A1A1A', borderLeftWidth: 5 },
   premiumFeatureChic: { backgroundColor: '#F7DDE6', borderColor: '#E9BECB' },
-  premiumFeatureCompanion: { backgroundColor: '#FFF4D7', borderColor: '#E9D194' },
   premiumFeatureInner: { zIndex: 2, padding: 13 },
   premiumFeatureTop: { flexDirection: 'row', alignItems: 'center', marginBottom: 10 },
   premiumFeatureNumber: { color: '#776789', fontSize: 18, fontWeight: '300', marginRight: 9 },
@@ -2874,7 +2772,6 @@ const styles = StyleSheet.create({
   previewMetricLabel: { color: '#655E6C', fontSize: 10, fontWeight: '900' }, previewTimeCompare: { flexDirection: 'row', justifyContent: 'space-around', alignItems: 'center', marginTop: 10 }, previewCompareLabel: { color: '#918996', fontSize: 8, fontWeight: '800' }, previewCompareValue: { color: '#302A36', fontSize: 20, fontWeight: '900' }, previewCompareArrow: { color: '#A89EB0', fontSize: 17 }, previewMetricBig: { color: '#B65D78', fontSize: 22, fontWeight: '900', marginTop: 12 }, previewRecordCount: { color: '#928A98', fontSize: 8, fontWeight: '800', marginTop: 4 },
   previewInsightRow: { flexDirection: 'row', alignItems: 'center', borderTopWidth: 1, borderTopColor: '#ECE7EF', paddingVertical: 8 }, previewInsightLabel: { color: '#6D6474', fontSize: 9, fontWeight: '900', width: 54 }, previewInsightValue: { color: '#3D3743', fontSize: 9, fontWeight: '700', flex: 1 },
   previewPlanCompare: { alignItems: 'center' }, previewFreeWeek: { width: '100%' }, previewCompareTag: { color: '#655E6C', fontSize: 8, fontWeight: '900', marginBottom: 6 }, previewWeekRow: { flexDirection: 'row', justifyContent: 'space-between' }, previewWeekDay: { color: '#4B4550', fontSize: 7, borderWidth: 1, borderColor: '#DDD7E1', paddingHorizontal: 3, paddingVertical: 5 }, previewMonth: { width: '100%', backgroundColor: '#F5F1F7', borderRadius: 10, padding: 9 }, previewMonthTitle: { color: '#3B3541', fontSize: 10, fontWeight: '900' }, previewMonthWeek: { color: '#8B828F', fontSize: 8, marginTop: 6 }, previewMonthDays: { color: '#49424F', fontSize: 9, lineHeight: 16, fontWeight: '700' },
-  previewDanger: { backgroundColor: '#FFE3E1', borderRadius: 9, padding: 8, marginBottom: 8 }, previewDangerText: { color: '#A84646', fontSize: 11, fontWeight: '900', textAlign: 'center' }, previewRecoveryGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 }, previewRecoveryOption: { width: '48%', backgroundColor: '#F0EBF5', borderRadius: 9, paddingVertical: 8, paddingHorizontal: 5 }, previewRecoveryText: { color: '#554A61', fontSize: 8, fontWeight: '900', textAlign: 'center' }, previewCompanion: { color: '#80642E', fontSize: 9, fontWeight: '800', marginTop: 9, textAlign: 'center' },
   premiumHistoryNote: { borderWidth: 1, borderColor: '#CFC7D5', borderRadius: 14, padding: 14, marginTop: 3, backgroundColor: 'rgba(255,255,255,0.62)' }, premiumHistoryTitle: { color: '#332E38', fontSize: 15, fontWeight: '900' }, premiumHistoryCopy: { color: '#736B79', fontSize: 10, lineHeight: 17, marginTop: 5 }, premiumHistoryRows: { marginTop: 9, borderTopWidth: 1, borderTopColor: '#DED8E2', paddingTop: 6 }, premiumHistoryRow: { color: '#5B5361', fontSize: 9, paddingVertical: 3 },
   premiumFuture: { backgroundColor: '#EEE8F5', borderRadius: 14, padding: 14, marginVertical: 14 }, premiumFutureTitle: { color: '#5E4A79', fontSize: 13, fontWeight: '900' }, premiumFutureCopy: { color: '#746A7E', fontSize: 10, lineHeight: 17, marginTop: 5 },
   premiumCarouselHeader: { paddingHorizontal: 8, paddingBottom: 10 },
@@ -2914,6 +2811,11 @@ const styles = StyleSheet.create({
   previewTemplateSaved: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#F4EFF7', padding: 9, borderRadius: 9 },
   previewTemplateChoose: { color: '#6C54AA', fontSize: 9, fontWeight: '900' },
   previewTemplateReady: { color: '#5B5262', fontSize: 9, fontWeight: '800', textAlign: 'center', marginTop: 7 },
+  previewDanger: { backgroundColor: '#FFE3E1', borderRadius: 9, padding: 8, marginBottom: 8 },
+  previewDangerText: { color: '#A84646', fontSize: 11, fontWeight: '900', textAlign: 'center' },
+  previewRecoveryGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+  previewRecoveryOption: { width: '48%', backgroundColor: '#F0EBF5', borderRadius: 9, paddingVertical: 8, paddingHorizontal: 5 },
+  previewRecoveryText: { color: '#554A61', fontSize: 8, fontWeight: '900', textAlign: 'center' },
   taskTemplateSaveAction: { marginTop: 10, borderWidth: 1, borderColor: '#CFC4DB', backgroundColor: '#F7F2FA', padding: 13, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   taskTemplateSaveTitle: { color: '#3B3341', fontSize: 13, fontWeight: '900' },
   taskTemplateSaveCopy: { color: '#7D7383', fontSize: 9, marginTop: 3 },
@@ -2973,7 +2875,6 @@ const styles = StyleSheet.create({
   vesselScene: { backgroundColor: '#FFF0F5', borderRadius: 28, padding: 18, alignItems: 'center', marginBottom: 20, borderWidth: 2, borderColor: '#FFFFFF', position: 'relative', overflow: 'hidden' },
   vesselSceneChic: { backgroundColor: '#FFF3F5', borderColor: '#F0DFE5' },
   vesselSceneCompact: { marginTop: 14, marginBottom: 4, padding: 12, borderRadius: 22 },
-  vesselSceneCompanion: { backgroundColor: '#FFF0C9', borderColor: '#F0D69B' },
   vesselLabel: { alignItems: 'center', marginBottom: 9 },
   vesselLabelChic: { backgroundColor: 'rgba(255,255,255,0.82)', borderRadius: 18, paddingHorizontal: 16, paddingVertical: 9, zIndex: 2 },
   vesselLabelTop: { color: colors.muted, fontSize: 8, fontWeight: '900', letterSpacing: 1.3 },
@@ -2982,7 +2883,6 @@ const styles = StyleSheet.create({
   jarLid: { width: 116, height: 18, borderRadius: 7, backgroundColor: '#D7B98B', zIndex: 3 },
   jarBody: { width: 264, height: 132, borderRadius: 34, borderTopLeftRadius: 22, borderTopRightRadius: 22, backgroundColor: 'rgba(255,255,255,0.58)', borderWidth: 3, borderColor: 'rgba(255,255,255,0.92)', overflow: 'hidden', position: 'relative', zIndex: 2 },
   jarBodyCompact: { width: 244, height: 82, borderRadius: 27, borderTopLeftRadius: 18, borderTopRightRadius: 18 },
-  jarBodyCompanion: { backgroundColor: 'rgba(255,248,223,0.72)', borderColor: '#E5C982' },
   jarTreasure: { position: 'absolute', width: 31, height: 31, borderRadius: 12, backgroundColor: 'rgba(255,255,255,0.9)', alignItems: 'center', justifyContent: 'center' },
   jarTreasureText: { fontSize: 17 },
   jarEmptyText: { color: colors.muted, fontSize: 10, fontWeight: '700', textAlign: 'center', marginTop: 55 },
@@ -2999,7 +2899,6 @@ const styles = StyleSheet.create({
   todayMiniTickDone: { height: 28, backgroundColor: '#111111' },
   todayWinStrip: { paddingHorizontal: 4, paddingVertical: 7, marginBottom: 14, flexDirection: 'row', alignItems: 'center' },
   todayWinStripChic: { minHeight: 118, borderRadius: 24, backgroundColor: '#FFF3F5', padding: 10, overflow: 'hidden' },
-  todayWinStripCompanion: { backgroundColor: '#FFF0C9', borderColor: '#F0D69B' },
   todayWinsPaper: { flex: 1, minHeight: 96, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', zIndex: 2 },
   todayWinsTextPlate: { flex: 0, width: '58%', backgroundColor: 'rgba(255,255,255,0.82)', borderRadius: 18, paddingHorizontal: 13, paddingVertical: 12 },
   todayWinsPlain: { flex: 1, flexDirection: 'row', alignItems: 'center' },
@@ -3007,13 +2906,11 @@ const styles = StyleSheet.create({
   miniJarLid: { width: 47, height: 9, borderRadius: 4, backgroundColor: '#CDAE7B', zIndex: 2 },
   miniJar: { width: 72, height: 56, borderRadius: 17, borderTopLeftRadius: 11, borderTopRightRadius: 11, backgroundColor: 'rgba(255,255,255,0.55)', borderWidth: 2, borderColor: '#FFFFFF', position: 'relative', overflow: 'hidden' },
   miniJarChicGlass: { backgroundColor: 'rgba(255,255,255,0.62)', borderColor: 'rgba(217,134,161,0.28)', shadowColor: '#D986A1', shadowOpacity: 0.15, shadowRadius: 7, shadowOffset: { width: 0, height: 4 } },
-  miniJarCompanion: { backgroundColor: 'rgba(255,242,194,0.66)', borderColor: '#E5C57B' },
   miniJarItem: { position: 'absolute', fontSize: 13 },
   fallingTreasure: { position: 'absolute', top: 0, right: 31, fontSize: 17, zIndex: 4 },
   completedDetailRow: { backgroundColor: colors.surface, borderRadius: 16, padding: 13, marginBottom: 8, flexDirection: 'row', alignItems: 'center', gap: 11 },
   completedDetailIcon: { color: colors.violet, fontSize: 20, fontWeight: '900' },
   completedDetailRowMinimal: { borderRadius: 0, borderWidth: 0, borderBottomWidth: 1, borderBottomColor: '#CFCFCA' },
-  completedCompanionReaction: { color: '#7C5C3E', fontSize: 10, fontWeight: '800', backgroundColor: '#FFF2DE', borderRadius: 14, padding: 10, marginBottom: 10 },
   completedModalPattern: { position: 'absolute', width: '100%', height: 108, left: 0, top: 0, overflow: 'hidden', opacity: 0.45 },
   todayWinCount: { color: '#171715', fontSize: 32, lineHeight: 35, fontWeight: '900' },
   restoreButton: { height: 30, borderRadius: 9, backgroundColor: '#F1EDF5', paddingHorizontal: 9, alignItems: 'center', justifyContent: 'center' },
@@ -3058,15 +2955,12 @@ const styles = StyleSheet.create({
   compactTodayHeader: { minHeight: 42, borderRadius: 14, backgroundColor: '#FFFFFF', paddingHorizontal: 13, paddingVertical: 9, marginBottom: 8, flexDirection: 'row', alignItems: 'center', gap: 10, borderWidth: 1, borderColor: '#EEE9F2' },
   compactTodayHeaderMinimal: { borderRadius: 2, borderColor: '#1A1A1A', backgroundColor: '#F8F8F8' },
   compactTodayHeaderChic: { minHeight: 138, borderRadius: 26, backgroundColor: '#FFF3F5', borderColor: '#F0DFE5', shadowColor: '#D986A1', shadowOpacity: 0.1, shadowRadius: 10, padding: 14 },
-  compactTodayHeaderCompanion: { minHeight: 182, borderRadius: 28, backgroundColor: '#FFF2DE', borderColor: '#F0DFC9', alignItems: 'flex-start', paddingTop: 18, overflow: 'hidden' },
   compactTodayTime: { color: colors.ink, fontSize: 27, lineHeight: 29, fontWeight: '800', letterSpacing: -1.2 },
   compactTodayDate: { color: colors.muted, fontSize: 8, fontWeight: '800', marginTop: 2 },
   compactTodayMessage: { flex: 1, borderLeftWidth: 1, borderLeftColor: 'rgba(100,90,105,0.15)', paddingLeft: 14 },
   compactTodayKicker: { color: colors.violet, fontSize: 8, fontWeight: '900', letterSpacing: 1.4 },
   compactTodayKickerChic: { color: '#C9507B', letterSpacing: 1.1 },
-  compactTodayKickerCompanion: { color: '#9A6A20', letterSpacing: 0.8 },
   compactTodayCopy: { flex: 1, color: colors.ink, fontSize: 11, fontWeight: '800' },
-  quickReplyHint: { color: colors.muted, fontSize: 8, fontWeight: '700', marginTop: 3 },
   quickAddCard: { backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#E8E1EC', borderRadius: 18, padding: 14, marginBottom: 12 },
   quickAddCardMinimal: { borderRadius: 2, borderColor: '#1A1A1A', backgroundColor: '#F8F8F8' },
   quickAddCardChic: { backgroundColor: '#FFF7FA', borderColor: '#F2D7E1' },
@@ -3075,17 +2969,6 @@ const styles = StyleSheet.create({
   quickAddHint: { color: colors.muted, fontSize: 8, fontWeight: '700', marginTop: 6 },
   quickAddButton: { alignSelf: 'flex-end', minWidth: 74, height: 34, borderRadius: 10, backgroundColor: colors.violet, alignItems: 'center', justifyContent: 'center', marginTop: 10 },
   quickAddButtonText: { color: '#FFFFFF', fontSize: 11, fontWeight: '900' },
-  nowActionCard: { backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#E8E1EC', borderRadius: 20, padding: 16, marginBottom: 12 },
-  nowActionCardMinimal: { borderRadius: 2, borderColor: '#1A1A1A', backgroundColor: '#FFFFFF' },
-  nowActionCardChic: { backgroundColor: '#FFF4F7', borderColor: '#F0D5DF' },
-  nowActionLabel: { color: colors.violet, fontSize: 9, fontWeight: '900', letterSpacing: 1.1 },
-  nowActionTitle: { color: colors.ink, fontSize: 20, fontWeight: '900', marginTop: 7, lineHeight: 26 },
-  nowActionButtons: { flexDirection: 'row', gap: 8, marginTop: 14 },
-  nowActionPrimary: { flex: 1, height: 44, borderRadius: 12, backgroundColor: colors.ink, alignItems: 'center', justifyContent: 'center' },
-  nowActionSecondary: { flex: 1, height: 44, borderRadius: 12, backgroundColor: '#F4F0F6', alignItems: 'center', justifyContent: 'center' },
-  nowActionPrimaryText: { color: '#FFFFFF', fontSize: 13, fontWeight: '900' },
-  nowActionSecondaryText: { color: colors.ink, fontSize: 13, fontWeight: '900' },
-  nowActionNote: { color: colors.muted, fontSize: 8, fontWeight: '700', marginTop: 8 },
   todayHeaderInner: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10, zIndex: 2 },
   chicTodayPaper: { flex: 0, width: '68%', minHeight: 108, alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: 8, padding: 13, borderRadius: 21, backgroundColor: 'rgba(255,255,255,0.84)', zIndex: 2 },
   chicTodayStats: { color: '#8B7B82', fontSize: 9, fontWeight: '800', marginTop: 8 },
@@ -3094,19 +2977,13 @@ const styles = StyleSheet.create({
   todayChicMark: { width: 36, height: 36, borderRadius: 18, backgroundColor: '#FFD1E1', alignItems: 'center', justifyContent: 'center' },
   todayChicMarkText: { color: '#C84F7A', fontSize: 18 },
   todayChicSpark: { color: '#E5A34A', fontSize: 17, paddingRight: 2 },
-  todayCompanionFace: { width: 92, height: 105, borderRadius: 35, backgroundColor: 'rgba(255,255,255,0.78)', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#F0D69B', zIndex: 2 },
-  todayCompanionFaceText: { fontSize: 52 },
-  companionHabitatSun: { position: 'absolute', width: 80, height: 80, borderRadius: 40, backgroundColor: '#FFE4BD', right: 20, top: 16 },
-  companionHabitatFloor: { position: 'absolute', left: -30, right: -30, height: 72, borderRadius: 90, backgroundColor: '#DCEFE8', bottom: -38 },
   chicHeaderPatternCutout: { position: 'absolute', width: '31%', right: 0, top: 0, bottom: 0, overflow: 'hidden' },
   bucketTabs: { flexDirection: 'row', gap: 6, marginBottom: 10 },
   bucketTab: { flex: 1, height: 38, borderRadius: 11, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#E7E1EA', alignItems: 'center', justifyContent: 'center' },
   bucketTabActive: { backgroundColor: colors.ink, borderColor: colors.ink },
   bucketTabMinimal: { borderRadius: 2, borderColor: '#BDBDBD' },
   bucketTabChic: { borderRadius: 15, backgroundColor: '#FFF8FB', borderColor: '#F5D5E0' },
-  bucketTabCompanion: { borderRadius: 15, backgroundColor: '#FFF8E5', borderColor: '#ECD59F' },
   bucketTabActiveChic: { backgroundColor: '#D95F8A', borderColor: '#D95F8A' },
-  bucketTabActiveCompanion: { backgroundColor: '#B47A24', borderColor: '#B47A24' },
   bucketTabText: { color: colors.muted, fontSize: 10, fontWeight: '800' },
   bucketTabTextActive: { color: '#FFFFFF' },
   timelineShortcutCompact: { minHeight: 48, borderRadius: 13, backgroundColor: '#F2EEF6', paddingHorizontal: 13, paddingVertical: 8, marginBottom: 10, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
@@ -3117,7 +2994,6 @@ const styles = StyleSheet.create({
   homeToolCard: { flex: 1, minHeight: 76, borderRadius: 16, padding: 10, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#E8E1EC', position: 'relative', overflow: 'hidden' },
   homeToolCardMinimal: { borderRadius: 2, borderColor: '#1A1A1A', backgroundColor: '#F7F7F7' },
   homeToolCardChic: { borderRadius: 21, padding: 6, borderColor: 'rgba(217,134,161,0.18)' },
-  homeToolCardCompanion: { borderRadius: 19, backgroundColor: '#FFF1C9', borderColor: '#EACF8D' },
   homeToolGlass: { width: '72%', minHeight: 63, alignSelf: 'flex-start', borderRadius: 16, backgroundColor: 'rgba(255,255,255,0.82)', paddingHorizontal: 9, paddingVertical: 8, zIndex: 2 },
   homeToolPlain: { flex: 1 },
   homeToolIcon: { color: colors.violet, fontSize: 14, fontWeight: '900' },
@@ -3190,12 +3066,8 @@ const styles = StyleSheet.create({
   scheduleAgendaEdit: { color: colors.violet, fontSize: 9, fontWeight: '900' },
   focusHero: { backgroundColor: '#17151C', borderRadius: 26, padding: 22, alignItems: 'center', marginBottom: 22 },
   focusHeroChic: { backgroundColor: '#2E242B', borderWidth: 1, borderColor: '#59434E', shadowColor: '#D986A1', shadowOpacity: 0.12, shadowRadius: 18, overflow: 'hidden' },
-  focusHeroCompanion: { backgroundColor: '#3E352F', borderWidth: 1, borderColor: '#6A5A50' },
   focusChicFlowerOne: { position: 'absolute', top: 18, left: 20, opacity: 0.35 },
   focusChicFlowerTwo: { position: 'absolute', top: 74, right: 26, opacity: 0.4 },
-  focusCompanionBubble: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.7)', borderRadius: 18, paddingHorizontal: 13, paddingVertical: 8, marginBottom: 12, gap: 7 },
-  focusCompanionEmoji: { fontSize: 24 },
-  focusCompanionSpeech: { color: '#745329', fontSize: 10, fontWeight: '900' },
   focusEyebrow: { color: '#AFA6C5', fontSize: 9, fontWeight: '900', letterSpacing: 1.7 },
   focusEyebrowLight: { color: '#E8CDD7' },
   focusTitle: { color: '#FFFFFF', fontSize: 22, lineHeight: 29, fontWeight: '900', textAlign: 'center', marginTop: 12 },
@@ -3204,17 +3076,14 @@ const styles = StyleSheet.create({
   focusCopyLight: { color: '#D7C8CE' },
   focusTimerRing: { width: 172, height: 172, borderRadius: 86, borderWidth: 9, borderColor: '#8370E8', alignItems: 'center', justifyContent: 'center', marginVertical: 23, backgroundColor: '#211E29' },
   focusTimerRingChic: { borderColor: '#D986A1', backgroundColor: '#392E35' },
-  focusTimerRingCompanion: { borderColor: '#F3A46F', backgroundColor: '#4A3F38' },
   focusTime: { color: '#FFFFFF', fontSize: 39, fontWeight: '300', letterSpacing: -1.5 },
   focusTimeLight: { color: '#FFFFFF' },
   focusTimerState: { color: '#BDB2FF', fontSize: 9, fontWeight: '900', letterSpacing: 1, marginTop: 4 },
   focusTimerStateChic: { color: '#D2668C' },
-  focusTimerStateCompanion: { color: '#B27416' },
   focusProgressTrack: { width: '100%', height: 5, borderRadius: 3, backgroundColor: '#35303F', overflow: 'hidden' },
   focusProgressTrackLight: { backgroundColor: 'rgba(86,65,76,0.12)' },
   focusProgressFill: { height: '100%', borderRadius: 3, backgroundColor: '#A794FF' },
   focusProgressFillChic: { backgroundColor: '#ED8DAE' },
-  focusProgressFillCompanion: { backgroundColor: '#ECAE35' },
   focusActions: { width: '100%', flexDirection: 'row', gap: 9, marginTop: 18 },
   focusResetButton: { flex: 0.7, height: 46, borderRadius: 14, borderWidth: 1, borderColor: '#514B5B', alignItems: 'center', justifyContent: 'center' },
   focusResetButtonLight: { borderColor: 'rgba(91,67,78,0.25)', backgroundColor: 'rgba(255,255,255,0.45)' },
@@ -3222,7 +3091,6 @@ const styles = StyleSheet.create({
   focusResetTextLight: { color: '#6F5C65' },
   focusStartButton: { flex: 1, height: 46, borderRadius: 14, backgroundColor: '#8874EC', alignItems: 'center', justifyContent: 'center' },
   focusStartButtonChic: { backgroundColor: '#E8759D' },
-  focusStartButtonCompanion: { backgroundColor: '#DA962A' },
   focusStartText: { color: '#FFFFFF', fontSize: 12, fontWeight: '900' },
   focusSectionTitle: { color: colors.ink, fontSize: 13, fontWeight: '900', marginBottom: 10 },
   focusDurationRow: { flexDirection: 'row', gap: 7, marginBottom: 22 },
@@ -3238,7 +3106,6 @@ const styles = StyleSheet.create({
   bottomNav: { position: 'absolute', left: 18, right: 18, bottom: 14, height: 74, backgroundColor: colors.surface, borderRadius: 25, flexDirection: 'row', alignItems: 'center', shadowColor: '#372F4A', shadowOpacity: 0.14, shadowRadius: 18, shadowOffset: { width: 0, height: 8 }, elevation: 8 },
   bottomNavMinimal: { left: 0, right: 0, bottom: 0, borderRadius: 0, height: 66, borderTopWidth: 1, borderTopColor: '#C8C8C8', shadowOpacity: 0 },
   bottomNavChic: { backgroundColor: '#FFF7FA', borderWidth: 2, borderColor: '#FFFFFF', shadowColor: '#D96C9B', shadowOpacity: 0.16 },
-  bottomNavCompanion: { backgroundColor: '#FFF4D8', borderRadius: 30, borderWidth: 1, borderColor: '#ECD59F' },
   navItem: { flex: 1, alignItems: 'center', gap: 3 },
   navIcon: { color: '#A39DAA', fontSize: 20, fontWeight: '900' },
   navLabel: { color: '#A39DAA', fontSize: 10, fontWeight: '800' },

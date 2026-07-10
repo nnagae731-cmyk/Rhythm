@@ -1,7 +1,6 @@
 export type BehaviorEventType =
   | 'notification_scheduled'
   | 'notification_action'
-  | 'task_started'
   | 'task_completed'
   | 'focus_started'
   | 'focus_stopped'
@@ -53,10 +52,6 @@ export function appendBehaviorEvents(current: BehaviorEvent[], next: BehaviorEve
 
 export function createTaskCompletedBehaviorEvent(args: { taskId: string; taskTitle: string; occurredAt: Date; source?: BehaviorEventSource }): BehaviorEvent {
   return event(`task_completed:${args.taskId}`, 'task_completed', args.source ?? 'manual', args.occurredAt, { taskId: args.taskId, taskTitleSnapshot: args.taskTitle, actualAt: args.occurredAt.toISOString() });
-}
-
-export function createTaskStartedBehaviorEvent(args: { taskId: string; taskTitle: string; occurredAt: Date; source?: BehaviorEventSource }): BehaviorEvent {
-  return event(`task_started:${args.taskId}`, 'task_started', args.source ?? 'manual', args.occurredAt, { taskId: args.taskId, taskTitleSnapshot: args.taskTitle, actualAt: args.occurredAt.toISOString() });
 }
 
 export function createNotificationScheduledEvent(args: { notificationInstanceId: string; taskId: string; taskTitle: string; scheduledAt: Date; occurredAt: Date }): BehaviorEvent {
