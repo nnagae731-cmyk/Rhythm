@@ -1,12 +1,13 @@
 import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
+import { formatLiveDate, formatLiveTime } from '../features/tasks/taskUtils';
 import { ThemeMode } from '../types';
 
 export function Header({ designMode, now }: { designMode: ThemeMode; now: Date }) {
   return (
-    <View style={[styles.header, designMode === 'minimal' && styles.headerMinimal]}>
+    <View style={[styles.header, designMode === 'minimal' && styles.headerMinimal, ]}>
       <View>
-        <Text style={styles.dateLabel}>{`${now.getMonth() + 1}月${now.getDate()}日 ${['日', '月', '火', '水', '木', '金', '土'][now.getDay()]}曜日 · ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`}</Text>
+        <Text style={styles.dateLabel}>{formatLiveDate(now)} · {formatLiveTime(now)}</Text>
         <Text style={[styles.brand, designMode === 'minimal' && styles.brandMinimal]}>Rhythm</Text>
       </View>
     </View>

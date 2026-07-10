@@ -4,17 +4,17 @@ import { getThemeTokens } from '../theme';
 import { Screen, ThemeMode } from '../types';
 
 export function BottomNav({ screen, designMode, onChange }: { screen: Screen; designMode: ThemeMode; onChange: (screen: Screen) => void }) {
+  const theme = getThemeTokens(designMode);
   const items: { id: Screen; icon: string; label: string }[] = [
     { id: 'home', icon: '✓', label: '今日' },
     { id: 'timeline', icon: '↗', label: 'タイム' },
     { id: 'analysis', icon: '◫', label: '分析' },
     { id: 'settings', icon: '⚙', label: '設定' },
   ];
-  const theme = getThemeTokens(designMode);
   return (
-    <View style={[styles.bottomNav, designMode === 'minimal' && styles.bottomNavMinimal, designMode === 'chic' && styles.bottomNavChic]}>
+    <View style={[styles.bottomNav, designMode === 'minimal' && styles.bottomNavMinimal, designMode === 'chic' && styles.bottomNavChic, ]}>
       {items.map((item) => {
-        const active = screen === item.id;
+        const active = item.id === screen;
         return (
           <Pressable key={item.id} style={styles.navItem} onPress={() => onChange(item.id)}>
             <Text style={[styles.navIcon, { color: active ? theme.colors.primaryAccent : theme.colors.secondaryText }]}>{item.icon}</Text>
@@ -33,6 +33,4 @@ const styles = StyleSheet.create({
   navItem: { flex: 1, alignItems: 'center', gap: 3 },
   navIcon: { color: '#A39DAA', fontSize: 20, fontWeight: '900' },
   navLabel: { color: '#A39DAA', fontSize: 10, fontWeight: '800' },
-  navActive: { color: '#282538' },
-  navLabelActive: { color: '#282538' },
 });
