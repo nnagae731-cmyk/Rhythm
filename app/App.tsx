@@ -13,6 +13,14 @@ import { AnalysisScreen } from './AnalysisScreen';
 import { appendBehaviorEvent, appendBehaviorEvents, BehaviorEvent, createDeparturePreparationStartedEvent, createDepartureStartedEvent, createFocusCompletedBehaviorEvent, createFocusStartedEvent, createFocusStoppedEvent, createNotificationActionEvent, createNotificationScheduledEvent, createTaskCompletedBehaviorEvent, NotificationAction } from './behaviorEvents';
 import { DEFAULT_PREMIUM_GUIDE_FEATURE, PremiumGuideFeatureId } from './premiumGuide';
 import { createPremiumTaskTemplate, hasSameTemplateSettings, PremiumTaskTemplate, summarizePremiumTaskTemplate } from './taskTemplates';
+import { Header } from './components/Header';
+import { BottomNav } from './components/BottomNav';
+import { Screen, TimeTab, WidgetSize, Category, Priority, RepeatRule, TaskBucket, NudgeMode, ThemeMode, UrgencyStatus, Task, DeparturePlan, PersistedState } from './types';
+import { STORAGE_KEY, initialPlan } from './storage/rhythmState';
+import { loadRhythmState, saveRhythmState } from './storage/rhythmStorage';
+import { categories, priorities, repeatOptions, completionIcons, categoryColors, designModes, getChicTaskPatternPalette, chicUtilityPalettes } from './features/tasks/taskUtils';
+import { cancelPendingTaskNotifications } from './features/tasks/taskNotifications';
+import { cancelPendingDepartureNotifications } from './features/departure/departureNotifications';
 import {
   Alert,
   Animated,
@@ -31,105 +39,6 @@ import {
   View,
 } from 'react-native';
 
-type Screen = 'home' | 'timeline' | 'analysis' | 'settings';
-type TimeTab = 'departure' | 'deadline' | 'calendar' | 'focus';
-type WidgetSize = 'small' | 'medium';
-type Category = '仕事' | '家事' | '健康' | '予定' | 'その他';
-type Priority = '高' | '中' | '低';
-type RepeatRule = 'none' | 'daily' | 'weekdays' | 'weekly';
-type TaskBucket = 'now' | 'later' | 'waiting';
-type NudgeMode = 'once' | 'repeat' | 'strong';
-type ThemeMode = DesignMode;
-type UrgencyStatus = '余裕あり' | 'そろそろ準備' | '今出れば間に合う' | '急いで出発' | '予定どおりは厳しい' | 'リカバリーが必要';
-
-type Task = {
-  id: string;
-  title: string;
-  done: boolean;
-  remindAt?: string;
-  remindDate?: string;
-  deadlineDate?: string;
-  deadlineTime?: string;
-  deadlineNotifyBefore?: number;
-  navigationEnabled?: boolean;
-  preparationMinutes?: number;
-  travelMinutes?: number;
-  bufferMinutes?: number;
-  repeatRule?: RepeatRule;
-  bucket?: TaskBucket;
-  nudgeMode?: NudgeMode;
-  scheduledDate?: string;
-  category: Category;
-  priority: Priority;
-  completedAt?: string;
-};
-
-type DeparturePlan = {
-  id?: string;
-  title: string;
-  date: string;
-  arrival: string;
-  travelMinutes: number;
-  preparationMinutes: number;
-  bufferMinutes: number;
-};
-
-type PersistedState = {
-  tasks: Task[];
-  plan: DeparturePlan;
-  departurePlans: DeparturePlan[];
-  widgetSize: WidgetSize;
-  showCompleted: boolean;
-  completionIcon: string;
-  designMode: DesignMode;
-  taskTemplates?: string[];
-  chicPattern?: ChicPattern;
-  recoveryHistory?: RecoveryRecord[];
-  focusSessions?: FocusSession[];
-  departureCheckIns?: DepartureCheckIn[];
-  devPremiumPreview?: boolean;
-  devPlanTier?: PlanTier;
-  behaviorEvents?: BehaviorEvent[];
-  savedTaskTemplates?: PremiumTaskTemplate[];
-};
-
-const STORAGE_KEY = 'rhythm-mvp-state-v1';
-const categories: Category[] = ['仕事', '家事', '健康', '予定', 'その他'];
-const priorities: Priority[] = ['高', '中', '低'];
-const repeatOptions: { id: RepeatRule; label: string }[] = [
-  { id: 'none', label: 'なし' },
-  { id: 'daily', label: '毎日' },
-  { id: 'weekdays', label: '平日' },
-  { id: 'weekly', label: '毎週' },
-];
-const completionIcons = ['✓', '★', '♥', '✿', '☀'];
-const designModes: { id: DesignMode; name: string; description: string }[] = [
-  { id: 'minimal', name: 'Minimal', description: '静かで端正' },
-  { id: 'chic', name: 'Chic', description: '淡くおしゃれ' },
-];
-const categoryColors: Record<Category, string> = {
-  仕事: '#E9E4FF',
-  家事: '#FFF0D9',
-  健康: '#DFF5EA',
-  予定: '#FFE4DF',
-  その他: '#EEECEF',
-};
-type ChicTaskPatternPalette = { background: string; accent: string; warm: string };
-const chicTaskPatternPalettes: Record<Category, ChicTaskPatternPalette> = {
-  仕事: { background: '#F7F2FC', accent: '#A997C8', warm: '#DCCBF0' },
-  家事: { background: '#FFF5EF', accent: '#DFA58F', warm: '#F3C9B8' },
-  健康: { background: '#F1FAF7', accent: '#8FC9BD', warm: '#C9E8E0' },
-  予定: { background: '#FFF2F6', accent: '#D986A1', warm: '#F1B8CB' },
-  その他: { background: '#FFF9EE', accent: '#C6A467', warm: '#E8D5A7' },
-};
-function getChicTaskPatternPalette(category: Category) { return chicTaskPatternPalettes[category]; }
-const chicUtilityPalettes = {
-  departure: { background: '#FFF3F3', accent: '#D986A1', warm: '#F3B6A8' },
-  deadline: { background: '#FFF8ED', accent: '#C6A467', warm: '#E7C987' },
-  calendar: { background: '#F7F2FC', accent: '#A997C8', warm: '#DCCBF0' },
-  focus: { background: '#F1FAF7', accent: '#8FC9BD', warm: '#C9E8E0' },
-};
-
 const colors = {
   background: '#F8F5EF',
   surface: '#FFFFFF',
@@ -141,15 +50,6 @@ const colors = {
   coralSoft: '#FFF0ED',
   mint: '#DFF5EA',
   line: '#ECE8F0',
-};
-
-const initialPlan: DeparturePlan = {
-  title: '大切な予定',
-  date: todayInputValue(),
-  arrival: '10:00',
-  travelMinutes: 40,
-  preparationMinutes: 30,
-  bufferMinutes: 10,
 };
 
 Notifications.setNotificationHandler({
@@ -378,18 +278,6 @@ async function ensureNotifications() {
   return true;
 }
 
-async function cancelPendingTaskNotifications(taskId: string) {
-  const pending = await Notifications.getAllScheduledNotificationsAsync();
-  const matches = pending.filter((request) => request.content.data?.taskId === taskId);
-  await Promise.all(matches.map((request) => Notifications.cancelScheduledNotificationAsync(request.identifier)));
-}
-
-async function cancelPendingDepartureNotifications(planId: string) {
-  const pending = await Notifications.getAllScheduledNotificationsAsync();
-  const matches = pending.filter((request) => request.content.data?.departurePlanId === planId);
-  await Promise.all(matches.map((request) => Notifications.cancelScheduledNotificationAsync(request.identifier)));
-}
-
 export default function App() {
   const [screen, setScreen] = useState<Screen>('home');
   const [timelineInitialTab, setTimelineInitialTab] = useState<TimeTab>('departure');
@@ -519,10 +407,9 @@ export default function App() {
   useEffect(() => { planTierRef.current = planTier; }, [planTier]);
 
   useEffect(() => {
-    AsyncStorage.getItem(STORAGE_KEY)
-      .then((raw) => {
-        if (!raw) return;
-        const saved = JSON.parse(raw) as Partial<PersistedState>;
+    loadRhythmState()
+      .then((saved) => {
+        if (!saved) return;
         const loadedTasks = saved.tasks ? saved.tasks.map((task) => ({ ...task, category: (task.category ?? 'その他') as Category, priority: (task.priority ?? '中') as Priority })) : [];
         tasksRef.current = loadedTasks;
         setTasks(loadedTasks);
@@ -657,7 +544,7 @@ export default function App() {
   useEffect(() => {
     if (!hydrated) return;
     const state: PersistedState = { tasks, plan, departurePlans, widgetSize, showCompleted, completionIcon, designMode, taskTemplates, savedTaskTemplates, chicPattern, recoveryHistory, focusSessions, departureCheckIns, behaviorEvents };
-    AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(state)).catch(() => undefined);
+    saveRhythmState(state).catch(() => undefined);
   }, [tasks, plan, departurePlans, widgetSize, showCompleted, completionIcon, designMode, taskTemplates, savedTaskTemplates, chicPattern, recoveryHistory, focusSessions, departureCheckIns, behaviorEvents, hydrated]);
 
   const timeline = useMemo(() => {
@@ -982,17 +869,6 @@ export default function App() {
       <PremiumModal visible={premiumOpen} initialFeatureId={premiumTargetFeature} designMode={uiDesignMode} chicPattern={effectiveChicPattern} onClose={() => setPremiumOpen(false)} />
       <GuideModal visible={guideOpen} onClose={() => setGuideOpen(false)} />
     </SafeAreaView>
-  );
-}
-
-function Header({ designMode, now }: { designMode: ThemeMode; now: Date }) {
-  return (
-    <View style={[styles.header, designMode === 'minimal' && styles.headerMinimal, ]}>
-      <View>
-        <Text style={styles.dateLabel}>{formatLiveDate(now)} · {formatLiveTime(now)}</Text>
-        <Text style={[styles.brand, designMode === 'minimal' && styles.brandMinimal]}>{false ? 'Rhythm ✦' : 'Rhythm'}</Text>
-      </View>
-    </View>
   );
 }
 
@@ -2333,28 +2209,6 @@ function PremiumModal({ visible, initialFeatureId, designMode, chicPattern, onCl
   </Modal>;
 }
 
-function BottomNav({ screen, designMode, onChange }: { screen: Screen; designMode: DesignMode; onChange: (screen: Screen) => void }) {
-  const theme = getThemeTokens(designMode);
-  const items: { id: Screen; icon: string; label: string }[] = [
-    { id: 'home', icon: '✓', label: '今日' },
-    { id: 'timeline', icon: '↗', label: 'タイム' },
-    { id: 'analysis', icon: '◫', label: '分析' },
-    { id: 'settings', icon: '⚙', label: '設定' },
-  ];
-  return (
-    <View style={[styles.bottomNav, designMode === 'minimal' && styles.bottomNavMinimal, designMode === 'chic' && styles.bottomNavChic, ]}>
-      {items.map((item) => {
-        const active = item.id === screen;
-        return (
-          <Pressable key={item.id} style={styles.navItem} onPress={() => onChange(item.id)}>
-            <Text style={[styles.navIcon, { color: active ? theme.colors.primaryAccent : theme.colors.secondaryText }]}>{item.icon}</Text>
-            <Text style={[styles.navLabel, { color: active ? theme.colors.primaryAccent : theme.colors.secondaryText }]}>{item.label}</Text>
-          </Pressable>
-        );
-      })}
-    </View>
-  );
-}
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.background },
