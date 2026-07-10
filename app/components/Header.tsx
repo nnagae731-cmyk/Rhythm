@@ -8,7 +8,7 @@ export function Header({ designMode, now }: { designMode: ThemeMode; now: Date }
     <View style={[styles.header, designMode === 'minimal' && styles.headerMinimal, ]}>
       <View>
         <Text style={styles.dateLabel}>{formatLiveDate(now)} · {formatLiveTime(now)}</Text>
-        <Text style={[styles.brand, designMode === 'minimal' && styles.brandMinimal]}>Rhythm</Text>
+        <Text style={[styles.brand, designMode === 'minimal' && styles.brandMinimal]}>{false ? 'Rhythm ✦' : 'Rhythm'}</Text>
       </View>
     </View>
   );
