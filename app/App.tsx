@@ -15,12 +15,14 @@ import { DEFAULT_PREMIUM_GUIDE_FEATURE, PremiumGuideFeatureId } from './premiumG
 import { createPremiumTaskTemplate, hasSameTemplateSettings, PremiumTaskTemplate, summarizePremiumTaskTemplate } from './taskTemplates';
 import { Header } from './components/Header';
 import { BottomNav } from './components/BottomNav';
-import { Screen, TimeTab, WidgetSize, Category, Priority, RepeatRule, TaskBucket, NudgeMode, ThemeMode, UrgencyStatus, Task, DeparturePlan, PersistedState } from './types';
+import { Screen, TimeTab, WidgetSize, Category, Priority, RepeatRule, TaskBucket, NudgeMode, ThemeMode, UrgencyStatus, Task, DeparturePlan, PersistedState, WishMonthMap, MonthlyWishState } from './types';
 import { STORAGE_KEY, initialPlan } from './storage/rhythmState';
 import { loadRhythmState, saveRhythmState } from './storage/rhythmStorage';
 import { categories, priorities, repeatOptions, completionIcons, categoryColors, designModes, getChicTaskPatternPalette, chicUtilityPalettes } from './features/tasks/taskUtils';
+import { getMonthlyWishState, wishMonthKey } from './features/wish/wishUtils';
 import { cancelPendingTaskNotifications } from './features/tasks/taskNotifications';
 import { cancelPendingDepartureNotifications } from './features/departure/departureNotifications';
+import { WishScreen } from './WishScreen';
 import {
   Alert,
   Animated,
@@ -302,6 +304,7 @@ export default function App() {
   const behaviorEventsRef = React.useRef<BehaviorEvent[]>([]);
   const pendingBehaviorEventsRef = React.useRef<BehaviorEvent[]>([]);
   const pendingNotificationBehaviorActionsRef = React.useRef<Array<{ notificationInstanceId: string; action: NotificationAction; taskId?: string; actualAt: Date }>>([]);
+  const [wishMonths, setWishMonths] = useState<WishMonthMap>({});
   const [recoveryTargetPlanId, setRecoveryTargetPlanId] = useState<string>();
   const [taskTemplates, setTaskTemplates] = useState<string[]>(['朝の支度', '持ち物を確認', '連絡を返す', '薬を飲む']);
   const [savedTaskTemplates, setSavedTaskTemplates] = useState<PremiumTaskTemplate[]>([]);
@@ -319,6 +322,14 @@ export default function App() {
   const planTierRef = React.useRef<PlanTier>(planTier);
   const uiDesignMode = designMode;
   const effectiveChicPattern = getEffectiveChicPattern(planTier, chicPattern) as ChicPattern;
+  const currentWishMonthKey = wishMonthKey(now);
+  const currentWishState = getMonthlyWishState(wishMonths, currentWishMonthKey);
+  const saveCurrentWishState = React.useCallback((updater: (current: MonthlyWishState) => MonthlyWishState) => {
+    setWishMonths((current) => {
+      const previous = getMonthlyWishState(current, currentWishMonthKey);
+      return { ...current, [currentWishMonthKey]: updater(previous) };
+    });
+  }, [currentWishMonthKey]);
   const openPremiumFeature = React.useCallback((featureId: PremiumGuideFeatureId = DEFAULT_PREMIUM_GUIDE_FEATURE) => {
     setPremiumTargetFeature(featureId);
     setPremiumOpen(true);
@@ -433,6 +444,7 @@ export default function App() {
         setBehaviorEvents(loadedBehaviorEvents);
         if (saved.taskTemplates) setTaskTemplates(saved.taskTemplates);
         setSavedTaskTemplates(saved.savedTaskTemplates ?? []);
+        setWishMonths(saved.wishMonths ?? {});
       })
       .catch(() => Alert.alert('保存データを読み込めませんでした'))
       .finally(() => {
@@ -543,9 +555,9 @@ export default function App() {
 
   useEffect(() => {
     if (!hydrated) return;
-    const state: PersistedState = { tasks, plan, departurePlans, widgetSize, showCompleted, completionIcon, designMode, taskTemplates, savedTaskTemplates, chicPattern, recoveryHistory, focusSessions, departureCheckIns, behaviorEvents };
+    const state: PersistedState = { tasks, plan, departurePlans, widgetSize, showCompleted, completionIcon, designMode, taskTemplates, savedTaskTemplates, chicPattern, recoveryHistory, focusSessions, departureCheckIns, behaviorEvents, wishMonths };
     saveRhythmState(state).catch(() => undefined);
-  }, [tasks, plan, departurePlans, widgetSize, showCompleted, completionIcon, designMode, taskTemplates, savedTaskTemplates, chicPattern, recoveryHistory, focusSessions, departureCheckIns, behaviorEvents, hydrated]);
+  }, [tasks, plan, departurePlans, widgetSize, showCompleted, completionIcon, designMode, taskTemplates, savedTaskTemplates, chicPattern, recoveryHistory, focusSessions, departureCheckIns, behaviorEvents, wishMonths, hydrated]);
 
   const timeline = useMemo(() => {
     const arrival = parseClock(plan.arrival);
@@ -777,6 +789,18 @@ export default function App() {
               onRestore={(id) => setTasks((current) => current.map((task) => task.id === id ? { ...task, done: false, completedAt: undefined } : task))}
               onBucket={(id, bucket) => setTasks((current) => current.map((task) => task.id === id ? { ...task, bucket } : task))}
               onOpenTime={(tab) => { setTimelineInitialTab(tab); setScreen('timeline'); }}
+              onOpenWish={() => setScreen('wish')}
+            />
+          )}
+
+          {screen === 'wish' && (
+            <WishScreen
+              designMode={uiDesignMode}
+              chicPattern={effectiveChicPattern}
+              monthLabel={`${now.getFullYear()}年${now.getMonth() + 1}月`}
+              state={currentWishState}
+              onSaveState={saveCurrentWishState}
+              onBack={() => setScreen('home')}
             />
           )}
 
@@ -898,6 +922,7 @@ function HomeScreen({
   onRestore,
   onBucket,
   onOpenTime,
+  onOpenWish,
 }: {
   tasks: Task[];
   allTasks: Task[];
@@ -924,8 +949,10 @@ function HomeScreen({
   onRestore: (id: string) => void;
   onBucket: (id: string, bucket: TaskBucket) => void;
   onOpenTime: (tab: TimeTab) => void;
+  onOpenWish: () => void;
 }) {
   const priorityOrder: Record<Priority, number> = { 高: 0, 中: 1, 低: 2 };
+  const theme = useMemo(() => getThemeTokens(designMode), [designMode]);
   const [categoryFilter, setCategoryFilter] = useState<'すべて' | Category>('すべて');
   const [bucketFilter, setBucketFilter] = useState<TaskBucket>('now');
   const [bucketTask, setBucketTask] = useState<Task | null>(null);
@@ -938,6 +965,17 @@ function HomeScreen({
       <TodayWinStrip tasks={allTasks} designMode={designMode} chicPattern={chicPattern} onRestore={(id) => onRestore(id)} />
 
       <VoiceQuickAddCard designMode={designMode} chicPattern={chicPattern} onQuickAdd={onQuickAdd} />
+
+      <Pressable
+        style={[styles.wishShortcut, designMode === 'minimal' && styles.wishShortcutMinimal, designMode === 'chic' && styles.wishShortcutChic]}
+        onPress={onOpenWish}
+      >
+        <View>
+          <Text style={styles.wishShortcutLabel}>今月の叶えたいこと</Text>
+          <Text style={styles.wishShortcutText}>今日から、願いの画面へ飛べます</Text>
+        </View>
+        <Text style={styles.wishShortcutArrow}>›</Text>
+      </Pressable>
 
       <View style={[styles.sectionHeader, designMode === 'minimal' && styles.sectionHeaderMinimal]}>
         <View>
@@ -955,15 +993,15 @@ function HomeScreen({
         return <Pressable key={item.id} style={[styles.bucketTab, designMode === 'minimal' && styles.bucketTabMinimal, designMode === 'chic' && styles.bucketTabChic, bucketFilter === item.id && styles.bucketTabActive, bucketFilter === item.id && designMode === 'chic' && styles.bucketTabActiveChic]} onPress={() => setBucketFilter(item.id)}><Text style={[styles.bucketTabText, bucketFilter === item.id && styles.bucketTabTextActive]}>{item.label} {count}</Text></Pressable>;
       })}</View>
 
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterChips}>
+        {(['すべて', ...categories] as const).map((category) => <Pressable key={category} style={[styles.filterChip, categoryFilter === category && styles.filterChipActive]} onPress={() => setCategoryFilter(category)}><Text style={[styles.filterChipText, categoryFilter === category && styles.filterChipTextActive]}>{category}</Text></Pressable>)}
+      </ScrollView>
+
       <View style={styles.homeToolRow}>
         <HomeToolCard designMode={designMode} chicPattern={chicPattern} kind="departure" icon="↗" title="出発" meta={timeline.leave} onPress={() => onOpenTime('departure')} />
         <HomeToolCard designMode={designMode} chicPattern={chicPattern} kind="calendar" icon="▦" title="予定表" meta="月を見る" onPress={() => onOpenTime('calendar')} />
         <HomeToolCard designMode={designMode} chicPattern={chicPattern} kind="focus" icon="◉" title="集中" meta="今だけ" onPress={() => onOpenTime('focus')} />
       </View>
-
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterChips}>
-        {(['すべて', ...categories] as const).map((category) => <Pressable key={category} style={[styles.filterChip, categoryFilter === category && styles.filterChipActive]} onPress={() => setCategoryFilter(category)}><Text style={[styles.filterChipText, categoryFilter === category && styles.filterChipTextActive]}>{category}</Text></Pressable>)}
-      </ScrollView>
 
       {selectionMode && (
         <View style={styles.batchBar}>
@@ -1032,7 +1070,7 @@ function HomeScreen({
   );
 }
 
-function HomeToolCard({ designMode, chicPattern, kind, icon, title, meta, onPress }: { designMode: DesignMode; chicPattern: ChicPattern; kind: 'departure' | 'calendar' | 'focus'; icon: string; title: string; meta: string; onPress: () => void }) {
+function HomeToolCard({ designMode, chicPattern, kind, icon, title, meta, onPress }: { designMode: DesignMode; chicPattern: ChicPattern; kind: 'departure' | 'calendar' | 'focus' | 'wish'; icon: string; title: string; meta: string; onPress: () => void }) {
   const palette = chicUtilityPalettes[kind];
   return <Pressable style={[styles.homeToolCard, designMode === 'minimal' && styles.homeToolCardMinimal, designMode === 'chic' && styles.homeToolCardChic, designMode === 'chic' && { backgroundColor: palette.background }, ]} onPress={onPress}>
     {designMode === 'chic' && <ChicPatternDecor pattern={chicPattern} accent={palette.accent} warm={palette.warm} density="compact" />}
@@ -3031,6 +3069,12 @@ const styles = StyleSheet.create({
   timelineShortcutMeta: { color: colors.muted, fontSize: 8, fontWeight: '700', marginTop: 3 },
   timelineShortcutArrow: { color: colors.violet, fontSize: 22, fontWeight: '700' },
   homeToolRow: { flexDirection: 'row', gap: 7, marginBottom: 11 },
+  wishShortcut: { borderWidth: 1, borderColor: '#E8E1EC', borderRadius: 18, backgroundColor: '#FFFFFF', paddingHorizontal: 14, paddingVertical: 12, marginBottom: 11, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10, minHeight: 58 },
+  wishShortcutMinimal: { borderRadius: 2, borderColor: '#111111' },
+  wishShortcutChic: { backgroundColor: '#FFF8FB', borderColor: '#F5D5E0', shadowColor: '#D986A1', shadowOpacity: 0.05, shadowRadius: 8, shadowOffset: { width: 0, height: 3 } },
+  wishShortcutLabel: { color: colors.ink, fontSize: 12, fontWeight: '900' },
+  wishShortcutText: { color: colors.muted, fontSize: 9, fontWeight: '700', marginTop: 3 },
+  wishShortcutArrow: { color: colors.violet, fontSize: 20, fontWeight: '900' },
   homeToolCard: { flex: 1, minHeight: 76, borderRadius: 16, padding: 10, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#E8E1EC', position: 'relative', overflow: 'hidden' },
   homeToolCardMinimal: { borderRadius: 2, borderColor: '#1A1A1A', backgroundColor: '#F7F7F7' },
   homeToolCardChic: { borderRadius: 21, padding: 6, borderColor: 'rgba(217,134,161,0.18)' },

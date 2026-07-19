@@ -7,12 +7,14 @@ export function BottomNav({ screen, designMode, onChange }: { screen: Screen; de
   const theme = getThemeTokens(designMode);
   const items: { id: Screen; icon: string; label: string }[] = [
     { id: 'home', icon: '✓', label: '今日' },
-    { id: 'timeline', icon: '↗', label: 'タイム' },
-    { id: 'analysis', icon: '◫', label: '分析' },
+    { id: 'timeline', icon: '↗', label: '予定' },
+    { id: 'analysis', icon: '▦', label: '分析' },
+    { id: 'wish', icon: '✿', label: '叶えたいこと' },
     { id: 'settings', icon: '⚙', label: '設定' },
   ];
+
   return (
-    <View style={[styles.bottomNav, designMode === 'minimal' && styles.bottomNavMinimal, designMode === 'chic' && styles.bottomNavChic, ]}>
+    <View style={[styles.bottomNav, designMode === 'minimal' && styles.bottomNavMinimal, designMode === 'chic' && styles.bottomNavChic]}>
       {items.map((item) => {
         const active = item.id === screen;
         return (

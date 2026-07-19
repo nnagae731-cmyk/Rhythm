@@ -6,7 +6,7 @@ import { PlanTier } from './premiumAccess';
 import { BehaviorEvent } from './behaviorEvents';
 import { PremiumTaskTemplate } from './taskTemplates';
 
-export type Screen = 'home' | 'timeline' | 'analysis' | 'settings';
+export type Screen = 'home' | 'timeline' | 'analysis' | 'settings' | 'wish';
 export type TimeTab = 'departure' | 'deadline' | 'calendar' | 'focus';
 export type WidgetSize = 'small' | 'medium';
 export type Category = '仕事' | '家事' | '健康' | '予定' | 'その他';
@@ -49,6 +49,37 @@ export type DeparturePlan = {
   bufferMinutes: number;
 };
 
+export type Wish = {
+  id: string;
+  title: string;
+  completed: boolean;
+  createdAt: string;
+};
+
+export type WishAction = {
+  id: string;
+  wishId: string;
+  title: string;
+  completed: boolean;
+};
+
+export type MonthlyReview = {
+  photo?: string;
+  date?: string;
+  shortNote?: string;
+  memo?: string;
+  satisfaction?: number;
+};
+
+export type MonthlyWishState = {
+  theme?: string;
+  wishes: Wish[];
+  actions: WishAction[];
+  review: MonthlyReview;
+};
+
+export type WishMonthMap = Record<string, MonthlyWishState>;
+
 export type PersistedState = {
   tasks: Task[];
   plan: DeparturePlan;
@@ -66,4 +97,5 @@ export type PersistedState = {
   devPlanTier?: PlanTier;
   behaviorEvents?: BehaviorEvent[];
   savedTaskTemplates?: PremiumTaskTemplate[];
+  wishMonths?: WishMonthMap;
 };

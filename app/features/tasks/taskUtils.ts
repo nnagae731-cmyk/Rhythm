@@ -38,6 +38,7 @@ export const chicUtilityPalettes = {
   deadline: { background: '#FFF8ED', accent: '#C6A467', warm: '#E7C987' },
   calendar: { background: '#F7F2FC', accent: '#A997C8', warm: '#DCCBF0' },
   focus: { background: '#F1FAF7', accent: '#8FC9BD', warm: '#C9E8E0' },
+  wish: { background: '#FFF4F8', accent: '#D986A1', warm: '#F4D8E2' },
 };
 
 export function getChicTaskPatternPalette(category: Category) {
