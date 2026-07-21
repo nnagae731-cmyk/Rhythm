@@ -37,7 +37,9 @@ const emptyEditor: EditorState = {
 
 function patternSymbol(pattern: ChicPattern) {
   if (pattern === 'dot') return '✦';
-  if (pattern === 'check') return '❖';
+  if (pattern === 'checkLavenderSatin') return '▦';
+  if (pattern === 'checkBeigeNoir') return '▩';
+  if (pattern === 'checkMauveFrame') return '❖';
   return '✿';
 }
 

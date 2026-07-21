@@ -1,5 +1,21 @@
 export type DesignMode = 'minimal' | 'chic';
-export type ChicPattern = 'floral' | 'dot' | 'check';
+export type ChicPattern = 'floral' | 'dot' | 'checkLavenderSatin' | 'checkBeigeNoir' | 'checkMauveFrame';
+export type ChicCheckColor = 'monochrome' | 'cool' | 'warm' | 'green';
+
+export const chicCheckColorChoices: { id: ChicCheckColor; label: string; accent: string; warm: string; background: string }[] = [
+  { id: 'monochrome', label: 'モノトーン', accent: '#343237', warm: '#A6A1A8', background: '#F4F1EE' },
+  { id: 'cool', label: '寒色系', accent: '#9C91C4', warm: '#C4D0DD', background: '#F4F3FA' },
+  { id: 'warm', label: '暖色系', accent: '#B66E86', warm: '#D9AAB5', background: '#FBF1F3' },
+  { id: 'green', label: '緑系', accent: '#758D7B', warm: '#B9C8B8', background: '#F2F6F0' },
+];
+
+export function normalizeChicCheckColor(color: unknown): ChicCheckColor {
+  return color === 'monochrome' || color === 'cool' || color === 'warm' || color === 'green' ? color : 'cool';
+}
+
+export function getChicCheckColor(color: ChicCheckColor) {
+  return chicCheckColorChoices.find((item) => item.id === color) ?? chicCheckColorChoices[1]!;
+}
 
 export type ThemeTokens = {
   colors: {
@@ -32,4 +48,12 @@ export function getThemeTokens(mode: DesignMode): ThemeTokens {
     radius: { large: 26, small: 18, button: 18, chip: 999, modal: 28 },
     shadow: { color: '#D986A1', opacity: 0.12, radius: 18, y: 7 },
   };
+}
+
+export function normalizeChicPattern(pattern: unknown): ChicPattern {
+  if (pattern === 'floral' || pattern === 'dot' || pattern === 'checkLavenderSatin' || pattern === 'checkBeigeNoir' || pattern === 'checkMauveFrame') {
+    return pattern;
+  }
+  if (pattern === 'check') return 'checkLavenderSatin';
+  return 'checkLavenderSatin';
 }

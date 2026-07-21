@@ -208,7 +208,9 @@ export function countdownToClock(clock: string, now: Date) {
 }
 
 export function getChicPatternVisual(pattern: ChicPattern) {
-  if (pattern === 'dot') return { background: '#FFF3F5', accent: '#D986A1', warm: '#A997C8' };
-  if (pattern === 'check') return { background: '#FFF9F6', accent: '#E8B8C7', warm: '#F4D8E2' };
-  return { background: '#FFF3F5', accent: '#D986A1', warm: '#A997C8' };
+  if (pattern === 'dot') return { background: '#FFF4F7', accent: '#D986A1', warm: '#A997C8' };
+  if (pattern === 'checkLavenderSatin') return { background: '#F7F2FC', accent: '#B9ADD8', warm: '#DDD4EE' };
+  if (pattern === 'checkBeigeNoir') return { background: '#FBF4EA', accent: '#C9B49A', warm: '#191614' };
+  if (pattern === 'checkMauveFrame') return { background: '#FFF3F7', accent: '#B9778F', warm: '#E2B6C2' };
+  return { background: '#FFF4F7', accent: '#D986A1', warm: '#A997C8' };
 }

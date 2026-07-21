@@ -1,4 +1,4 @@
-import { ChicPattern, DesignMode } from './theme';
+import { ChicCheckColor, ChicPattern, DesignMode } from './theme';
 import { RecoveryRecord } from './recovery';
 import { FocusSession } from './focusSession';
 import { DepartureCheckIn } from './departureCheckIn';
@@ -42,6 +42,7 @@ export type Task = {
 export type DeparturePlan = {
   id?: string;
   title: string;
+  destination?: string;
   date: string;
   arrival: string;
   travelMinutes: number;
@@ -80,6 +81,42 @@ export type MonthlyWishState = {
 
 export type WishMonthMap = Record<string, MonthlyWishState>;
 
+export type SharedAttendanceStatus = '参加' | '不参加';
+export type SharedActionStatus = '未準備' | '準備中' | '今から出る' | '移動中' | '少し遅れそう' | '到着した' | '参加できない';
+export type SharedDeparturePoint = 'current' | 'home' | 'custom';
+
+export type SharedParticipant = {
+  participantId: string;
+  sharedEventId: string;
+  displayName: string;
+  attendanceStatus: SharedAttendanceStatus;
+  actionStatus: SharedActionStatus;
+  estimatedArrivalAt?: string;
+  lastUpdatedAt: string;
+};
+
+export type SharedEvent = {
+  shareToken: string;
+  eventId: string;
+  ownerDisplayName: string;
+  sharingEnabled: boolean;
+  createdAt: string;
+  updatedAt: string;
+  title: string;
+  date: string;
+  destination?: string;
+  arrival: string;
+  travelMinutes: number;
+  preparationMinutes: number;
+  bufferMinutes: number;
+  participants: SharedParticipant[];
+};
+
+export type SharedParticipantPrefs = {
+  departurePoint: SharedDeparturePoint;
+  departurePointLabel?: string;
+};
+
 export type PersistedState = {
   tasks: Task[];
   plan: DeparturePlan;
@@ -90,6 +127,7 @@ export type PersistedState = {
   designMode: DesignMode;
   taskTemplates?: string[];
   chicPattern?: ChicPattern;
+  chicCheckColor?: ChicCheckColor;
   recoveryHistory?: RecoveryRecord[];
   focusSessions?: FocusSession[];
   departureCheckIns?: DepartureCheckIn[];
@@ -98,4 +136,7 @@ export type PersistedState = {
   behaviorEvents?: BehaviorEvent[];
   savedTaskTemplates?: PremiumTaskTemplate[];
   wishMonths?: WishMonthMap;
+  sharedEvents?: SharedEvent[];
+  sharedParticipantIdsByToken?: Record<string, string>;
+  sharedParticipantPrefsByToken?: Record<string, SharedParticipantPrefs>;
 };

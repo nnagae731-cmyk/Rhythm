@@ -4,29 +4,33 @@ import * as Calendar from 'expo-calendar';
 import * as Notifications from 'expo-notifications';
 import { StatusBar } from 'expo-status-bar';
 import React, { useEffect, useMemo, useState } from 'react';
-import { ChicPattern, DesignMode, getThemeTokens } from './theme';
+import { ChicCheckColor, ChicPattern, DesignMode, chicCheckColorChoices, getChicCheckColor, getThemeTokens, normalizeChicCheckColor, normalizeChicPattern } from './theme';
 import { createRecoveryRecord, getRecoveryOptions, RecoveryOption, RecoveryRecord } from './recovery';
 import { createCompletedFocusSession, createFocusSessionId, FocusSession } from './focusSession';
 import { createDepartureCheckIn, DepartureCheckIn } from './departureCheckIn';
-import { getEffectiveChicPattern, getEffectiveNudgeMode, hasPremiumAccess, isWithinFreeHistory, PlanTier } from './premiumAccess';
+import { getChicPatternFeatureId, getEffectiveChicPattern, getEffectiveNudgeMode, hasPremiumAccess, isWithinFreeHistory, PlanTier } from './premiumAccess';
 import { AnalysisScreen } from './AnalysisScreen';
 import { appendBehaviorEvent, appendBehaviorEvents, BehaviorEvent, createDeparturePreparationStartedEvent, createDepartureStartedEvent, createFocusCompletedBehaviorEvent, createFocusStartedEvent, createFocusStoppedEvent, createNotificationActionEvent, createNotificationScheduledEvent, createTaskCompletedBehaviorEvent, NotificationAction } from './behaviorEvents';
 import { DEFAULT_PREMIUM_GUIDE_FEATURE, PremiumGuideFeatureId } from './premiumGuide';
 import { createPremiumTaskTemplate, hasSameTemplateSettings, PremiumTaskTemplate, summarizePremiumTaskTemplate } from './taskTemplates';
 import { Header } from './components/Header';
 import { BottomNav } from './components/BottomNav';
-import { Screen, TimeTab, WidgetSize, Category, Priority, RepeatRule, TaskBucket, NudgeMode, ThemeMode, UrgencyStatus, Task, DeparturePlan, PersistedState, WishMonthMap, MonthlyWishState } from './types';
+import { Screen, TimeTab, WidgetSize, Category, Priority, RepeatRule, TaskBucket, NudgeMode, ThemeMode, UrgencyStatus, Task, DeparturePlan, PersistedState, WishMonthMap, MonthlyWishState, SharedEvent, SharedParticipantPrefs } from './types';
 import { STORAGE_KEY, initialPlan } from './storage/rhythmState';
 import { loadRhythmState, saveRhythmState } from './storage/rhythmStorage';
 import { categories, priorities, repeatOptions, completionIcons, categoryColors, designModes, getChicTaskPatternPalette, chicUtilityPalettes } from './features/tasks/taskUtils';
+import { createSharedEventPacket, createSharedEventToken, encodeSharedEventLink, getOrCreateParticipantId, normalizeSharedEvent, parseSharedEventLink, upsertSharedEvent } from './features/shared/sharedUtils';
 import { getMonthlyWishState, wishMonthKey } from './features/wish/wishUtils';
 import { cancelPendingTaskNotifications } from './features/tasks/taskNotifications';
 import { cancelPendingDepartureNotifications } from './features/departure/departureNotifications';
 import { WishScreen } from './WishScreen';
+import { SharedEventScreen } from './SharedEventScreen';
 import {
   Alert,
   Animated,
   Easing,
+  Image,
+  Linking,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -232,6 +236,131 @@ function getDepartureMoments(plan: DeparturePlan) {
   return { arrival, leave, prepare };
 }
 
+function getPlanDestinationQuery(plan: DeparturePlan) {
+  return (plan.destination?.trim() || plan.title.trim()).trim();
+}
+
+function PremiumRoutePreview({ plan, now, designMode, onOpenMap }: { plan: DeparturePlan; now: Date; designMode: DesignMode; onOpenMap: (query: string) => void }) {
+  const theme = getThemeTokens(designMode);
+  const destinationQuery = getPlanDestinationQuery(plan);
+  const moments = getDepartureMoments(plan);
+  const prepMinutes = Math.max(1, Math.ceil((moments.leave.getTime() - moments.prepare.getTime()) / 60_000));
+  const leaveMinutes = Math.max(1, Math.ceil((moments.arrival.getTime() - moments.leave.getTime()) / 60_000));
+
+  const urgencyText = getNextBestAction({ ...plan, title: plan.title, category: '予定', priority: '中', done: false, id: 'route-preview' }, now);
+  const destinationLabel = destinationQuery || '目的地を入れると表示されます';
+
+  return (
+    <View style={[styles.routePreviewCard, { borderColor: theme.colors.border, backgroundColor: theme.colors.surface }]}>
+      <View style={styles.routePreviewHeader}>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.routePreviewBadge}>PREMIUM</Text>
+          <Text style={styles.routePreviewTitle}>地図を見ながら出発を考える</Text>
+          <Text style={styles.routePreviewCopy}>目的地の位置と、準備・出発の目安をひと目で見られます。</Text>
+        </View>
+        <Pressable style={styles.routePreviewOpenButton} onPress={() => onOpenMap(destinationQuery)}>
+          <Text style={styles.routePreviewOpenButtonText}>地図を開く</Text>
+        </Pressable>
+      </View>
+
+      <View style={styles.routePreviewBody}>
+        <View style={styles.routePreviewMapFrame}>
+          <View style={styles.routePreviewPlanGrid}>
+            <View style={styles.routePreviewPlanBadge}>
+              <Text style={styles.routePreviewPlanBadgeLabel}>想定経路</Text>
+              <Text style={styles.routePreviewPlanBadgeValue}>自宅 → {destinationQuery || '目的地'}</Text>
+            </View>
+            <View style={styles.routePreviewPlanFlow}>
+              <View style={styles.routePreviewPlanStop}>
+                <Text style={styles.routePreviewPlanStopLabel}>自宅</Text>
+                <Text style={styles.routePreviewPlanStopValue}>出発</Text>
+              </View>
+              <View style={styles.routePreviewPlanLine} />
+              <View style={styles.routePreviewPlanStop}>
+                <Text style={styles.routePreviewPlanStopLabel}>移動</Text>
+                <Text style={styles.routePreviewPlanStopValue}>約{plan.travelMinutes}分</Text>
+              </View>
+              <View style={styles.routePreviewPlanLineShort} />
+              <View style={styles.routePreviewPlanStop}>
+                <Text style={styles.routePreviewPlanStopLabel}>到着</Text>
+                <Text style={styles.routePreviewPlanStopValue}>{plan.arrival || '予定時刻'}</Text>
+              </View>
+            </View>
+            <View style={styles.routePreviewPlanTimeRow}>
+              <View style={styles.routePreviewPlanTimeCard}>
+                <Text style={styles.routePreviewPlanTimeLabel}>準備開始</Text>
+                <Text style={styles.routePreviewPlanTimeValue}>{formatLiveTime(moments.prepare)}</Text>
+              </View>
+              <View style={styles.routePreviewPlanTimeCard}>
+                <Text style={styles.routePreviewPlanTimeLabel}>家を出る</Text>
+                <Text style={styles.routePreviewPlanTimeValue}>{formatLiveTime(moments.leave)}</Text>
+              </View>
+            </View>
+            <View style={styles.routePreviewPlanNote}>
+              <Text style={styles.routePreviewMapPlaceholderTitle}>自宅からの所要時間</Text>
+              <Text style={styles.routePreviewMapPlaceholderCopy}>約{plan.travelMinutes}分</Text>
+            </View>
+          </View>
+        </View>
+
+        <View style={styles.routePreviewSummary}>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.routePreviewLabel}>目的地</Text>
+            <Text numberOfLines={2} style={styles.routePreviewDestination}>{destinationQuery || '未設定'}</Text>
+          </View>
+          <View style={styles.routePreviewSummaryTimes}>
+            <View style={styles.routePreviewSummaryTime}>
+              <Text style={styles.routePreviewMetaLabel}>到着</Text>
+              <Text style={styles.routePreviewMetaValue}>{plan.arrival}</Text>
+            </View>
+            <View style={styles.routePreviewSummaryTime}>
+              <Text style={styles.routePreviewMetaLabel}>家を出る</Text>
+              <Text style={styles.routePreviewMetaValue}>{formatLiveTime(moments.leave)}</Text>
+            </View>
+            <View style={styles.routePreviewSummaryTime}>
+              <Text style={styles.routePreviewMetaLabel}>準備</Text>
+              <Text style={styles.routePreviewMetaValue}>{formatLiveTime(moments.prepare)}</Text>
+            </View>
+          </View>
+        </View>
+
+        <Text style={styles.routePreviewRisk}>{urgencyText}</Text>
+        <Text style={styles.routePreviewLocation}>{destinationLabel}</Text>
+      </View>
+    </View>
+  );
+}
+
+function getMapSearchTarget(plan: DeparturePlan) {
+  return (plan.destination?.trim() || plan.title || '').trim();
+}
+
+function buildMapSearchUrl(query: string) {
+  const encoded = encodeURIComponent(query.trim());
+  if (!encoded) return undefined;
+  if (Platform.OS === 'ios') return `maps://?q=${encoded}`;
+  if (Platform.OS === 'android') return `geo:0,0?q=${encoded}`;
+  return `https://www.google.com/maps/search/?api=1&query=${encoded}`;
+}
+
+async function openMapSearch(query: string) {
+  const fallbackUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query.trim())}`;
+  const primaryUrl = buildMapSearchUrl(query);
+  if (!primaryUrl) {
+    Alert.alert('目的地を入れてね', '地図を開くには目的地が必要です。');
+    return;
+  }
+  try {
+    await Linking.openURL(primaryUrl);
+  } catch {
+    try {
+      await Linking.openURL(fallbackUrl);
+    } catch {
+      Alert.alert('地図を開けませんでした', '目的地の入力を確認してもう一度試してね。');
+    }
+  }
+}
+
 function countdownToDate(target: Date, now: Date) {
   const minutes = Math.ceil((target.getTime() - now.getTime()) / 60_000);
   if (minutes <= 0) return '出発時刻を過ぎました';
@@ -241,9 +370,11 @@ function countdownToDate(target: Date, now: Date) {
 }
 
 function getChicPatternVisual(pattern: ChicPattern) {
-  if (pattern === 'dot') return { background: '#FFF3F5', accent: '#D986A1', warm: '#A997C8' };
-  if (pattern === 'check') return { background: '#FFF9F6', accent: '#E8B8C7', warm: '#F4D8E2' };
-  return { background: '#FFF3F5', accent: '#D986A1', warm: '#A997C8' };
+  if (pattern === 'dot') return { background: '#FFF4F7', accent: '#D986A1', warm: '#A997C8' };
+  if (pattern === 'checkBeigeNoir') return { background: '#FBF4EA', accent: '#C9B49A', warm: '#191614' };
+  if (pattern === 'checkMauveFrame') return { background: '#FFF2F6', accent: '#B9778F', warm: '#E2B6C2' };
+  if (pattern === 'checkLavenderSatin') return { background: '#F7F2FC', accent: '#B9ADD8', warm: '#DDD4EE' };
+  return { background: '#FFF4F7', accent: '#D986A1', warm: '#A997C8' };
 }
 
 async function ensureNotifications() {
@@ -298,13 +429,24 @@ export default function App() {
   const [completionIcon, setCompletionIcon] = useState('✓');
   const [designMode, setDesignMode] = useState<DesignMode>('chic');
   const [chicPattern, setChicPattern] = useState<ChicPattern>('floral');
+  const [chicCheckColor, setChicCheckColor] = useState<ChicCheckColor>('cool');
   const [recoveryHistory, setRecoveryHistory] = useState<RecoveryRecord[]>([]);
   const [focusSessions, setFocusSessions] = useState<FocusSession[]>([]);
   const [behaviorEvents, setBehaviorEvents] = useState<BehaviorEvent[]>([]);
   const behaviorEventsRef = React.useRef<BehaviorEvent[]>([]);
   const pendingBehaviorEventsRef = React.useRef<BehaviorEvent[]>([]);
   const pendingNotificationBehaviorActionsRef = React.useRef<Array<{ notificationInstanceId: string; action: NotificationAction; taskId?: string; actualAt: Date }>>([]);
+  const pendingSharedEventPacketsRef = React.useRef<SharedEvent[]>([]);
+  const pendingSharedEventTokensRef = React.useRef<string[]>([]);
   const [wishMonths, setWishMonths] = useState<WishMonthMap>({});
+  const [sharedEvents, setSharedEvents] = useState<SharedEvent[]>([]);
+  const sharedEventsRef = React.useRef<SharedEvent[]>([]);
+  const [sharedParticipantIdsByToken, setSharedParticipantIdsByToken] = useState<Record<string, string>>({});
+  const sharedParticipantIdsByTokenRef = React.useRef<Record<string, string>>({});
+  const [sharedParticipantPrefsByToken, setSharedParticipantPrefsByToken] = useState<Record<string, SharedParticipantPrefs>>({});
+  const sharedParticipantPrefsByTokenRef = React.useRef<Record<string, SharedParticipantPrefs>>({});
+  const [sharedEventToken, setSharedEventToken] = useState<string>();
+  const [sharedEventOpen, setSharedEventOpen] = useState(false);
   const [recoveryTargetPlanId, setRecoveryTargetPlanId] = useState<string>();
   const [taskTemplates, setTaskTemplates] = useState<string[]>(['朝の支度', '持ち物を確認', '連絡を返す', '薬を飲む']);
   const [savedTaskTemplates, setSavedTaskTemplates] = useState<PremiumTaskTemplate[]>([]);
@@ -351,6 +493,66 @@ export default function App() {
 
   const deleteSavedTaskTemplate = React.useCallback((template: PremiumTaskTemplate) => {
     Alert.alert('このマイひな型を削除しますか？', template.title, [{ text: 'キャンセル', style: 'cancel' }, { text: '削除', style: 'destructive', onPress: () => setSavedTaskTemplates((current) => current.filter((item) => item.id !== template.id)) }]);
+  }, []);
+
+  const syncSharedEventPacket = React.useCallback((packet: SharedEvent) => {
+    const normalized = normalizeSharedEvent(packet);
+    setSharedEvents((current) => upsertSharedEvent(current, normalized));
+    return normalized;
+  }, []);
+
+  const openSharedEventToken = React.useCallback((shareToken: string) => {
+    setSharedEventToken(shareToken);
+    setSharedEventOpen(true);
+  }, []);
+
+  const handleSharedEventLink = React.useCallback((url: string) => {
+    const parsed = parseSharedEventLink(url);
+    if (!parsed) return;
+    if (!hydratedRef.current) {
+      if (parsed.packet) pendingSharedEventPacketsRef.current.push(parsed.packet);
+      else pendingSharedEventTokensRef.current.push(parsed.shareToken);
+      return;
+    }
+    if (parsed.packet) {
+      const normalized = syncSharedEventPacket(parsed.packet);
+      const ownerParticipantId = normalized.participants[0]?.participantId;
+      if (ownerParticipantId && !sharedParticipantIdsByTokenRef.current[normalized.shareToken]) {
+        setSharedParticipantIdsByToken((current) => ({ ...current, [normalized.shareToken]: ownerParticipantId }));
+      }
+      openSharedEventToken(normalized.shareToken);
+      return;
+    }
+    openSharedEventToken(parsed.shareToken);
+  }, [openSharedEventToken, syncSharedEventPacket]);
+
+  const shareDeparturePlan = React.useCallback((targetPlan: DeparturePlan) => {
+    if (!targetPlan.id) {
+      Alert.alert('保存した予定から共有できます');
+      return;
+    }
+    const existing = sharedEventsRef.current.find((item) => item.eventId === targetPlan.id || item.shareToken === targetPlan.id);
+    const token = existing?.shareToken ?? createSharedEventToken(targetPlan.id);
+    const ownerDisplayName = existing?.ownerDisplayName ?? 'あなた';
+    const packet = createSharedEventPacket(targetPlan, token, ownerDisplayName, existing?.participants ?? []);
+    const normalized = syncSharedEventPacket(packet);
+    const ownerParticipantId = normalized.participants[0]?.participantId;
+    if (ownerParticipantId) {
+      setSharedParticipantIdsByToken((current) => ({ ...current, [normalized.shareToken]: ownerParticipantId }));
+    }
+    openSharedEventToken(normalized.shareToken);
+    const link = encodeSharedEventLink(normalized.shareToken);
+    void Share.share({ title: targetPlan.title, message: `${targetPlan.title}\n${link}`, url: link }).catch(() => undefined);
+  }, [openSharedEventToken, syncSharedEventPacket]);
+
+  const shareCurrentSharedEvent = React.useCallback((shareToken: string) => {
+    const packet = sharedEventsRef.current.find((item) => item.shareToken === shareToken);
+    if (!packet) {
+      Alert.alert('共有予定が見つかりません');
+      return;
+    }
+    const link = encodeSharedEventLink(packet.shareToken);
+    void Share.share({ title: packet.title, message: `${packet.title}\n${link}`, url: link }).catch(() => undefined);
   }, []);
 
   const recordBehaviorEvent = React.useCallback((next: BehaviorEvent) => {
@@ -415,6 +617,9 @@ export default function App() {
   useEffect(() => { departurePlansRef.current = departurePlans; }, [departurePlans]);
   useEffect(() => { departureCheckInsRef.current = departureCheckIns; }, [departureCheckIns]);
   useEffect(() => { behaviorEventsRef.current = behaviorEvents; }, [behaviorEvents]);
+  useEffect(() => { sharedEventsRef.current = sharedEvents; }, [sharedEvents]);
+  useEffect(() => { sharedParticipantIdsByTokenRef.current = sharedParticipantIdsByToken; }, [sharedParticipantIdsByToken]);
+  useEffect(() => { sharedParticipantPrefsByTokenRef.current = sharedParticipantPrefsByToken; }, [sharedParticipantPrefsByToken]);
   useEffect(() => { planTierRef.current = planTier; }, [planTier]);
 
   useEffect(() => {
@@ -436,7 +641,8 @@ export default function App() {
         if (saved.completionIcon) setCompletionIcon(saved.completionIcon);
         if (saved.designMode === 'minimal' || saved.designMode === 'chic') setDesignMode(saved.designMode);
         else setDesignMode('chic');
-        setChicPattern(saved.chicPattern ?? 'floral');
+        setChicPattern(saved.chicPattern ? normalizeChicPattern(saved.chicPattern) : 'floral');
+        setChicCheckColor(normalizeChicCheckColor(saved.chicCheckColor));
         setRecoveryHistory(saved.recoveryHistory ?? []);
         setFocusSessions(saved.focusSessions ?? []);
         const loadedBehaviorEvents = saved.behaviorEvents ?? [];
@@ -445,6 +651,15 @@ export default function App() {
         if (saved.taskTemplates) setTaskTemplates(saved.taskTemplates);
         setSavedTaskTemplates(saved.savedTaskTemplates ?? []);
         setWishMonths(saved.wishMonths ?? {});
+        const loadedSharedEvents = (saved.sharedEvents ?? []).map((item) => normalizeSharedEvent(item));
+        sharedEventsRef.current = loadedSharedEvents;
+        setSharedEvents(loadedSharedEvents);
+        const loadedSharedParticipantIdsByToken = saved.sharedParticipantIdsByToken ?? {};
+        sharedParticipantIdsByTokenRef.current = loadedSharedParticipantIdsByToken;
+        setSharedParticipantIdsByToken(loadedSharedParticipantIdsByToken);
+        const loadedSharedParticipantPrefsByToken = saved.sharedParticipantPrefsByToken ?? {};
+        sharedParticipantPrefsByTokenRef.current = loadedSharedParticipantPrefsByToken;
+        setSharedParticipantPrefsByToken(loadedSharedParticipantPrefsByToken);
       })
       .catch(() => Alert.alert('保存データを読み込めませんでした'))
       .finally(() => {
@@ -466,6 +681,19 @@ export default function App() {
           setBehaviorEvents(updated);
         }
         pendingNotificationActions.forEach(recordNotificationBehaviorAction);
+        const pendingSharedPackets = pendingSharedEventPacketsRef.current;
+        pendingSharedEventPacketsRef.current = [];
+        pendingSharedPackets.forEach((packet) => {
+          const normalized = syncSharedEventPacket(packet);
+          const ownerParticipantId = normalized.participants[0]?.participantId;
+          if (ownerParticipantId && !sharedParticipantIdsByTokenRef.current[normalized.shareToken]) {
+            setSharedParticipantIdsByToken((current) => ({ ...current, [normalized.shareToken]: ownerParticipantId }));
+          }
+          openSharedEventToken(normalized.shareToken);
+        });
+        const pendingSharedTokens = [...new Set(pendingSharedEventTokensRef.current)];
+        pendingSharedEventTokensRef.current = [];
+        pendingSharedTokens.forEach((shareToken) => openSharedEventToken(shareToken));
       });
 
     const responseSubscription = Notifications.addNotificationResponseReceivedListener((response) => {
@@ -555,9 +783,18 @@ export default function App() {
 
   useEffect(() => {
     if (!hydrated) return;
-    const state: PersistedState = { tasks, plan, departurePlans, widgetSize, showCompleted, completionIcon, designMode, taskTemplates, savedTaskTemplates, chicPattern, recoveryHistory, focusSessions, departureCheckIns, behaviorEvents, wishMonths };
+    const state: PersistedState = { tasks, plan, departurePlans, widgetSize, showCompleted, completionIcon, designMode, taskTemplates, savedTaskTemplates, chicPattern, chicCheckColor, recoveryHistory, focusSessions, departureCheckIns, behaviorEvents, wishMonths, sharedEvents, sharedParticipantIdsByToken, sharedParticipantPrefsByToken };
     saveRhythmState(state).catch(() => undefined);
-  }, [tasks, plan, departurePlans, widgetSize, showCompleted, completionIcon, designMode, taskTemplates, savedTaskTemplates, chicPattern, recoveryHistory, focusSessions, departureCheckIns, behaviorEvents, wishMonths, hydrated]);
+  }, [tasks, plan, departurePlans, widgetSize, showCompleted, completionIcon, designMode, taskTemplates, savedTaskTemplates, chicPattern, chicCheckColor, recoveryHistory, focusSessions, departureCheckIns, behaviorEvents, wishMonths, sharedEvents, sharedParticipantIdsByToken, sharedParticipantPrefsByToken, hydrated]);
+
+  useEffect(() => {
+    const openFromUrl = (url: string) => handleSharedEventLink(url);
+    Linking.getInitialURL().then((url) => {
+      if (url) openFromUrl(url);
+    }).catch(() => undefined);
+    const subscription = Linking.addEventListener('url', ({ url }) => openFromUrl(url));
+    return () => subscription.remove();
+  }, [handleSharedEventLink]);
 
   const timeline = useMemo(() => {
     const arrival = parseClock(plan.arrival);
@@ -749,9 +986,10 @@ export default function App() {
   };
 
   return (
-    <SafeAreaView style={[styles.safe, { backgroundColor: theme.colors.screenBackground }, uiDesignMode === 'minimal' && styles.safeMinimal, uiDesignMode === 'chic' && styles.safeChic]}>
+    <SafeAreaView style={[styles.safe, { backgroundColor: uiDesignMode === 'chic' && isCheckChicPattern(effectiveChicPattern) ? getChicCheckColor(chicCheckColor).background : theme.colors.screenBackground }, uiDesignMode === 'minimal' && styles.safeMinimal, uiDesignMode === 'chic' && styles.safeChic]}>
       <StatusBar style="dark" />
       <View style={styles.app}>
+        {uiDesignMode === 'chic' && isCheckChicPattern(effectiveChicPattern) && <View pointerEvents="none" style={StyleSheet.absoluteFillObject}><ChicPatternDecor pattern={effectiveChicPattern} accent={getChicCheckColor(chicCheckColor).accent} warm={getChicCheckColor(chicCheckColor).warm} checkColor={chicCheckColor} /></View>}
         <Header designMode={uiDesignMode} now={now} />
 
         <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
@@ -765,6 +1003,7 @@ export default function App() {
               dangerousTask={dangerousTask}
               designMode={uiDesignMode}
               chicPattern={effectiveChicPattern}
+              chicCheckColor={chicCheckColor}
               completionIcon={completionIcon}
               selectionMode={selectionMode}
               selectedTaskIds={selectedTaskIds}
@@ -815,12 +1054,14 @@ export default function App() {
               now={now}
               designMode={uiDesignMode}
               chicPattern={effectiveChicPattern}
+              chicCheckColor={chicCheckColor}
               planTier={planTier}
               initialTab={timelineInitialTab}
               recoveryTargetPlanId={recoveryTargetPlanId}
               onChange={setPlan}
               onSchedule={saveDeparturePlan}
               onEdit={(item) => setPlan(item)}
+              onSharePlan={shareDeparturePlan}
               onDelete={(id) => setDeparturePlans((current) => current.filter((item) => item.id !== id))}
               onEditTask={(task) => setEditingTask(task)}
               onPremium={openPremiumFeature}
@@ -844,16 +1085,18 @@ export default function App() {
               completionIcon={completionIcon}
               designMode={uiDesignMode}
               chicPattern={effectiveChicPattern}
+              chicCheckColor={chicCheckColor}
               planTier={planTier}
               onSize={setWidgetSize}
               onShowCompleted={setShowCompleted}
               onCompletionIcon={setCompletionIcon}
               onDesignMode={setDesignMode}
               onChicPattern={(pattern) => {
-                const feature = pattern === 'dot' ? 'chic_dot' : pattern === 'check' ? 'chic_check' : undefined;
+                const feature = pattern === 'floral' ? undefined : getChicPatternFeatureId(pattern);
                 if (feature && !hasPremiumAccess(planTier, feature)) { openPremiumFeature(); return; }
                 setChicPattern(pattern);
               }}
+              onChicCheckColor={setChicCheckColor}
               templates={taskTemplates}
               savedTemplates={savedTaskTemplates}
               onAddTemplate={(title) => setTaskTemplates((current) => current.includes(title) ? current : [...current, title])}
@@ -877,6 +1120,22 @@ export default function App() {
 
         <BottomNav screen={screen} designMode={uiDesignMode} onChange={setScreen} />
       </View>
+
+      <SharedEventScreen
+        visible={sharedEventOpen}
+        shareToken={sharedEventToken}
+        designMode={uiDesignMode}
+        chicPattern={effectiveChicPattern}
+        sharedEvents={sharedEvents}
+        participantIdsByToken={sharedParticipantIdsByToken}
+        participantPrefsByToken={sharedParticipantPrefsByToken}
+        onSaveSharedEvents={setSharedEvents}
+        onSaveParticipantIds={setSharedParticipantIdsByToken}
+        onSaveParticipantPrefs={setSharedParticipantPrefsByToken}
+        onClose={() => setSharedEventOpen(false)}
+        onOpenMap={(query) => void openMapSearch(query)}
+        onShareCurrentEvent={shareCurrentSharedEvent}
+      />
 
       <TaskModal visible={addOpen} templates={taskTemplates} savedTemplates={savedTaskTemplates} designMode={uiDesignMode} planTier={planTier} onPremium={openPremiumFeature} onClose={() => setAddOpen(false)} onSave={addTask} />
       <TaskModal
@@ -906,6 +1165,7 @@ function HomeScreen({
   completionIcon,
   designMode,
   chicPattern,
+  chicCheckColor,
   selectionMode,
   selectedTaskIds,
   onAdd,
@@ -932,6 +1192,7 @@ function HomeScreen({
   dangerousTask?: Task;
   designMode: DesignMode;
   chicPattern: ChicPattern;
+  chicCheckColor: ChicCheckColor;
   completionIcon: string;
   selectionMode: boolean;
   selectedTaskIds: string[];
@@ -962,7 +1223,7 @@ function HomeScreen({
   const displayTasks = [...categoryTasks].sort((a, b) => priorityOrder[a.priority] - priorityOrder[b.priority]);
   return (
     <>
-      <TodayWinStrip tasks={allTasks} designMode={designMode} chicPattern={chicPattern} onRestore={(id) => onRestore(id)} />
+      <TodayWinStrip tasks={allTasks} designMode={designMode} chicPattern={chicPattern} chicCheckColor={chicCheckColor} onRestore={(id) => onRestore(id)} />
 
       <VoiceQuickAddCard designMode={designMode} chicPattern={chicPattern} onQuickAdd={onQuickAdd} />
 
@@ -1014,12 +1275,12 @@ function HomeScreen({
 
       {displayTasks.length === 0 ? (
         <Pressable style={[styles.emptyCard, designMode === 'minimal' && styles.emptyCardMinimal, designMode === 'chic' && styles.emptyCardChic, ]} onPress={onAdd}>
-          {designMode === 'chic' && <ChicPatternDecor pattern={chicPattern} accent="#D986A1" warm="#A997C8" />}
+          {designMode === 'chic' && !isCheckChicPattern(chicPattern) && <ChicPatternDecor pattern={chicPattern} accent="#D986A1" warm="#A997C8" />}
           <View style={designMode === 'chic' ? styles.emptyChicGlass : styles.emptyPlainContent}><Text style={styles.emptyIcon}>○</Text><Text style={styles.emptyTitle}>最初のタスクを追加しよう</Text><Text style={styles.emptyCopy}>忘れたくないことを、ここに置いておけます。</Text></View>
         </Pressable>
       ) : displayTasks.map((task) => { const chicPalette = getChicTaskPatternPalette(task.category); return (
         <Pressable key={task.id} style={[styles.taskCard, designMode === 'minimal' && styles.taskCardMinimal, designMode === 'chic' && styles.taskCardChic, designMode === 'chic' && { backgroundColor: chicPalette.background }, task.done && designMode !== 'chic' && styles.taskCardDone, task.done && designMode === 'chic' && styles.taskCardChicDone]} onPress={() => setActionTask(task)}>
-          {designMode === 'chic' && <ChicPatternDecor pattern={chicPattern} accent={chicPalette.accent} warm={chicPalette.warm} density="compact" />}
+          {designMode === 'chic' && !isCheckChicPattern(chicPattern) && <ChicPatternDecor pattern={chicPattern} accent={chicPalette.accent} warm={chicPalette.warm} density="compact" />}
           <View style={[styles.taskCardInner, designMode === 'chic' && styles.taskCardInnerChic, task.done && designMode === 'chic' && styles.taskCardInnerChicDone]}>
           <Pressable style={[styles.check, task.done && styles.checkDone, task.done && designMode === 'chic' && { backgroundColor: '#D986A1', borderColor: '#D986A1' }, selectionMode && selectedTaskIds.includes(task.id) && styles.selectionChecked]} onPress={() => selectionMode ? onToggleSelection(task.id) : onToggle(task.id)}>
             <Text style={styles.checkMark}>{selectionMode ? (selectedTaskIds.includes(task.id) ? '✓' : '') : (task.done ? completionIcon : '')}</Text>
@@ -1073,7 +1334,7 @@ function HomeScreen({
 function HomeToolCard({ designMode, chicPattern, kind, icon, title, meta, onPress }: { designMode: DesignMode; chicPattern: ChicPattern; kind: 'departure' | 'calendar' | 'focus' | 'wish'; icon: string; title: string; meta: string; onPress: () => void }) {
   const palette = chicUtilityPalettes[kind];
   return <Pressable style={[styles.homeToolCard, designMode === 'minimal' && styles.homeToolCardMinimal, designMode === 'chic' && styles.homeToolCardChic, designMode === 'chic' && { backgroundColor: palette.background }, ]} onPress={onPress}>
-    {designMode === 'chic' && <ChicPatternDecor pattern={chicPattern} accent={palette.accent} warm={palette.warm} density="compact" />}
+    {designMode === 'chic' && !isCheckChicPattern(chicPattern) && <ChicPatternDecor pattern={chicPattern} accent={palette.accent} warm={palette.warm} density="compact" />}
     <View style={designMode === 'chic' ? styles.homeToolGlass : styles.homeToolPlain}><Text style={[styles.homeToolIcon, designMode === 'chic' && { color: palette.accent }]}>{icon}</Text><Text style={styles.homeToolTitle}>{title}</Text><Text numberOfLines={1} style={styles.homeToolMeta}>{meta}</Text></View>
   </Pressable>;
 }
@@ -1098,7 +1359,7 @@ function VoiceQuickAddCard({ designMode, chicPattern, onQuickAdd }: { designMode
 
   return (
     <View style={[styles.voiceAddCard, designMode === 'minimal' && styles.voiceAddCardMinimal, designMode === 'chic' && styles.voiceAddCardChic]}>
-      {designMode === 'chic' && <ChicPatternDecor pattern={chicPattern} accent="#D986A1" warm="#A997C8" />}
+      {designMode === 'chic' && !isCheckChicPattern(chicPattern) && <ChicPatternDecor pattern={chicPattern} accent="#D986A1" warm="#A997C8" />}
       <View style={designMode === 'chic' ? styles.voiceAddPaperChic : styles.voiceAddPaperMinimal}>
         <View style={styles.voiceAddHeading}>
           <Text style={styles.quickAddTitle}>音声でひとつ追加</Text>
@@ -1174,7 +1435,7 @@ function VoiceQuickAddCard({ designMode, chicPattern, onQuickAdd }: { designMode
 function TimeTabButton({ tab, active, designMode, chicPattern, themeAccent, secondaryText, onPress }: { tab: TimeTab; active: boolean; designMode: DesignMode; chicPattern: ChicPattern; themeAccent: string; secondaryText: string; onPress: () => void }) {
   const palette = chicUtilityPalettes[tab];
   const label = tab === 'departure' ? '出発' : tab === 'deadline' ? '締切' : tab === 'calendar' ? '予定表' : '集中';
-  if (designMode === 'chic') return <Pressable style={[styles.timeTab, styles.timeTabChicPattern, { backgroundColor: palette.background }, active && { borderColor: palette.accent, borderWidth: 2 }]} onPress={onPress}><ChicPatternDecor pattern={chicPattern} accent={palette.accent} warm={palette.warm} density="compact" /><View style={[styles.timeTabGlassLabel, active && styles.timeTabGlassLabelActive]}><Text style={[styles.timeTabText, { color: active ? palette.accent : '#8B7B82' }]}>{label}</Text>{active && <Text style={[styles.timeTabMarker, { color: palette.accent }]}>●</Text>}</View></Pressable>;
+  if (designMode === 'chic') return <Pressable style={[styles.timeTab, styles.timeTabChicPattern, { backgroundColor: palette.background }, active && { borderColor: palette.accent, borderWidth: 2 }]} onPress={onPress}>{!isCheckChicPattern(chicPattern) && <ChicPatternDecor pattern={chicPattern} accent={palette.accent} warm={palette.warm} density="compact" />}<View style={[styles.timeTabGlassLabel, active && styles.timeTabGlassLabelActive]}><Text style={[styles.timeTabText, { color: active ? palette.accent : '#8B7B82' }]}>{label}</Text>{active && <Text style={[styles.timeTabMarker, { color: palette.accent }]}>●</Text>}</View></Pressable>;
   return <Pressable style={[styles.timeTab, designMode === 'minimal' && styles.timeTabMinimal, active && styles.timeTabActive, active && { backgroundColor: themeAccent, borderColor: themeAccent }]} onPress={onPress}><Text style={[styles.timeTabText, { color: secondaryText }, active && styles.timeTabTextActive]}>{label}</Text></Pressable>;
 }
 
@@ -1189,11 +1450,13 @@ function TimelineScreen({
   designMode,
   initialTab,
   chicPattern,
+  chicCheckColor,
   planTier,
   recoveryTargetPlanId,
   onChange,
   onSchedule,
   onEdit,
+  onSharePlan,
   onDelete,
   onEditTask,
   onPremium,
@@ -1214,11 +1477,13 @@ function TimelineScreen({
   designMode: DesignMode;
   initialTab: TimeTab;
   chicPattern: ChicPattern;
+  chicCheckColor?: ChicCheckColor;
   planTier: PlanTier;
   recoveryTargetPlanId?: string;
   onChange: (plan: DeparturePlan) => void;
   onSchedule: () => void;
   onEdit: (plan: DeparturePlan) => void;
+  onSharePlan: (plan: DeparturePlan) => void;
   onDelete: (id: string) => void;
   onEditTask: (task: Task) => void;
   onPremium: (featureId?: PremiumGuideFeatureId) => void;
@@ -1268,13 +1533,13 @@ function TimelineScreen({
   };
   const selectCalendarEvent = (event: Calendar.Event) => {
     const start = new Date(event.startDate);
-    onChange({ ...initialPlan, title: event.title || 'カレンダーの予定', date: dateKey(start), arrival: formatLiveTime(start) });
+    onChange({ ...initialPlan, title: event.title || 'カレンダーの予定', destination: event.location || event.title || '', date: dateKey(start), arrival: formatLiveTime(start) });
     setCalendarEvents([]);
     setTimeTab('departure');
   };
   return (
     <>
-      {designMode === 'chic' ? <View style={styles.chicTimeHero}><ChicPatternDecor pattern={chicPattern} accent="#D986A1" warm="#A997C8" /><View style={styles.chicTimeHeroPaper}><Text numberOfLines={2} style={[styles.hero, styles.timeHero, { marginBottom: 0 }]}>時間に追われる前に、先回り。</Text></View></View> : <Text numberOfLines={2} style={[styles.hero, styles.timeHero]}>時間に追われる前に、先回り。</Text>}
+      {designMode === 'chic' ? <View style={styles.chicTimeHero}>{isCheckChicPattern(chicPattern) ? <CheckRibbonDecoration pattern={chicPattern} color={chicCheckColor} /> : <ChicPatternDecor pattern={chicPattern} accent="#D986A1" warm="#A997C8" />}<View style={styles.chicTimeHeroPaper}><Text numberOfLines={2} style={[styles.hero, styles.timeHero, { marginBottom: 0 }]}>時間に追われる前に、先回り。</Text></View></View> : <Text numberOfLines={2} style={[styles.hero, styles.timeHero]}>時間に追われる前に、先回り。</Text>}
       <View style={[styles.timeTabs, designMode === 'minimal' && styles.timeTabsMinimal, designMode === 'chic' && styles.timeTabsChic, ]}>
         {(['departure', 'deadline', 'calendar', 'focus'] as TimeTab[]).map((tab) => <TimeTabButton key={tab} tab={tab} active={timeTab === tab} designMode={designMode} chicPattern={chicPattern} themeAccent={theme.colors.primaryAccent} secondaryText={theme.colors.secondaryText} onPress={() => setTimeTab(tab)} />)}
       </View>
@@ -1293,6 +1558,7 @@ function TimelineScreen({
       </> : <>
       <Pressable style={styles.calendarImportButton} onPress={importCalendarEvents}><Text style={styles.calendarImportIcon}>▣</Text><View style={{ flex: 1 }}><Text style={styles.calendarImportTitle}>{calendarLoading ? '読み込み中…' : 'いつものカレンダーとつなぐ'}</Text><Text style={styles.calendarImportCopy}>{hasPremiumAccess(planTier, 'external_calendar') ? '端末の予定をRhythmへ取り込む' : 'Premium'}</Text></View><Text style={styles.calendarImportArrow}>›</Text></Pressable>
       {calendarEvents.length > 0 && <View style={styles.calendarEventPicker}><Text style={styles.calendarEventPickerTitle}>取り込む予定を選択</Text>{calendarEvents.map((event) => { const start = new Date(event.startDate); return <Pressable key={event.id} style={styles.calendarEventRow} onPress={() => selectCalendarEvent(event)}><View><Text style={styles.calendarEventTitle}>{event.title || '名称なし'}</Text><Text style={styles.calendarEventDate}>{formatLiveDate(start)} {formatLiveTime(start)}</Text></View><Text style={styles.calendarImportArrow}>＋</Text></Pressable>; })}</View>}
+      {planTier === 'premium' && <PremiumRoutePreview plan={plan} now={now} designMode={designMode} onOpenMap={(query) => void openMapSearch(query)} />}
       <View style={styles.departureListHeader}><Text style={styles.sectionTitle}>カウントダウン</Text><Text style={styles.sectionSub}>{plans.length}件の予定</Text></View>
       {plans.length === 0 ? <View style={styles.departureEmpty}><Text style={styles.emptyCopy}>予定を追加すると、ここに出発までの時間が並びます。</Text></View> : [...plans].sort((a, b) => getDepartureMoments(a).leave.getTime() - getDepartureMoments(b).leave.getTime()).map((item) => {
         const moments = getDepartureMoments(item);
@@ -1308,8 +1574,9 @@ function TimelineScreen({
             {preparationEvent && <Text style={styles.taskMeta}>準備開始 {formatLiveTime(new Date(preparationEvent.actualAt ?? preparationEvent.occurredAt))}</Text>}
             {departureEvent && <Text style={styles.taskMeta}>出発 {formatLiveTime(new Date(departureEvent.actualAt ?? departureEvent.occurredAt))}</Text>}
             {checkIn && <Text style={styles.taskMeta}>出発済み {formatLiveTime(new Date(checkIn.departedAt))} · {checkIn.onTime ? '予定どおり' : '遅れて出発'}</Text>}
+            <Pressable onPress={() => void openMapSearch(getMapSearchTarget(item))}><Text style={styles.departureEdit}>地図で開く</Text></Pressable>
           </View>
-          <View style={styles.departureCountdownRight}><Text style={styles.departureCountdownValue}>{checkIn ? '出発済み' : passed ? '終了' : countdownToDate(moments.leave, now)}</Text>{!preparationEvent && item.id && <View style={styles.twoChoiceRow}><Pressable style={styles.recoveryMiniButton} onPress={() => onPreparationStarted(item.id!)}><Text style={styles.recoveryMiniButtonText}>準備した</Text></Pressable><Pressable style={styles.recoveryMiniButtonSecondary} onPress={() => setStatusMessage('今の時間から、次に準備するタイミングを考えます。')}><Text style={styles.recoveryMiniButtonSecondaryText}>まだ</Text></Pressable></View>}{!checkIn && item.id && <View style={styles.twoChoiceRow}><Pressable style={styles.recoveryMiniButton} onPress={() => onDeparted(item.id!)}><Text style={styles.recoveryMiniButtonText}>出発した</Text></Pressable><Pressable style={styles.recoveryMiniButtonSecondary} onPress={() => setStatusMessage('5分後にもう一度確認します。')}><Text style={styles.recoveryMiniButtonSecondaryText}>まだ</Text></Pressable></View>}{!checkIn && moments.leave.getTime() <= now.getTime() && <Pressable style={styles.recoveryMiniButton} onPress={() => hasPremiumAccess(planTier, 'late_recovery') ? setRecoveryPlan(item) : onPremium('recovery')}><Text style={styles.recoveryMiniButtonText}>立て直す {hasPremiumAccess(planTier, 'late_recovery') ? '' : 'Premium'}</Text></Pressable>}<View style={styles.departureActions}><Pressable onPress={() => onEdit(item)}><Text style={styles.departureEdit}>編集</Text></Pressable><Pressable onPress={() => item.id && onDelete(item.id)}><Text style={styles.departureDelete}>×</Text></Pressable></View></View>
+          <View style={styles.departureCountdownRight}><Text style={styles.departureCountdownValue}>{checkIn ? '出発済み' : passed ? '終了' : countdownToDate(moments.leave, now)}</Text>{!preparationEvent && item.id && <View style={styles.twoChoiceRow}><Pressable style={styles.recoveryMiniButton} onPress={() => onPreparationStarted(item.id!)}><Text style={styles.recoveryMiniButtonText}>準備した</Text></Pressable><Pressable style={styles.recoveryMiniButtonSecondary} onPress={() => setStatusMessage('今の時間から、次に準備するタイミングを考えます。')}><Text style={styles.recoveryMiniButtonSecondaryText}>まだ</Text></Pressable></View>}{!checkIn && item.id && <View style={styles.twoChoiceRow}><Pressable style={styles.recoveryMiniButton} onPress={() => onDeparted(item.id!)}><Text style={styles.recoveryMiniButtonText}>出発した</Text></Pressable><Pressable style={styles.recoveryMiniButtonSecondary} onPress={() => setStatusMessage('5分後にもう一度確認します。')}><Text style={styles.recoveryMiniButtonSecondaryText}>まだ</Text></Pressable></View>}{!checkIn && moments.leave.getTime() <= now.getTime() && <Pressable style={styles.recoveryMiniButton} onPress={() => hasPremiumAccess(planTier, 'late_recovery') ? setRecoveryPlan(item) : onPremium('recovery')}><Text style={styles.recoveryMiniButtonText}>立て直す {hasPremiumAccess(planTier, 'late_recovery') ? '' : 'Premium'}</Text></Pressable>}<View style={styles.departureActions}><Pressable onPress={() => item.id && onSharePlan(item)}><Text style={styles.departureEdit}>共有</Text></Pressable><Pressable onPress={() => onEdit(item)}><Text style={styles.departureEdit}>編集</Text></Pressable><Pressable onPress={() => item.id && onDelete(item.id)}><Text style={styles.departureDelete}>×</Text></Pressable></View></View>
         </View>;
       })}
       {!!statusMessage && <Text style={styles.timelineStatusMessage}>{statusMessage}</Text>}
@@ -1317,14 +1584,22 @@ function TimelineScreen({
       <Text style={[styles.sectionTitle, { marginTop: 20, marginBottom: 10 }]}>{plan.id ? '予定を編集' : '予定を追加'}</Text>
       <View style={styles.formCard}>
         <Text style={styles.fieldLabel}>予定の名前</Text>
-        <TextInput
-          style={styles.titleInput}
-          value={plan.title}
-          onChangeText={(title) => onChange({ ...plan, title })}
-          placeholder="予定を入力"
-        />
-        <Text style={styles.fieldLabel}>到着したい時刻</Text>
-        <Pressable style={styles.departureDateButton} onPress={() => setShowPlanDatePicker((value) => !value)}><Text style={styles.departureDateButtonText}>▣ {plan.date}</Text></Pressable>
+      <TextInput
+        style={styles.titleInput}
+        value={plan.title}
+        onChangeText={(title) => onChange({ ...plan, title })}
+        placeholder="予定を入力"
+      />
+      <Text style={styles.fieldLabel}>目的地</Text>
+      <TextInput
+        style={styles.titleInput}
+        value={plan.destination ?? ''}
+        onChangeText={(destination) => onChange({ ...plan, destination })}
+        placeholder="地図で開きたい場所"
+      />
+      <Pressable style={styles.departureDateButton} onPress={() => void openMapSearch(getMapSearchTarget(plan))}><Text style={styles.departureDateButtonText}>▣ 地図で開く</Text></Pressable>
+      <Text style={styles.fieldLabel}>到着したい時刻</Text>
+      <Pressable style={styles.departureDateButton} onPress={() => setShowPlanDatePicker((value) => !value)}><Text style={styles.departureDateButtonText}>▣ {plan.date}</Text></Pressable>
         {showPlanDatePicker && <DateTimePicker value={dateForReminder(plan.date, plan.arrival)} mode="date" minimumDate={new Date()} display={Platform.OS === 'ios' ? 'inline' : 'default'} onChange={(event, selected) => {
           if (Platform.OS !== 'ios') setShowPlanDatePicker(false);
           if (event.type === 'set' && selected) onChange({ ...plan, date: dateKey(selected) });
@@ -1548,7 +1823,7 @@ function TaskScheduleCalendar({ tasks, plans, externalEvents, now, designMode, c
 
   return <>
     <View style={[styles.scheduleCalendarCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border, borderRadius: designMode === 'minimal' ? 2 : theme.radius.large }]}>
-      {designMode === 'chic' && <View pointerEvents="none" style={styles.calendarPatternCorner}><ChicPatternDecor pattern={chicPattern} accent="#D986A1" warm="#A997C8" /></View>}
+      {designMode === 'chic' && !isCheckChicPattern(chicPattern) && <View pointerEvents="none" style={styles.calendarPatternCorner}><ChicPatternDecor pattern={chicPattern} accent="#D986A1" warm="#A997C8" /></View>}
       <View style={styles.scheduleCalendarHeader}>
         <Pressable style={styles.scheduleMonthArrow} onPress={() => moveMonth(-1)}><Text style={styles.scheduleMonthArrowText}>‹</Text></Pressable>
         <View><Text style={styles.scheduleMonthTitle}>{year}年 {month + 1}月</Text><Text style={styles.scheduleMonthCopy}>タスクと出発予定を、ひと目で</Text></View>
@@ -1639,12 +1914,47 @@ function ModeHomeHero({ designMode, tasks, dangerousTask, now, completedCount, r
   </View>;
 }
 
-function ChicPatternDecor({ pattern, accent, warm, density = 'regular' }: { pattern: ChicPattern | 'flower' | 'stripe'; accent: string; warm: string; density?: 'regular' | 'compact' }) {
-  const compact = density === 'compact';
-  const checkCell = compact ? 14 : 16;
-  if (pattern === 'check' || pattern === 'stripe') return <View pointerEvents="none" style={[styles.patternLayer, { backgroundColor: '#FFF9F6' }]}>
-    {Array.from({ length: 40 }, (_, index) => <React.Fragment key={index}><View style={[styles.checkVerticalBand, { left: index * checkCell, width: checkCell / 2, backgroundColor: `${accent}38` }]} /><View style={[styles.checkHorizontalBand, { top: index * checkCell, height: checkCell / 2, backgroundColor: `${warm}38` }]} /></React.Fragment>)}
+function isCheckChicPattern(pattern: ChicPattern): boolean {
+  return pattern === 'checkLavenderSatin' || pattern === 'checkBeigeNoir' || pattern === 'checkMauveFrame';
+}
+
+function CheckRibbonDecoration({ pattern, color = 'cool', compact = false }: { pattern: ChicPattern; color?: ChicCheckColor; compact?: boolean }) {
+  if (!isCheckChicPattern(pattern)) return null;
+  const source = pattern === 'checkLavenderSatin'
+    ? require('./assets/themes/check/ribbons/lavender-satin-bow-overlay.png')
+    : pattern === 'checkBeigeNoir'
+      ? require('./assets/themes/check/ribbons/black-classic-bow-overlay.png')
+      : require('./assets/themes/check/ribbons/mauve-ribbon-frame-overlay.png');
+  const cornerSource = pattern === 'checkLavenderSatin'
+    ? require('./assets/themes/check/ribbons/lavender-corner-band-overlay.png')
+    : pattern === 'checkBeigeNoir'
+      ? require('./assets/themes/check/ribbons/black-corner-band-overlay.png')
+      : undefined;
+  const tintColor = getChicCheckColor(color).accent;
+  return <View pointerEvents="none" style={styles.ribbonDecorationLayer}>
+    <Image source={source} resizeMode="contain" style={[styles.checkRibbonAsset, pattern === 'checkMauveFrame' ? (compact ? styles.checkFrameAssetCompact : styles.checkFrameAssetRegular) : (compact ? styles.checkRibbonAssetCompact : styles.checkRibbonAssetRegular), { tintColor }]} />
+    {cornerSource && <Image source={cornerSource} resizeMode="contain" style={[styles.checkCornerAsset, compact ? styles.checkCornerAssetCompact : styles.checkCornerAssetRegular, { tintColor }]} />}
   </View>;
+}
+
+function ChicPatternDecor({ pattern, accent, warm, density = 'regular', checkColor }: { pattern: ChicPattern | 'flower' | 'stripe'; accent: string; warm: string; density?: 'regular' | 'compact'; checkColor?: ChicCheckColor }) {
+  const compact = density === 'compact';
+  if (pattern === 'checkLavenderSatin' || pattern === 'checkBeigeNoir' || pattern === 'checkMauveFrame') {
+    const selectedCheckColor = checkColor ? getChicCheckColor(checkColor) : undefined;
+    const backgroundColor = selectedCheckColor?.background ?? (pattern === 'checkBeigeNoir' ? '#FBF4EA' : pattern === 'checkMauveFrame' ? '#FFF1F6' : '#F6F1FB');
+    const cell = pattern === 'checkLavenderSatin' ? (compact ? 30 : 32) : pattern === 'checkBeigeNoir' ? (compact ? 12 : 14) : (compact ? 20 : 22);
+    const verticalColor = selectedCheckColor ? `${selectedCheckColor.accent}55` : pattern === 'checkBeigeNoir' ? 'rgba(29,24,23,0.20)' : pattern === 'checkMauveFrame' ? 'rgba(185,119,143,0.26)' : 'rgba(185,173,216,0.38)';
+    const horizontalColor = selectedCheckColor ? `${selectedCheckColor.warm}70` : pattern === 'checkBeigeNoir' ? 'rgba(201,180,154,0.40)' : pattern === 'checkMauveFrame' ? 'rgba(226,182,194,0.48)' : 'rgba(227,216,241,0.72)';
+    const columns = Math.ceil((compact ? 260 : 520) / cell) + 2;
+    const rows = Math.ceil((compact ? 420 : 1400) / cell) + 2;
+    const overlapColor = selectedCheckColor ? `${selectedCheckColor.accent}88` : verticalColor;
+    return <View pointerEvents="none" style={[styles.patternLayer, { backgroundColor }]}>
+      {Array.from({ length: columns * rows }, (_, index) => { const column = index % columns; const row = Math.floor(index / columns); const dark = (row + column) % 2 === 0; return <View key={`cell-${index}`} style={[styles.checkCell, { left: column * cell, top: row * cell, width: cell, height: cell, backgroundColor: dark ? verticalColor : horizontalColor }]} />; })}
+      {Array.from({ length: columns }, (_, index) => <View key={`v-${index}`} style={[styles.checkVerticalBand, { left: index * cell + cell * 0.38, width: cell * 0.24, backgroundColor: verticalColor }]} />)}
+      {Array.from({ length: rows }, (_, index) => <View key={`h-${index}`} style={[styles.checkHorizontalBand, { top: index * cell + cell * 0.38, height: cell * 0.24, backgroundColor: horizontalColor }]} />)}
+      {Array.from({ length: columns * rows }, (_, index) => { const column = index % columns; const row = Math.floor(index / columns); return <View key={`cross-${index}`} style={[styles.checkCell, { left: column * cell + cell * 0.38, top: row * cell + cell * 0.38, width: cell * 0.24, height: cell * 0.24, backgroundColor: overlapColor }]} />; })}
+    </View>;
+  }
   if (pattern === 'dot') return <View pointerEvents="none" style={styles.patternLayer}>
     {Array.from({ length: compact ? 160 : 144 }, (_, index) => { const columns = compact ? 22 : 18; const spacingX = compact ? 20 : 25; const spacingY = compact ? 18 : 22; const row = Math.floor(index / columns); const column = index % columns; const size = index % 3 === 0 ? (compact ? 5 : 6) : index % 2 === 0 ? 4 : 3; return <View key={index} style={[styles.patternDotSmall, { width: size, height: size, borderRadius: size / 2, backgroundColor: index % 2 ? warm : accent, left: 4 + column * spacingX + (row % 2 ? spacingX / 2 : 0), top: 5 + row * spacingY }]} />; })}
   </View>;
@@ -1700,11 +2010,13 @@ function WidgetScreen({
   completionIcon,
   designMode,
   chicPattern,
+  chicCheckColor,
   onSize,
   onShowCompleted,
   onCompletionIcon,
   onDesignMode,
   onChicPattern,
+  onChicCheckColor,
   templates,
   savedTemplates,
   onAddTemplate,
@@ -1723,11 +2035,13 @@ function WidgetScreen({
   completionIcon: string;
   designMode: DesignMode;
   chicPattern: ChicPattern;
+  chicCheckColor: ChicCheckColor;
   onSize: (size: WidgetSize) => void;
   onShowCompleted: (value: boolean) => void;
   onCompletionIcon: (icon: string) => void;
   onDesignMode: (mode: DesignMode) => void;
   onChicPattern: (pattern: ChicPattern) => void;
+  onChicCheckColor: (color: ChicCheckColor) => void;
   templates: string[];
   savedTemplates: PremiumTaskTemplate[];
   onAddTemplate: (title: string) => void;
@@ -1757,7 +2071,7 @@ function WidgetScreen({
             </Pressable>
           ))}
         </View>
-        {designMode === 'chic' && <View style={styles.patternSelector}><Text style={styles.fieldLabel}>Chicの柄</Text><View style={styles.patternChoices}>{(['floral', 'dot', 'check'] as ChicPattern[]).map((pattern) => { const locked = pattern !== 'floral' && !hasPremiumAccess(planTier, pattern === 'dot' ? 'chic_dot' : 'chic_check'); return <Pressable key={pattern} style={[styles.patternChoice, chicPattern === pattern && styles.patternChoiceActive]} onPress={() => onChicPattern(pattern)}><View style={styles.patternSwatch}><ChicPatternDecor pattern={pattern} accent="#D986A1" warm="#A997C8" /></View><Text style={[styles.patternChoiceText, chicPattern === pattern && styles.patternChoiceTextActive]}>{pattern === 'floral' ? '花柄' : pattern === 'dot' ? `ドット${locked ? ' 🔒' : ''}` : `チェック${locked ? ' 🔒' : ''}`}</Text></Pressable>; })}</View></View>}
+        {designMode === 'chic' && <View style={styles.patternSelector}><Text style={styles.fieldLabel}>Chicの柄</Text><View style={styles.patternChoices}>{(['floral', 'dot', 'checkLavenderSatin', 'checkBeigeNoir', 'checkMauveFrame'] as ChicPattern[]).map((pattern) => { const feature = pattern === 'floral' ? undefined : pattern === 'dot' ? 'chic_dot' : pattern === 'checkLavenderSatin' ? 'chic_check_lavender_satin' : pattern === 'checkBeigeNoir' ? 'chic_check_beige_noir' : 'chic_check_mauve_frame'; const locked = !!feature && !hasPremiumAccess(planTier, feature); const label = pattern === 'floral' ? '花柄' : pattern === 'dot' ? `ドット${locked ? ' 🔒' : ''}` : pattern === 'checkLavenderSatin' ? `くすみラベンダーチェック${locked ? ' 🔒' : ''}` : pattern === 'checkBeigeNoir' ? `ベージュ×ブラックチェック${locked ? ' 🔒' : ''}` : `モーブフレームチェック${locked ? ' 🔒' : ''}`; return <Pressable key={pattern} style={[styles.patternChoice, chicPattern === pattern && styles.patternChoiceActive]} onPress={() => onChicPattern(pattern)}><View style={styles.patternSwatch}><ChicPatternDecor pattern={pattern} accent={getChicCheckColor(chicCheckColor).accent} warm={getChicCheckColor(chicCheckColor).warm} checkColor={chicCheckColor} /></View><Text style={[styles.patternChoiceText, chicPattern === pattern && styles.patternChoiceTextActive]}>{label}</Text></Pressable>; })}</View><Text style={[styles.fieldLabel, { marginTop: 12 }]}>チェックの色</Text><View style={styles.patternChoices}>{chicCheckColorChoices.map((choice) => <Pressable key={choice.id} style={[styles.patternChoice, chicCheckColor === choice.id && styles.patternChoiceActive]} onPress={() => onChicCheckColor(choice.id)}><View style={[styles.checkColorSwatch, { backgroundColor: choice.background, borderColor: choice.accent }]}><View style={[styles.checkColorSwatchBand, { backgroundColor: choice.accent }]} /><View style={[styles.checkColorSwatchBandHorizontal, { backgroundColor: choice.warm }]} /></View><Text style={[styles.patternChoiceText, chicCheckColor === choice.id && styles.patternChoiceTextActive]}>{choice.label}</Text></Pressable>)}</View></View>}
       </View>
       <Pressable style={styles.guideCard} onPress={onGuide}><View><Text style={styles.guideCardTitle}>Rhythmの使い方</Text><Text style={styles.guideCardCopy}>登録・振り分け・出発・集中の流れを見る</Text></View><Text style={styles.guideCardArrow}>›</Text></Pressable>
       <NotificationManagerCard />
@@ -1778,6 +2092,7 @@ function WidgetScreen({
         <Text style={styles.phoneClock}>9:41</Text>
         <View style={[styles.widget, size === 'small' && styles.widgetSmall, designMode === 'minimal' && styles.widgetMinimal, designMode === 'chic' && { backgroundColor: patternVisual.background }, ]}>
           {designMode === 'chic' && <ChicPatternDecor pattern={chicPattern} accent={patternVisual.accent} warm={patternVisual.warm} />}
+          {designMode === 'chic' && isCheckChicPattern(chicPattern) && <CheckRibbonDecoration pattern={chicPattern} color={chicCheckColor} compact />}
           {designMode === 'chic' && <View pointerEvents="none" style={styles.widgetChicWash} />}
           <View style={styles.widgetTop}>
             <View>
@@ -2081,7 +2396,7 @@ function TaskModal({ visible, task, templates, savedTemplates, designMode, planT
   );
 }
 
-function TodayWinStrip({ tasks, designMode, chicPattern, onRestore }: { tasks: Task[]; designMode: ThemeMode; chicPattern: ChicPattern; onRestore: (id: string) => void }) {
+function TodayWinStrip({ tasks, designMode, chicPattern, chicCheckColor, onRestore }: { tasks: Task[]; designMode: ThemeMode; chicPattern: ChicPattern; chicCheckColor?: ChicCheckColor; onRestore: (id: string) => void }) {
   const theme = getThemeTokens(designMode);
   const now = new Date();
   const todayKey = dateKey(now);
@@ -2115,7 +2430,7 @@ function TodayWinStrip({ tasks, designMode, chicPattern, onRestore }: { tasks: T
     <Modal visible={detailsOpen} transparent animationType="slide" onRequestClose={() => setDetailsOpen(false)}>
       <Pressable style={styles.modalBackdrop} onPress={() => setDetailsOpen(false)}>
         <Pressable style={[styles.modalSheet, { backgroundColor: theme.colors.screenBackground, borderRadius: theme.radius.modal }]} onPress={(event) => event.stopPropagation()}>
-          {designMode === 'chic' && <View pointerEvents="none" style={styles.completedModalPattern}><ChicPatternDecor pattern={chicPattern} accent="#D986A1" warm="#A997C8" /></View>}
+          {designMode === 'chic' && !isCheckChicPattern(chicPattern) && <View pointerEvents="none" style={styles.completedModalPattern}><ChicPatternDecor pattern={chicPattern} accent="#D986A1" warm="#A997C8" /></View>}
           <View style={styles.modalHandle} />
           <Text style={styles.modalTitle}>今日できたこと</Text>
           {completedToday.length === 0 ? (
@@ -2167,7 +2482,7 @@ function TodayWinStrip({ tasks, designMode, chicPattern, onRestore }: { tasks: T
   return (
     <>
       <Pressable style={[styles.todayHeroCard, styles.todayHeroCardChic]} onPress={() => setDetailsOpen(true)}>
-        {designMode === 'chic' && <ChicPatternDecor pattern={chicPattern} accent="#D986A1" warm="#A997C8" />}
+        {designMode === 'chic' && isCheckChicPattern(chicPattern) && <CheckRibbonDecoration pattern={chicPattern} color={chicCheckColor} />}
         <View style={styles.todayHeroChicLayout}>
           <View style={styles.todayHeroChicPlate}>
             <View style={styles.todayChicMark}><Text style={styles.todayChicMarkText}>✿</Text></View>
@@ -2204,7 +2519,7 @@ function AchievementVessel({ tasks, designMode, chicPattern = 'floral', scope = 
     return <View style={[styles.minimalAchievement, compact && styles.minimalAchievementCompact]}><View><Text style={styles.minimalAchievementLabel}>{scope === 'today' ? '今日できたこと' : '今月の記録'}</Text><Text style={[styles.minimalAchievementNumber, compact && styles.minimalAchievementNumberCompact]}>{String(completed.length).padStart(2, '0')}</Text><Text style={styles.taskMeta}>{completed.length}件完了</Text></View><View style={styles.minimalAchievementBars}>{Array.from({ length: 10 }, (_, item) => <View key={item} style={[styles.minimalAchievementBar, item < Math.min(10, completed.length) && styles.minimalAchievementBarFilled]} />)}</View></View>;
   }
   return <View style={[styles.vesselScene, compact && styles.vesselSceneCompact, designMode === 'chic' && styles.vesselSceneChic, ]}>
-    {designMode === 'chic' && <ChicPatternDecor pattern={chicPattern} accent="#D986A1" warm="#A997C8" />}
+    {designMode === 'chic' && !isCheckChicPattern(chicPattern) && <ChicPatternDecor pattern={chicPattern} accent="#D986A1" warm="#A997C8" />}
     <View style={[styles.vesselLabel, designMode === 'chic' && styles.vesselLabelChic]}><Text style={styles.vesselLabelTop}>{scope === 'today' ? '今日の小さな達成' : designMode === 'chic' ? '今月の小さな達成' : '今月のできたこと'}</Text><Text style={[styles.vesselLabelTitle, compact && styles.vesselLabelTitleCompact]}>{completed.length}個のできた！</Text></View>
     <View style={styles.jarLid} />
     <View style={[styles.jarBody, compact && styles.jarBodyCompact, ]}>
@@ -2318,6 +2633,7 @@ type PremiumPreviewKind = PremiumGuideFeatureId;
 
 const PREMIUM_GUIDE_FEATURES: Array<{ id: PremiumGuideFeatureId; kind: PremiumPreviewKind; title: string; description: string }> = [
   { id: 'calendar', kind: 'calendar', title: 'いつもの予定を、Rhythmにまとめる', description: '普段使っているカレンダーの予定も、Rhythmの予定表にまとめて表示。予定を見ながら、何時に準備して何時に出るかを考えられます。' },
+  { id: 'route', kind: 'route', title: '地図を見ながら出発を考える', description: '目的地の位置を見て、出発の目安と余裕の取り方を確認できます。' },
   { id: 'nudge', kind: 'nudge', title: '通知を見逃しても、そのままにしない', description: '1回の通知で動けなくても、Rhythmがもう一度確認。「見たけど後回し」を減らします。' },
   { id: 'time', kind: 'time', title: '予定と実際のズレが分かる', description: '準備や出発が、予定よりどのくらいズレているかを記録。感覚ではなく、最近の実際の行動から確認できます。' },
   { id: 'behavior', kind: 'behavior', title: '自分が動きやすい形を知る', description: '通知・集中・延長の記録から、最近の動き方を振り返れます。性格診断ではなく、実際の行動だけを使います。' },
@@ -2328,6 +2644,7 @@ const PREMIUM_GUIDE_FEATURES: Array<{ id: PremiumGuideFeatureId; kind: PremiumPr
 
 function PremiumMiniPreview({ kind, designMode }: { kind: PremiumPreviewKind; designMode: DesignMode }) {
   if (kind === 'calendar') return <View style={styles.premiumPreview}><Text style={styles.previewImageLabel}>予定表の表示イメージ</Text>{[['09:00', '朝会', '外部予定'], ['11:00', '資料提出', 'Rhythm'], ['14:00', '病院訪問', '外部予定'], ['18:30', 'ピラティス', '外部予定']].map(([time, title, source]) => <View key={`${time}-${title}`} style={styles.previewScheduleRow}><Text style={styles.previewTime}>{time}</Text><Text style={styles.previewScheduleTitle}>{title}</Text><Text style={[styles.previewSource, source === 'Rhythm' && styles.previewSourceRhythm]}>{source}</Text></View>)}<View style={styles.previewFlow}><Text style={styles.previewFlowText}>14:00 病院訪問</Text><Text style={styles.previewArrow}>↓</Text><Text style={styles.previewFlowButton}>出発を考える</Text></View></View>;
+  if (kind === 'route') return <View style={styles.premiumPreview}><Text style={styles.previewImageLabel}>地図の表示イメージ</Text><View style={styles.previewRouteMap}><Text style={styles.previewRouteMapTitle}>目的地の周辺地図</Text><Text style={styles.previewRouteMapPin}>📍</Text><Text style={styles.previewRouteMapPlace}>病院訪問</Text></View><View style={styles.previewRouteTiming}><View><Text style={styles.previewCompareLabel}>最短</Text><Text style={styles.previewCompareValue}>09:20</Text></View><Text style={styles.previewArrow}>→</Text><View><Text style={styles.previewCompareLabel}>標準</Text><Text style={styles.previewCompareValue}>09:35</Text></View><Text style={styles.previewArrow}>→</Text><View><Text style={styles.previewCompareLabel}>余裕</Text><Text style={styles.previewCompareValue}>09:50</Text></View></View><Text style={styles.previewRouteCopy}>地図を見ながら、どこまで余裕を残すかを考えられます。</Text></View>;
   if (kind === 'nudge') return <View style={styles.premiumPreview}><Text style={styles.previewImageLabel}>通知の表示イメージ</Text>{[['09:00', '忘れてない？', '資料を送る'], ['09:05', 'そろそろ始められそう？', 'もう一度確認'], ['09:08', 'まだ終わってなければ', '今確認しよう']].map(([time, title, copy], index) => <View key={time} style={[styles.previewNotification, index > 0 && styles.previewNotificationLater]}><Text style={styles.previewNotificationTime}>{time}</Text><View style={{ flex: 1 }}><Text style={styles.previewNotificationTitle}>{title}</Text><Text style={styles.previewNotificationCopy}>{copy}</Text></View></View>)}</View>;
   if (kind === 'time') return <View style={styles.premiumPreview}><Text style={styles.previewImageLabel}>表示イメージ</Text><Text style={styles.previewMetricLabel}>準備開始</Text><View style={styles.previewTimeCompare}><View><Text style={styles.previewCompareLabel}>予定</Text><Text style={styles.previewCompareValue}>12:10</Text></View><Text style={styles.previewCompareArrow}>→</Text><View><Text style={styles.previewCompareLabel}>実際</Text><Text style={styles.previewCompareValue}>12:24</Text></View></View><Text style={styles.previewMetricBig}>平均14分遅め</Text><Text style={styles.previewRecordCount}>記録 8回</Text></View>;
   if (kind === 'behavior') return <View style={styles.premiumPreview}><Text style={styles.previewImageLabel}>表示イメージ</Text><Text style={styles.previewMetricLabel}>最近の行動</Text><View style={styles.previewInsightRow}><Text style={styles.previewInsightLabel}>動き始め</Text><Text style={styles.previewInsightValue}>通知から平均17分で反応</Text></View><View style={styles.previewInsightRow}><Text style={styles.previewInsightLabel}>集中</Text><Text style={styles.previewInsightValue}>15分が比較的続きやすい傾向</Text></View><View style={styles.previewInsightRow}><Text style={styles.previewInsightLabel}>延長</Text><Text style={styles.previewInsightValue}>8回中5回はその後完了</Text></View></View>;
@@ -2338,7 +2655,7 @@ function PremiumMiniPreview({ kind, designMode }: { kind: PremiumPreviewKind; de
 
 function PremiumFeatureEntryCard({ number, title, active, designMode, chicPattern, onPress }: { number: string; title: string; active: boolean; designMode: DesignMode; chicPattern: ChicPattern; onPress: () => void }) {
   return <Pressable onPress={onPress} style={[styles.premiumEntryCard, active && styles.premiumEntryCardActive, designMode === 'minimal' && styles.premiumEntryCardMinimal, designMode === 'chic' && styles.premiumEntryCardChic]}>
-    {designMode === 'chic' && <View pointerEvents="none" style={styles.premiumEntryPattern}><ChicPatternDecor pattern={chicPattern} accent="#D986A1" warm="#A997C8" density="compact" /></View>}
+    {designMode === 'chic' && !isCheckChicPattern(chicPattern) && <View pointerEvents="none" style={styles.premiumEntryPattern}><ChicPatternDecor pattern={chicPattern} accent="#D986A1" warm="#A997C8" density="compact" /></View>}
     <Text style={[styles.premiumEntryNumber, active && styles.premiumEntryNumberActive]}>{number}</Text>
     <Text numberOfLines={2} style={[styles.premiumEntryTitle, active && styles.premiumEntryTitleActive]}>{title}</Text>
   </Pressable>;
@@ -2346,7 +2663,7 @@ function PremiumFeatureEntryCard({ number, title, active, designMode, chicPatter
 
 function PremiumFeatureDetail({ number, kind, title, description, designMode, chicPattern }: { number: string; kind: PremiumPreviewKind; title: string; description: string; designMode: DesignMode; chicPattern: ChicPattern }) {
   return <View style={[styles.premiumFeatureBlock, designMode === 'minimal' && styles.premiumFeatureMinimal, designMode === 'chic' && styles.premiumFeatureChic, ]}>
-    {designMode === 'chic' && <ChicPatternDecor pattern={chicPattern} accent="#D986A1" warm="#A997C8" />}
+    {designMode === 'chic' && !isCheckChicPattern(chicPattern) && <ChicPatternDecor pattern={chicPattern} accent="#D986A1" warm="#A997C8" />}
     <View style={styles.premiumFeatureInner}>
       <View style={styles.premiumFeatureTop}><Text style={[styles.premiumFeatureNumber, designMode === 'minimal' && styles.premiumFeatureNumberMinimal]}>{number}</Text><Text style={styles.premiumFeatureLabel}>Premium機能</Text></View>
       <PremiumMiniPreview kind={kind} designMode={designMode} />
@@ -2431,6 +2748,7 @@ const styles = StyleSheet.create({
   chicKicker: { color: '#7358B9', fontSize: 9, fontWeight: '900', letterSpacing: 1.7 },
   chicPatternSymbol: { position: 'absolute', right: 25, top: 53, color: '#FFFFFF', fontSize: 39, fontWeight: '300', opacity: 0.8 },
   patternLayer: { ...StyleSheet.absoluteFillObject, overflow: 'hidden' },
+  ribbonDecorationLayer: { ...StyleSheet.absoluteFillObject, overflow: 'hidden', zIndex: 5 },
   patternDotSmall: { position: 'absolute', opacity: 0.42 },
   patternFlowerSmall: { position: 'absolute', width: 13, height: 13, opacity: 0.48 },
   flowerPetalSmall: { position: 'absolute', width: 5, height: 5, borderRadius: 3 },
@@ -2440,8 +2758,17 @@ const styles = StyleSheet.create({
   flowerSmallLeft: { left: 0, top: 4 },
   flowerCenterSmall: { position: 'absolute', left: 5, top: 5, width: 3, height: 3, borderRadius: 2, backgroundColor: '#C6A467' },
   checkPatternBase: { backgroundColor: '#FFF9F6' },
+  checkCell: { position: 'absolute' },
   checkVerticalBand: { position: 'absolute', top: 0, bottom: 0, width: 8, backgroundColor: 'rgba(232,184,199,0.22)' },
   checkHorizontalBand: { position: 'absolute', left: 0, right: 0, height: 8, backgroundColor: 'rgba(232,184,199,0.22)' },
+  checkRibbonAsset: { position: 'absolute', zIndex: 3 },
+  checkRibbonAssetRegular: { right: 8, top: 4, width: 128, height: 104 },
+  checkRibbonAssetCompact: { right: 4, top: 2, width: 88, height: 72 },
+  checkFrameAssetRegular: { right: 10, top: 8, width: 180, height: 136 },
+  checkFrameAssetCompact: { right: 6, top: 5, width: 124, height: 94 },
+  checkCornerAsset: { position: 'absolute', zIndex: 2 },
+  checkCornerAssetRegular: { left: -8, bottom: -10, width: 96, height: 72 },
+  checkCornerAssetCompact: { left: -5, bottom: -6, width: 68, height: 52 },
   chicHeadline: { color: '#342B4A', fontSize: 29, lineHeight: 38, fontWeight: '900', letterSpacing: -1.1, marginTop: 15 },
   chicFlow: { color: '#71657E', fontSize: 11, fontWeight: '700', marginTop: 7, maxWidth: '78%' },
   chicSummary: { flexDirection: 'row', alignItems: 'baseline', marginTop: 19 },
@@ -2654,6 +2981,9 @@ const styles = StyleSheet.create({
   patternSwatch: { height: 43, borderRadius: 11, backgroundColor: '#FFF9F6', overflow: 'hidden' },
   patternChoiceText: { color: '#8B7B82', fontSize: 9, fontWeight: '800', textAlign: 'center', marginTop: 5 },
   patternChoiceTextActive: { color: '#D986A1' },
+  checkColorSwatch: { width: 44, height: 34, borderWidth: 1, overflow: 'hidden', position: 'relative' },
+  checkColorSwatchBand: { position: 'absolute', left: 0, top: 0, bottom: 0, width: 12, opacity: 0.35 },
+  checkColorSwatchBandHorizontal: { position: 'absolute', left: 0, right: 0, top: 12, height: 10, opacity: 0.35 },
   phonePreview: { backgroundColor: '#D9D1EA', borderRadius: 35, padding: 22, paddingBottom: 34, minHeight: 350, alignItems: 'center', marginBottom: 18 },
   phonePreviewMinimal: { backgroundColor: '#D7D7D7', borderRadius: 14 },
   phoneClock: { color: colors.ink, fontSize: 30, fontWeight: '500', marginBottom: 30 },
@@ -2794,6 +3124,42 @@ const styles = StyleSheet.create({
   premiumFeatureDescription: { color: '#6E6675', fontSize: 11, lineHeight: 18, marginTop: 6 },
   premiumFeatureDescriptionMinimal: { color: '#444444' },
   premiumPreview: { backgroundColor: '#FFFFFF', borderRadius: 15, borderWidth: 1, borderColor: '#E2DDE7', padding: 12 },
+  routePreviewCard: { borderWidth: 1, borderRadius: 20, padding: 14, marginTop: 16, marginBottom: 4 },
+  routePreviewHeader: { flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
+  routePreviewBadge: { color: '#6F52B5', fontSize: 9, fontWeight: '900', letterSpacing: 1.2 },
+  routePreviewTitle: { color: '#2E2934', fontSize: 18, lineHeight: 24, fontWeight: '900', marginTop: 4 },
+  routePreviewCopy: { color: '#6F6876', fontSize: 11, lineHeight: 17, marginTop: 6 },
+  routePreviewOpenButton: { borderWidth: 1, borderColor: '#6F52B5', borderRadius: 12, paddingHorizontal: 12, paddingVertical: 9, backgroundColor: '#F5F0FF' },
+  routePreviewOpenButtonText: { color: '#6F52B5', fontSize: 11, fontWeight: '900' },
+  routePreviewBody: { marginTop: 12 },
+  routePreviewMapFrame: { width: '100%', aspectRatio: 16 / 9, borderRadius: 16, overflow: 'hidden', borderWidth: 1, borderColor: '#E1DAEA', backgroundColor: '#F7F4FA' },
+  routePreviewPlanGrid: { flex: 1, backgroundColor: '#F6F2FB', padding: 14 },
+  routePreviewPlanBadge: { alignSelf: 'flex-start', backgroundColor: 'rgba(255,255,255,0.9)', borderRadius: 999, paddingHorizontal: 10, paddingVertical: 7, borderWidth: 1, borderColor: '#E0D8EB' },
+  routePreviewPlanBadgeLabel: { color: '#8B8399', fontSize: 8, fontWeight: '800' },
+  routePreviewPlanBadgeValue: { color: '#2F2936', fontSize: 12, fontWeight: '900', marginTop: 2 },
+  routePreviewPlanFlow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 18, paddingHorizontal: 2 },
+  routePreviewPlanStop: { alignItems: 'center', minWidth: 66, flex: 1 },
+  routePreviewPlanStopLabel: { color: '#8A8393', fontSize: 8, fontWeight: '800' },
+  routePreviewPlanStopValue: { color: '#2A2431', fontSize: 13, fontWeight: '900', marginTop: 6, textAlign: 'center' },
+  routePreviewPlanLine: { flex: 1, height: 2, marginHorizontal: 8, borderRadius: 999, backgroundColor: '#D8D0E5' },
+  routePreviewPlanLineShort: { flex: 0.72, height: 2, marginHorizontal: 8, borderRadius: 999, backgroundColor: '#D8D0E5' },
+  routePreviewPlanTimeRow: { flexDirection: 'row', gap: 10, marginTop: 16 },
+  routePreviewPlanTimeCard: { flex: 1, backgroundColor: '#FFFFFF', borderRadius: 14, borderWidth: 1, borderColor: '#E8E1F0', paddingVertical: 10, paddingHorizontal: 10 },
+  routePreviewPlanTimeLabel: { color: '#8B8399', fontSize: 8, fontWeight: '800' },
+  routePreviewPlanTimeValue: { color: '#2A2431', fontSize: 14, fontWeight: '900', marginTop: 5 },
+  routePreviewPlanNote: { marginTop: 16, backgroundColor: 'rgba(255,255,255,0.74)', borderRadius: 14, paddingHorizontal: 10, paddingVertical: 10, borderWidth: 1, borderColor: '#E7DFF1' },
+  routePreviewMapPlaceholderTitle: { color: '#352F3F', fontSize: 13, fontWeight: '900', textAlign: 'center' },
+  routePreviewMapPlaceholderCopy: { color: '#7B7283', fontSize: 10, lineHeight: 16, textAlign: 'center', marginTop: 6 },
+  routePreviewSummary: { marginTop: 12, flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
+  routePreviewLabel: { color: '#7A71A6', fontSize: 9, fontWeight: '900', letterSpacing: 1.2 },
+  routePreviewDestination: { color: '#2A2431', fontSize: 15, lineHeight: 21, fontWeight: '900', marginTop: 5 },
+  routePreviewSummaryTimes: { flex: 1, flexDirection: 'row', flexWrap: 'wrap', gap: 8, justifyContent: 'flex-end' },
+  routePreviewSummaryTime: { minWidth: 68, alignItems: 'flex-end' },
+  routePreviewMetaLabel: { color: '#7A7285', fontSize: 10, fontWeight: '700' },
+  routePreviewMetaValue: { color: '#2C2740', fontSize: 13, fontWeight: '900' },
+  routePreviewRisk: { color: '#6C6577', fontSize: 10, lineHeight: 16, marginTop: 10 },
+  routePreviewLocation: { color: '#8A8393', fontSize: 9, marginTop: 4 },
+  routePreviewLatLon: { color: '#B0A8BA', fontSize: 8, marginTop: 2 },
   previewImageLabel: { color: '#9A929F', fontSize: 8, fontWeight: '900', letterSpacing: 0.6, marginBottom: 8 },
   previewScheduleRow: { flexDirection: 'row', alignItems: 'center', minHeight: 28, borderBottomWidth: 1, borderBottomColor: '#EEEAF0' },
   previewTime: { color: '#3D3743', fontSize: 10, fontWeight: '900', width: 42 },
@@ -2801,6 +3167,12 @@ const styles = StyleSheet.create({
   previewSource: { color: '#775FA9', backgroundColor: '#EEE7F8', borderRadius: 7, paddingHorizontal: 6, paddingVertical: 3, fontSize: 7, fontWeight: '900' },
   previewSourceRhythm: { color: '#8C5568', backgroundColor: '#F9DFE8' },
   previewFlow: { alignItems: 'center', marginTop: 9 }, previewFlowText: { color: '#4E4755', fontSize: 9, fontWeight: '800' }, previewArrow: { color: '#83778D', fontSize: 13, lineHeight: 15 }, previewFlowButton: { color: '#FFFFFF', backgroundColor: '#6F58B5', borderRadius: 9, paddingHorizontal: 14, paddingVertical: 6, fontSize: 9, fontWeight: '900' },
+  previewRouteMap: { alignItems: 'center', justifyContent: 'center', minHeight: 112, backgroundColor: '#ECE7F7', borderRadius: 10, borderWidth: 1, borderColor: '#D9D0E9' },
+  previewRouteMapTitle: { color: '#6A5A9F', fontSize: 8, fontWeight: '900', marginTop: 2 },
+  previewRouteMapPin: { fontSize: 22, marginTop: 6 },
+  previewRouteMapPlace: { color: '#2F2936', fontSize: 11, fontWeight: '900', marginTop: 5 },
+  previewRouteTiming: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 9 },
+  previewRouteCopy: { color: '#756C7D', fontSize: 8, lineHeight: 13, marginTop: 8, textAlign: 'center' },
   previewNotification: { flexDirection: 'row', gap: 9, padding: 9, backgroundColor: '#F3F0F5', borderRadius: 11, borderWidth: 1, borderColor: '#E3DEE7' },
   previewNotificationLater: { marginTop: 6, marginLeft: 13 }, previewNotificationTime: { color: '#6F6575', fontSize: 9, fontWeight: '900' }, previewNotificationTitle: { color: '#332E38', fontSize: 10, fontWeight: '900' }, previewNotificationCopy: { color: '#817987', fontSize: 8, marginTop: 2 },
   previewMetricLabel: { color: '#655E6C', fontSize: 10, fontWeight: '900' }, previewTimeCompare: { flexDirection: 'row', justifyContent: 'space-around', alignItems: 'center', marginTop: 10 }, previewCompareLabel: { color: '#918996', fontSize: 8, fontWeight: '800' }, previewCompareValue: { color: '#302A36', fontSize: 20, fontWeight: '900' }, previewCompareArrow: { color: '#A89EB0', fontSize: 17 }, previewMetricBig: { color: '#B65D78', fontSize: 22, fontWeight: '900', marginTop: 12 }, previewRecordCount: { color: '#928A98', fontSize: 8, fontWeight: '800', marginTop: 4 },

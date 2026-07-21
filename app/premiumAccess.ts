@@ -8,7 +8,9 @@ export type PremiumFeature =
   | 'full_history'
   | 'history_search'
   | 'chic_dot'
-  | 'chic_check'
+  | 'chic_check_lavender_satin'
+  | 'chic_check_beige_noir'
+  | 'chic_check_mauve_frame'
   | 'custom_theme'
   | 'behavior_time_correction'
   | 'late_recovery'
@@ -27,8 +29,15 @@ export function getEffectiveNudgeMode<T extends 'once' | 'repeat' | 'strong'>(ti
   return tier === 'premium' ? mode : 'once';
 }
 
-export function getEffectiveChicPattern<T extends 'floral' | 'dot' | 'check'>(tier: PlanTier, pattern: T): T | 'floral' {
+export function getEffectiveChicPattern<T extends 'floral' | 'dot' | 'checkLavenderSatin' | 'checkBeigeNoir' | 'checkMauveFrame'>(tier: PlanTier, pattern: T): T | 'floral' {
   return tier === 'premium' ? pattern : 'floral';
+}
+
+export function getChicPatternFeatureId(pattern: 'dot' | 'checkLavenderSatin' | 'checkBeigeNoir' | 'checkMauveFrame') {
+  if (pattern === 'dot') return 'chic_dot';
+  if (pattern === 'checkBeigeNoir') return 'chic_check_beige_noir';
+  if (pattern === 'checkMauveFrame') return 'chic_check_mauve_frame';
+  return 'chic_check_lavender_satin';
 }
 
 export function isWithinFreeSchedule(date: string, now = new Date()): boolean {
