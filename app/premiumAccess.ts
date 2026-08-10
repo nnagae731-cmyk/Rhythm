@@ -29,8 +29,11 @@ export function getEffectiveNudgeMode<T extends 'once' | 'repeat' | 'strong'>(ti
   return tier === 'premium' ? mode : 'once';
 }
 
-export function getEffectiveChicPattern<T extends 'floral' | 'dot' | 'checkLavenderSatin' | 'checkBeigeNoir' | 'checkMauveFrame'>(tier: PlanTier, pattern: T): T | 'floral' {
-  return tier === 'premium' ? pattern : 'floral';
+export function getEffectiveChicPattern<T extends 'plain' | 'floral' | 'floralSoft' | 'floralSeasonal' | 'floralDark' | 'dot' | 'checkLavenderSatin' | 'checkBeigeNoir' | 'checkMauveFrame'>(tier: PlanTier, pattern: T): T | 'plain' {
+  // 花柄3種は無料版でも選択できる基本テーマ。Premium限定なのはドット／チェック系。
+  if (pattern === 'floral' || pattern === 'floralSoft' || pattern === 'floralSeasonal' || pattern === 'floralDark') return 'plain';
+  if (pattern === 'plain') return pattern;
+  return tier === 'premium' ? pattern : 'plain';
 }
 
 export function getChicPatternFeatureId(pattern: 'dot' | 'checkLavenderSatin' | 'checkBeigeNoir' | 'checkMauveFrame') {

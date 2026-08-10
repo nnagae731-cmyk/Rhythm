@@ -18,5 +18,5 @@ export function normalizePersistedState(saved: Partial<PersistedState>) {
 }
 
 export function normalizeDesignMode(mode: PersistedState['designMode'] | undefined): DesignMode {
-  return mode === 'minimal' || mode === 'chic' ? mode : 'chic';
+  return mode === 'minimal' || mode === 'dark' || mode === 'chic' ? mode : 'chic';
 }

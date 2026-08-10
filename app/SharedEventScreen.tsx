@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Alert, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
-import { ChicPattern, DesignMode, getThemeTokens } from './theme';
+import { DesignMode, getThemeTokens } from './theme';
 import { SharedActionStatus, SharedAttendanceStatus, SharedEvent, SharedParticipantPrefs } from './types';
 import { formatClock } from './features/tasks/taskUtils';
 import { getDepartureMoments } from './features/departure/departureUtils';
@@ -10,7 +10,6 @@ type SharedEventScreenProps = {
   visible: boolean;
   shareToken?: string;
   designMode: DesignMode;
-  chicPattern: ChicPattern;
   sharedEvents: SharedEvent[];
   participantIdsByToken: Record<string, string>;
   participantPrefsByToken: Record<string, SharedParticipantPrefs>;
@@ -82,7 +81,6 @@ export function SharedEventScreen({
   visible,
   shareToken,
   designMode,
-  chicPattern,
   sharedEvents,
   participantIdsByToken,
   participantPrefsByToken,
@@ -128,7 +126,6 @@ export function SharedEventScreen({
 
   const canSave = Boolean(draft.displayName.trim());
   const departureLabel = draft.departurePoint === 'custom' ? draft.departurePointLabel.trim() || '指定した場所' : draft.departurePoint === 'home' ? '自宅' : '現在地';
-  const arrivalEstimate = event ? estimateArrivalAt(event, draft.actionStatus, new Date()) : undefined;
   const moments = event ? getDepartureMoments({
     id: event.eventId,
     title: event.title,

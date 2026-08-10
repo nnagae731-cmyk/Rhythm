@@ -5,6 +5,8 @@ import { Alert, Image, Keyboard, KeyboardAvoidingView, Modal, Platform, Pressabl
 import { ChicPattern, DesignMode, getThemeTokens } from './theme';
 import { MonthlyReview, MonthlyWishState, Wish, WishAction } from './types';
 import { calculateWishProgress, normalizeMonthlyReview, wishDateKey } from './features/wish/wishUtils';
+import { BThemeRibbonDecoration } from './components/BThemeRibbonDecoration';
+import { CThemeRibbonDecoration } from './components/CThemeRibbonDecoration';
 
 type WishScreenProps = {
   designMode: DesignMode;
@@ -12,6 +14,7 @@ type WishScreenProps = {
   monthLabel: string;
   state: MonthlyWishState;
   onSaveState: (updater: (current: MonthlyWishState) => MonthlyWishState) => void;
+  onCreateTaskFromAction?: (action: WishAction) => void;
   onBack: () => void;
 };
 
@@ -51,16 +54,30 @@ function createEmptyReviewDraft(): MonthlyReview {
   return { photo: '', date: '', shortNote: '', memo: '', satisfaction: 0 };
 }
 
-export function WishScreen({ designMode, chicPattern, monthLabel, state, onSaveState, onBack }: WishScreenProps) {
-  const theme = getThemeTokens(designMode);
+function hasReviewContent(review: MonthlyReview) {
+  return Boolean(review.photo || review.date || review.shortNote || review.memo || review.satisfaction);
+}
+
+function monthDays(month: string) {
+  const parts = month.split('-').map(Number);
+  const year = parts[0] ?? new Date().getFullYear();
+  const monthNumber = parts[1] ?? new Date().getMonth() + 1;
+  const firstWeekday = new Date(year, monthNumber - 1, 1).getDay();
+  const totalDays = new Date(year, monthNumber, 0).getDate();
+  return [...Array(firstWeekday).fill(null), ...Array.from({ length: totalDays }, (_, index) => String(index + 1).padStart(2, '0'))];
+}
+
+export function WishScreen({ designMode: rawDesignMode, chicPattern, monthLabel, state, onSaveState, onCreateTaskFromAction, onBack }: WishScreenProps) {
+  // Mono DarkはMono Lightと同じレイアウトを使い、色だけを反転する。
+  const designMode: 'minimal' | 'chic' = rawDesignMode === 'dark' ? 'minimal' : rawDesignMode;
+  const theme = getThemeTokens(rawDesignMode);
+  const darkAccent = rawDesignMode === 'dark' ? '#C7B7FF' : theme.colors.primaryAccent;
   const progress = useMemo(() => calculateWishProgress(state), [state]);
   const [themeDraft, setThemeDraft] = useState(state.theme ?? '');
-  const [themeStatus, setThemeStatus] = useState('');
   const [reviewDraft, setReviewDraft] = useState<MonthlyReview>(normalizeMonthlyReview(state.review));
   const [editor, setEditor] = useState<EditorState>(emptyEditor);
   const [showReviewDatePicker, setShowReviewDatePicker] = useState(false);
   const suppressReviewSyncRef = useRef(false);
-  const themeStatusTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     setThemeDraft(state.theme ?? '');
@@ -71,18 +88,8 @@ export function WishScreen({ designMode, chicPattern, monthLabel, state, onSaveS
     setReviewDraft(normalizeMonthlyReview(state.review));
   }, [state.review, state.theme]);
 
-  useEffect(() => () => {
-    if (themeStatusTimeoutRef.current) clearTimeout(themeStatusTimeoutRef.current);
-  }, []);
-
   const commit = (updater: (current: MonthlyWishState) => MonthlyWishState) => {
     onSaveState(updater);
-  };
-
-  const flashThemeStatus = (message: string) => {
-    setThemeStatus(message);
-    if (themeStatusTimeoutRef.current) clearTimeout(themeStatusTimeoutRef.current);
-    themeStatusTimeoutRef.current = setTimeout(() => setThemeStatus(''), 1800);
   };
 
   const openWishEditor = (wish?: Wish) => {
@@ -118,6 +125,7 @@ export function WishScreen({ designMode, chicPattern, monthLabel, state, onSaveS
         title,
         completed: editor.completed,
         createdAt: editor.id ? state.wishes.find((item) => item.id === editor.id)?.createdAt ?? new Date().toISOString() : new Date().toISOString(),
+        completedAt: editor.completed ? state.wishes.find((item) => item.id === editor.id)?.completedAt ?? new Date().toISOString() : undefined,
       };
       commit((current) => ({
         ...current,
@@ -135,6 +143,7 @@ export function WishScreen({ designMode, chicPattern, monthLabel, state, onSaveS
         wishId: editor.wishId,
         title,
         completed: editor.completed,
+        completedAt: editor.completed ? state.actions.find((item) => item.id === editor.id)?.completedAt ?? new Date().toISOString() : undefined,
       };
       commit((current) => ({
         ...current,
@@ -158,20 +167,20 @@ export function WishScreen({ designMode, chicPattern, monthLabel, state, onSaveS
       }));
     }
     Keyboard.dismiss();
-    Alert.alert('保存しました', editor.mode === 'wish' ? '叶えたいことを保存しました。' : '今日につながる行動を保存しました。');
+    Alert.alert('保存しました', editor.mode === 'wish' ? '叶えたいことを保存しました。' : '叶えるための行動を保存しました。');
   };
 
   const toggleWish = (id: string) => {
     commit((current) => ({
       ...current,
-      wishes: current.wishes.map((wish) => wish.id === id ? { ...wish, completed: !wish.completed } : wish),
+      wishes: current.wishes.map((wish) => wish.id === id ? { ...wish, completed: !wish.completed, completedAt: !wish.completed ? new Date().toISOString() : undefined } : wish),
     }));
   };
 
   const toggleAction = (id: string) => {
     commit((current) => ({
       ...current,
-      actions: current.actions.map((action) => action.id === id ? { ...action, completed: !action.completed } : action),
+      actions: current.actions.map((action) => action.id === id ? { ...action, completed: !action.completed, completedAt: !action.completed ? new Date().toISOString() : undefined } : action),
     }));
   };
 
@@ -205,16 +214,21 @@ export function WishScreen({ designMode, chicPattern, monthLabel, state, onSaveS
   };
 
   const saveReview = () => {
+    const nextReview: MonthlyReview = {
+      id: `${Date.now()}-review`,
+      photo: reviewDraft.photo?.trim() ?? '',
+      date: reviewDraft.date?.trim() || wishDateKey(),
+      shortNote: reviewDraft.shortNote?.trim() ?? '',
+      memo: reviewDraft.memo?.trim() ?? '',
+      satisfaction: reviewDraft.satisfaction ?? 0,
+    };
     suppressReviewSyncRef.current = true;
     commit((current) => ({
       ...current,
-      review: {
-        photo: reviewDraft.photo?.trim() ?? '',
-        date: reviewDraft.date?.trim() || wishDateKey(),
-        shortNote: reviewDraft.shortNote?.trim() ?? '',
-        memo: reviewDraft.memo?.trim() ?? '',
-        satisfaction: reviewDraft.satisfaction ?? 0,
-      },
+      // 保存済み履歴は reviews に積み、入力欄用の draft は空のまま維持する。
+      // review は旧形式データとの互換用なので、保存直後に最新レビューを戻さない。
+      review: {},
+      reviews: [...(current.reviews?.length ? current.reviews : (hasReviewContent(current.review) ? [normalizeMonthlyReview(current.review)] : [])), nextReview],
     }));
     setReviewDraft(createEmptyReviewDraft());
     Keyboard.dismiss();
@@ -223,18 +237,22 @@ export function WishScreen({ designMode, chicPattern, monthLabel, state, onSaveS
 
   const wishes = state.wishes;
   const actions = state.actions;
+  const savedReviews: Array<{ month: string; review: MonthlyReview }> = [];
+  const reviewMonths: string[] = [];
 
   return (
-    <View style={[styles.screen, designMode === 'minimal' ? styles.screenMinimal : styles.screenChic]}>
+    <View style={[styles.screen, designMode === 'minimal' ? styles.screenMinimal : styles.screenChic, rawDesignMode === 'dark' && styles.screenDark]}>
       <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
           <Pressable style={[styles.backButton, designMode === 'minimal' ? styles.backButtonMinimal : styles.backButtonChic]} onPress={onBack}>
-            <Text style={[styles.backButtonText, { color: theme.colors.primaryAccent }]}>ホームへ戻る</Text>
+            <Text style={[styles.backButtonText, { color: darkAccent }]}>ホームへ戻る</Text>
           </Pressable>
 
           <SectionCard
             designMode={designMode}
             chicPattern={chicPattern}
+            showBRibbon={designMode === 'chic' && chicPattern === 'checkLavenderSatin'}
+            showCRibbon={designMode === 'chic' && chicPattern === 'checkBeigeNoir'}
             title="今月のテーマ"
             subtitle={monthLabel}
           >
@@ -282,11 +300,19 @@ export function WishScreen({ designMode, chicPattern, monthLabel, state, onSaveS
                     designMode === 'minimal' ? styles.itemCardMinimal : styles.itemCardChic,
                     wish.completed && styles.itemCardDone,
                   ]}
-                  onPress={() => toggleWish(wish.id)}
+                  onPress={() => undefined}
                 >
+                  <Pressable
+                    accessibilityRole="checkbox"
+                    accessibilityState={{ checked: wish.completed }}
+                    style={[styles.completionCheck, wish.completed && styles.completionCheckActive, designMode === 'minimal' && styles.completionCheckMinimal]}
+                    onPress={() => toggleWish(wish.id)}
+                  >
+                    <Text style={[styles.completionCheckText, wish.completed && styles.completionCheckTextActive]}>✓</Text>
+                  </Pressable>
                   <View style={styles.itemBody}>
                     <Text style={[styles.itemTitle, wish.completed && styles.itemTitleDone]}>{wish.title}</Text>
-                      <Text style={[styles.itemMeta, { color: theme.colors.secondaryText }]}>{wish.completed ? '完了' : '進行中'}</Text>
+                      <Text style={[styles.itemMeta, { color: theme.colors.secondaryText }]}>{wish.completed ? `完了${wish.completedAt ? ` ・ ${new Date(wish.completedAt).getMonth() + 1}/${new Date(wish.completedAt).getDate()}` : ''}` : '進行中'}</Text>
                   </View>
                   <View style={styles.itemActions}>
                     <Pressable onPress={() => openWishEditor(wish)}>
@@ -301,14 +327,14 @@ export function WishScreen({ designMode, chicPattern, monthLabel, state, onSaveS
             </View>
 
             <Pressable style={[styles.addRow, designMode === 'minimal' ? styles.addRowMinimal : styles.addRowChic]} onPress={() => openWishEditor()}>
-              <Text style={[styles.addRowText, { color: theme.colors.primaryAccent }]}>＋ 叶えたいことを追加</Text>
+              <Text style={[styles.addRowText, { color: darkAccent }]}>＋ 叶えたいことを追加</Text>
             </Pressable>
           </SectionCard>
 
           <SectionCard
             designMode={designMode}
             chicPattern={chicPattern}
-            title="今日につながる行動"
+            title="叶えるための行動"
             subtitle="行動"
           >
             {wishes.length === 0 ? (
@@ -327,13 +353,24 @@ export function WishScreen({ designMode, chicPattern, monthLabel, state, onSaveS
                       designMode === 'minimal' ? styles.itemCardMinimal : styles.itemCardChic,
                       action.completed && styles.itemCardDone,
                     ]}
-                    onPress={() => toggleAction(action.id)}
+                    onPress={() => undefined}
                   >
+                    <Pressable
+                      accessibilityRole="checkbox"
+                      accessibilityState={{ checked: action.completed }}
+                      style={[styles.completionCheck, action.completed && styles.completionCheckActive, designMode === 'minimal' && styles.completionCheckMinimal]}
+                      onPress={() => toggleAction(action.id)}
+                    >
+                      <Text style={[styles.completionCheckText, action.completed && styles.completionCheckTextActive]}>✓</Text>
+                    </Pressable>
                     <View style={styles.itemBody}>
                       <Text style={[styles.itemTitle, action.completed && styles.itemTitleDone]}>{action.title}</Text>
                       <Text style={[styles.itemMeta, { color: theme.colors.secondaryText }]}>{wish ? `願い: ${wish.title}` : '願い未選択'}</Text>
                     </View>
                     <View style={styles.itemActions}>
+                      {onCreateTaskFromAction && <Pressable onPress={() => onCreateTaskFromAction(action)}>
+                        <Text style={[styles.itemActionText, { color: theme.colors.primaryAccent }]}>タスク化</Text>
+                      </Pressable>}
                       <Pressable onPress={() => openActionEditor(action)}>
                         <Text style={[styles.itemActionText, { color: theme.colors.primaryAccent }]}>編集</Text>
                       </Pressable>
@@ -350,7 +387,7 @@ export function WishScreen({ designMode, chicPattern, monthLabel, state, onSaveS
               style={[styles.addRow, designMode === 'minimal' ? styles.addRowMinimal : styles.addRowChic, !wishes.length && styles.addRowDisabled]}
               onPress={() => wishes.length ? openActionEditor() : Alert.alert('先に叶えたいことを1つ作ってね')}
             >
-              <Text style={[styles.addRowText, { color: wishes.length ? theme.colors.primaryAccent : theme.colors.secondaryText }]}>＋ 行動を追加</Text>
+              <Text style={[styles.addRowText, { color: rawDesignMode === 'dark' ? darkAccent : wishes.length ? theme.colors.primaryAccent : theme.colors.secondaryText }]}>＋ 行動を追加</Text>
             </Pressable>
           </SectionCard>
 
@@ -386,6 +423,8 @@ export function WishScreen({ designMode, chicPattern, monthLabel, state, onSaveS
           <SectionCard
             designMode={designMode}
             chicPattern={chicPattern}
+            showBRibbon={designMode === 'chic' && chicPattern === 'checkLavenderSatin'}
+            showCRibbon={designMode === 'chic' && chicPattern === 'checkBeigeNoir'}
             title="今月を残す"
             subtitle="今月の記録"
           >
@@ -437,6 +476,40 @@ export function WishScreen({ designMode, chicPattern, monthLabel, state, onSaveS
               </Pressable>
             </View>
           </SectionCard>
+
+          {savedReviews.length > 0 && (
+            <SectionCard
+              designMode={designMode}
+              chicPattern={chicPattern}
+              title="保存した記録"
+              subtitle={`${savedReviews.length}か月分`}
+            >
+              <View style={styles.reviewHistoryList}>
+                {reviewMonths.map((month) => (
+                  <View key={`calendar-${month}`} style={[styles.reviewCalendar, designMode === 'minimal' ? styles.reviewCalendarMinimal : styles.reviewCalendarChic]}>
+                    <Text style={[styles.reviewCalendarTitle, { color: theme.colors.primaryText }]}>{month.replace('-', '年')}月</Text>
+                    <View style={styles.reviewCalendarGrid}>
+                      {monthDays(month).map((day, index) => {
+                        const marked = Boolean(day && savedReviews.some((entry) => entry.month === month && entry.review.date?.endsWith(`-${day}`)));
+                        return <View key={`${month}-${index}`} style={[styles.reviewCalendarDay, marked && styles.reviewCalendarDayMarked]}><Text style={[styles.reviewCalendarDayText, { color: theme.colors.secondaryText }, marked && { color: theme.colors.primaryAccent }]}>{day ?? ''}</Text>{marked && <View style={[styles.reviewCalendarDot, { backgroundColor: theme.colors.primaryAccent }]} />}</View>;
+                      })}
+                    </View>
+                  </View>
+                ))}
+                {savedReviews.map(({ month, review }, index) => (
+                  <View key={review.id ?? `${month}-${review.date}-${index}`} style={[styles.reviewHistoryItem, designMode === 'minimal' ? styles.reviewHistoryItemMinimal : styles.reviewHistoryItemChic]}>
+                    {review.photo ? <Image source={{ uri: review.photo }} style={styles.reviewHistoryPhoto} /> : <View style={[styles.reviewHistoryPhoto, styles.reviewHistoryPhotoEmpty]}><Text style={styles.reviewHistoryPhotoText}>記録</Text></View>}
+                    <View style={styles.reviewHistoryBody}>
+                      <Text style={[styles.reviewHistoryMonth, { color: theme.colors.primaryText }]}>{month.replace('-', '年')}月</Text>
+                      {review.shortNote ? <Text style={[styles.reviewHistoryNote, { color: theme.colors.primaryText }]}>{review.shortNote}</Text> : null}
+                      {review.memo ? <Text numberOfLines={2} style={[styles.reviewHistoryMemo, { color: theme.colors.secondaryText }]}>{review.memo}</Text> : null}
+                      {review.satisfaction ? <Text style={[styles.reviewHistorySatisfaction, { color: theme.colors.primaryAccent }]}>満足度 {review.satisfaction} / 5</Text> : null}
+                    </View>
+                  </View>
+                ))}
+              </View>
+            </SectionCard>
+          )}
         </ScrollView>
       </KeyboardAvoidingView>
 
@@ -447,7 +520,7 @@ export function WishScreen({ designMode, chicPattern, monthLabel, state, onSaveS
             <TextInput
               value={editor.title}
               onChangeText={(value) => setEditor((current) => ({ ...current, title: value }))}
-              placeholder={editor.mode === 'wish' ? '叶えたいこと' : '今日につながる行動'}
+                placeholder={editor.mode === 'wish' ? '叶えたいこと' : '叶えるための行動'}
               placeholderTextColor={theme.colors.secondaryText}
               style={[styles.editorInput, designMode === 'minimal' ? styles.editorInputMinimal : styles.editorInputChic]}
             />
@@ -526,16 +599,22 @@ function SectionCard({
   subtitle,
   designMode,
   chicPattern,
+  showBRibbon = false,
+  showCRibbon = false,
   children,
 }: {
   title: string;
   subtitle?: string;
   designMode: DesignMode;
   chicPattern: ChicPattern;
+  showBRibbon?: boolean;
+  showCRibbon?: boolean;
   children: React.ReactNode;
 }) {
   return (
     <View style={[styles.sectionCard, designMode === 'minimal' ? styles.sectionCardMinimal : styles.sectionCardChic]}>
+      {showBRibbon && <BThemeRibbonDecoration journal={title.includes('九☆')} />}
+      {showCRibbon && <CThemeRibbonDecoration journal={title.includes('九☆')} />}
       {designMode === 'chic' && <WishBackdrop pattern={chicPattern} />}
       <View style={styles.sectionHeader}>
         <Text style={[styles.sectionTitle, { color: sectionText(designMode, '#392F34', '#171715') }]}>{title}</Text>
@@ -570,13 +649,16 @@ const styles = StyleSheet.create({
   flex: { flex: 1 },
   screen: { flex: 1 },
   screenMinimal: { backgroundColor: '#F4F4F2' },
+  screenDark: { backgroundColor: '#0E1117' },
   screenChic: { backgroundColor: '#FFF9F6' },
   scroll: { paddingHorizontal: 16, paddingTop: 12, paddingBottom: 28, gap: 12 },
   backButton: { alignSelf: 'flex-start', paddingHorizontal: 12, paddingVertical: 10, borderWidth: 1, borderRadius: 12, backgroundColor: '#FFFFFF' },
   backButtonMinimal: { borderRadius: 2, borderColor: '#111111' },
   backButtonChic: { borderColor: '#E8D9E2', backgroundColor: '#FFF3F5' },
   backButtonText: { fontSize: 12, fontWeight: '900' },
-  sectionCard: { borderWidth: 1, borderRadius: 22, padding: 14, overflow: 'hidden' },
+  sectionCard: { borderWidth: 1, borderRadius: 22, padding: 14, overflow: 'hidden', position: 'relative' },
+  wishBowRibbon: { position: 'absolute', right: 4, top: 0, width: 112, height: 88, zIndex: 3 },
+  wishFrameRibbon: { position: 'absolute', left: 5, right: 5, top: 5, bottom: 5, zIndex: 3 },
   sectionCardMinimal: { backgroundColor: '#FFFFFF', borderColor: '#111111', borderRadius: 4 },
   sectionCardChic: { backgroundColor: '#FFF3F5', borderColor: '#F0DFE5', borderRadius: 26, shadowColor: '#D986A1', shadowOpacity: 0.08, shadowRadius: 10, shadowOffset: { width: 0, height: 4 } },
   sectionHeader: { marginBottom: 10, zIndex: 1 },
@@ -600,6 +682,11 @@ const styles = StyleSheet.create({
   listGap: { gap: 8 },
   emptyText: { fontSize: 11, lineHeight: 17, fontWeight: '700' },
   itemCard: { flexDirection: 'row', alignItems: 'center', gap: 10, borderWidth: 1, borderRadius: 16, padding: 12, backgroundColor: '#FFFFFF' },
+  completionCheck: { width: 28, height: 28, borderRadius: 14, borderWidth: 1.5, borderColor: '#D986A1', alignItems: 'center', justifyContent: 'center', backgroundColor: '#FFFFFF' },
+  completionCheckActive: { backgroundColor: '#D986A1', borderColor: '#D986A1' },
+  completionCheckMinimal: { borderRadius: 2, borderColor: '#111111' },
+  completionCheckText: { color: '#D986A1', fontSize: 17, lineHeight: 20, fontWeight: '900' },
+  completionCheckTextActive: { color: '#FFFFFF' },
   itemCardMinimal: { borderColor: '#111111', borderRadius: 2 },
   itemCardChic: { borderColor: '#E5DFEA' },
   itemCardDone: { opacity: 0.62 },
@@ -660,6 +747,27 @@ const styles = StyleSheet.create({
   satisfactionTextActive: { color: '#392F34' },
   satisfactionLabel: { fontSize: 10, fontWeight: '800', marginLeft: 2 },
   reviewSaveButton: { alignSelf: 'flex-end', minWidth: 92 },
+  reviewHistoryList: { gap: 10 },
+  reviewHistoryItem: { flexDirection: 'row', gap: 10, padding: 10, borderWidth: 1, borderRadius: 14, backgroundColor: '#FFFFFF' },
+  reviewHistoryItemMinimal: { borderColor: '#111111', borderRadius: 2 },
+  reviewHistoryItemChic: { borderColor: '#E8D9E2', backgroundColor: '#FFF8FB' },
+  reviewHistoryPhoto: { width: 64, height: 64, borderRadius: 10, resizeMode: 'cover' },
+  reviewHistoryPhotoEmpty: { alignItems: 'center', justifyContent: 'center', backgroundColor: '#F4F1F4' },
+  reviewHistoryPhotoText: { color: '#8F8792', fontSize: 10, fontWeight: '800' },
+  reviewHistoryBody: { flex: 1, minWidth: 0 },
+  reviewHistoryMonth: { fontSize: 12, fontWeight: '900' },
+  reviewHistoryNote: { fontSize: 12, fontWeight: '800', marginTop: 5 },
+  reviewHistoryMemo: { fontSize: 10, lineHeight: 15, marginTop: 4 },
+  reviewHistorySatisfaction: { fontSize: 10, fontWeight: '900', marginTop: 5 },
+  reviewCalendar: { padding: 10, borderWidth: 1, borderRadius: 14, backgroundColor: '#FFFFFF' },
+  reviewCalendarMinimal: { borderColor: '#111111', borderRadius: 2 },
+  reviewCalendarChic: { borderColor: '#E8D9E2', backgroundColor: '#FFF8FB' },
+  reviewCalendarTitle: { fontSize: 12, fontWeight: '900', marginBottom: 8 },
+  reviewCalendarGrid: { flexDirection: 'row', flexWrap: 'wrap' },
+  reviewCalendarDay: { width: '14.2857%', minHeight: 28, alignItems: 'center', justifyContent: 'center', position: 'relative' },
+  reviewCalendarDayMarked: { backgroundColor: '#F7E8EF', borderRadius: 8 },
+  reviewCalendarDayText: { fontSize: 10, fontWeight: '800' },
+  reviewCalendarDot: { width: 4, height: 4, borderRadius: 2, marginTop: 2 },
   modalBackdrop: { flex: 1, backgroundColor: 'rgba(32,25,40,0.45)', justifyContent: 'center', padding: 16 },
   editorSheet: { borderRadius: 18, padding: 16, gap: 10 },
   editorSheetMinimal: { borderRadius: 4, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#111111' },

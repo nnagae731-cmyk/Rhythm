@@ -5,8 +5,9 @@ import { BehaviorEvent } from './behaviorEvents';
 import { hasPremiumAccess, PlanTier } from './premiumAccess';
 import { PremiumGuideFeatureId } from './premiumGuide';
 import { DesignMode, getThemeTokens } from './theme';
+import { Task } from './types';
 
-type AnalysisTab = 'records' | 'time' | 'behavior';
+type AnalysisTab = 'records' | 'insights' | 'routine';
 
 function DataState({ result }: { result: AnalysisResult }) {
   if (result.status === 'insufficient') {
@@ -33,14 +34,14 @@ function DataState({ result }: { result: AnalysisResult }) {
 function MetricCard({ title, value, result, designMode }: { title: string; value?: string; result: AnalysisResult; designMode: DesignMode }) {
   const theme = getThemeTokens(designMode);
   return (
-    <View style={[styles.metricCard, designMode === 'minimal' && styles.metricMinimal, designMode === 'chic' && styles.metricChic, { borderColor: theme.colors.border }]}>
-      <Text style={styles.metricLabel}>{title}</Text>
+    <View style={[styles.metricCard, designMode !== 'chic' && styles.metricMinimal, designMode === 'chic' && styles.metricChic, { borderColor: theme.colors.border }]}> 
+      <Text style={[styles.metricLabel, designMode === 'dark' && styles.darkMetricText]}>{title}</Text>
       {result.status === 'insufficient' || result.status === 'early' ? (
         <DataState result={result} />
       ) : (
         <>
           <Text style={[styles.metricValue, { color: theme.colors.primaryAccent }]}>{value ?? result.summary}</Text>
-          <Text style={styles.metricSummary}>{result.summary}</Text>
+          <Text style={[styles.metricSummary, designMode === 'dark' && styles.darkMetricText]}>{result.summary}</Text>
           <Text style={styles.sample}>記録 {result.sampleCount}回</Text>
         </>
       )}
@@ -59,14 +60,51 @@ function PremiumGate({ onPremium }: { onPremium: () => void }) {
   );
 }
 
+function RoutineProgressPanel({ events, tasks, designMode, onRemoveRoutine }: { events: BehaviorEvent[]; tasks: Task[]; designMode: DesignMode; onRemoveRoutine: (taskId: string) => void }) {
+  const routineTasks = tasks.filter((task) => task.isRoutine && !task.done);
+  const today = new Date();
+  const palette = designMode === 'chic' ? ['#E68BA8', '#E7B56A', '#8EC7B3', '#9FA8E8', '#C39BD3'] : ['#171717', '#3A3A3A', '#5C5C5C', '#7A7A7A', '#A0A0A0'];
+  if (routineTasks.length === 0) return <View style={[styles.routineCard, designMode === 'dark' && styles.routineCardDark]}><Text style={[styles.sectionTitle, designMode === 'dark' && styles.darkPanelText]}>ルーティンの継続</Text><Text style={[styles.sectionCopy, designMode === 'dark' && styles.darkPanelText]}>タスク登録時に「ルーティンにする」を選ぶと、継続率を確認できます。</Text></View>;
+  return <View style={[styles.routineCard, designMode === 'dark' && styles.routineCardDark]}><Text style={[styles.sectionTitle, designMode === 'dark' && styles.darkPanelText]}>ルーティンの継続</Text><Text style={[styles.sectionCopy, designMode === 'dark' && styles.darkPanelText]}>続けられた日が丸で増えていきます。連続日数と継続率を確認できます。</Text><View style={styles.routineTaskGrid}>{routineTasks.map((task, taskIndex) => {
+    const routineKey = task.routineId ?? task.id;
+    const routineMemberIds = new Set(tasks.filter((candidate) => candidate.routineId === routineKey || (!candidate.routineId && candidate.isRoutine && candidate.title === task.title)).map((candidate) => candidate.id));
+    routineMemberIds.add(task.id);
+    const routineEvents = events.filter((event) => event.type === 'task_completed' && event.taskId && routineMemberIds.has(event.taskId));
+    const completedDays = new Set(routineEvents.map((event) => event.occurredAt.slice(0, 10)));
+    const firstCompletion = routineEvents.map((event) => new Date(event.occurredAt)).sort((a, b) => a.getTime() - b.getTime())[0];
+    const created = task.createdAt ? new Date(task.createdAt) : firstCompletion ?? today;
+    const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+    const createdStart = new Date(created.getFullYear(), created.getMonth(), created.getDate());
+    const ageDays = Math.max(0, Math.floor((todayStart.getTime() - createdStart.getTime()) / 86400000));
+    const cycleDay = (ageDays % 21) + 1;
+    const cycleStart = new Date(createdStart);
+    cycleStart.setDate(cycleStart.getDate() + Math.floor(ageDays / 21) * 21);
+    const taskDays = Array.from({ length: 21 }, (_, index) => {
+      const date = new Date(cycleStart);
+      date.setDate(cycleStart.getDate() + index);
+      return { key: `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`, label: `${date.getMonth() + 1}/${date.getDate()}` };
+    });
+    const activeDays = taskDays.slice(0, cycleDay).filter((day) => completedDays.has(day.key)).length;
+    const totalCompletedDays = completedDays.size;
+    let streak = 0;
+    for (let index = cycleDay - 1; index >= 0 && completedDays.has(taskDays[index]!.key); index -= 1) streak += 1;
+    const color = palette[taskIndex % palette.length]!;
+    return <View key={task.id} style={styles.routineTaskRow}><View style={styles.routineTaskHeader}><Text numberOfLines={1} style={[styles.routineTaskTitle, designMode === 'dark' && styles.darkMetricText]}>{task.title}</Text><View style={styles.routineTaskActions}><Text style={[styles.routineTaskRate, { color }]}>{Math.round((activeDays / cycleDay) * 100)}%</Text><Pressable accessibilityLabel={`${task.title}をルーティンから外す`} hitSlop={8} onPress={() => onRemoveRoutine(task.id)} style={styles.routineRemoveButton}><Text style={styles.routineRemoveText}>×</Text></Pressable></View></View><View style={styles.routineDots}>{taskDays.map((day, index) => { const active = index < cycleDay && completedDays.has(day.key); return <View key={day.key} style={styles.routineDay}><View style={[styles.routineDot, active && { backgroundColor: color, borderColor: color }]}><Text style={[styles.routineDotText, !active && styles.routineDotTextInactive]}>{active ? '✓' : ''}</Text></View><Text style={[styles.routineDayLabel, designMode === 'dark' && styles.darkMetricText]}>{day.label}</Text></View>; })}</View><Text style={[styles.routineStreak, designMode === 'dark' && styles.darkMetricText]}>今のサイクル {activeDays} / {cycleDay}日 ・ 連続 {streak}日 ・ 累計 {totalCompletedDays}日</Text></View>;
+  })}</View></View>;
+}
+
 export function AnalysisScreen({
   events,
+  tasks,
+  onRemoveRoutine,
   designMode,
   planTier,
   recordContent,
   onPremium,
 }: {
   events: BehaviorEvent[];
+  tasks: Task[];
+  onRemoveRoutine: (taskId: string) => void;
   designMode: DesignMode;
   planTier: PlanTier;
   recordContent: ReactNode;
@@ -78,84 +116,141 @@ export function AnalysisScreen({
   const notification = useMemo(() => analyzeNotificationResponse(events), [events]);
   const focus = useMemo(() => analyzeFocusDuration(events), [events]);
   const snooze = useMemo(() => analyzeSnoozeBehavior(events), [events]);
-  const premium = hasPremiumAccess(planTier, tab === 'time' ? 'time_analysis' : 'behavior_analysis');
+  const departureActivity = useMemo(() => {
+    const preparationEvents = events.filter((item) => item.type === 'departure_preparation_started');
+    const departureEvents = events.filter((item) => item.type === 'departure_started');
+    const latest = [...preparationEvents, ...departureEvents].sort((a, b) => new Date(b.occurredAt).getTime() - new Date(a.occurredAt).getTime())[0];
+    return { preparationCount: preparationEvents.length, departureCount: departureEvents.length, latest };
+  }, [events]);
+  const premium = hasPremiumAccess(planTier, 'time_analysis');
   const theme = getThemeTokens(designMode);
 
   return (
     <>
-      <View style={[styles.hero, designMode === 'minimal' && styles.heroMinimal, designMode === 'chic' && styles.heroChic]}>
-        <Text style={[styles.kicker, designMode === 'minimal' && styles.kickerMinimal]}>分析</Text>
-        <Text style={[styles.title, designMode === 'minimal' && styles.titleMinimal]}>自分のリズムを知る</Text>
-        <Text style={[styles.heroCopy, designMode === 'minimal' && styles.heroCopyMinimal]}>できたことと、かかった時間をやさしく振り返れます</Text>
-      </View>
-
       <View style={styles.tabs}>
         {([
           ['records', '記録'],
-          ['time', '時間'],
-          ['behavior', '行動'],
+          ['insights', '時間と行動'],
+          ['routine', 'ルーティン'],
         ] as [AnalysisTab, string][]).map(([id, label]) => (
-          <Pressable key={id} style={[styles.tab, tab === id && { backgroundColor: theme.colors.primaryAccent }]} onPress={() => setTab(id)}>
-            <Text style={[styles.tabText, tab === id && styles.tabTextActive]}>{label}{id !== 'records' && planTier === 'free' ? ' 🔒' : ''}</Text>
+          <Pressable key={id} style={[styles.tab, tab === id && { backgroundColor: designMode === 'dark' ? '#F5F7FA' : theme.colors.primaryAccent }]} onPress={() => setTab(id)}>
+            <Text style={[styles.tabText, tab === id && styles.tabTextActive, tab === id && designMode === 'dark' && styles.tabTextActiveDark]}>{label}{id === 'insights' && planTier === 'free' ? ' 🔒' : ''}</Text>
           </Pressable>
         ))}
       </View>
 
       {tab === 'records' ? (
-        recordContent
-      ) : !premium ? (
-        <PremiumGate onPremium={() => onPremium(tab === 'time' ? 'time' : 'behavior')} />
-      ) : tab === 'time' ? (
         <>
-          <Text style={styles.sectionTitle}>時間のズレ</Text>
-          <Text style={styles.sectionCopy}>準備や出発のズレを見やすく表示します</Text>
+          <View style={[styles.activityCard, designMode === 'dark' && styles.activityCardDark, { borderColor: theme.colors.border }]}> 
+            <Text style={[styles.activityTitle, designMode === 'dark' && styles.darkMetricText]}>出発・準備の実績</Text>
+            <View style={styles.activityRow}>
+              <View style={styles.activityMetric}>
+                <Text style={[styles.activityValue, { color: theme.colors.primaryAccent }]}>{departureActivity.preparationCount}</Text>
+                <Text style={[styles.activityLabel, designMode === 'dark' && styles.darkMetricText]}>準備開始</Text>
+              </View>
+              <View style={styles.activityMetric}>
+                <Text style={[styles.activityValue, { color: theme.colors.primaryAccent }]}>{departureActivity.departureCount}</Text>
+                <Text style={[styles.activityLabel, designMode === 'dark' && styles.darkMetricText]}>出発</Text>
+              </View>
+              <View style={styles.activityLatest}>
+                <Text style={styles.activityLatestLabel}>最新の記録</Text>
+                <Text style={[styles.activityLatestValue, designMode === 'dark' && styles.darkMetricText]}>
+                  {departureActivity.latest ? departureActivity.latest.type === 'departure_started' ? '出発しました' : '準備を始めました' : 'まだ記録はありません'}
+                </Text>
+              </View>
+            </View>
+          </View>
+          {recordContent}
+        </>
+      ) : tab === 'insights' && !premium ? (
+        <PremiumGate onPremium={() => onPremium('time')} />
+      ) : tab === 'insights' ? (
+        <>
+          <Text style={[styles.sectionTitle, designMode === 'dark' && styles.darkPanelText]}>時間のズレ</Text>
+          <Text style={[styles.sectionCopy, designMode === 'dark' && styles.darkPanelText]}>準備や出発のズレを見やすく表示します</Text>
           <View style={styles.grid}>
             <MetricCard title="準備開始" value={preparation.averageMinutes === undefined ? undefined : `${Math.abs(preparation.averageMinutes)}分${preparation.averageMinutes > 2 ? '遅め' : preparation.averageMinutes < -2 ? '早め' : 'ほぼ同じ'}`} result={preparation} designMode={designMode} />
             <MetricCard title="出発" value={departure.averageMinutes === undefined ? undefined : `${Math.abs(departure.averageMinutes)}分${departure.averageMinutes > 2 ? '遅め' : departure.averageMinutes < -2 ? '早め' : 'ほぼ同じ'}`} result={departure} designMode={designMode} />
             <MetricCard title="通知反応" value={notification.averageMinutes === undefined ? undefined : `平均 ${Math.max(0, notification.averageMinutes)}分`} result={notification} designMode={designMode} />
             <MetricCard title="集中" value={focus.averageMinutes === undefined ? undefined : `平均 ${focus.averageMinutes}分`} result={focus} designMode={designMode} />
           </View>
-        </>
-      ) : (
-        <>
-          <Text style={styles.sectionTitle}>最近の行動</Text>
-          <Text style={styles.sectionCopy}>実際の行動記録だけを使って振り返ります</Text>
+          <Text style={[styles.sectionTitle, { marginTop: 22 }, designMode === 'dark' && styles.darkPanelText]}>最近の行動</Text>
           <View style={styles.behaviorList}>
             <MetricCard title="動き始め" result={notification} designMode={designMode} />
             <MetricCard title="出発" value={departure.sampleCount ? `${departure.sampleCount}件中${departure.lateCount}件が遅め` : undefined} result={departure} designMode={designMode} />
             <MetricCard title="集中" result={focus} designMode={designMode} />
-            <MetricCard title="通知の傾向" value={snooze.summary} result={snooze} designMode={designMode} />
+            <MetricCard title="通知の反応" value={snooze.summary} result={snooze} designMode={designMode} />
           </View>
         </>
-      )}
+      ) : tab === 'routine' ? (
+        <RoutineProgressPanel events={events} tasks={tasks} designMode={designMode} onRemoveRoutine={onRemoveRoutine} />
+      ) : null}
     </>
   );
 }
 
 const styles = StyleSheet.create({
-  hero: { padding: 18, marginBottom: 14, backgroundColor: '#F4F0FF', borderRadius: 22 },
+  hero: { padding: 18, marginBottom: 14, backgroundColor: '#F4F0FF', borderRadius: 22, position: 'relative', overflow: 'hidden' },
+  analysisBowRibbon: { position: 'absolute', right: 6, top: 2, width: 108, height: 86, zIndex: 3 },
+  analysisFrameRibbon: { position: 'absolute', left: 6, right: 6, top: 6, bottom: 6, zIndex: 3 },
   heroMinimal: { borderRadius: 2, backgroundColor: '#111', borderTopWidth: 4, borderTopColor: '#777' },
   heroChic: { backgroundColor: '#FCE9EF', borderWidth: 1, borderColor: '#F2CAD7' },
   kicker: { color: '#80798B', fontSize: 10, fontWeight: '800', letterSpacing: 1 },
-  kickerMinimal: { color: '#A8A8A8' },
+  kickerMinimal: { color: '#FFFFFF' },
   title: { color: '#292530', fontSize: 28, fontWeight: '900', marginTop: 5 },
   titleMinimal: { color: '#FFFFFF' },
   heroCopy: { color: '#6F6878', fontSize: 12, marginTop: 7, lineHeight: 19 },
-  heroCopyMinimal: { color: '#CFCFCF' },
+  heroCopyMinimal: { color: '#FFFFFF' },
   tabs: { flexDirection: 'row', gap: 7, marginBottom: 20 },
   tab: { flex: 1, paddingVertical: 11, backgroundColor: '#EEEAF0', borderRadius: 12, alignItems: 'center' },
   tabText: { color: '#625D68', fontWeight: '800' },
   tabTextActive: { color: '#FFF' },
+  tabTextActiveDark: { color: '#101114' },
   sectionTitle: { color: '#292530', fontSize: 21, fontWeight: '900' },
   sectionCopy: { color: '#797280', fontSize: 12, lineHeight: 18, marginTop: 5, marginBottom: 14 },
+  darkPanelText: { color: '#101114', backgroundColor: '#FFFFFF', borderRadius: 4, paddingHorizontal: 10, paddingVertical: 6 },
   grid: { gap: 10 },
   behaviorList: { gap: 10 },
+  routineCard: { padding: 18, borderRadius: 18, borderWidth: 1, borderColor: '#E5DFEC', backgroundColor: '#FFF', },
+  routineCardDark: { backgroundColor: '#FFFFFF', borderColor: '#D8D4E0' },
+  routineTaskGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  routineDots: { flexDirection: 'row', flexWrap: 'wrap', gap: 3, marginTop: 8 },
+  routineDay: { alignItems: 'center', gap: 2, width: 20 },
+  routineDot: { width: 17, height: 17, borderRadius: 4, borderWidth: 1, borderColor: '#DAD4E2', alignItems: 'center', justifyContent: 'center', backgroundColor: '#FAF8FC' },
+  routineDotActive: { backgroundColor: '#7559E8', borderColor: '#7559E8' },
+  routineDotActiveDark: { backgroundColor: '#B9A8D8', borderColor: '#7B6BE8' },
+  routineDotText: { color: '#FFF', fontSize: 11, fontWeight: '900' },
+  routineDayLabel: { color: '#817A88', fontSize: 7, fontWeight: '700' },
+  routineTaskRow: { width: '48%', borderWidth: 1, borderColor: '#ECE8F0', borderRadius: 10, padding: 9, backgroundColor: '#FFFFFF' },
+  routineTaskHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  routineTaskActions: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  routineTaskTitle: { color: '#292530', fontSize: 12, fontWeight: '900', flex: 1, marginRight: 5 },
+  routineTaskRate: { fontSize: 14, fontWeight: '900' },
+  routineRemoveButton: { width: 20, height: 20, borderRadius: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: '#F1EDF4' },
+  routineRemoveText: { color: '#7D7386', fontSize: 16, fontWeight: '700', lineHeight: 18 },
+  routineStreak: { color: '#817A88', fontSize: 9, fontWeight: '800', marginTop: 7 },
+  routineDotTextInactive: { color: 'transparent' },
+  routineSummary: { flexDirection: 'row', justifyContent: 'space-between', borderTopWidth: 1, borderTopColor: '#ECE8F0', marginTop: 16, paddingTop: 14 },
+  routineSummaryValue: { color: '#292530', fontSize: 20, fontWeight: '900' },
+  routineSummaryUnit: { color: '#817A88', fontSize: 11, fontWeight: '700' },
+  routineSummaryLabel: { color: '#817A88', fontSize: 9, fontWeight: '700', marginTop: 2 },
+  activityCard: { padding: 16, marginBottom: 14, borderRadius: 18, borderWidth: 1, backgroundColor: '#FFF' },
+  activityCardDark: { backgroundColor: '#FFFFFF' },
+  activityTitle: { color: '#292530', fontSize: 15, fontWeight: '900', marginBottom: 12 },
+  activityRow: { flexDirection: 'row', alignItems: 'center', gap: 14 },
+  activityMetric: { minWidth: 62 },
+  activityValue: { fontSize: 25, fontWeight: '900' },
+  activityLabel: { color: '#756F7C', fontSize: 11, fontWeight: '800', marginTop: 2 },
+  activityLatest: { flex: 1, borderLeftWidth: 1, borderLeftColor: '#E5E0E8', paddingLeft: 14 },
+  activityLatestLabel: { color: '#938C98', fontSize: 10, fontWeight: '800' },
+  activityLatestValue: { color: '#3C3741', fontSize: 12, fontWeight: '800', marginTop: 4 },
   metricCard: { padding: 17, borderRadius: 18, borderWidth: 1, backgroundColor: '#FFF' },
   metricMinimal: { borderRadius: 1, borderColor: '#222', borderLeftWidth: 5 },
   metricChic: { backgroundColor: 'rgba(255,255,255,0.84)' },
   metricLabel: { color: '#756F7C', fontSize: 11, fontWeight: '900' },
   metricValue: { fontSize: 25, fontWeight: '900', marginTop: 8 },
   metricSummary: { color: '#5E5864', fontSize: 12, marginTop: 5 },
+  darkMetricText: { color: '#101114' },
   sample: { color: '#938C98', fontSize: 10, fontWeight: '700', marginTop: 9 },
   dataState: { paddingVertical: 8 },
   dataStateTitle: { color: '#3C3741', fontSize: 16, fontWeight: '900' },

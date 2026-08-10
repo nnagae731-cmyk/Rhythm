@@ -1,5 +1,5 @@
-export type DesignMode = 'minimal' | 'chic';
-export type ChicPattern = 'floral' | 'dot' | 'checkLavenderSatin' | 'checkBeigeNoir' | 'checkMauveFrame';
+export type DesignMode = 'minimal' | 'dark' | 'chic';
+export type ChicPattern = 'plain' | 'floral' | 'floralSoft' | 'floralSeasonal' | 'floralDark' | 'dot' | 'checkLavenderSatin' | 'checkBeigeNoir' | 'checkMauveFrame';
 export type ChicCheckColor = 'monochrome' | 'cool' | 'warm' | 'green';
 
 export const chicCheckColorChoices: { id: ChicCheckColor; label: string; accent: string; warm: string; background: string }[] = [
@@ -36,11 +36,17 @@ const shared = {
 };
 
 export function getThemeTokens(mode: DesignMode): ThemeTokens {
+  if (mode === 'dark') return {
+    ...shared,
+    colors: { screenBackground: '#0B0A12', surface: '#171421', secondarySurface: '#241D34', primaryText: '#FAF8FF', secondaryText: '#B9B1C9', primaryAccent: '#CDBBFF', secondaryAccent: '#8FE0EA', softAccent: '#302348', border: '#403653', success: '#8FD7AE', warning: '#F0C47A', danger: '#F08D9B' },
+    radius: { large: 8, small: 5, button: 6, chip: 6, modal: 12 },
+    shadow: { color: '#000000', opacity: 0.34, radius: 16, y: 6 },
+  };
   if (mode === 'minimal') return {
     ...shared,
-    colors: { screenBackground: '#F4F4F2', surface: '#FFFFFF', secondarySurface: '#ECECEA', primaryText: '#171715', secondaryText: '#777772', primaryAccent: '#1D1D1B', secondaryAccent: '#555550', softAccent: '#E5E5E1', border: '#CFCFCA', success: '#446552', warning: '#80633E', danger: '#9A4646' },
-    radius: { large: 4, small: 2, button: 4, chip: 4, modal: 8 },
-    shadow: { color: '#000000', opacity: 0, radius: 0, y: 0 },
+    colors: { screenBackground: '#F2F2F0', surface: '#FEFEFC', secondarySurface: '#E8E9E6', primaryText: '#202127', secondaryText: '#72757D', primaryAccent: '#25262C', secondaryAccent: '#646872', softAccent: '#E6E5EE', border: '#D6D7D3', success: '#446552', warning: '#80633E', danger: '#9A4646' },
+    radius: { large: 8, small: 5, button: 6, chip: 6, modal: 12 },
+    shadow: { color: '#25262C', opacity: 0.05, radius: 12, y: 4 },
   };
   return {
     ...shared,
@@ -51,9 +57,8 @@ export function getThemeTokens(mode: DesignMode): ThemeTokens {
 }
 
 export function normalizeChicPattern(pattern: unknown): ChicPattern {
-  if (pattern === 'floral' || pattern === 'dot' || pattern === 'checkLavenderSatin' || pattern === 'checkBeigeNoir' || pattern === 'checkMauveFrame') {
-    return pattern;
-  }
+  if (pattern === 'plain' || pattern === 'dot' || pattern === 'checkLavenderSatin' || pattern === 'checkBeigeNoir' || pattern === 'checkMauveFrame') return pattern;
+  if (pattern === 'floral' || pattern === 'floralSoft' || pattern === 'floralSeasonal' || pattern === 'floralDark') return 'plain';
   if (pattern === 'check') return 'checkLavenderSatin';
-  return 'checkLavenderSatin';
+  return 'plain';
 }

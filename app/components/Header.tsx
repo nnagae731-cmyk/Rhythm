@@ -5,10 +5,10 @@ import { ThemeMode } from '../types';
 
 export function Header({ designMode, now }: { designMode: ThemeMode; now: Date }) {
   return (
-    <View style={[styles.header, designMode === 'minimal' && styles.headerMinimal, ]}>
+    <View style={[styles.header, designMode !== 'chic' && styles.headerMinimal, designMode === 'dark' && styles.headerDark]}>
       <View>
-        <Text style={styles.dateLabel}>{formatLiveDate(now)} · {formatLiveTime(now)}</Text>
-        <Text style={[styles.brand, designMode === 'minimal' && styles.brandMinimal]}>{false ? 'Rhythm ✦' : 'Rhythm'}</Text>
+        <Text style={[styles.dateLabel, designMode === 'dark' && styles.dateLabelDark]}>{formatLiveDate(now)} · {formatLiveTime(now)}</Text>
+        <Text style={[styles.brand, designMode !== 'chic' && styles.brandMinimal, designMode === 'dark' && styles.brandDark]}>{false ? 'Rhythm ✦' : 'Rhythm'}</Text>
       </View>
     </View>
   );
@@ -18,6 +18,9 @@ const styles = StyleSheet.create({
   header: { marginBottom: 18, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   headerMinimal: { marginBottom: 14 },
   dateLabel: { color: '#7B7686', fontSize: 9, fontWeight: '800', marginBottom: 3 },
+  dateLabelDark: { color: '#FFFFFF' },
   brand: { color: '#282538', fontSize: 29, fontWeight: '900', letterSpacing: -1.2 },
   brandMinimal: { color: '#111111' },
+  headerDark: {},
+  brandDark: { color: '#F5F7FA' },
 });

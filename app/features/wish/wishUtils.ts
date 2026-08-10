@@ -36,6 +36,7 @@ export function calculateWishProgress(state: MonthlyWishState) {
 
 export function normalizeMonthlyReview(review?: MonthlyReview): MonthlyReview {
   return {
+    id: review?.id,
     photo: review?.photo ?? '',
     date: review?.date ?? '',
     shortNote: review?.shortNote ?? '',

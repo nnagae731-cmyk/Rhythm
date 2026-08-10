@@ -20,6 +20,7 @@ export type UrgencyStatus = '余裕あり' | 'そろそろ準備' | '今出れ�
 export type Task = {
   id: string;
   title: string;
+  createdAt?: string;
   done: boolean;
   remindAt?: string;
   remindDate?: string;
@@ -31,9 +32,12 @@ export type Task = {
   travelMinutes?: number;
   bufferMinutes?: number;
   repeatRule?: RepeatRule;
+  isRoutine?: boolean;
+  routineId?: string;
   bucket?: TaskBucket;
   nudgeMode?: NudgeMode;
   scheduledDate?: string;
+  scheduledTime?: string;
   category: Category;
   priority: Priority;
   completedAt?: string;
@@ -43,6 +47,10 @@ export type DeparturePlan = {
   id?: string;
   title: string;
   destination?: string;
+  /** 端末カレンダーから取り込んだ予定を重複登録しないための端末内ID。 */
+  externalCalendarEventId?: string;
+  /** false の予定は予定表だけへ表示し、出発の逆算・通知・カウントダウンを行わない。 */
+  countdownEnabled?: boolean;
   date: string;
   arrival: string;
   travelMinutes: number;
@@ -55,6 +63,7 @@ export type Wish = {
   title: string;
   completed: boolean;
   createdAt: string;
+  completedAt?: string;
 };
 
 export type WishAction = {
@@ -62,9 +71,11 @@ export type WishAction = {
   wishId: string;
   title: string;
   completed: boolean;
+  completedAt?: string;
 };
 
 export type MonthlyReview = {
+  id?: string;
   photo?: string;
   date?: string;
   shortNote?: string;
@@ -77,9 +88,12 @@ export type MonthlyWishState = {
   wishes: Wish[];
   actions: WishAction[];
   review: MonthlyReview;
+  reviews?: MonthlyReview[];
 };
 
 export type WishMonthMap = Record<string, MonthlyWishState>;
+export type CalendarMarks = Record<string, string>;
+export type DeparturePreparationStatus = 'preparing' | 'prepared';
 
 export type SharedAttendanceStatus = '参加' | '不参加';
 export type SharedActionStatus = '未準備' | '準備中' | '今から出る' | '移動中' | '少し遅れそう' | '到着した' | '参加できない';
@@ -136,7 +150,9 @@ export type PersistedState = {
   behaviorEvents?: BehaviorEvent[];
   savedTaskTemplates?: PremiumTaskTemplate[];
   wishMonths?: WishMonthMap;
+  calendarMarks?: CalendarMarks;
   sharedEvents?: SharedEvent[];
   sharedParticipantIdsByToken?: Record<string, string>;
   sharedParticipantPrefsByToken?: Record<string, SharedParticipantPrefs>;
+  departurePreparationStatuses?: Record<string, DeparturePreparationStatus>;
 };
