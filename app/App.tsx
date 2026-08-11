@@ -586,7 +586,8 @@ export default function App() {
       Alert.alert('写真へのアクセスを許可すると、背景やトップ画像に設定できます。');
       return;
     }
-    const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], allowsEditing: true, aspect: [4, 3], quality: 0.82 });
+    const aspect: [number, number] = target === 'background' || target === 'focus' ? [4, 3] : [5, 2];
+    const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], allowsEditing: true, aspect, quality: 0.82 });
     const selectedAsset = result.canceled ? undefined : result.assets[0];
     if (!selectedAsset?.uri) return;
     setPhotoTheme((current) => {
@@ -1257,8 +1258,7 @@ export default function App() {
         <BThemeRibbonPreload />
         <CThemeRibbonPreload />
         {uiDesignMode === 'chic' && !photoThemeEnabled && <View pointerEvents="none" style={StyleSheet.absoluteFillObject}><ChicPatternDecor pattern={effectiveChicPattern} accent={isCheckChicPattern(effectiveChicPattern) ? getChicCheckColor(chicCheckColor).accent : getChicPatternVisual(effectiveChicPattern).accent} warm={isCheckChicPattern(effectiveChicPattern) ? getChicCheckColor(chicCheckColor).warm : getChicPatternVisual(effectiveChicPattern).warm} checkColor={chicCheckColor} /></View>}
-        {photoTopImageUri && <Image source={{ uri: photoTopImageUri }} resizeMode="cover" style={styles.photoThemeTopImage} />}
-        <Header designMode={uiDesignMode} now={now} />
+        {photoTopImageUri ? <><Header designMode={uiDesignMode} now={now} compact /><Image source={{ uri: photoTopImageUri }} resizeMode="cover" style={styles.photoThemeTopImage} /></> : <Header designMode={uiDesignMode} now={now} />}
 
         <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
           {screen === 'home' && (

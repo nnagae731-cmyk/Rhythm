@@ -3,7 +3,13 @@ import { StyleSheet, Text, View } from 'react-native';
 import { formatLiveDate, formatLiveTime } from '../features/tasks/taskUtils';
 import { ThemeMode } from '../types';
 
-export function Header({ designMode, now }: { designMode: ThemeMode; now: Date }) {
+export function Header({ designMode, now, compact = false }: { designMode: ThemeMode; now: Date; compact?: boolean }) {
+  if (compact) return (
+    <View style={styles.photoHeader}>
+      <Text style={styles.photoBrand}>Rhythm</Text>
+      <Text style={styles.photoDate}>{formatLiveDate(now)} ・ {formatLiveTime(now)}</Text>
+    </View>
+  );
   return (
     <View style={[styles.header, designMode !== 'chic' && styles.headerMinimal, designMode === 'dark' && styles.headerDark]}>
       <View>
@@ -23,4 +29,7 @@ const styles = StyleSheet.create({
   brandMinimal: { color: '#111111' },
   headerDark: {},
   brandDark: { color: '#F5F7FA' },
+  photoHeader: { paddingHorizontal: 22, paddingTop: 10, paddingBottom: 8, flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between' },
+  photoBrand: { color: '#5B4352', fontSize: 18, fontWeight: '900', letterSpacing: -0.6 },
+  photoDate: { color: '#756875', fontSize: 9, fontWeight: '800', letterSpacing: 0.35 },
 });

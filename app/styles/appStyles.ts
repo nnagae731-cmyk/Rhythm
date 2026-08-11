@@ -22,7 +22,7 @@ export const styles = StyleSheet.create({
   app: { flex: 1, width: '100%', maxWidth: 560, alignSelf: 'center' },
   photoThemeBackgroundWrap: { ...StyleSheet.absoluteFillObject },
   photoThemeBackground: { width: '100%', height: '100%' },
-  photoThemeTopImage: { height: 132, marginHorizontal: 22, marginBottom: 12, borderRadius: 18, backgroundColor: '#E9DDE0' },
+  photoThemeTopImage: { aspectRatio: 2.5, marginHorizontal: 22, marginBottom: 12, borderRadius: 18, backgroundColor: '#E9DDE0' },
   header: { paddingHorizontal: 22, paddingTop: 14, paddingBottom: 8, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   headerMinimal: { paddingTop: 20, paddingBottom: 16, borderBottomWidth: 1, borderBottomColor: '#D0D2D6' },
   dateLabel: { color: colors.muted, fontSize: 10, fontWeight: '800', letterSpacing: 1.25 },
