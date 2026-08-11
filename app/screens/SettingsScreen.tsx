@@ -1,0 +1,210 @@
+import React, { useState } from 'react';
+import { Modal, Pressable, Switch, Text, TextInput, View } from 'react-native';
+import { ChicCheckColor, ChicPattern, DesignMode } from '../theme';
+import { Task, WidgetSize } from '../types';
+import { PlanTier } from '../premiumAccess';
+import { PremiumGuideFeatureId } from '../premiumGuide';
+import { PremiumTaskTemplate } from '../taskTemplates';
+export function SettingsScreen({
+  tasks,
+  timeline,
+  now,
+  dangerousTask,
+  size,
+  showCompleted,
+  completionIcon,
+  designMode,
+  chicPattern,
+  chicCheckColor,
+  onSize,
+  onShowCompleted,
+  onCompletionIcon,
+  onDesignMode,
+  onChicPattern,
+  onChicCheckColor,
+  templates,
+  savedTemplates,
+  onAddTemplate,
+  onDeleteTemplate,
+  onGuide,
+  onPremium,
+  onDeleteSavedTemplate,
+  planTier,
+  styles,
+  helpers,
+  components,
+}: {
+  tasks: Task[];
+  timeline: { start: string; leave: string; arrival: string };
+  now: Date;
+  dangerousTask?: Task;
+  size: WidgetSize;
+  showCompleted: boolean;
+  completionIcon: string;
+  designMode: DesignMode;
+  chicPattern: ChicPattern;
+  chicCheckColor: ChicCheckColor;
+  onSize: (size: WidgetSize) => void;
+  onShowCompleted: (value: boolean) => void;
+  onCompletionIcon: (icon: string) => void;
+  onDesignMode: (mode: DesignMode) => void;
+  onChicPattern: (pattern: ChicPattern) => void;
+  onChicCheckColor: (color: ChicCheckColor) => void;
+  templates: string[];
+  savedTemplates: PremiumTaskTemplate[];
+  onAddTemplate: (title: string) => void;
+  onDeleteTemplate: (title: string) => void;
+  onGuide: () => void;
+  onPremium: (featureId?: PremiumGuideFeatureId) => void;
+  onDeleteSavedTemplate: (template: PremiumTaskTemplate) => void;
+  planTier: PlanTier;
+  styles: any;
+  helpers: any;
+  components: any;
+}) {
+  const { colors, getChicPatternVisual, hasPremiumAccess, getChicCheckColor, chicCheckColorChoices, countdownToClock, getUrgencyStatus, getNextBestAction, designModes, completionIcons, summarizePremiumTaskTemplate } = helpers;
+  const { BThemeRibbonDecoration, CThemeRibbonDecoration, ChicPatternDecor, ChicPatternSelector, SettingsDisclosure, NotificationManagerCard } = components;
+  const [newTemplate, setNewTemplate] = useState('');
+  const isDark = designMode === 'dark';
+  const [expandedSetting, setExpandedSetting] = useState<'design' | 'notifications' | 'quick' | 'templates' | 'widget' | null>('design');
+  const [monoPreviewOpen, setMonoPreviewOpen] = useState(false);
+  const previewTasks = tasks.filter((task) => showCompleted || !task.done).slice(0, size === 'small' ? 2 : 3);
+  const patternVisual = getChicPatternVisual(chicPattern);
+  return (
+    <>
+      {__DEV__ && <View style={[styles.settingsCard, isDark && styles.darkSurface]}><Text style={[styles.settingsTitle, isDark && styles.darkBodyText]}>Expo Go 確認環境</Text><Text style={[styles.switchCopy, isDark && styles.darkAccentText]}>このQRコードは、利用プランが固定された確認用環境です。</Text><Text style={[styles.devPlanCurrent, isDark && styles.darkAccentText]}>現在：{planTier === 'premium' ? 'Premium版' : '無料版'}</Text></View>}
+      <SettingsDisclosure designMode={designMode} title="デザインモード" subtitle="Mono / Chic と柄を選ぶ" expanded={expandedSetting === 'design'} onPress={() => setExpandedSetting((current) => current === 'design' ? null : 'design')}>
+      <View style={[styles.modeCard, isDark && styles.darkSurface]}>
+        {designMode === 'chic' && chicPattern === 'checkLavenderSatin' && <BThemeRibbonDecoration compact />}
+        {designMode === 'chic' && chicPattern === 'checkBeigeNoir' && <CThemeRibbonDecoration compact />}
+        {designMode === 'chic' && chicPattern === 'checkLavenderSatin' && <BThemeRibbonDecoration compact />}
+        {designMode === 'chic' && chicPattern === 'checkBeigeNoir' && <CThemeRibbonDecoration compact />}
+        {designMode === 'chic' && <ChicPatternSelector designMode={designMode} chicPattern={chicPattern} chicCheckColor={chicCheckColor} planTier={planTier} onPattern={onChicPattern} onCheckColor={onChicCheckColor} />}
+        <View style={styles.modeChoices}>
+          {designModes.map((mode: { id: 'minimal' | 'chic'; description: string }) => (
+            <Pressable key={mode.id} style={[styles.modeChoice, (designMode === mode.id || (mode.id === 'minimal' && designMode === 'dark')) && styles.modeChoiceActive, mode.id === 'minimal' && designMode === 'dark' && styles.modeChoiceActiveDark]} onPress={() => onDesignMode(mode.id === 'minimal' && designMode === 'dark' ? 'dark' : mode.id)}>
+              <View style={[styles.modeMiniPreview, mode.id === 'minimal' && styles.modeMiniMinimal, designMode === 'dark' && mode.id === 'minimal' && styles.modeMiniMinimalDark, mode.id === 'chic' && styles.modeMiniChic, ]}>
+                {mode.id === 'minimal' ? <><View style={[styles.modeMiniBlackBlock, designMode === 'dark' && styles.modeMiniDarkBlock]} /><Text style={[styles.modeMiniNumber, designMode === 'dark' && styles.modeMiniDarkNumber]}>03</Text><View style={[styles.modeMiniLine, designMode === 'dark' && styles.modeMiniDarkLine]} /></> : <>{designMode === 'chic' && <ChicPatternDecor pattern={chicPattern} accent="#D986A1" warm="#A997C8" />}<View style={styles.modeMiniGlass} /><Text style={styles.modeMiniSparkle}>✦</Text></>}
+              </View>
+              <Text style={[styles.modeName, (designMode === mode.id || (mode.id === 'minimal' && designMode === 'dark')) && styles.modeNameActive, mode.id === 'minimal' && designMode === 'dark' && styles.modeNameDark]}>{mode.id === 'minimal' ? 'Mono' : 'Design'}</Text>
+              <Text style={[styles.modeDescription, isDark && styles.darkAccentText]}>{mode.description}</Text>
+              {mode.id === 'minimal' && <View style={styles.monoThemeChoices}>
+                <Pressable style={[styles.monoThemeChoice, designMode === 'minimal' && styles.monoThemeChoiceActive]} onPress={() => onDesignMode('minimal')}><Text style={[styles.monoThemeChoiceText, designMode === 'minimal' && styles.monoThemeChoiceTextActive]}>Light</Text></Pressable>
+                <Pressable style={[styles.monoThemeChoice, designMode === 'dark' && styles.monoThemeChoiceActiveDark]} onPress={() => onDesignMode('dark')}><Text style={[styles.monoThemeChoiceText, designMode === 'dark' && styles.monoThemeChoiceTextActive]}>Dark</Text></Pressable>
+              </View>}
+            </Pressable>
+          ))}
+        </View>
+        {designMode !== 'chic' && <View style={styles.monoInlinePreview}><Text style={[styles.fieldLabel, isDark && styles.darkAccentText]}>Monoの表示</Text><View style={styles.monoInlineChoices}><Pressable style={[styles.monoInlineChoice, styles.monoInlineLight, designMode === 'minimal' && styles.monoInlineChoiceActive]} onPress={() => onDesignMode('minimal')}><Text style={styles.monoInlineLightEyebrow}>LIGHT</Text><Text style={styles.monoInlineLightBrand}>Rhythm</Text><View style={styles.monoInlineLightLine} /><Text style={styles.monoInlineLightMeta}>白・黒・余白</Text><Text style={styles.monoInlineSelect}>{designMode === 'minimal' ? '選択中' : '選ぶ'}</Text></Pressable><Pressable style={[styles.monoInlineChoice, styles.monoInlineDark, designMode === 'dark' && styles.monoInlineChoiceActiveDark]} onPress={() => onDesignMode('dark')}><Text style={styles.monoInlineDarkEyebrow}>DARK</Text><Text style={styles.monoInlineDarkBrand}>Rhythm</Text><View style={styles.monoInlineDarkLine} /><Text style={styles.monoInlineDarkMeta}>黒・白・紫</Text><Text style={styles.monoInlineDarkSelect}>{designMode === 'dark' ? '選択中' : '選ぶ'}</Text></Pressable></View></View>}
+      {designMode === 'chic' && <View style={styles.patternSelector}><Text style={[styles.fieldLabel, isDark && styles.darkAccentText]}>Chicの柄</Text><View style={styles.patternChoices}>{(['floral', 'dot', 'checkLavenderSatin', 'checkBeigeNoir', 'checkMauveFrame'] as ChicPattern[]).map((pattern) => { const feature = pattern === 'floral' ? undefined : pattern === 'dot' ? 'chic_dot' : pattern === 'checkLavenderSatin' ? 'chic_check_lavender_satin' : pattern === 'checkBeigeNoir' ? 'chic_check_beige_noir' : 'chic_check_mauve_frame'; const locked = !!feature && !hasPremiumAccess(planTier, feature); const label = pattern === 'floral' ? '花柄' : pattern === 'dot' ? `ドット${locked ? ' 🔒' : ''}` : pattern === 'checkLavenderSatin' ? `くすみラベンダーチェック${locked ? ' 🔒' : ''}` : pattern === 'checkBeigeNoir' ? `ベージュ×ブラックチェック${locked ? ' 🔒' : ''}` : `モーブフレームチェック${locked ? ' 🔒' : ''}`; return <Pressable key={pattern} style={[styles.patternChoice, chicPattern === pattern && styles.patternChoiceActive]} onPress={() => onChicPattern(pattern)}><View style={styles.patternSwatch}><ChicPatternDecor pattern={pattern} accent={getChicCheckColor(chicCheckColor).accent} warm={getChicCheckColor(chicCheckColor).warm} checkColor={chicCheckColor} /></View><Text style={[styles.patternChoiceText, chicPattern === pattern && styles.patternChoiceTextActive]}>{label}</Text></Pressable>; })}</View><Text style={[styles.fieldLabel, { marginTop: 12 }, isDark && styles.darkAccentText]}>チェックの色</Text><View style={styles.patternChoices}>{chicCheckColorChoices.map((choice: any) => <Pressable key={choice.id} style={[styles.patternChoice, chicCheckColor === choice.id && styles.patternChoiceActive]} onPress={() => onChicCheckColor(choice.id)}><View style={[styles.checkColorSwatch, { backgroundColor: choice.background, borderColor: choice.accent }]}><View style={[styles.checkColorSwatchBand, { backgroundColor: choice.accent }]} /><View style={[styles.checkColorSwatchBandHorizontal, { backgroundColor: choice.warm }]} /></View><Text style={[styles.patternChoiceText, chicCheckColor === choice.id && styles.patternChoiceTextActive]}>{choice.label}</Text></Pressable>)}</View></View>}
+      </View>
+      </SettingsDisclosure>
+      <Pressable style={[styles.guideCard, isDark && styles.darkSurface]} onPress={onGuide}><View><Text style={[styles.guideCardTitle, isDark && styles.darkBodyText]}>Rhythmの使い方</Text><Text style={[styles.guideCardCopy, isDark && styles.darkAccentText]}>登録・振り分け・出発・集中の流れを見る</Text></View><Text style={styles.guideCardArrow}>›</Text></Pressable>
+      <SettingsDisclosure designMode={designMode} title="通知管理" subtitle="予約中の通知を確認・停止" expanded={expandedSetting === 'notifications'} onPress={() => setExpandedSetting((current) => current === 'notifications' ? null : 'notifications')}>
+        <NotificationManagerCard designMode={designMode} />
+      </SettingsDisclosure>
+      <SettingsDisclosure designMode={designMode} title="クイック雛形" subtitle="よく使うタスクを保存" expanded={expandedSetting === 'quick'} onPress={() => setExpandedSetting((current) => current === 'quick' ? null : 'quick')}>
+      <View style={[styles.settingsCard, isDark && styles.darkSurface]}>
+        <Text style={[styles.switchCopy, isDark && styles.darkAccentText]}>よく登録するタスクを自分用に保存できます</Text>
+        <View style={styles.templateAddRow}><TextInput value={newTemplate} onChangeText={setNewTemplate} placeholder="例：水筒をバッグに入れる" placeholderTextColor="#A29DAA" style={styles.templateInput} /><Pressable style={styles.templateAddButton} onPress={() => { const clean = newTemplate.trim(); if (!clean) return; onAddTemplate(clean); setNewTemplate(''); }}><Text style={styles.templateAddButtonText}>追加</Text></Pressable></View>
+        <View style={styles.templateList}>{templates.map((item) => <View key={item} style={styles.templateRow}><Text style={styles.templateRowText}>{item}</Text><Pressable onPress={() => onDeleteTemplate(item)}><Text style={styles.templateDelete}>×</Text></Pressable></View>)}</View>
+      </View>
+      </SettingsDisclosure>
+      <SettingsDisclosure designMode={designMode} title="マイひな型" subtitle="設定ごと保存して次回呼び出す" expanded={expandedSetting === 'templates'} onPress={() => setExpandedSetting((current) => current === 'templates' ? null : 'templates')}>
+      <View style={[styles.settingsCard, isDark && styles.darkSurface]}>
+        <View style={styles.historyHeader}><View><Text style={[styles.settingsTitle, isDark && styles.darkBodyText]}>マイひな型</Text><Text style={[styles.switchCopy, isDark && styles.darkAccentText]}>設定ごと保存して、次回そのまま呼び出す</Text></View><Text style={styles.taskTemplateSavePremium}>Premium</Text></View>
+        {hasPremiumAccess(planTier, 'saved_task_templates') ? savedTemplates.length === 0 ? <Text style={styles.savedTemplateEmpty}>タスクの「•••」から「設定ごとひな型に保存」を選べます。</Text> : savedTemplates.map((template) => <View key={template.id} style={styles.savedTemplateSettingRow}><View style={{ flex: 1 }}><Text style={styles.savedTemplateSettingTitle}>{template.title}</Text><Text style={styles.savedTemplateSettingCopy}>{summarizePremiumTaskTemplate(template)}</Text></View><Pressable onPress={() => onDeleteSavedTemplate(template)}><Text style={styles.templateDelete}>削除</Text></Pressable></View>) : <Pressable style={styles.savedTemplateLocked} onPress={() => onPremium('templates')}><View style={{ flex: 1 }}><Text style={styles.savedTemplateLockedTitle}>この機能を見る</Text><Text style={styles.savedTemplateLockedCopy}>保存済みデータは無料へ戻っても消えません</Text></View><Text style={styles.guideCardArrow}>›</Text></Pressable>}
+      </View>
+      </SettingsDisclosure>
+      <Text style={[styles.settingsSectionLabel, isDark && styles.darkBodyText]}>ウィジェット設定</Text>
+      <Text style={[styles.previewLabel, isDark && styles.darkAccentText]}>WIDGET PREVIEW</Text>
+
+      <View style={[styles.phonePreview, designMode === 'minimal' && styles.phonePreviewMinimal, designMode === 'chic' && { backgroundColor: patternVisual.accent }, ]}>
+        <Text style={styles.phoneClock}>9:41</Text>
+        <View style={[styles.widget, size === 'small' && styles.widgetSmall, designMode === 'minimal' && styles.widgetMinimal, designMode === 'chic' && { backgroundColor: patternVisual.background }, ]}>
+          {designMode === 'chic' && <ChicPatternDecor pattern={chicPattern} accent={patternVisual.accent} warm={patternVisual.warm} />}
+          {designMode === 'chic' && <View pointerEvents="none" style={styles.widgetChicWash} />}
+          <View style={styles.widgetTop}>
+            <View>
+              <Text style={[styles.widgetBrand, designMode === 'minimal' && styles.widgetBrandMinimal]}>Rhythm</Text>
+              <Text style={styles.widgetDate}>{designMode !== 'chic' ? 'SAT / JUL 04' : 'TODAY'}</Text>
+            </View>
+            <View style={styles.widgetDeparture}>
+              <Text style={styles.widgetDepartureLabel}>出発まで</Text>
+              <Text style={styles.widgetDepartureTime}>{countdownToClock(timeline.leave, now)}</Text>
+            </View>
+          </View>
+          <View style={styles.widgetDivider} />
+          
+          {dangerousTask && <View style={styles.widgetUrgency}>
+            <Text style={styles.widgetUrgencyStatus}>{getUrgencyStatus(dangerousTask, now)}</Text>
+            <Text numberOfLines={1} style={styles.widgetUrgencyAction}>{getNextBestAction(dangerousTask, now)}</Text>
+          </View>}
+          {previewTasks.length === 0 ? (
+            <Text style={styles.widgetEmpty}>今日のタスクはありません ✦</Text>
+          ) : previewTasks.map((task) => (
+            <View key={task.id} style={styles.widgetTask}>
+              <View style={[styles.widgetCheck, task.done && styles.widgetCheckDone]}><Text style={styles.widgetCheckText}>{task.done ? completionIcon : ''}</Text></View>
+              <Text numberOfLines={1} style={[styles.widgetTaskText, task.done && styles.widgetTaskDone]}>{task.title}</Text>
+            </View>
+          ))}
+        </View>
+      </View>
+
+      <SettingsDisclosure designMode={designMode} title="ウィジェット設定" subtitle="サイズ・完了表示・アイコン" expanded={expandedSetting === 'widget'} onPress={() => setExpandedSetting((current) => current === 'widget' ? null : 'widget')}>
+      <View style={[styles.settingsCard, isDark && styles.darkSurface]}>
+        <Text style={[styles.settingsTitle, isDark && styles.darkBodyText]}>ウィジェット設定</Text>
+        <Text style={[styles.fieldLabel, isDark && styles.darkAccentText]}>サイズ</Text>
+        <View style={styles.segment}>
+          <Pressable style={[styles.segmentButton, size === 'small' && styles.segmentActive]} onPress={() => onSize('small')}>
+            <Text style={[styles.segmentText, size === 'small' && styles.segmentTextActive]}>小</Text>
+          </Pressable>
+          <Pressable style={[styles.segmentButton, size === 'medium' && styles.segmentActive]} onPress={() => onSize('medium')}>
+            <Text style={[styles.segmentText, size === 'medium' && styles.segmentTextActive]}>中</Text>
+          </Pressable>
+        </View>
+        <View style={styles.switchRow}>
+          <View>
+            <Text style={[styles.switchTitle, isDark && styles.darkBodyText]}>完了したタスクも表示</Text>
+            <Text style={[styles.switchCopy, isDark && styles.darkAccentText]}>チェック済みの項目を残します</Text>
+          </View>
+          <Switch value={showCompleted} onValueChange={onShowCompleted} trackColor={{ true: colors.violet }} />
+        </View>
+        <Text style={[styles.fieldLabel, { marginTop: 20 }, isDark && styles.darkAccentText]}>完了アイコン</Text>
+        <View style={styles.iconChoices}>
+          {completionIcons.map((icon: string) => (
+            <Pressable key={icon} style={[styles.iconChoice, completionIcon === icon && styles.iconChoiceActive]} onPress={() => onCompletionIcon(icon)}>
+              <Text style={[styles.iconChoiceText, completionIcon === icon && styles.iconChoiceTextActive]}>{icon}</Text>
+            </Pressable>
+          ))}
+        </View>
+        <Pressable style={styles.lockedSetting} onPress={() => onPremium()}>
+          <View>
+            <Text style={[styles.switchTitle, isDark && styles.darkBodyText]}>カスタムテーマ</Text>
+            <Text style={[styles.switchCopy, isDark && styles.darkAccentText]}>色・背景・フォントを自由に変更</Text>
+          </View>
+          <Text style={styles.smallLock}>▣ PREMIUM</Text>
+        </Pressable>
+      </View>
+      </SettingsDisclosure>
+      <Modal visible={monoPreviewOpen} transparent animationType="slide" onRequestClose={() => setMonoPreviewOpen(false)}>
+        <Pressable style={styles.monoPreviewBackdrop} onPress={() => setMonoPreviewOpen(false)}>
+          <Pressable style={[styles.monoPreviewSheet, isDark && styles.darkSurface]} onPress={(event) => event.stopPropagation()}>
+            <View style={styles.modalHandle} />
+            <Text style={[styles.monoPreviewTitle, isDark && styles.darkBodyText]}>Monoの表示を選ぶ</Text>
+            <Text style={[styles.monoPreviewCopy, isDark && styles.darkAccentText]}>同じ情報設計で、明るさだけを切り替えられます。</Text>
+            <View style={styles.monoPreviewCards}>
+              <Pressable style={[styles.monoPreviewCard, styles.monoPreviewLight]} onPress={() => { onDesignMode('minimal'); setMonoPreviewOpen(false); }}>
+                <View style={styles.monoPreviewPhoneLight}><Text style={styles.monoPreviewEyebrow}>MONO LIGHT</Text><Text style={styles.monoPreviewBrand}>Rhythm</Text><View style={styles.monoPreviewLine} /><View style={styles.monoPreviewHeroLight}><Text style={styles.monoPreviewCardTitle}>今はこれ</Text><Text style={styles.monoPreviewCardMeta}>今日のタスクを整える</Text><View style={styles.monoPreviewProgressLight} /></View><View style={styles.monoPreviewTaskLight}><Text style={styles.monoPreviewTaskDotLight}>□</Text><Text style={styles.monoPreviewTaskTextLight}>次のタスク</Text></View></View><Text style={styles.monoPreviewSelect}>このLightを選ぶ</Text>
+              </Pressable>
+              <Pressable style={[styles.monoPreviewCard, styles.monoPreviewDark]} onPress={() => { onDesignMode('dark'); setMonoPreviewOpen(false); }}>
+                <View style={styles.monoPreviewPhoneDark}><Text style={styles.monoPreviewEyebrowDark}>MONO DARK</Text><Text style={styles.monoPreviewBrandDark}>Rhythm</Text><View style={styles.monoPreviewLineDark} /><View style={styles.monoPreviewHeroDark}><Text style={styles.monoPreviewCardTitleDark}>今はこれ</Text><Text style={styles.monoPreviewCardMetaDark}>今日のタスクを整える</Text><View style={styles.monoPreviewProgressDark} /></View><View style={styles.monoPreviewTaskDark}><Text style={styles.monoPreviewTaskDotDark}>□</Text><Text style={styles.monoPreviewTaskTextDark}>次のタスク</Text></View></View><Text style={styles.monoPreviewSelectDark}>このDarkを選ぶ</Text>
+              </Pressable>
+            </View>
+            <Pressable onPress={() => setMonoPreviewOpen(false)}><Text style={[styles.monoPreviewClose, isDark && styles.darkAccentText]}>閉じる</Text></Pressable>
+          </Pressable>
+        </Pressable>
+      </Modal>
+    </>
+  );
+}

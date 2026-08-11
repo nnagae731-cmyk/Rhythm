@@ -86,6 +86,10 @@ export function HomeScreen({
     <>
       {renderTodayWinStrip(allTasks)}
 
+      <View style={[styles.taskHeaderButtons, { justifyContent: 'flex-end', marginBottom: 10 }]}>
+        <Pressable style={styles.addButton} onPress={onAdd}><Text style={styles.addButtonText}>＋ 追加</Text></Pressable>
+      </View>
+
       <VoiceQuickAddCard designMode={designMode} chicPattern={chicPattern} onQuickAdd={onQuickAdd} />
 
       <Pressable
@@ -106,7 +110,6 @@ export function HomeScreen({
         </View>
         <View style={styles.taskHeaderButtons}>
           <Pressable style={styles.selectButton} onPress={onSelectionMode}><Text style={styles.selectButtonText}>{selectionMode ? '取消' : '選択'}</Text></Pressable>
-          <Pressable style={styles.addButton} onPress={onAdd}><Text style={styles.addButtonText}>＋ 追加</Text></Pressable>
         </View>
       </View>
 

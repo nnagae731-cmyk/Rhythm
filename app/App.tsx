@@ -17,6 +17,8 @@ import { DEFAULT_PREMIUM_GUIDE_FEATURE, PremiumGuideFeatureId } from './premiumG
 import { createPremiumTaskTemplate, hasSameTemplateSettings, PremiumTaskTemplate, summarizePremiumTaskTemplate } from './taskTemplates';
 import { Header } from './components/Header';
 import { HomeScreen } from './screens/HomeScreen';
+import { TimelineScreen } from './screens/TimelineScreen';
+import { SettingsScreen } from './screens/SettingsScreen';
 import { BottomNav } from './components/BottomNav';
 import { GuideModal } from './components/GuideModal';
 import { RecoveryModal } from './components/RecoveryModal';
@@ -1255,11 +1257,14 @@ export default function App() {
               onPreparationStarted={markDeparturePreparationStarted}
               calendarMarks={calendarMarks}
               onSetCalendarMark={(date, mark) => setCalendarMarks((current) => { const next = { ...current }; if (mark) next[date] = mark; else delete next[date]; return next; })}
+              styles={styles}
+              helpers={{ getThemeTokens, dateKey, planDateKey, hasPremiumAccess, formatLiveDate, formatLiveTime, getDepartureMoments, normalizePlanDate, countdownToDate, dateForReminder, getMapSearchTarget, openMapSearch, colors }}
+              components={{ TimeTabButton, FocusMode, TaskScheduleCalendar, DailyScheduleTimeline, PremiumRoutePreview, ScheduleSettingCard, RecoveryModal }}
             />
           )}
 
           {screen === 'settings' && (
-            <WidgetScreen
+            <SettingsScreen
               tasks={tasks}
               timeline={displayTimeline}
               now={now}
@@ -1288,6 +1293,9 @@ export default function App() {
               onGuide={() => setGuideOpen(true)}
               onPremium={openPremiumFeature}
               onDeleteSavedTemplate={deleteSavedTaskTemplate}
+                          styles={styles}
+              helpers={{ colors, getChicPatternVisual, hasPremiumAccess, getChicCheckColor, chicCheckColorChoices, countdownToClock, getUrgencyStatus, getNextBestAction, designModes, completionIcons, summarizePremiumTaskTemplate }}
+              components={{ BThemeRibbonDecoration, CThemeRibbonDecoration, ChicPatternDecor, ChicPatternSelector, SettingsDisclosure, NotificationManagerCard }}
             />
           )}
 
@@ -1346,210 +1354,6 @@ function TimeTabButton({ tab, active, designMode, chicPattern, themeAccent, seco
   const isDark = designMode === 'dark';
   if (designMode === 'chic') return <Pressable style={[styles.timeTab, styles.timeTabChicPattern, { backgroundColor: palette.background }, active && { borderColor: palette.accent, borderWidth: 2 }]} onPress={onPress}>{!isCheckChicPattern(chicPattern) && <ChicPatternDecor pattern={chicPattern} accent={palette.accent} warm={palette.warm} density="compact" />}<View style={[styles.timeTabGlassLabel, active && styles.timeTabGlassLabelActive]}><Text style={[styles.timeTabText, { color: active ? palette.accent : '#8B7B82' }]}>{label}</Text>{active && <Text style={[styles.timeTabMarker, { color: palette.accent }]}>●</Text>}</View></Pressable>;
   return <Pressable style={[styles.timeTab, styles.timeTabMinimal, isDark && styles.darkSurface, active && styles.timeTabActive, active && { backgroundColor: isDark ? '#B9A8D8' : themeAccent, borderColor: isDark ? '#7B6BE8' : themeAccent }]} onPress={onPress}><Text style={[styles.timeTabText, { color: isDark ? '#101114' : secondaryText }, active && styles.timeTabTextActive]}>{label}</Text></Pressable>;
-}
-
-function TimelineScreen({
-  plan,
-  plans,
-  departureCheckIns,
-  departurePreparationStatuses,
-  behaviorEvents,
-  tasks,
-  now,
-  designMode,
-  initialTab,
-  chicPattern,
-  planTier,
-  recoveryTargetPlanId,
-  onChange,
-  onSchedule,
-  onImportCalendarEvent,
-  onEdit,
-  onSharePlan,
-  onDelete,
-  onEditTask,
-  onDeleteTask,
-  onPremium,
-  onRecovery,
-  onRecoveryClosed,
-  onFocusCompleted,
-  onBehaviorEvent,
-  onDeparted,
-  onPreparationStarted,
-  calendarMarks,
-  onSetCalendarMark,
-}: {
-  plan: DeparturePlan;
-  plans: DeparturePlan[];
-  departureCheckIns: DepartureCheckIn[];
-  departurePreparationStatuses: Record<string, DeparturePreparationStatus>;
-  behaviorEvents: BehaviorEvent[];
-  tasks: Task[];
-  now: Date;
-  designMode: DesignMode;
-  initialTab: TimeTab;
-  chicPattern: ChicPattern;
-  planTier: PlanTier;
-  recoveryTargetPlanId?: string;
-  onChange: (plan: DeparturePlan) => void;
-  onSchedule: () => void;
-  onImportCalendarEvent: (event: Calendar.Event) => boolean;
-  onEdit: (plan: DeparturePlan) => void;
-  onSharePlan: (plan: DeparturePlan) => void;
-  onDelete: (id: string) => void;
-  onEditTask: (task: Task) => void;
-  onDeleteTask: (id: string) => void;
-  onPremium: (featureId?: PremiumGuideFeatureId) => void;
-  onRecovery: (record: RecoveryRecord) => void;
-  onRecoveryClosed: () => void;
-  onFocusCompleted: (session: FocusSession) => void;
-  onBehaviorEvent: (event: BehaviorEvent) => void;
-  onDeparted: (planId: string) => void;
-  onPreparationStarted: (planId: string) => void;
-  calendarMarks: CalendarMarks;
-  onSetCalendarMark: (date: string, mark?: string) => void;
-}) {
-  const theme = getThemeTokens(designMode);
-  const isDark = designMode === 'dark';
-  const [showPlanDatePicker, setShowPlanDatePicker] = useState(false);
-  const [timeTab, setTimeTab] = useState<TimeTab>(initialTab);
-  const [calendarEvents, setCalendarEvents] = useState<Calendar.Event[]>([]);
-  const [calendarLoading, setCalendarLoading] = useState(false);
-  const [calendarFocusDate, setCalendarFocusDate] = useState<string>();
-  const [recoveryPlan, setRecoveryPlan] = useState<DeparturePlan>();
-  const [statusMessage, setStatusMessage] = useState('');
-  const countdownEnabled = plan.countdownEnabled !== false;
-  useEffect(() => setTimeTab(initialTab), [initialTab]);
-  useEffect(() => {
-    if (!recoveryTargetPlanId) return;
-    const target = plans.find((item) => item.id === recoveryTargetPlanId);
-    if (target) setRecoveryPlan(target);
-  }, [plans, recoveryTargetPlanId]);
-  // 当日分は履歴として残し、日付をまたいだ終了済み予定はカウントダウンから除外する。
-  const todayKey = dateKey(now);
-  const countdownPlans = plans.filter((item) => item.countdownEnabled !== false && planDateKey(item) >= todayKey);
-  const importCalendarEvents = async () => {
-    if (!hasPremiumAccess(planTier, 'external_calendar')) {
-      onPremium('calendar');
-      return;
-    }
-    setCalendarLoading(true);
-    try {
-      const permission = await Calendar.requestCalendarPermissionsAsync();
-      if (!permission.granted) {
-        Alert.alert('カレンダーへのアクセスが必要です', '設定からカレンダーへのアクセスを許可してください。');
-        return;
-      }
-      const calendars = await Calendar.getCalendarsAsync(Calendar.EntityTypes.EVENT);
-      const start = new Date();
-      const end = new Date(start.getTime() + 14 * 24 * 60 * 60_000);
-      const events = await Calendar.getEventsAsync(calendars.map((item) => item.id), start, end);
-      setCalendarEvents(events.filter((event) => !event.allDay).sort((a, b) => new Date(a.startDate).getTime() - new Date(b.startDate).getTime()).slice(0, 12));
-    } catch {
-      Alert.alert('カレンダーを読み込めませんでした');
-    } finally {
-      setCalendarLoading(false);
-    }
-  };
-  const selectCalendarEvent = (event: Calendar.Event) => {
-    const start = new Date(event.startDate);
-    if (!onImportCalendarEvent(event)) return;
-    setCalendarEvents((current) => current.filter((item) => item.id !== event.id));
-    setCalendarFocusDate(dateKey(start));
-    setTimeTab('calendar');
-  };
-  const openPlanEditor = (target: DeparturePlan) => {
-    onEdit(target);
-    setTimeTab('departure');
-  };
-  return (
-    <>
-      <View style={[styles.timeTabs, designMode === 'minimal' && styles.timeTabsMinimal, designMode === 'dark' && styles.darkPanel, designMode === 'chic' && styles.timeTabsChic, ]}>
-        {(['departure', 'deadline', 'calendar', 'focus'] as TimeTab[]).map((tab) => <TimeTabButton key={tab} tab={tab} active={timeTab === tab} designMode={designMode} chicPattern={chicPattern} themeAccent={theme.colors.primaryAccent} secondaryText={theme.colors.secondaryText} onPress={() => setTimeTab(tab)} />)}
-      </View>
-
-      {timeTab === 'focus' ? <FocusMode tasks={tasks} designMode={designMode} onFocusCompleted={onFocusCompleted} onBehaviorEvent={onBehaviorEvent} /> : timeTab === 'calendar' ? <TaskScheduleCalendar tasks={tasks} plans={plans} externalEvents={calendarEvents} now={now} designMode={designMode} chicPattern={chicPattern} planTier={planTier} focusDate={calendarFocusDate} calendarMarks={calendarMarks} onSetCalendarMark={onSetCalendarMark} onPremium={onPremium} onEditTask={onEditTask} onDeleteTask={onDeleteTask} onEditPlan={openPlanEditor} onDeletePlan={onDelete} onOpenMap={(item) => void openMapSearch(getMapSearchTarget(item))} behaviorEvents={behaviorEvents} departureCheckIns={departureCheckIns} departurePreparationStatuses={departurePreparationStatuses} /> : timeTab === 'deadline' ? <>
-        <View style={[styles.departureListHeader, isDark && styles.darkPanel]}><View><Text style={[styles.sectionTitle, isDark && styles.darkBodyText]}>今日のスケジュール</Text><Text style={[styles.sectionSub, isDark && styles.darkMutedText]}>予定がなくても時間の流れを確認できます</Text></View><Text style={[styles.sectionSub, isDark && styles.darkMutedText]}>{dateKey(now).replaceAll('-', '.')}</Text></View>
-        <DailyScheduleTimeline date={dateKey(now)} tasks={tasks} plans={plans} externalEvents={calendarEvents} now={now} designMode={designMode} onEditTask={onEditTask} onEditPlan={openPlanEditor} />
-      </> : <>
-      <Pressable style={styles.calendarImportButton} onPress={importCalendarEvents}><Text style={styles.calendarImportIcon}>▣</Text><View style={{ flex: 1 }}><Text style={styles.calendarImportTitle}>{calendarLoading ? '読み込み中…' : 'いつものカレンダーとつなぐ'}</Text><Text style={styles.calendarImportCopy}>{hasPremiumAccess(planTier, 'external_calendar') ? '端末の予定をRhythmへ取り込む' : 'Premium'}</Text></View><Text style={styles.calendarImportArrow}>›</Text></Pressable>
-      {calendarEvents.length > 0 && <View style={styles.calendarEventPicker}><Text style={styles.calendarEventPickerTitle}>取り込む予定を選択</Text>{calendarEvents.map((event) => { const start = new Date(event.startDate); return <Pressable key={event.id} style={styles.calendarEventRow} onPress={() => selectCalendarEvent(event)}><View><Text style={styles.calendarEventTitle}>{event.title || '名称なし'}</Text><Text style={styles.calendarEventDate}>{formatLiveDate(start)} {formatLiveTime(start)}</Text></View><Text style={styles.calendarImportArrow}>＋</Text></Pressable>; })}</View>}
-      {planTier === 'premium' ? (() => {
-        const previewPlan = plan.id && plan.countdownEnabled !== false
-          ? plan
-          : [...plans].filter((item) => item.countdownEnabled !== false).sort((a, b) => getDepartureMoments(a).arrival.getTime() - getDepartureMoments(b).arrival.getTime())[0] ?? plan;
-        return <PremiumRoutePreview plan={previewPlan} now={now} designMode={designMode} onOpenMap={(query) => void openMapSearch(query)} />;
-      })() : <Pressable onPress={() => onPremium('route')} style={{ marginBottom: 14, padding: 16, borderRadius: designMode === 'minimal' || isDark ? 3 : 20, borderWidth: 1, borderColor: isDark ? '#B9A8D8' : '#DDD4F5', backgroundColor: isDark ? '#FFFFFF' : '#F7F3FF' }}><View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}><View style={{ flex: 1, paddingRight: 10 }}><Text style={{ color: isDark ? '#5A3E9B' : colors.violet, fontSize: 10, fontWeight: '900', letterSpacing: 1 }}>PREMIUM</Text><Text style={{ color: isDark ? '#161421' : colors.ink, fontSize: 15, fontWeight: '900', marginTop: 5 }}>間に合う出発プラン</Text><Text style={{ color: isDark ? '#5A5364' : colors.muted, fontSize: 11, lineHeight: 17, marginTop: 4 }}>登録した移動時間から、準備・出発・余裕時間をまとめて整えます。</Text></View><Text style={{ color: isDark ? '#5A3E9B' : colors.violet, fontSize: 24, fontWeight: '700' }}>›</Text></View><View style={{ flexDirection: 'row', gap: 7, marginTop: 12 }}><View style={{ flex: 1, backgroundColor: isDark ? '#F2EFF8' : '#FFFFFF', borderRadius: 10, padding: 8 }}><Text style={{ color: colors.muted, fontSize: 9 }}>無料</Text><Text style={{ color: colors.ink, fontSize: 11, fontWeight: '800', marginTop: 3 }}>地図を開く</Text></View><View style={{ flex: 1, backgroundColor: isDark ? '#E8E0FA' : '#EEE9FF', borderRadius: 10, padding: 8 }}><Text style={{ color: colors.violet, fontSize: 9 }}>Premium</Text><Text style={{ color: colors.ink, fontSize: 11, fontWeight: '800', marginTop: 3 }}>行動時間を逆算</Text></View></View></Pressable>}
-      <View style={[styles.departureListHeader, isDark && styles.darkPanel]}><Text style={[styles.sectionTitle, isDark && styles.darkBodyText]}>カウントダウン</Text><Text style={[styles.sectionSub, isDark && styles.darkMutedText]}>{countdownPlans.length}件の予定</Text></View>
-      {countdownPlans.length === 0 ? <View style={styles.departureEmpty}><Text style={styles.emptyCopy}>予定を追加すると、ここに出発までの時間が並びます。</Text></View> : [...countdownPlans].sort((a, b) => getDepartureMoments(a).leave.getTime() - getDepartureMoments(b).leave.getTime()).map((item) => {
-        const moments = getDepartureMoments(item);
-        const passed = moments.arrival.getTime() < now.getTime();
-        const checkIn = item.id ? departureCheckIns.find((record) => record.planId === item.id && normalizePlanDate(record.date) === planDateKey(item)) : undefined;
-        const preparationEvent = item.id ? behaviorEvents.find((event) => event.type === 'departure_preparation_started' && event.departurePlanId === item.id && normalizePlanDate(event.departurePlanDate) === planDateKey(item)) : undefined;
-        const departureEvent = item.id ? behaviorEvents.find((event) => event.type === 'departure_started' && event.departurePlanId === item.id && normalizePlanDate(event.departurePlanDate) === planDateKey(item)) : undefined;
-        const preparationStatus = item.id ? departurePreparationStatuses[item.id] : undefined;
-        const progressLabel = checkIn ? '到着済み' : departureEvent ? '移動中' : preparationStatus === 'prepared' ? '準備完了' : preparationEvent ? '準備中' : passed ? '終了' : '未準備';
-        return <View key={item.id} style={[styles.departureCountdownCard, { flexDirection: 'column', alignItems: 'stretch' }, passed && styles.departurePassed]}>
-          <View style={{ flex: 1 }}>
-            <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' }}><View style={{ flex: 1 }}><Text style={[styles.departureCountdownTitle, isDark && styles.darkBodyText]}>{item.title}</Text><Text style={[styles.departureCountdownDate, isDark && styles.darkMutedText]}>{planDateKey(item).replaceAll('-', '.')}</Text></View><View style={{ backgroundColor: isDark ? '#E8E0FA' : '#F0EBFF', paddingHorizontal: 9, paddingVertical: 5, borderRadius: 999 }}><Text style={{ color: isDark ? '#5A3E9B' : colors.violet, fontSize: 10, fontWeight: '800' }}>{progressLabel}</Text></View></View>
-            <View style={{ flexDirection: 'row', marginTop: 13, borderTopWidth: 1, borderBottomWidth: 1, borderColor: isDark ? '#E4E1E8' : '#EEEAF2', paddingVertical: 10 }}><View style={{ flex: 1 }}><Text style={[styles.departureCountdownMeta, isDark && styles.darkMutedText]}>準備</Text><Text style={[styles.departureCountdownTitle, isDark && styles.darkBodyText, { fontSize: 15, marginTop: 2 }]}>{formatLiveTime(moments.prepare)}</Text></View><View style={{ flex: 1, borderLeftWidth: 1, borderColor: isDark ? '#E4E1E8' : '#EEEAF2', paddingLeft: 12 }}><Text style={[styles.departureCountdownMeta, isDark && styles.darkMutedText]}>出発</Text><Text style={[styles.departureCountdownTitle, isDark && styles.darkBodyText, { fontSize: 15, marginTop: 2 }]}>{formatLiveTime(moments.leave)}</Text></View><View style={{ flex: 1, borderLeftWidth: 1, borderColor: isDark ? '#E4E1E8' : '#EEEAF2', paddingLeft: 12 }}><Text style={[styles.departureCountdownMeta, isDark && styles.darkMutedText]}>到着</Text><Text style={[styles.departureCountdownTitle, isDark && styles.darkBodyText, { fontSize: 15, marginTop: 2 }]}>{item.arrival}</Text></View></View>
-            {checkIn && <Text style={styles.taskMeta}>{checkIn.onTime ? '予定どおり到着' : '遅れて到着'} · {formatLiveTime(new Date(checkIn.departedAt))}出発</Text>}
-          </View>
-          <View style={[styles.departureCountdownRight, { width: '100%', marginTop: 10, alignItems: 'stretch' }]}><View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}><Text style={[styles.departureCountdownValue, isDark && styles.darkBodyText]}>{checkIn ? '出発済み' : passed ? '終了' : countdownToDate(moments.leave, now)}</Text>{!preparationEvent && !checkIn && item.id ? <View style={styles.twoChoiceRow}><Pressable style={styles.recoveryMiniButton} onPress={() => onPreparationStarted(item.id!)}><Text style={styles.recoveryMiniButtonText}>準備した</Text></Pressable><Pressable style={styles.recoveryMiniButtonSecondary} onPress={() => setStatusMessage('今の時間から、次に準備するタイミングを考えます。')}><Text style={[styles.recoveryMiniButtonSecondaryText, isDark && styles.darkBodyText]}>まだ</Text></Pressable></View> : !checkIn && item.id ? <View style={styles.twoChoiceRow}><Pressable style={styles.recoveryMiniButton} onPress={() => onDeparted(item.id!)}><Text style={styles.recoveryMiniButtonText}>出発した</Text></Pressable><Pressable style={styles.recoveryMiniButtonSecondary} onPress={() => setStatusMessage('5分後にもう一度確認します。')}><Text style={[styles.recoveryMiniButtonSecondaryText, isDark && styles.darkBodyText]}>まだ</Text></Pressable></View> : null}</View>{!checkIn && moments.leave.getTime() <= now.getTime() && <Pressable style={[styles.recoveryMiniButton, { marginTop: 8 }]} onPress={() => hasPremiumAccess(planTier, 'late_recovery') ? setRecoveryPlan(item) : onPremium('recovery')}><Text style={styles.recoveryMiniButtonText}>立て直す {hasPremiumAccess(planTier, 'late_recovery') ? '' : 'Premium'}</Text></Pressable>}<View style={[styles.departureActions, { justifyContent: 'flex-end', marginTop: 8 }]}><Pressable onPress={() => void openMapSearch(getMapSearchTarget(item))}><Text style={[styles.departureEdit, isDark && styles.darkAccentText]}>地図</Text></Pressable><Pressable onPress={() => item.id && onSharePlan(item)}><Text style={[styles.departureEdit, isDark && styles.darkAccentText]}>共有</Text></Pressable><Pressable onPress={() => onEdit(item)}><Text style={[styles.departureEdit, isDark && styles.darkAccentText]}>編集</Text></Pressable><Pressable onPress={() => item.id && onDelete(item.id)}><Text style={styles.departureDelete}>削除</Text></Pressable></View></View>
-        </View>;
-      })}
-      {!!statusMessage && <Text style={styles.timelineStatusMessage}>{statusMessage}</Text>}
-
-      <View style={[styles.formCard, { marginTop: 22, padding: 18, borderRadius: designMode === 'minimal' || isDark ? 4 : 22, borderWidth: 1, borderColor: isDark ? '#D8D4E0' : '#ECE5F0' }]}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 15 }}><View><Text style={[styles.sectionTitle, isDark && styles.darkBodyText]}>{plan.id ? '予定を編集' : '予定を追加'}</Text><Text style={[styles.sectionSub, isDark && styles.darkMutedText, { marginTop: 3 }]}>{countdownEnabled ? '登録した移動時間から準備と出発を逆算します' : '予定表に日時だけを表示します'}</Text></View><Text style={{ color: isDark ? '#7B6BE8' : colors.violet, fontSize: 12, fontWeight: '900' }}>PLAN</Text></View>
-        <Text style={[styles.fieldLabel, { marginTop: 0 }]}>予定の種類</Text>
-        <View style={{ flexDirection: 'row', gap: 8, marginBottom: 14 }}>
-          <Pressable onPress={() => onChange({ ...plan, countdownEnabled: true })} style={{ flex: 1, padding: 11, borderWidth: 1, borderRadius: 12, borderColor: countdownEnabled ? (isDark ? '#7B6BE8' : colors.violet) : (isDark ? '#D8D4E0' : '#E8E1F0'), backgroundColor: countdownEnabled ? (isDark ? '#E8E0FA' : '#F2EDFF') : (isDark ? '#FFFFFF' : '#FCFBFE') }}><Text style={{ color: isDark ? '#161421' : colors.ink, fontSize: 12, fontWeight: '900' }}>出発を逆算</Text><Text style={{ color: isDark ? '#5A3E9B' : colors.muted, fontSize: 10, marginTop: 3 }}>カウントダウン・通知あり</Text></Pressable>
-          <Pressable onPress={() => onChange({ ...plan, countdownEnabled: false })} style={{ flex: 1, padding: 11, borderWidth: 1, borderRadius: 12, borderColor: !countdownEnabled ? (isDark ? '#7B6BE8' : colors.violet) : (isDark ? '#D8D4E0' : '#E8E1F0'), backgroundColor: !countdownEnabled ? (isDark ? '#E8E0FA' : '#F2EDFF') : (isDark ? '#FFFFFF' : '#FCFBFE') }}><Text style={{ color: isDark ? '#161421' : colors.ink, fontSize: 12, fontWeight: '900' }}>予定表だけ</Text><Text style={{ color: isDark ? '#5A3E9B' : colors.muted, fontSize: 10, marginTop: 3 }}>カウントダウンなし</Text></Pressable>
-        </View>
-        <Text style={[styles.fieldLabel, { marginTop: 0 }]}>1　基本情報</Text>
-        <Text style={styles.fieldLabel}>予定の名前</Text>
-      <TextInput
-        style={[styles.titleInput, { borderWidth: 1, borderColor: isDark ? '#D8D4E0' : '#E8E1F0', borderRadius: 12, paddingHorizontal: 12, backgroundColor: isDark ? '#FAFAFC' : '#FCFBFE' }]}
-        value={plan.title}
-        onChangeText={(title) => onChange({ ...plan, title })}
-        placeholder="予定を入力"
-      />
-      <Text style={styles.fieldLabel}>目的地</Text>
-      <TextInput
-        style={[styles.titleInput, { borderWidth: 1, borderColor: isDark ? '#D8D4E0' : '#E8E1F0', borderRadius: 12, paddingHorizontal: 12, backgroundColor: isDark ? '#FAFAFC' : '#FCFBFE' }]}
-        value={plan.destination ?? ''}
-        onChangeText={(destination) => onChange({ ...plan, destination })}
-        placeholder="地図で開きたい場所"
-      />
-      <Text style={[styles.sectionSub, isDark && styles.darkMutedText, { marginTop: 5, marginBottom: 5 }]}>目的地を入れると、地図アプリで確認できます</Text>
-      <Pressable style={[styles.departureDateButton, { marginTop: 6 }]} onPress={() => void openMapSearch(getMapSearchTarget(plan))}><Text style={styles.departureDateButtonText}>地図で開く  ›</Text></Pressable>
-      <Text style={styles.fieldLabel}>{countdownEnabled ? '2　到着の設定' : '2　日時'}</Text><Text style={[styles.sectionSub, isDark && styles.darkMutedText, { marginBottom: 5 }]}>{countdownEnabled ? 'この時刻から準備・出発を自動で逆算' : '予定表に表示する日時を設定'}</Text>
-      <Text style={styles.fieldLabel}>{countdownEnabled ? '到着する日' : '予定の日'}</Text>
-      <Pressable style={styles.departureDateButton} onPress={() => setShowPlanDatePicker((value) => !value)}><Text style={styles.departureDateButtonText}>▣ {plan.date}</Text></Pressable>
-        {showPlanDatePicker && <DateTimePicker value={dateForReminder(plan.date, plan.arrival)} mode="date" minimumDate={new Date()} display={Platform.OS === 'ios' ? 'inline' : 'default'} onChange={(event, selected) => {
-          if (Platform.OS !== 'ios') setShowPlanDatePicker(false);
-          if (event.type === 'set' && selected) onChange({ ...plan, date: dateKey(selected) });
-        }} />}
-        <Text style={styles.fieldLabel}>{countdownEnabled ? '到着する時刻' : '予定の時刻'}</Text><TextInput
-          style={[styles.arrivalInput, { fontSize: 24, letterSpacing: 0, borderWidth: 1, borderColor: isDark ? '#D8D4E0' : '#E1D8F3', borderRadius: 14, paddingHorizontal: 14, backgroundColor: isDark ? '#FAFAFC' : '#FBF9FF' }]}
-          value={plan.arrival}
-          onChangeText={(arrival) => onChange({ ...plan, arrival })}
-          keyboardType="numbers-and-punctuation"
-          maxLength={5}
-          placeholder="例 18:30"
-        />
-        {countdownEnabled && <><Text style={[styles.fieldLabel, { marginTop: 16 }]}>3　逆算に使う時間</Text><View style={{ flexDirection: 'row', gap: 8, marginTop: 4 }}><ScheduleSettingCard label="移動" value={plan.travelMinutes} onChange={(travelMinutes) => onChange({ ...plan, travelMinutes })} /><ScheduleSettingCard label="準備" value={plan.preparationMinutes} onChange={(preparationMinutes) => onChange({ ...plan, preparationMinutes })} /><ScheduleSettingCard label="余裕" value={plan.bufferMinutes} onChange={(bufferMinutes) => onChange({ ...plan, bufferMinutes })} /></View></>}
-      </View>
-
-      <Pressable style={styles.primaryButton} onPress={onSchedule}>
-        <Text style={styles.primaryButtonText}>{plan.id ? (countdownEnabled ? '変更を保存して通知' : '変更を保存') : (countdownEnabled ? '予定を追加して通知' : '予定を追加')}</Text>
-      </Pressable>
-      </>}
-
-      <RecoveryModal visible={Boolean(recoveryPlan)} plan={recoveryPlan} now={now} designMode={designMode} styles={styles} onPremium={() => onPremium('recovery')} onClose={() => { setRecoveryPlan(undefined); onRecoveryClosed(); }} onApply={(record) => { onRecovery(record); setRecoveryPlan(undefined); }} />
-    </>
-  );
 }
 
 function FocusMode({ tasks, designMode, onFocusCompleted, onBehaviorEvent }: { tasks: Task[]; designMode: DesignMode; onFocusCompleted: (session: FocusSession) => void; onBehaviorEvent: (event: BehaviorEvent) => void }) {
@@ -2007,202 +1811,6 @@ function ChicPatternSelector({ designMode, chicPattern, chicCheckColor, planTier
 
 function ScheduleSettingCard({ label, value, onChange }: { label: string; value: number; onChange: (value: number) => void }) {
   return <View style={{ flex: 1, minWidth: 0, backgroundColor: '#F8F6FC', borderWidth: 1, borderColor: '#E8E1F0', borderRadius: 14, padding: 10 }}><Text style={{ color: colors.muted, fontSize: 10, fontWeight: '800' }}>{label}</Text><View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 8 }}><Pressable style={{ width: 28, height: 28, borderRadius: 9, backgroundColor: '#EEE9FF', alignItems: 'center', justifyContent: 'center' }} onPress={() => onChange(Math.max(0, value - 5))}><Text style={{ color: colors.violet, fontSize: 17, fontWeight: '900' }}>−</Text></Pressable><Text style={{ color: colors.ink, fontSize: 13, fontWeight: '900' }}>{value}分</Text><Pressable style={{ width: 28, height: 28, borderRadius: 9, backgroundColor: '#EEE9FF', alignItems: 'center', justifyContent: 'center' }} onPress={() => onChange(value + 5)}><Text style={{ color: colors.violet, fontSize: 17, fontWeight: '900' }}>＋</Text></Pressable></View></View>;
-}
-
-function WidgetScreen({
-  tasks,
-  timeline,
-  now,
-  dangerousTask,
-  size,
-  showCompleted,
-  completionIcon,
-  designMode,
-  chicPattern,
-  chicCheckColor,
-  onSize,
-  onShowCompleted,
-  onCompletionIcon,
-  onDesignMode,
-  onChicPattern,
-  onChicCheckColor,
-  templates,
-  savedTemplates,
-  onAddTemplate,
-  onDeleteTemplate,
-  onGuide,
-  onPremium,
-  onDeleteSavedTemplate,
-  planTier,
-}: {
-  tasks: Task[];
-  timeline: { start: string; leave: string; arrival: string };
-  now: Date;
-  dangerousTask?: Task;
-  size: WidgetSize;
-  showCompleted: boolean;
-  completionIcon: string;
-  designMode: DesignMode;
-  chicPattern: ChicPattern;
-  chicCheckColor: ChicCheckColor;
-  onSize: (size: WidgetSize) => void;
-  onShowCompleted: (value: boolean) => void;
-  onCompletionIcon: (icon: string) => void;
-  onDesignMode: (mode: DesignMode) => void;
-  onChicPattern: (pattern: ChicPattern) => void;
-  onChicCheckColor: (color: ChicCheckColor) => void;
-  templates: string[];
-  savedTemplates: PremiumTaskTemplate[];
-  onAddTemplate: (title: string) => void;
-  onDeleteTemplate: (title: string) => void;
-  onGuide: () => void;
-  onPremium: (featureId?: PremiumGuideFeatureId) => void;
-  onDeleteSavedTemplate: (template: PremiumTaskTemplate) => void;
-  planTier: PlanTier;
-}) {
-  const [newTemplate, setNewTemplate] = useState('');
-  const isDark = designMode === 'dark';
-  const [expandedSetting, setExpandedSetting] = useState<'design' | 'notifications' | 'quick' | 'templates' | 'widget' | null>('design');
-  const [monoPreviewOpen, setMonoPreviewOpen] = useState(false);
-  const previewTasks = tasks.filter((task) => showCompleted || !task.done).slice(0, size === 'small' ? 2 : 3);
-  const patternVisual = getChicPatternVisual(chicPattern);
-  return (
-    <>
-      {__DEV__ && <View style={[styles.settingsCard, isDark && styles.darkSurface]}><Text style={[styles.settingsTitle, isDark && styles.darkBodyText]}>Expo Go 確認環境</Text><Text style={[styles.switchCopy, isDark && styles.darkAccentText]}>このQRコードは、利用プランが固定された確認用環境です。</Text><Text style={[styles.devPlanCurrent, isDark && styles.darkAccentText]}>現在：{planTier === 'premium' ? 'Premium版' : '無料版'}</Text></View>}
-      <SettingsDisclosure designMode={designMode} title="デザインモード" subtitle="Mono / Chic と柄を選ぶ" expanded={expandedSetting === 'design'} onPress={() => setExpandedSetting((current) => current === 'design' ? null : 'design')}>
-      <View style={[styles.modeCard, isDark && styles.darkSurface]}>
-        {designMode === 'chic' && chicPattern === 'checkLavenderSatin' && <BThemeRibbonDecoration compact />}
-        {designMode === 'chic' && chicPattern === 'checkBeigeNoir' && <CThemeRibbonDecoration compact />}
-        {designMode === 'chic' && chicPattern === 'checkLavenderSatin' && <BThemeRibbonDecoration compact />}
-        {designMode === 'chic' && chicPattern === 'checkBeigeNoir' && <CThemeRibbonDecoration compact />}
-        {designMode === 'chic' && <ChicPatternSelector designMode={designMode} chicPattern={chicPattern} chicCheckColor={chicCheckColor} planTier={planTier} onPattern={onChicPattern} onCheckColor={onChicCheckColor} />}
-        <View style={styles.modeChoices}>
-          {designModes.map((mode) => (
-            <Pressable key={mode.id} style={[styles.modeChoice, (designMode === mode.id || (mode.id === 'minimal' && designMode === 'dark')) && styles.modeChoiceActive, mode.id === 'minimal' && designMode === 'dark' && styles.modeChoiceActiveDark]} onPress={() => onDesignMode(mode.id === 'minimal' && designMode === 'dark' ? 'dark' : mode.id)}>
-              <View style={[styles.modeMiniPreview, mode.id === 'minimal' && styles.modeMiniMinimal, designMode === 'dark' && mode.id === 'minimal' && styles.modeMiniMinimalDark, mode.id === 'chic' && styles.modeMiniChic, ]}>
-                {mode.id === 'minimal' ? <><View style={[styles.modeMiniBlackBlock, designMode === 'dark' && styles.modeMiniDarkBlock]} /><Text style={[styles.modeMiniNumber, designMode === 'dark' && styles.modeMiniDarkNumber]}>03</Text><View style={[styles.modeMiniLine, designMode === 'dark' && styles.modeMiniDarkLine]} /></> : <>{designMode === 'chic' && <ChicPatternDecor pattern={chicPattern} accent="#D986A1" warm="#A997C8" />}<View style={styles.modeMiniGlass} /><Text style={styles.modeMiniSparkle}>✦</Text></>}
-              </View>
-              <Text style={[styles.modeName, (designMode === mode.id || (mode.id === 'minimal' && designMode === 'dark')) && styles.modeNameActive, mode.id === 'minimal' && designMode === 'dark' && styles.modeNameDark]}>{mode.id === 'minimal' ? 'Mono' : 'Design'}</Text>
-              <Text style={[styles.modeDescription, isDark && styles.darkAccentText]}>{mode.description}</Text>
-              {mode.id === 'minimal' && <View style={styles.monoThemeChoices}>
-                <Pressable style={[styles.monoThemeChoice, designMode === 'minimal' && styles.monoThemeChoiceActive]} onPress={() => onDesignMode('minimal')}><Text style={[styles.monoThemeChoiceText, designMode === 'minimal' && styles.monoThemeChoiceTextActive]}>Light</Text></Pressable>
-                <Pressable style={[styles.monoThemeChoice, designMode === 'dark' && styles.monoThemeChoiceActiveDark]} onPress={() => onDesignMode('dark')}><Text style={[styles.monoThemeChoiceText, designMode === 'dark' && styles.monoThemeChoiceTextActive]}>Dark</Text></Pressable>
-              </View>}
-            </Pressable>
-          ))}
-        </View>
-        {designMode !== 'chic' && <View style={styles.monoInlinePreview}><Text style={[styles.fieldLabel, isDark && styles.darkAccentText]}>Monoの表示</Text><View style={styles.monoInlineChoices}><Pressable style={[styles.monoInlineChoice, styles.monoInlineLight, designMode === 'minimal' && styles.monoInlineChoiceActive]} onPress={() => onDesignMode('minimal')}><Text style={styles.monoInlineLightEyebrow}>LIGHT</Text><Text style={styles.monoInlineLightBrand}>Rhythm</Text><View style={styles.monoInlineLightLine} /><Text style={styles.monoInlineLightMeta}>白・黒・余白</Text><Text style={styles.monoInlineSelect}>{designMode === 'minimal' ? '選択中' : '選ぶ'}</Text></Pressable><Pressable style={[styles.monoInlineChoice, styles.monoInlineDark, designMode === 'dark' && styles.monoInlineChoiceActiveDark]} onPress={() => onDesignMode('dark')}><Text style={styles.monoInlineDarkEyebrow}>DARK</Text><Text style={styles.monoInlineDarkBrand}>Rhythm</Text><View style={styles.monoInlineDarkLine} /><Text style={styles.monoInlineDarkMeta}>黒・白・紫</Text><Text style={styles.monoInlineDarkSelect}>{designMode === 'dark' ? '選択中' : '選ぶ'}</Text></Pressable></View></View>}
-        {designMode === 'chic' && <View style={styles.patternSelector}><Text style={[styles.fieldLabel, isDark && styles.darkAccentText]}>Chicの柄</Text><View style={styles.patternChoices}>{(['floral', 'dot', 'checkLavenderSatin', 'checkBeigeNoir', 'checkMauveFrame'] as ChicPattern[]).map((pattern) => { const feature = pattern === 'floral' ? undefined : pattern === 'dot' ? 'chic_dot' : pattern === 'checkLavenderSatin' ? 'chic_check_lavender_satin' : pattern === 'checkBeigeNoir' ? 'chic_check_beige_noir' : 'chic_check_mauve_frame'; const locked = !!feature && !hasPremiumAccess(planTier, feature); const label = pattern === 'floral' ? '花柄' : pattern === 'dot' ? `ドット${locked ? ' 🔒' : ''}` : pattern === 'checkLavenderSatin' ? `くすみラベンダーチェック${locked ? ' 🔒' : ''}` : pattern === 'checkBeigeNoir' ? `ベージュ×ブラックチェック${locked ? ' 🔒' : ''}` : `モーブフレームチェック${locked ? ' 🔒' : ''}`; return <Pressable key={pattern} style={[styles.patternChoice, chicPattern === pattern && styles.patternChoiceActive]} onPress={() => onChicPattern(pattern)}><View style={styles.patternSwatch}><ChicPatternDecor pattern={pattern} accent={getChicCheckColor(chicCheckColor).accent} warm={getChicCheckColor(chicCheckColor).warm} checkColor={chicCheckColor} /></View><Text style={[styles.patternChoiceText, chicPattern === pattern && styles.patternChoiceTextActive]}>{label}</Text></Pressable>; })}</View><Text style={[styles.fieldLabel, { marginTop: 12 }, isDark && styles.darkAccentText]}>チェックの色</Text><View style={styles.patternChoices}>{chicCheckColorChoices.map((choice) => <Pressable key={choice.id} style={[styles.patternChoice, chicCheckColor === choice.id && styles.patternChoiceActive]} onPress={() => onChicCheckColor(choice.id)}><View style={[styles.checkColorSwatch, { backgroundColor: choice.background, borderColor: choice.accent }]}><View style={[styles.checkColorSwatchBand, { backgroundColor: choice.accent }]} /><View style={[styles.checkColorSwatchBandHorizontal, { backgroundColor: choice.warm }]} /></View><Text style={[styles.patternChoiceText, chicCheckColor === choice.id && styles.patternChoiceTextActive]}>{choice.label}</Text></Pressable>)}</View></View>}
-      </View>
-      </SettingsDisclosure>
-      <Pressable style={[styles.guideCard, isDark && styles.darkSurface]} onPress={onGuide}><View><Text style={[styles.guideCardTitle, isDark && styles.darkBodyText]}>Rhythmの使い方</Text><Text style={[styles.guideCardCopy, isDark && styles.darkAccentText]}>登録・振り分け・出発・集中の流れを見る</Text></View><Text style={styles.guideCardArrow}>›</Text></Pressable>
-      <SettingsDisclosure designMode={designMode} title="通知管理" subtitle="予約中の通知を確認・停止" expanded={expandedSetting === 'notifications'} onPress={() => setExpandedSetting((current) => current === 'notifications' ? null : 'notifications')}>
-        <NotificationManagerCard designMode={designMode} />
-      </SettingsDisclosure>
-      <SettingsDisclosure designMode={designMode} title="クイック雛形" subtitle="よく使うタスクを保存" expanded={expandedSetting === 'quick'} onPress={() => setExpandedSetting((current) => current === 'quick' ? null : 'quick')}>
-      <View style={[styles.settingsCard, isDark && styles.darkSurface]}>
-        <Text style={[styles.switchCopy, isDark && styles.darkAccentText]}>よく登録するタスクを自分用に保存できます</Text>
-        <View style={styles.templateAddRow}><TextInput value={newTemplate} onChangeText={setNewTemplate} placeholder="例：水筒をバッグに入れる" placeholderTextColor="#A29DAA" style={styles.templateInput} /><Pressable style={styles.templateAddButton} onPress={() => { const clean = newTemplate.trim(); if (!clean) return; onAddTemplate(clean); setNewTemplate(''); }}><Text style={styles.templateAddButtonText}>追加</Text></Pressable></View>
-        <View style={styles.templateList}>{templates.map((item) => <View key={item} style={styles.templateRow}><Text style={styles.templateRowText}>{item}</Text><Pressable onPress={() => onDeleteTemplate(item)}><Text style={styles.templateDelete}>×</Text></Pressable></View>)}</View>
-      </View>
-      </SettingsDisclosure>
-      <SettingsDisclosure designMode={designMode} title="マイひな型" subtitle="設定ごと保存して次回呼び出す" expanded={expandedSetting === 'templates'} onPress={() => setExpandedSetting((current) => current === 'templates' ? null : 'templates')}>
-      <View style={[styles.settingsCard, isDark && styles.darkSurface]}>
-        <View style={styles.historyHeader}><View><Text style={[styles.settingsTitle, isDark && styles.darkBodyText]}>マイひな型</Text><Text style={[styles.switchCopy, isDark && styles.darkAccentText]}>設定ごと保存して、次回そのまま呼び出す</Text></View><Text style={styles.taskTemplateSavePremium}>Premium</Text></View>
-        {hasPremiumAccess(planTier, 'saved_task_templates') ? savedTemplates.length === 0 ? <Text style={styles.savedTemplateEmpty}>タスクの「•••」から「設定ごとひな型に保存」を選べます。</Text> : savedTemplates.map((template) => <View key={template.id} style={styles.savedTemplateSettingRow}><View style={{ flex: 1 }}><Text style={styles.savedTemplateSettingTitle}>{template.title}</Text><Text style={styles.savedTemplateSettingCopy}>{summarizePremiumTaskTemplate(template)}</Text></View><Pressable onPress={() => onDeleteSavedTemplate(template)}><Text style={styles.templateDelete}>削除</Text></Pressable></View>) : <Pressable style={styles.savedTemplateLocked} onPress={() => onPremium('templates')}><View style={{ flex: 1 }}><Text style={styles.savedTemplateLockedTitle}>この機能を見る</Text><Text style={styles.savedTemplateLockedCopy}>保存済みデータは無料へ戻っても消えません</Text></View><Text style={styles.guideCardArrow}>›</Text></Pressable>}
-      </View>
-      </SettingsDisclosure>
-      <Text style={[styles.settingsSectionLabel, isDark && styles.darkBodyText]}>ウィジェット設定</Text>
-      <Text style={[styles.previewLabel, isDark && styles.darkAccentText]}>WIDGET PREVIEW</Text>
-
-      <View style={[styles.phonePreview, designMode === 'minimal' && styles.phonePreviewMinimal, designMode === 'chic' && { backgroundColor: patternVisual.accent }, ]}>
-        <Text style={styles.phoneClock}>9:41</Text>
-        <View style={[styles.widget, size === 'small' && styles.widgetSmall, designMode === 'minimal' && styles.widgetMinimal, designMode === 'chic' && { backgroundColor: patternVisual.background }, ]}>
-          {designMode === 'chic' && <ChicPatternDecor pattern={chicPattern} accent={patternVisual.accent} warm={patternVisual.warm} />}
-          {designMode === 'chic' && <View pointerEvents="none" style={styles.widgetChicWash} />}
-          <View style={styles.widgetTop}>
-            <View>
-              <Text style={[styles.widgetBrand, designMode === 'minimal' && styles.widgetBrandMinimal]}>Rhythm</Text>
-              <Text style={styles.widgetDate}>{designMode !== 'chic' ? 'SAT / JUL 04' : 'TODAY'}</Text>
-            </View>
-            <View style={styles.widgetDeparture}>
-              <Text style={styles.widgetDepartureLabel}>出発まで</Text>
-              <Text style={styles.widgetDepartureTime}>{countdownToClock(timeline.leave, now)}</Text>
-            </View>
-          </View>
-          <View style={styles.widgetDivider} />
-          
-          {dangerousTask && <View style={styles.widgetUrgency}>
-            <Text style={styles.widgetUrgencyStatus}>{getUrgencyStatus(dangerousTask, now)}</Text>
-            <Text numberOfLines={1} style={styles.widgetUrgencyAction}>{getNextBestAction(dangerousTask, now)}</Text>
-          </View>}
-          {previewTasks.length === 0 ? (
-            <Text style={styles.widgetEmpty}>今日のタスクはありません ✦</Text>
-          ) : previewTasks.map((task) => (
-            <View key={task.id} style={styles.widgetTask}>
-              <View style={[styles.widgetCheck, task.done && styles.widgetCheckDone]}><Text style={styles.widgetCheckText}>{task.done ? completionIcon : ''}</Text></View>
-              <Text numberOfLines={1} style={[styles.widgetTaskText, task.done && styles.widgetTaskDone]}>{task.title}</Text>
-            </View>
-          ))}
-        </View>
-      </View>
-
-      <SettingsDisclosure designMode={designMode} title="ウィジェット設定" subtitle="サイズ・完了表示・アイコン" expanded={expandedSetting === 'widget'} onPress={() => setExpandedSetting((current) => current === 'widget' ? null : 'widget')}>
-      <View style={[styles.settingsCard, isDark && styles.darkSurface]}>
-        <Text style={[styles.settingsTitle, isDark && styles.darkBodyText]}>ウィジェット設定</Text>
-        <Text style={[styles.fieldLabel, isDark && styles.darkAccentText]}>サイズ</Text>
-        <View style={styles.segment}>
-          <Pressable style={[styles.segmentButton, size === 'small' && styles.segmentActive]} onPress={() => onSize('small')}>
-            <Text style={[styles.segmentText, size === 'small' && styles.segmentTextActive]}>小</Text>
-          </Pressable>
-          <Pressable style={[styles.segmentButton, size === 'medium' && styles.segmentActive]} onPress={() => onSize('medium')}>
-            <Text style={[styles.segmentText, size === 'medium' && styles.segmentTextActive]}>中</Text>
-          </Pressable>
-        </View>
-        <View style={styles.switchRow}>
-          <View>
-            <Text style={[styles.switchTitle, isDark && styles.darkBodyText]}>完了したタスクも表示</Text>
-            <Text style={[styles.switchCopy, isDark && styles.darkAccentText]}>チェック済みの項目を残します</Text>
-          </View>
-          <Switch value={showCompleted} onValueChange={onShowCompleted} trackColor={{ true: colors.violet }} />
-        </View>
-        <Text style={[styles.fieldLabel, { marginTop: 20 }, isDark && styles.darkAccentText]}>完了アイコン</Text>
-        <View style={styles.iconChoices}>
-          {completionIcons.map((icon) => (
-            <Pressable key={icon} style={[styles.iconChoice, completionIcon === icon && styles.iconChoiceActive]} onPress={() => onCompletionIcon(icon)}>
-              <Text style={[styles.iconChoiceText, completionIcon === icon && styles.iconChoiceTextActive]}>{icon}</Text>
-            </Pressable>
-          ))}
-        </View>
-        <Pressable style={styles.lockedSetting} onPress={() => onPremium()}>
-          <View>
-            <Text style={[styles.switchTitle, isDark && styles.darkBodyText]}>カスタムテーマ</Text>
-            <Text style={[styles.switchCopy, isDark && styles.darkAccentText]}>色・背景・フォントを自由に変更</Text>
-          </View>
-          <Text style={styles.smallLock}>▣ PREMIUM</Text>
-        </Pressable>
-      </View>
-      </SettingsDisclosure>
-      <Modal visible={monoPreviewOpen} transparent animationType="slide" onRequestClose={() => setMonoPreviewOpen(false)}>
-        <Pressable style={styles.monoPreviewBackdrop} onPress={() => setMonoPreviewOpen(false)}>
-          <Pressable style={[styles.monoPreviewSheet, isDark && styles.darkSurface]} onPress={(event) => event.stopPropagation()}>
-            <View style={styles.modalHandle} />
-            <Text style={[styles.monoPreviewTitle, isDark && styles.darkBodyText]}>Monoの表示を選ぶ</Text>
-            <Text style={[styles.monoPreviewCopy, isDark && styles.darkAccentText]}>同じ情報設計で、明るさだけを切り替えられます。</Text>
-            <View style={styles.monoPreviewCards}>
-              <Pressable style={[styles.monoPreviewCard, styles.monoPreviewLight]} onPress={() => { onDesignMode('minimal'); setMonoPreviewOpen(false); }}>
-                <View style={styles.monoPreviewPhoneLight}><Text style={styles.monoPreviewEyebrow}>MONO LIGHT</Text><Text style={styles.monoPreviewBrand}>Rhythm</Text><View style={styles.monoPreviewLine} /><View style={styles.monoPreviewHeroLight}><Text style={styles.monoPreviewCardTitle}>今はこれ</Text><Text style={styles.monoPreviewCardMeta}>今日のタスクを整える</Text><View style={styles.monoPreviewProgressLight} /></View><View style={styles.monoPreviewTaskLight}><Text style={styles.monoPreviewTaskDotLight}>□</Text><Text style={styles.monoPreviewTaskTextLight}>次のタスク</Text></View></View><Text style={styles.monoPreviewSelect}>このLightを選ぶ</Text>
-              </Pressable>
-              <Pressable style={[styles.monoPreviewCard, styles.monoPreviewDark]} onPress={() => { onDesignMode('dark'); setMonoPreviewOpen(false); }}>
-                <View style={styles.monoPreviewPhoneDark}><Text style={styles.monoPreviewEyebrowDark}>MONO DARK</Text><Text style={styles.monoPreviewBrandDark}>Rhythm</Text><View style={styles.monoPreviewLineDark} /><View style={styles.monoPreviewHeroDark}><Text style={styles.monoPreviewCardTitleDark}>今はこれ</Text><Text style={styles.monoPreviewCardMetaDark}>今日のタスクを整える</Text><View style={styles.monoPreviewProgressDark} /></View><View style={styles.monoPreviewTaskDark}><Text style={styles.monoPreviewTaskDotDark}>□</Text><Text style={styles.monoPreviewTaskTextDark}>次のタスク</Text></View></View><Text style={styles.monoPreviewSelectDark}>このDarkを選ぶ</Text>
-              </Pressable>
-            </View>
-            <Pressable onPress={() => setMonoPreviewOpen(false)}><Text style={[styles.monoPreviewClose, isDark && styles.darkAccentText]}>閉じる</Text></Pressable>
-          </Pressable>
-        </Pressable>
-      </Modal>
-    </>
-  );
 }
 
 function SettingsDisclosure({ title, subtitle, expanded, onPress, children, designMode }: { title: string; subtitle: string; expanded: boolean; onPress: () => void; children: React.ReactNode; designMode?: DesignMode }) {
