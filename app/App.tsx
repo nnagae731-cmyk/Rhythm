@@ -27,7 +27,7 @@ import { BottomNav } from './components/BottomNav';
 import { GuideModal } from './components/GuideModal';
 import { RecoveryModal } from './components/RecoveryModal';
 import { styles } from './styles/appStyles';
-import { Affirmation, CalendarMarks, Category, DeparturePlan, DeparturePreparationStatus, MonthlyReview, MonthlyWishState, NudgeMode, PersistedState, PhotoThemeSettings, Priority, RepeatRule, Screen, SharedEvent, SharedParticipantPrefs, Task, ThemeMode, TimeTab, UrgencyStatus, WidgetSize, WishAction, WishMonthMap } from './types';
+import { Affirmation, CalendarMarks, Category, DeparturePlan, DeparturePreparationStatus, MonthlyReview, MonthlyWishState, NudgeMode, PersistedState, PhotoThemePhotoTarget, PhotoThemeSettings, Priority, RepeatRule, Screen, SharedEvent, SharedParticipantPrefs, Task, ThemeMode, TimeTab, UrgencyStatus, WidgetSize, WishAction, WishMonthMap } from './types';
 import { initialPlan } from './storage/rhythmState';
 import { loadRhythmState, saveRhythmState } from './storage/rhythmStorage';
 import { categories, priorities, completionIcons, categoryColors, designModes, chicUtilityPalettes } from './features/tasks/taskUtils';
@@ -515,8 +515,10 @@ export default function App() {
   const planTier: PlanTier = process.env.EXPO_PUBLIC_RHYTHM_PLAN === 'premium' ? 'premium' : 'free';
   const planTierRef = React.useRef<PlanTier>(planTier);
   const photoThemeEnabled = designMode === 'photo' && hasPremiumAccess(planTier, 'photo_design');
-  const uiDesignMode: Exclude<DesignMode, 'photo'> = designMode === 'photo' ? 'minimal' : designMode;
-  const isPhotoDesign = photoThemeEnabled && Boolean(photoTheme.imageUri);
+  const uiDesignMode: Exclude<DesignMode, 'photo'> = designMode === 'photo' ? 'chic' : designMode;
+  const photoBackgroundUri = photoThemeEnabled && photoTheme.placement !== 'top' ? photoTheme.imageUri : undefined;
+  const photoTopImageUri = photoThemeEnabled ? photoTheme.topImageUris?.[screen] ?? (photoTheme.placement === 'top' ? photoTheme.imageUri : undefined) : undefined;
+  const focusBackgroundUri = photoThemeEnabled ? photoTheme.focusBackgroundUri : undefined;
   const effectiveChicPattern = getEffectiveChicPattern(planTier, chicPattern) as ChicPattern;
   const currentWishMonthKey = wishMonthKey(now);
   const currentWishState = getMonthlyWishState(wishMonths, currentWishMonthKey);
@@ -574,7 +576,7 @@ export default function App() {
     await Notifications.cancelScheduledNotificationAsync(affirmation.notificationId ?? `affirmation:${affirmation.id}`).catch(() => undefined);
     setAffirmations((current) => current.filter((item) => item.id !== affirmation.id));
   }, []);
-  const pickPhotoTheme = React.useCallback(async () => {
+  const pickPhotoTheme = React.useCallback(async (target: PhotoThemePhotoTarget) => {
     if (!hasPremiumAccess(planTier, 'photo_design')) {
       openPremiumFeature('photo_design');
       return;
@@ -586,7 +588,12 @@ export default function App() {
     }
     const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], allowsEditing: true, aspect: [4, 3], quality: 0.82 });
     const selectedAsset = result.canceled ? undefined : result.assets[0];
-    if (selectedAsset?.uri) setPhotoTheme((current) => ({ ...current, imageUri: selectedAsset.uri }));
+    if (!selectedAsset?.uri) return;
+    setPhotoTheme((current) => {
+      if (target === 'background') return { ...current, placement: 'background', imageUri: selectedAsset.uri };
+      if (target === 'focus') return { ...current, focusBackgroundUri: selectedAsset.uri };
+      return { ...current, topImageUris: { ...current.topImageUris, [target]: selectedAsset.uri } };
+    });
   }, [openPremiumFeature, planTier]);
 
   const saveTaskAsTemplate = React.useCallback((task: Task) => {
@@ -759,7 +766,12 @@ export default function App() {
         setChicPattern(saved.chicPattern ? normalizeChicPattern(saved.chicPattern) : 'plain');
         setChicCheckColor(normalizeChicCheckColor(saved.chicCheckColor));
         setAffirmations(saved.affirmations ?? []);
-        setPhotoTheme({ placement: saved.photoTheme?.placement === 'top' ? 'top' : 'background', imageUri: saved.photoTheme?.imageUri });
+        setPhotoTheme({
+          placement: saved.photoTheme?.placement === 'top' ? 'top' : 'background',
+          imageUri: saved.photoTheme?.imageUri,
+          topImageUris: saved.photoTheme?.topImageUris ?? {},
+          focusBackgroundUri: saved.photoTheme?.focusBackgroundUri,
+        });
         setRecoveryHistory(saved.recoveryHistory ?? []);
         setFocusSessions(saved.focusSessions ?? []);
         const loadedBehaviorEvents = saved.behaviorEvents ?? [];
@@ -1240,12 +1252,12 @@ export default function App() {
   return (
         <SafeAreaView style={[styles.safe, { backgroundColor: uiDesignMode === 'chic' ? (isCheckChicPattern(effectiveChicPattern) ? getChicCheckColor(chicCheckColor).background : getChicPatternVisual(effectiveChicPattern).background) : theme.colors.screenBackground }, uiDesignMode === 'minimal' && styles.safeMinimal, uiDesignMode === 'dark' && styles.safeDark, uiDesignMode === 'chic' && styles.safeChic, designMode === 'photo' && styles.safePhoto]}>
       <StatusBar style={uiDesignMode === 'dark' ? 'light' : 'dark'} />
-      {isPhotoDesign && photoTheme.placement === 'background' && <View pointerEvents="none" style={styles.photoThemeBackgroundWrap}><Image source={{ uri: photoTheme.imageUri }} resizeMode="cover" style={styles.photoThemeBackground} /></View>}
+      {photoBackgroundUri && <View pointerEvents="none" style={styles.photoThemeBackgroundWrap}><Image source={{ uri: photoBackgroundUri }} resizeMode="cover" style={styles.photoThemeBackground} /></View>}
       <View style={styles.app}>
         <BThemeRibbonPreload />
         <CThemeRibbonPreload />
-        {uiDesignMode === 'chic' && <View pointerEvents="none" style={StyleSheet.absoluteFillObject}><ChicPatternDecor pattern={effectiveChicPattern} accent={isCheckChicPattern(effectiveChicPattern) ? getChicCheckColor(chicCheckColor).accent : getChicPatternVisual(effectiveChicPattern).accent} warm={isCheckChicPattern(effectiveChicPattern) ? getChicCheckColor(chicCheckColor).warm : getChicPatternVisual(effectiveChicPattern).warm} checkColor={chicCheckColor} /></View>}
-        {isPhotoDesign && photoTheme.placement === 'top' && <Image source={{ uri: photoTheme.imageUri }} resizeMode="cover" style={styles.photoThemeTopImage} />}
+        {uiDesignMode === 'chic' && !photoThemeEnabled && <View pointerEvents="none" style={StyleSheet.absoluteFillObject}><ChicPatternDecor pattern={effectiveChicPattern} accent={isCheckChicPattern(effectiveChicPattern) ? getChicCheckColor(chicCheckColor).accent : getChicPatternVisual(effectiveChicPattern).accent} warm={isCheckChicPattern(effectiveChicPattern) ? getChicCheckColor(chicCheckColor).warm : getChicPatternVisual(effectiveChicPattern).warm} checkColor={chicCheckColor} /></View>}
+        {photoTopImageUri && <Image source={{ uri: photoTopImageUri }} resizeMode="cover" style={styles.photoThemeTopImage} />}
         <Header designMode={uiDesignMode} now={now} />
 
         <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
@@ -1319,6 +1331,7 @@ export default function App() {
               tasks={tasks}
               now={now}
               designMode={uiDesignMode}
+              focusBackgroundUri={focusBackgroundUri}
               chicPattern={effectiveChicPattern}
               planTier={planTier}
               initialTab={timelineInitialTab}
@@ -1376,9 +1389,14 @@ export default function App() {
                onChicCheckColor={setChicCheckColor}
                onSaveAffirmation={saveAffirmation}
                onDeleteAffirmation={deleteAffirmation}
-               onPickPhotoTheme={() => void pickPhotoTheme()}
-               onPhotoThemePlacement={(placement) => setPhotoTheme((current) => ({ ...current, placement }))}
-               onClearPhotoTheme={() => setPhotoTheme((current) => ({ ...current, imageUri: undefined }))}
+               onPickPhotoTheme={(target) => void pickPhotoTheme(target)}
+               onClearPhotoTheme={(target) => setPhotoTheme((current) => {
+                 if (target === 'background') return { ...current, imageUri: undefined };
+                 if (target === 'focus') return { ...current, focusBackgroundUri: undefined };
+                 const topImageUris = { ...current.topImageUris };
+                 delete topImageUris[target];
+                 return { ...current, topImageUris };
+               })}
               templates={taskTemplates}
               savedTemplates={savedTaskTemplates}
               onAddTemplate={(title) => setTaskTemplates((current) => current.includes(title) ? current : [...current, title])}
@@ -1452,7 +1470,7 @@ function TimeTabButton({ tab, active, designMode, chicPattern, themeAccent, seco
   return <Pressable style={[styles.timeTab, styles.timeTabMinimal, isDark && styles.darkSurface, active && styles.timeTabActive, active && { backgroundColor: isDark ? '#B9A8D8' : themeAccent, borderColor: isDark ? '#7B6BE8' : themeAccent }]} onPress={onPress}><Text style={[styles.timeTabText, { color: isDark ? '#101114' : secondaryText }, active && styles.timeTabTextActive]}>{label}</Text></Pressable>;
 }
 
-function FocusMode({ tasks, designMode, onFocusCompleted, onBehaviorEvent }: { tasks: Task[]; designMode: DesignMode; onFocusCompleted: (session: FocusSession) => void; onBehaviorEvent: (event: BehaviorEvent) => void }) {
+function FocusMode({ tasks, designMode, backgroundImageUri, onFocusCompleted, onBehaviorEvent }: { tasks: Task[]; designMode: DesignMode; backgroundImageUri?: string; onFocusCompleted: (session: FocusSession) => void; onBehaviorEvent: (event: BehaviorEvent) => void }) {
   const availableTasks = tasks.filter((task) => !task.done);
   const [selectedTaskId, setSelectedTaskId] = useState(availableTasks[0]?.id ?? '');
   const [duration, setDuration] = useState(25);
@@ -1547,7 +1565,8 @@ function FocusMode({ tasks, designMode, onFocusCompleted, onBehaviorEvent }: { t
   const isChic = designMode === 'chic';
   const modeCopy = isMinimal ? '今はこれだけ' : isChic ? '静かな時間を、ひとつだけ。' : '相棒も隣でいっしょに集中！';
   return <>
-    <View style={[styles.focusHero, isChic && styles.focusHeroChic, ]}>
+    <View style={[styles.focusHero, isChic && styles.focusHeroChic, backgroundImageUri && styles.focusHeroWithPhoto]}>
+      {backgroundImageUri && <><Image source={{ uri: backgroundImageUri }} resizeMode="cover" style={styles.focusHeroPhoto} /><View pointerEvents="none" style={styles.focusHeroPhotoShade} /></>}
       {isChic && <><View style={styles.focusChicFlowerOne}><Text>✿</Text></View><View style={styles.focusChicFlowerTwo}><Text>✦</Text></View></>}
       <Text style={[styles.focusEyebrow, !isMinimal && styles.focusEyebrowLight]}>{running ? '集中中' : '集中タイマー'}</Text>
       <Text style={[styles.focusTitle, !isMinimal && styles.focusTitleLight]}>{selectedTask?.title ?? '集中するタスクを選ぼう'}</Text>

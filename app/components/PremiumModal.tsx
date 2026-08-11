@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Modal, Pressable, Text, View } from 'react-native';
+import { Modal, Pressable, ScrollView, Text, View } from 'react-native';
 import { ChicPattern, DesignMode } from '../theme';
 import { PremiumGuideFeatureId } from '../premiumGuide';
 
@@ -79,6 +79,7 @@ export function PremiumModal({ visible, initialFeatureId, designMode, chicPatter
           </View>
           <Pressable style={[styles.premiumHeaderClose, { borderColor: theme.colors.primaryAccent }]} onPress={onClose}><Text style={[styles.premiumCloseButtonText, { color: theme.colors.primaryAccent }]}>閉じる</Text></Pressable>
         </View>
+        <ScrollView style={styles.premiumCarouselArea} contentContainerStyle={styles.premiumModalScroll} showsVerticalScrollIndicator={false}>
         <View style={styles.premiumFeaturePicker}>
           {PREMIUM_GUIDE_FEATURES.map((feature, index) => <PremiumFeatureEntryCard key={feature.id} number={String(index + 1).padStart(2, '0')} title={feature.title} active={feature.id === selectedFeature.id} designMode={designMode} chicPattern={chicPattern} onPress={() => setSelectedFeatureId(feature.id)} components={components} styles={styles} />)}
         </View>
@@ -87,6 +88,7 @@ export function PremiumModal({ visible, initialFeatureId, designMode, chicPatter
           {selectedFeature.id === 'month' && <View style={styles.premiumHistoryNote}><Text style={styles.premiumHistoryTitle}>過去の記録も、あとから振り返れる</Text><Text style={styles.premiumHistoryCopy}>7日を超えた完了記録や、集中・出発の記録も確認できます。</Text></View>}
         </View>
         <Pressable style={[styles.premiumCloseButton, { borderColor: theme.colors.primaryAccent }]} onPress={onClose}><Text style={[styles.premiumCloseButtonText, { color: theme.colors.primaryAccent }]}>Rhythmに戻る</Text></Pressable>
+        </ScrollView>
       </Pressable>
     </Pressable>
   </Modal>;

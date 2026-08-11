@@ -100,9 +100,14 @@ export type Affirmation = {
   notificationId?: string;
 };
 
+export type PhotoThemeTopSlot = 'home' | 'timeline' | 'analysis' | 'wish' | 'settings';
+export type PhotoThemePhotoTarget = 'background' | 'focus' | PhotoThemeTopSlot;
+
 export type PhotoThemeSettings = {
   imageUri?: string;
   placement: 'background' | 'top';
+  topImageUris?: Partial<Record<PhotoThemeTopSlot, string>>;
+  focusBackgroundUri?: string;
 };
 
 export type WishMonthMap = Record<string, MonthlyWishState>;

@@ -19,6 +19,7 @@ export function TimelineScreen({
   tasks,
   now,
   designMode,
+  focusBackgroundUri,
   initialTab,
   chicPattern,
   planTier,
@@ -52,6 +53,7 @@ export function TimelineScreen({
   tasks: Task[];
   now: Date;
   designMode: DesignMode;
+  focusBackgroundUri?: string;
   initialTab: TimeTab;
   chicPattern: ChicPattern;
   planTier: PlanTier;
@@ -138,7 +140,7 @@ export function TimelineScreen({
         {(['departure', 'deadline', 'calendar', 'focus'] as TimeTab[]).map((tab) => <TimeTabButton key={tab} tab={tab} active={timeTab === tab} designMode={designMode} chicPattern={chicPattern} themeAccent={theme.colors.primaryAccent} secondaryText={theme.colors.secondaryText} onPress={() => setTimeTab(tab)} />)}
       </View>
 
-      {timeTab === 'focus' ? <FocusMode tasks={tasks} designMode={designMode} onFocusCompleted={onFocusCompleted} onBehaviorEvent={onBehaviorEvent} /> : timeTab === 'calendar' ? <TaskScheduleCalendar tasks={tasks} plans={plans} externalEvents={calendarEvents} now={now} designMode={designMode} chicPattern={chicPattern} planTier={planTier} focusDate={calendarFocusDate} calendarMarks={calendarMarks} onSetCalendarMark={onSetCalendarMark} onPremium={onPremium} onEditTask={onEditTask} onDeleteTask={onDeleteTask} onEditPlan={openPlanEditor} onDeletePlan={onDelete} onOpenMap={(item: DeparturePlan) => void openMapSearch(getMapSearchTarget(item))} behaviorEvents={behaviorEvents} departureCheckIns={departureCheckIns} departurePreparationStatuses={departurePreparationStatuses} /> : timeTab === 'deadline' ? <>
+      {timeTab === 'focus' ? <FocusMode tasks={tasks} designMode={designMode} backgroundImageUri={focusBackgroundUri} onFocusCompleted={onFocusCompleted} onBehaviorEvent={onBehaviorEvent} /> : timeTab === 'calendar' ? <TaskScheduleCalendar tasks={tasks} plans={plans} externalEvents={calendarEvents} now={now} designMode={designMode} chicPattern={chicPattern} planTier={planTier} focusDate={calendarFocusDate} calendarMarks={calendarMarks} onSetCalendarMark={onSetCalendarMark} onPremium={onPremium} onEditTask={onEditTask} onDeleteTask={onDeleteTask} onEditPlan={openPlanEditor} onDeletePlan={onDelete} onOpenMap={(item: DeparturePlan) => void openMapSearch(getMapSearchTarget(item))} behaviorEvents={behaviorEvents} departureCheckIns={departureCheckIns} departurePreparationStatuses={departurePreparationStatuses} /> : timeTab === 'deadline' ? <>
         <View style={[styles.departureListHeader, isDark && styles.darkPanel]}><View><Text style={[styles.sectionTitle, isDark && styles.darkBodyText]}>今日のスケジュール</Text><Text style={[styles.sectionSub, isDark && styles.darkMutedText]}>予定がなくても時間の流れを確認できます</Text></View><Text style={[styles.sectionSub, isDark && styles.darkMutedText]}>{dateKey(now).replaceAll('-', '.')}</Text></View>
         <DailyScheduleTimeline date={dateKey(now)} tasks={tasks} plans={plans} externalEvents={calendarEvents} now={now} designMode={designMode} onEditTask={onEditTask} onEditPlan={openPlanEditor} />
       </> : <>
