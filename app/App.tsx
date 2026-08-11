@@ -20,6 +20,7 @@ import { HomeScreen } from './screens/HomeScreen';
 import { TimelineScreen } from './screens/TimelineScreen';
 import { SettingsScreen } from './screens/SettingsScreen';
 import { HistoryScreen } from './screens/HistoryScreen';
+import { WishPremiumLockScreen } from './screens/WishPremiumLockScreen';
 import { TaskModal } from './components/TaskModal';
 import { PremiumModal } from './components/PremiumModal';
 import { BottomNav } from './components/BottomNav';
@@ -548,12 +549,8 @@ export default function App() {
     setPremiumOpen(true);
   }, []);
   const openWish = React.useCallback(() => {
-    if (!hasPremiumAccess(planTier, 'wish_planning')) {
-      openPremiumFeature('wish');
-      return;
-    }
     setScreen('wish');
-  }, [openPremiumFeature, planTier]);
+  }, []);
   const saveAffirmation = React.useCallback(async (draft: Affirmation) => {
     if (!hasPremiumAccess(planTier, 'affirmations')) {
       openPremiumFeature('affirmation');
@@ -1292,7 +1289,8 @@ export default function App() {
             />
           )}
 
-          {screen === 'wish' && hasPremiumAccess(planTier, 'wish_planning') && (
+          {screen === 'wish' && (
+            hasPremiumAccess(planTier, 'wish_planning') ? (
             <WishScreen
               designMode={uiDesignMode}
               chicPattern={effectiveChicPattern}
@@ -1302,6 +1300,13 @@ export default function App() {
               onCreateTaskFromAction={createTaskFromWishAction}
               onBack={() => setScreen('home')}
             />
+            ) : (
+              <WishPremiumLockScreen
+                designMode={uiDesignMode}
+                onOpenPremium={() => openPremiumFeature('wish')}
+                styles={styles}
+              />
+            )
           )}
 
           {screen === 'timeline' && (
