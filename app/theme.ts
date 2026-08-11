@@ -1,4 +1,4 @@
-export type DesignMode = 'minimal' | 'dark' | 'chic';
+export type DesignMode = 'minimal' | 'dark' | 'chic' | 'photo';
 export type ChicPattern = 'plain' | 'floral' | 'floralSoft' | 'floralSeasonal' | 'floralDark' | 'dot' | 'checkLavenderSatin' | 'checkBeigeNoir' | 'checkMauveFrame';
 export type ChicCheckColor = 'monochrome' | 'cool' | 'warm' | 'green';
 
@@ -47,6 +47,12 @@ export function getThemeTokens(mode: DesignMode): ThemeTokens {
     colors: { screenBackground: '#F2F2F0', surface: '#FEFEFC', secondarySurface: '#E8E9E6', primaryText: '#202127', secondaryText: '#72757D', primaryAccent: '#25262C', secondaryAccent: '#646872', softAccent: '#E6E5EE', border: '#D6D7D3', success: '#446552', warning: '#80633E', danger: '#9A4646' },
     radius: { large: 8, small: 5, button: 6, chip: 6, modal: 12 },
     shadow: { color: '#25262C', opacity: 0.05, radius: 12, y: 4 },
+  };
+  if (mode === 'photo') return {
+    ...shared,
+    colors: { screenBackground: '#F7F1EF', surface: '#FFFCFA', secondarySurface: '#F8ECEB', primaryText: '#2C252B', secondaryText: '#76666D', primaryAccent: '#9C5D79', secondaryAccent: '#786EAF', softAccent: '#F1DDE4', border: '#E7D5D9', success: '#5B8D79', warning: '#B9824D', danger: '#BB5D6D' },
+    radius: { large: 18, small: 10, button: 12, chip: 999, modal: 22 },
+    shadow: { color: '#76505E', opacity: 0.12, radius: 16, y: 6 },
   };
   return {
     ...shared,

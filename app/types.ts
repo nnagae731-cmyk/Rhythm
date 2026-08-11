@@ -91,6 +91,20 @@ export type MonthlyWishState = {
   reviews?: MonthlyReview[];
 };
 
+export type Affirmation = {
+  id: string;
+  text: string;
+  time: string;
+  enabled: boolean;
+  createdAt: string;
+  notificationId?: string;
+};
+
+export type PhotoThemeSettings = {
+  imageUri?: string;
+  placement: 'background' | 'top';
+};
+
 export type WishMonthMap = Record<string, MonthlyWishState>;
 export type CalendarMarks = Record<string, string>;
 export type DeparturePreparationStatus = 'preparing' | 'prepared';
@@ -155,4 +169,6 @@ export type PersistedState = {
   sharedParticipantIdsByToken?: Record<string, string>;
   sharedParticipantPrefsByToken?: Record<string, SharedParticipantPrefs>;
   departurePreparationStatuses?: Record<string, DeparturePreparationStatus>;
+  affirmations?: Affirmation[];
+  photoTheme?: PhotoThemeSettings;
 };

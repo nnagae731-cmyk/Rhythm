@@ -1,4 +1,5 @@
 import * as Calendar from 'expo-calendar';
+import * as ImagePicker from 'expo-image-picker';
 import * as Notifications from 'expo-notifications';
 import { Audio } from 'expo-av';
 import { StatusBar } from 'expo-status-bar';
@@ -25,7 +26,7 @@ import { BottomNav } from './components/BottomNav';
 import { GuideModal } from './components/GuideModal';
 import { RecoveryModal } from './components/RecoveryModal';
 import { styles } from './styles/appStyles';
-import { Screen, TimeTab, WidgetSize, Category, Priority, RepeatRule, NudgeMode, ThemeMode, UrgencyStatus, Task, DeparturePlan, PersistedState, WishMonthMap, MonthlyWishState, MonthlyReview, WishAction, SharedEvent, SharedParticipantPrefs, CalendarMarks, DeparturePreparationStatus } from './types';
+import { Affirmation, CalendarMarks, Category, DeparturePlan, DeparturePreparationStatus, MonthlyReview, MonthlyWishState, NudgeMode, PersistedState, PhotoThemeSettings, Priority, RepeatRule, Screen, SharedEvent, SharedParticipantPrefs, Task, ThemeMode, TimeTab, UrgencyStatus, WidgetSize, WishAction, WishMonthMap } from './types';
 import { initialPlan } from './storage/rhythmState';
 import { loadRhythmState, saveRhythmState } from './storage/rhythmStorage';
 import { categories, priorities, completionIcons, categoryColors, designModes, chicUtilityPalettes } from './features/tasks/taskUtils';
@@ -39,6 +40,7 @@ import {
   Alert,
   Animated,
   Easing,
+  Image,
   Linking,
   Modal,
   Platform,
@@ -437,6 +439,24 @@ async function ensureNotifications() {
   return true;
 }
 
+async function scheduleAffirmationNotification(affirmation: Affirmation) {
+  const minutes = parseClock(affirmation.time);
+  return Notifications.scheduleNotificationAsync({
+    identifier: `affirmation:${affirmation.id}`,
+    content: {
+      title: '今日の言葉',
+      body: affirmation.text,
+      data: { affirmationId: affirmation.id, kind: 'affirmation' },
+      sound: 'default',
+    },
+    trigger: {
+      type: Notifications.SchedulableTriggerInputTypes.DAILY,
+      hour: Math.floor(minutes / 60),
+      minute: minutes % 60,
+    },
+  });
+}
+
 export default function App() {
   const [screen, setScreen] = useState<Screen>('home');
   const [timelineInitialTab, setTimelineInitialTab] = useState<TimeTab>('departure');
@@ -458,6 +478,8 @@ export default function App() {
   const [designMode, setDesignMode] = useState<DesignMode>('chic');
   const [chicPattern, setChicPattern] = useState<ChicPattern>('plain');
   const [chicCheckColor, setChicCheckColor] = useState<ChicCheckColor>('cool');
+  const [affirmations, setAffirmations] = useState<Affirmation[]>([]);
+  const [photoTheme, setPhotoTheme] = useState<PhotoThemeSettings>({ placement: 'background' });
   const [recoveryHistory, setRecoveryHistory] = useState<RecoveryRecord[]>([]);
   const [focusSessions, setFocusSessions] = useState<FocusSession[]>([]);
   const [behaviorEvents, setBehaviorEvents] = useState<BehaviorEvent[]>([]);
@@ -491,7 +513,9 @@ export default function App() {
   const [hydrated, setHydrated] = useState(false);
   const planTier: PlanTier = process.env.EXPO_PUBLIC_RHYTHM_PLAN === 'premium' ? 'premium' : 'free';
   const planTierRef = React.useRef<PlanTier>(planTier);
-  const uiDesignMode = designMode;
+  const photoThemeEnabled = designMode === 'photo' && hasPremiumAccess(planTier, 'photo_design');
+  const uiDesignMode: Exclude<DesignMode, 'photo'> = designMode === 'photo' ? 'minimal' : designMode;
+  const isPhotoDesign = photoThemeEnabled && Boolean(photoTheme.imageUri);
   const effectiveChicPattern = getEffectiveChicPattern(planTier, chicPattern) as ChicPattern;
   const currentWishMonthKey = wishMonthKey(now);
   const currentWishState = getMonthlyWishState(wishMonths, currentWishMonthKey);
@@ -523,6 +547,50 @@ export default function App() {
     setPremiumTargetFeature(featureId);
     setPremiumOpen(true);
   }, []);
+  const openWish = React.useCallback(() => {
+    if (!hasPremiumAccess(planTier, 'wish_planning')) {
+      openPremiumFeature('wish');
+      return;
+    }
+    setScreen('wish');
+  }, [openPremiumFeature, planTier]);
+  const saveAffirmation = React.useCallback(async (draft: Affirmation) => {
+    if (!hasPremiumAccess(planTier, 'affirmations')) {
+      openPremiumFeature('affirmation');
+      return;
+    }
+    const existing = affirmations.find((item) => item.id === draft.id);
+    await Notifications.cancelScheduledNotificationAsync(existing?.notificationId ?? `affirmation:${draft.id}`).catch(() => undefined);
+    const next: Affirmation = { ...draft, notificationId: undefined };
+    if (next.enabled) {
+      const allowed = await ensureNotifications();
+      if (!allowed) {
+        next.enabled = false;
+        Alert.alert('通知を許可すると、指定した時間に言葉を届けられます。');
+      } else {
+        next.notificationId = await scheduleAffirmationNotification(next).catch(() => undefined);
+      }
+    }
+    setAffirmations((current) => current.some((item) => item.id === next.id) ? current.map((item) => item.id === next.id ? next : item) : [next, ...current]);
+  }, [affirmations, openPremiumFeature, planTier]);
+  const deleteAffirmation = React.useCallback(async (affirmation: Affirmation) => {
+    await Notifications.cancelScheduledNotificationAsync(affirmation.notificationId ?? `affirmation:${affirmation.id}`).catch(() => undefined);
+    setAffirmations((current) => current.filter((item) => item.id !== affirmation.id));
+  }, []);
+  const pickPhotoTheme = React.useCallback(async () => {
+    if (!hasPremiumAccess(planTier, 'photo_design')) {
+      openPremiumFeature('photo_design');
+      return;
+    }
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permission.granted) {
+      Alert.alert('写真へのアクセスを許可すると、背景やトップ画像に設定できます。');
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], allowsEditing: true, aspect: [4, 3], quality: 0.82 });
+    const selectedAsset = result.canceled ? undefined : result.assets[0];
+    if (selectedAsset?.uri) setPhotoTheme((current) => ({ ...current, imageUri: selectedAsset.uri }));
+  }, [openPremiumFeature, planTier]);
 
   const saveTaskAsTemplate = React.useCallback((task: Task) => {
     if (!hasPremiumAccess(planTier, 'saved_task_templates')) {
@@ -689,10 +757,12 @@ export default function App() {
         if (saved.widgetSize) setWidgetSize(saved.widgetSize);
         if (typeof saved.showCompleted === 'boolean') setShowCompleted(saved.showCompleted);
         if (saved.completionIcon) setCompletionIcon(saved.completionIcon);
-        if (saved.designMode === 'minimal' || saved.designMode === 'dark' || saved.designMode === 'chic') setDesignMode(saved.designMode);
+        if (saved.designMode === 'minimal' || saved.designMode === 'dark' || saved.designMode === 'chic' || saved.designMode === 'photo') setDesignMode(saved.designMode);
         else setDesignMode('chic');
         setChicPattern(saved.chicPattern ? normalizeChicPattern(saved.chicPattern) : 'plain');
         setChicCheckColor(normalizeChicCheckColor(saved.chicCheckColor));
+        setAffirmations(saved.affirmations ?? []);
+        setPhotoTheme({ placement: saved.photoTheme?.placement === 'top' ? 'top' : 'background', imageUri: saved.photoTheme?.imageUri });
         setRecoveryHistory(saved.recoveryHistory ?? []);
         setFocusSessions(saved.focusSessions ?? []);
         const loadedBehaviorEvents = saved.behaviorEvents ?? [];
@@ -876,9 +946,16 @@ export default function App() {
 
   useEffect(() => {
     if (!hydrated) return;
-    const state: PersistedState = { tasks, plan, departurePlans, widgetSize, showCompleted, completionIcon, designMode, taskTemplates, savedTaskTemplates, chicPattern, chicCheckColor, recoveryHistory, focusSessions, departureCheckIns, behaviorEvents, wishMonths, calendarMarks, sharedEvents, sharedParticipantIdsByToken, sharedParticipantPrefsByToken, departurePreparationStatuses };
+    const state: PersistedState = { tasks, plan, departurePlans, widgetSize, showCompleted, completionIcon, designMode, taskTemplates, savedTaskTemplates, chicPattern, chicCheckColor, recoveryHistory, focusSessions, departureCheckIns, behaviorEvents, wishMonths, calendarMarks, sharedEvents, sharedParticipantIdsByToken, sharedParticipantPrefsByToken, departurePreparationStatuses, affirmations, photoTheme };
     saveRhythmState(state).catch(() => undefined);
-  }, [tasks, plan, departurePlans, widgetSize, showCompleted, completionIcon, designMode, taskTemplates, savedTaskTemplates, chicPattern, chicCheckColor, recoveryHistory, focusSessions, departureCheckIns, behaviorEvents, wishMonths, calendarMarks, sharedEvents, sharedParticipantIdsByToken, sharedParticipantPrefsByToken, departurePreparationStatuses, hydrated]);
+  }, [tasks, plan, departurePlans, widgetSize, showCompleted, completionIcon, designMode, taskTemplates, savedTaskTemplates, chicPattern, chicCheckColor, recoveryHistory, focusSessions, departureCheckIns, behaviorEvents, wishMonths, calendarMarks, sharedEvents, sharedParticipantIdsByToken, sharedParticipantPrefsByToken, departurePreparationStatuses, affirmations, photoTheme, hydrated]);
+
+  useEffect(() => {
+    if (!hydrated || planTier === 'premium') return;
+    affirmations.forEach((affirmation) => {
+      void Notifications.cancelScheduledNotificationAsync(affirmation.notificationId ?? `affirmation:${affirmation.id}`).catch(() => undefined);
+    });
+  }, [affirmations, hydrated, planTier]);
 
   useEffect(() => {
     const openFromUrl = (url: string) => handleSharedEventLink(url);
@@ -1164,12 +1241,14 @@ export default function App() {
   };
 
   return (
-        <SafeAreaView style={[styles.safe, { backgroundColor: uiDesignMode === 'chic' ? (isCheckChicPattern(effectiveChicPattern) ? getChicCheckColor(chicCheckColor).background : getChicPatternVisual(effectiveChicPattern).background) : theme.colors.screenBackground }, uiDesignMode === 'minimal' && styles.safeMinimal, uiDesignMode === 'dark' && styles.safeDark, uiDesignMode === 'chic' && styles.safeChic]}>
+        <SafeAreaView style={[styles.safe, { backgroundColor: uiDesignMode === 'chic' ? (isCheckChicPattern(effectiveChicPattern) ? getChicCheckColor(chicCheckColor).background : getChicPatternVisual(effectiveChicPattern).background) : theme.colors.screenBackground }, uiDesignMode === 'minimal' && styles.safeMinimal, uiDesignMode === 'dark' && styles.safeDark, uiDesignMode === 'chic' && styles.safeChic, designMode === 'photo' && styles.safePhoto]}>
       <StatusBar style={uiDesignMode === 'dark' ? 'light' : 'dark'} />
+      {isPhotoDesign && photoTheme.placement === 'background' && <View pointerEvents="none" style={styles.photoThemeBackgroundWrap}><Image source={{ uri: photoTheme.imageUri }} resizeMode="cover" style={styles.photoThemeBackground} /></View>}
       <View style={styles.app}>
         <BThemeRibbonPreload />
         <CThemeRibbonPreload />
         {uiDesignMode === 'chic' && <View pointerEvents="none" style={StyleSheet.absoluteFillObject}><ChicPatternDecor pattern={effectiveChicPattern} accent={isCheckChicPattern(effectiveChicPattern) ? getChicCheckColor(chicCheckColor).accent : getChicPatternVisual(effectiveChicPattern).accent} warm={isCheckChicPattern(effectiveChicPattern) ? getChicCheckColor(chicCheckColor).warm : getChicPatternVisual(effectiveChicPattern).warm} checkColor={chicCheckColor} /></View>}
+        {isPhotoDesign && photoTheme.placement === 'top' && <Image source={{ uri: photoTheme.imageUri }} resizeMode="cover" style={styles.photoThemeTopImage} />}
         <Header designMode={uiDesignMode} now={now} />
 
         <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
@@ -1205,7 +1284,7 @@ export default function App() {
               onPostpone={(id) => setTasks((current) => current.map((task) => task.id === id ? { ...task, scheduledDate: todayInputValue(1), bucket: 'later' } : task))}
               onBucket={(id, bucket) => setTasks((current) => current.map((task) => task.id === id ? { ...task, bucket } : task))}
               onOpenTime={(tab) => { setTimelineInitialTab(tab); setScreen('timeline'); }}
-              onOpenWish={() => setScreen('wish')}
+               onOpenWish={openWish}
               styles={styles}
               renderTodayWinStrip={(todayTasks) => <TodayWinStrip tasks={todayTasks} designMode={uiDesignMode} chicPattern={effectiveChicPattern} onRestore={(id) => setTasks((current) => current.map((task) => task.id === id ? { ...task, done: false, completedAt: undefined } : task))} />}
               PatternDecor={ChicPatternDecor}
@@ -1213,7 +1292,7 @@ export default function App() {
             />
           )}
 
-          {screen === 'wish' && (
+          {screen === 'wish' && hasPremiumAccess(planTier, 'wish_planning') && (
             <WishScreen
               designMode={uiDesignMode}
               chicPattern={effectiveChicPattern}
@@ -1271,20 +1350,30 @@ export default function App() {
               size={widgetSize}
               showCompleted={showCompleted}
               completionIcon={completionIcon}
-              designMode={uiDesignMode}
-              chicPattern={effectiveChicPattern}
-              chicCheckColor={chicCheckColor}
+               designMode={designMode}
+               chicPattern={effectiveChicPattern}
+               chicCheckColor={chicCheckColor}
+               affirmations={affirmations}
+               photoTheme={photoTheme}
               planTier={planTier}
               onSize={setWidgetSize}
               onShowCompleted={setShowCompleted}
               onCompletionIcon={setCompletionIcon}
-              onDesignMode={setDesignMode}
+               onDesignMode={(mode) => {
+                 if (mode === 'photo' && !hasPremiumAccess(planTier, 'photo_design')) { openPremiumFeature('photo_design'); return; }
+                 setDesignMode(mode);
+               }}
               onChicPattern={(pattern) => {
                 const feature = pattern === 'plain' || pattern === 'floral' || pattern === 'floralSoft' || pattern === 'floralSeasonal' || pattern === 'floralDark' ? undefined : getChicPatternFeatureId(pattern);
                 if (feature && !hasPremiumAccess(planTier, feature)) { openPremiumFeature(); return; }
                 setChicPattern(pattern);
               }}
-              onChicCheckColor={setChicCheckColor}
+               onChicCheckColor={setChicCheckColor}
+               onSaveAffirmation={saveAffirmation}
+               onDeleteAffirmation={deleteAffirmation}
+               onPickPhotoTheme={() => void pickPhotoTheme()}
+               onPhotoThemePlacement={(placement) => setPhotoTheme((current) => ({ ...current, placement }))}
+               onClearPhotoTheme={() => setPhotoTheme((current) => ({ ...current, imageUri: undefined }))}
               templates={taskTemplates}
               savedTemplates={savedTaskTemplates}
               onAddTemplate={(title) => setTaskTemplates((current) => current.includes(title) ? current : [...current, title])}
@@ -1311,7 +1400,7 @@ export default function App() {
           )}
         </ScrollView>
 
-        <BottomNav screen={screen} designMode={uiDesignMode} onChange={setScreen} />
+        <BottomNav screen={screen} designMode={uiDesignMode} onChange={(nextScreen) => nextScreen === 'wish' ? openWish() : setScreen(nextScreen)} />
       </View>
 
       <SharedEventScreen

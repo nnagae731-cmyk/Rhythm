@@ -27,6 +27,12 @@
           "color": "#7559E8",
           "defaultChannel": "reminders"
         }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "好きな写真をRhythmの背景やトップ画像に設定するために使用します。"
+        }
       ]
     ]
   }

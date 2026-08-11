@@ -17,7 +17,10 @@ export type PremiumFeature =
   | 'focus_analysis'
   | 'time_analysis'
   | 'behavior_analysis'
-  | 'saved_task_templates';
+  | 'saved_task_templates'
+  | 'wish_planning'
+  | 'affirmations'
+  | 'photo_design';
 
 export const FREE_SCHEDULE_DAYS = 7;
 

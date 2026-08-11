@@ -69,7 +69,7 @@ function monthDays(month: string) {
 
 export function WishScreen({ designMode: rawDesignMode, chicPattern, monthLabel, state, onSaveState, onCreateTaskFromAction, onBack }: WishScreenProps) {
   // Mono DarkはMono Lightと同じレイアウトを使い、色だけを反転する。
-  const designMode: 'minimal' | 'chic' = rawDesignMode === 'dark' ? 'minimal' : rawDesignMode;
+  const designMode: 'minimal' | 'chic' = rawDesignMode === 'dark' || rawDesignMode === 'photo' ? 'minimal' : rawDesignMode;
   const theme = getThemeTokens(rawDesignMode);
   const darkAccent = rawDesignMode === 'dark' ? '#C7B7FF' : theme.colors.primaryAccent;
   const progress = useMemo(() => calculateWishProgress(state), [state]);
