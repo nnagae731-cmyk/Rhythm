@@ -291,7 +291,7 @@ function PremiumRoutePreview({ plan, now, designMode, onOpenMap }: { plan?: Depa
   const theme = getThemeTokens(designMode);
   const isDark = designMode === 'dark';
   if (!plan) {
-    return <View style={[styles.routePreviewCard, { borderColor: isDark ? '#D6D9DE' : theme.colors.border, backgroundColor: isDark ? '#FFFFFF' : theme.colors.surface }]}>
+    return <View style={[styles.routePreviewCard, { borderColor: theme.colors.border, backgroundColor: theme.colors.surface }]}>
       <Text style={styles.routePreviewBadge}>PREMIUM</Text>
       <Text style={[styles.routePreviewTitle, isDark && styles.darkBodyText]}>次の予定に合わせて出発を考える</Text>
       <Text style={[styles.routePreviewCopy, isDark && styles.darkAccentText]}>出発カウントダウンを設定した予定が入ると、いちばん近い予定の準備・出発時刻をここに表示します。</Text>
@@ -304,7 +304,7 @@ function PremiumRoutePreview({ plan, now, designMode, onOpenMap }: { plan?: Depa
   const destinationLabel = destinationQuery || '目的地を入れると表示されます';
 
   return (
-    <View style={[styles.routePreviewCard, { borderColor: isDark ? '#D6D9DE' : theme.colors.border, backgroundColor: isDark ? '#FFFFFF' : theme.colors.surface }]}>
+    <View style={[styles.routePreviewCard, { borderColor: theme.colors.border, backgroundColor: theme.colors.surface }]}>
       <View style={styles.routePreviewHeader}>
         <View style={{ flex: 1 }}>
           <Text style={styles.routePreviewBadge}>PREMIUM</Text>
@@ -1559,7 +1559,7 @@ function TimeTabButton({ tab, active, designMode, chicPattern, themeAccent, seco
   const label = tab === 'departure' ? '出発' : tab === 'deadline' ? 'スケジュール' : tab === 'calendar' ? '予定表' : '集中';
   const isDark = designMode === 'dark';
   if (designMode === 'chic') return <Pressable style={[styles.timeTab, styles.timeTabChicPattern, { backgroundColor: palette.background }, active && { borderColor: palette.accent, borderWidth: 2 }]} onPress={onPress}>{!isCheckChicPattern(chicPattern) && <ChicPatternDecor pattern={chicPattern} accent={palette.accent} warm={palette.warm} density="compact" />}<View style={[styles.timeTabGlassLabel, active && styles.timeTabGlassLabelActive]}><Text style={[styles.timeTabText, { color: active ? palette.accent : '#8B7B82' }]}>{label}</Text>{active && <Text style={[styles.timeTabMarker, { color: palette.accent }]}>●</Text>}</View></Pressable>;
-  return <Pressable style={[styles.timeTab, styles.timeTabMinimal, isDark && styles.darkSurface, active && styles.timeTabActive, active && { backgroundColor: isDark ? '#B9A8D8' : themeAccent, borderColor: isDark ? '#7B6BE8' : themeAccent }]} onPress={onPress}><Text style={[styles.timeTabText, { color: isDark ? '#101114' : secondaryText }, active && styles.timeTabTextActive]}>{label}</Text></Pressable>;
+  return <Pressable style={[styles.timeTab, styles.timeTabMinimal, isDark && styles.darkSurface, active && styles.timeTabActive, active && { backgroundColor: isDark ? '#26365F' : themeAccent, borderColor: isDark ? '#6F8DFF' : themeAccent }]} onPress={onPress}><Text style={[styles.timeTabText, { color: isDark ? '#F4F7FC' : secondaryText }, active && styles.timeTabTextActive]}>{label}</Text></Pressable>;
 }
 
 function FocusMode({ tasks, designMode, backgroundImageUri, onFocusCompleted, onBehaviorEvent }: { tasks: Task[]; designMode: DesignMode; backgroundImageUri?: string; onFocusCompleted: (session: FocusSession) => void; onBehaviorEvent: (event: BehaviorEvent) => void }) {
@@ -1653,29 +1653,30 @@ function FocusMode({ tasks, designMode, backgroundImageUri, onFocusCompleted, on
   const seconds = secondsLeft % 60;
   const progress = 1 - secondsLeft / (duration * 60);
 
-  const isMinimal = designMode !== 'chic';
+  const isMinimal = designMode === 'minimal';
+  const isDark = designMode === 'dark';
   const isChic = designMode === 'chic';
   const modeCopy = isMinimal ? '今はこれだけ' : isChic ? '静かな時間を、ひとつだけ。' : '相棒も隣でいっしょに集中！';
   return <>
-    <View style={[styles.focusHero, isChic && styles.focusHeroChic, backgroundImageUri && styles.focusHeroWithPhoto]}>
+    <View style={[styles.focusHero, isMinimal && styles.focusHeroMinimal, isDark && styles.focusHeroDark, isChic && styles.focusHeroChic, backgroundImageUri && styles.focusHeroWithPhoto]}>
       {backgroundImageUri && <><Image source={{ uri: backgroundImageUri }} resizeMode="cover" style={styles.focusHeroPhoto} /><View pointerEvents="none" style={styles.focusHeroPhotoShade} /></>}
       {isChic && <><View style={styles.focusChicFlowerOne}><Text>✿</Text></View><View style={styles.focusChicFlowerTwo}><Text>✦</Text></View></>}
-      <Text style={[styles.focusEyebrow, !isMinimal && styles.focusEyebrowLight]}>{running ? '集中中' : '集中タイマー'}</Text>
-      <Text style={[styles.focusTitle, !isMinimal && styles.focusTitleLight]}>{selectedTask?.title ?? '集中するタスクを選ぼう'}</Text>
-      <Text style={[styles.focusCopy, !isMinimal && styles.focusCopyLight]}>{modeCopy}</Text>
-      <View style={[styles.focusTimerRing, isChic && styles.focusTimerRingChic, ]}>
-        <Text style={[styles.focusTime, !isMinimal && styles.focusTimeLight]}>{String(minutes).padStart(2, '0')}:{String(seconds).padStart(2, '0')}</Text>
-        <Text style={[styles.focusTimerState, isChic && styles.focusTimerStateChic, ]}>{running ? '集中中' : secondsLeft === 0 ? 'できた！' : '準備OK'}</Text>
+      <Text style={[styles.focusEyebrow, isMinimal && styles.focusEyebrowMinimal, isDark && styles.focusEyebrowDark, isChic && styles.focusEyebrowLight]}>{running ? '集中中' : '集中タイマー'}</Text>
+      <Text style={[styles.focusTitle, isMinimal && styles.focusTitleMinimal, !isMinimal && styles.focusTitleLight]}>{selectedTask?.title ?? '集中するタスクを選ぼう'}</Text>
+      <Text style={[styles.focusCopy, isMinimal && styles.focusCopyMinimal, isDark && styles.focusCopyDark, isChic && styles.focusCopyLight]}>{modeCopy}</Text>
+      <View style={[styles.focusTimerRing, isMinimal && styles.focusTimerRingMinimal, isDark && styles.focusTimerRingDark, isChic && styles.focusTimerRingChic, ]}>
+        <Text style={[styles.focusTime, isMinimal && styles.focusTimeMinimal, !isMinimal && styles.focusTimeLight]}>{String(minutes).padStart(2, '0')}:{String(seconds).padStart(2, '0')}</Text>
+        <Text style={[styles.focusTimerState, isMinimal && styles.focusTimerStateMinimal, isDark && styles.focusTimerStateDark, isChic && styles.focusTimerStateChic, ]}>{running ? '集中中' : secondsLeft === 0 ? 'できた！' : '準備OK'}</Text>
       </View>
-      <View style={[styles.focusProgressTrack, !isMinimal && styles.focusProgressTrackLight]}><View style={[styles.focusProgressFill, isChic && styles.focusProgressFillChic, { width: `${Math.max(2, progress * 100)}%` }]} /></View>
+      <View style={[styles.focusProgressTrack, !isMinimal && styles.focusProgressTrackLight]}><View style={[styles.focusProgressFill, isMinimal && styles.focusProgressFillMinimal, isDark && styles.focusProgressFillDark, isChic && styles.focusProgressFillChic, { width: `${Math.max(2, progress * 100)}%` }]} /></View>
       <View style={styles.focusActions}>
-        <Pressable style={[styles.focusResetButton, !isMinimal && styles.focusResetButtonLight]} onPress={reset}><Text style={[styles.focusResetText, !isMinimal && styles.focusResetTextLight]}>リセット</Text></Pressable>
-        <Pressable style={[styles.focusStartButton, isChic && styles.focusStartButtonChic, ]} onPress={toggleTimer}><Text style={styles.focusStartText}>{running ? '一時停止' : secondsLeft === 0 ? 'もう一度' : 'スタート'}</Text></Pressable>
+        <Pressable style={[styles.focusResetButton, !isMinimal && styles.focusResetButtonLight]} onPress={reset}><Text style={[styles.focusResetText, isMinimal && styles.focusResetTextMinimal, !isMinimal && styles.focusResetTextLight]}>リセット</Text></Pressable>
+        <Pressable style={[styles.focusStartButton, isMinimal && styles.focusStartButtonMinimal, isDark && styles.focusStartButtonDark, isChic && styles.focusStartButtonChic, ]} onPress={toggleTimer}><Text style={styles.focusStartText}>{running ? '一時停止' : secondsLeft === 0 ? 'もう一度' : 'スタート'}</Text></Pressable>
       </View>
     </View>
-    <Text style={styles.focusSectionTitle}>集中時間</Text>
-    <View style={styles.focusDurationRow}>{[5, 15, 25, 45].map((minutesValue) => <Pressable key={minutesValue} style={[styles.focusDurationChip, duration === minutesValue && styles.focusDurationChipActive]} onPress={() => chooseDuration(minutesValue)}><Text style={[styles.focusDurationText, duration === minutesValue && styles.focusDurationTextActive]}>{minutesValue}分</Text></Pressable>)}</View>
-    <Text style={styles.focusSectionTitle}>今やるタスク</Text>
+    <Text style={[styles.focusSectionTitle, isMinimal && styles.focusSectionTitleMinimal, isDark && styles.focusSectionTitleDark]}>集中時間</Text>
+    <View style={styles.focusDurationRow}>{[5, 15, 25, 45].map((minutesValue) => <Pressable key={minutesValue} style={[styles.focusDurationChip, duration === minutesValue && styles.focusDurationChipActive, duration === minutesValue && isMinimal && styles.focusDurationChipActiveMinimal, duration === minutesValue && isDark && styles.focusDurationChipActiveDark]} onPress={() => chooseDuration(minutesValue)}><Text style={[styles.focusDurationText, duration === minutesValue && styles.focusDurationTextActive]}>{minutesValue}分</Text></Pressable>)}</View>
+    <Text style={[styles.focusSectionTitle, isMinimal && styles.focusSectionTitleMinimal, isDark && styles.focusSectionTitleDark]}>今やるタスク</Text>
     {availableTasks.length === 0 ? <View style={styles.departureEmpty}><Text style={styles.emptyCopy}>未完了タスクはありません。今日はゆっくりしよう。</Text></View> : availableTasks.slice(0, 8).map((task) => <Pressable key={task.id} style={[styles.focusTaskRow, selectedTaskId === task.id && styles.focusTaskRowActive]} onPress={() => { setSelectedTaskId(task.id); reset(); }}><View style={[styles.scheduleAgendaDot, { backgroundColor: categoryColors[task.category] }]} /><View style={{ flex: 1 }}><Text style={styles.focusTaskTitle}>{task.title}</Text><Text style={styles.focusTaskMeta}>{task.category} ・ 優先度 {task.priority}</Text></View><Text style={styles.focusTaskCheck}>{selectedTaskId === task.id ? '●' : '○'}</Text></Pressable>)}
   </>;
 }
@@ -1705,7 +1706,7 @@ function DailyScheduleTimeline({ date, tasks, plans, externalEvents, now, design
   const timelineHours = Array.from({ length: lastHour - firstHour + 1 }, (_, index) => firstHour + index);
   return <View style={{ marginTop: 12, marginBottom: 8 }}>
     <View style={{ flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 8 }}><Text style={[styles.sectionTitle, { color: isDark ? '#161421' : theme.colors.primaryText }]}>今日の流れ</Text><Text style={{ color: theme.colors.primaryAccent, fontSize: 11, fontWeight: '800' }}>{date === currentDate ? '現在時刻を表示中' : '1日の予定'}</Text></View>
-    <View style={{ backgroundColor: isDark ? '#FFFFFF' : theme.colors.surface, borderColor: theme.colors.border, borderWidth: 1, borderRadius: designMode === 'minimal' || isDark ? 3 : 18, overflow: 'hidden' }}>
+    <View style={{ backgroundColor: theme.colors.surface, borderColor: theme.colors.border, borderWidth: 1, borderRadius: designMode === 'minimal' || isDark ? 16 : 18, overflow: 'hidden' }}>
       {timelineHours.map((hour) => {
         const isCurrentHour = date === currentDate && now.getHours() === hour;
         const hourItems = timed.filter((item) => Math.floor(parseClock(item.time!) / 60) === hour);
@@ -1714,8 +1715,8 @@ function DailyScheduleTimeline({ date, tasks, plans, externalEvents, now, design
           <View style={{ flex: 1, borderLeftWidth: 1, borderLeftColor: theme.colors.border, paddingBottom: hourItems.length > 0 ? 7 : 0 }}>
             <View style={{ marginTop: 23, borderTopWidth: 1, borderTopColor: isCurrentHour ? theme.colors.primaryAccent : theme.colors.border, opacity: isCurrentHour ? 0.9 : 0.65 }} />
             {hourItems.map((item) => {
-              const accent = item.kind === 'plan' ? '#7B6BE8' : item.kind === 'external' ? '#B9A8D8' : item.kind === 'done' ? '#AEB7B0' : categoryColors[tasks.find((task) => `task-${task.id}` === item.id)?.category ?? categories[0]!];
-              const content = <View style={{ marginHorizontal: 8, marginTop: 7, padding: 10, borderLeftWidth: 4, borderLeftColor: accent, borderRadius: 8, backgroundColor: isDark ? '#F5F3F8' : '#FAF9FC', opacity: item.kind === 'done' ? 0.58 : 1 }}><Text style={{ color: accent, fontSize: 10, fontWeight: '900' }}>{item.time}</Text><Text style={{ color: isDark ? '#161421' : theme.colors.primaryText, fontSize: 14, fontWeight: '800', marginTop: 2 }}>{item.kind === 'done' ? '✓ ' : ''}{item.title}</Text><Text style={{ color: theme.colors.secondaryText, fontSize: 10, marginTop: 3 }}>{item.meta}</Text></View>;
+              const accent = item.kind === 'plan' ? theme.colors.primaryAccent : item.kind === 'external' ? theme.colors.secondaryAccent : item.kind === 'done' ? theme.colors.secondaryText : categoryColors[tasks.find((task) => `task-${task.id}` === item.id)?.category ?? categories[0]!];
+              const content = <View style={{ marginHorizontal: 8, marginTop: 7, padding: 10, borderLeftWidth: 4, borderLeftColor: accent, borderRadius: 10, backgroundColor: theme.colors.secondarySurface, opacity: item.kind === 'done' ? 0.58 : 1 }}><Text style={{ color: accent, fontSize: 10, fontWeight: '900' }}>{item.time}</Text><Text style={{ color: theme.colors.primaryText, fontSize: 14, fontWeight: '800', marginTop: 2 }}>{item.kind === 'done' ? '✓ ' : ''}{item.title}</Text><Text style={{ color: theme.colors.secondaryText, fontSize: 10, marginTop: 3 }}>{item.meta}</Text></View>;
               return item.onPress ? <Pressable key={item.id} onPress={item.onPress}>{content}</Pressable> : <View key={item.id}>{content}</View>;
             })}
           </View>
@@ -1726,10 +1727,10 @@ function DailyScheduleTimeline({ date, tasks, plans, externalEvents, now, design
 }
 
 function CalendarPlanActions({ plan, isDark, onEdit, onDelete, onOpenMap }: { plan: DeparturePlan; isDark: boolean; onEdit: (plan: DeparturePlan) => void; onDelete: (id: string) => void; onOpenMap: (plan: DeparturePlan) => void }) {
-  const buttonStyle = { minHeight: 32, paddingHorizontal: 9, justifyContent: 'center' as const, borderRadius: 8, borderWidth: 1, borderColor: isDark ? '#CFC8DE' : '#DDD4F5', backgroundColor: isDark ? '#FFFFFF' : '#FAF8FF' };
+  const buttonStyle = { minHeight: 32, paddingHorizontal: 9, justifyContent: 'center' as const, borderRadius: 10, borderWidth: 1, borderColor: isDark ? '#3A4A66' : '#DDD4F5', backgroundColor: isDark ? '#20293A' : '#FAF8FF' };
   return <View style={[styles.scheduleAgendaActions, { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 6 }]}>
-    {plan.destination?.trim() && <Pressable hitSlop={6} style={buttonStyle} onPress={(event) => { event.stopPropagation(); onOpenMap(plan); }}><Text style={{ color: isDark ? '#5A3E9B' : colors.violet, fontSize: 10, fontWeight: '900' }}>地図</Text></Pressable>}
-    <Pressable hitSlop={6} style={buttonStyle} onPress={(event) => { event.stopPropagation(); onEdit(plan); }}><Text style={{ color: isDark ? '#161421' : colors.ink, fontSize: 10, fontWeight: '900' }}>編集</Text></Pressable>
+    {plan.destination?.trim() && <Pressable hitSlop={6} style={buttonStyle} onPress={(event) => { event.stopPropagation(); onOpenMap(plan); }}><Text style={{ color: isDark ? '#8EA6FF' : colors.violet, fontSize: 10, fontWeight: '900' }}>地図</Text></Pressable>}
+    <Pressable hitSlop={6} style={buttonStyle} onPress={(event) => { event.stopPropagation(); onEdit(plan); }}><Text style={{ color: isDark ? '#F4F7FC' : colors.ink, fontSize: 10, fontWeight: '900' }}>編集</Text></Pressable>
     {plan.id && <Pressable hitSlop={6} style={[buttonStyle, { borderColor: '#E3B9BF', backgroundColor: '#FFF7F7' }]} onPress={(event) => { event.stopPropagation(); onDelete(plan.id!); }}><Text style={{ color: '#B85060', fontSize: 10, fontWeight: '900' }}>削除</Text></Pressable>}
   </View>;
 }
@@ -1778,14 +1779,14 @@ function TaskScheduleCalendar({ tasks, plans, externalEvents, now, designMode, c
     return checkIn ? '到着済み' : departed ? '移動中' : prepared === 'prepared' ? '準備完了' : prepared === 'preparing' ? '準備中' : '未準備';
   };
   const getStatusPalette = (status: string) => status === '到着済み'
-    ? { backgroundColor: '#DDF3E5', color: '#27714A' }
+      ? { backgroundColor: isDark ? '#203A35' : '#DDF3E5', color: isDark ? '#7ED6C4' : '#27714A' }
     : status === '移動中'
-      ? { backgroundColor: '#E8E0FA', color: '#5A3E9B' }
+      ? { backgroundColor: isDark ? '#26365F' : '#E8E0FA', color: isDark ? '#8EA6FF' : '#5A3E9B' }
       : status === '準備完了'
-        ? { backgroundColor: '#E4F0FF', color: '#356AA5' }
+        ? { backgroundColor: isDark ? '#20334D' : '#E4F0FF', color: isDark ? '#8EA6FF' : '#356AA5' }
         : status === '準備中'
-          ? { backgroundColor: '#FFF0D6', color: '#9A641E' }
-          : { backgroundColor: '#F0EDF2', color: '#6D6672' };
+          ? { backgroundColor: isDark ? '#3A3323' : '#FFF0D6', color: isDark ? '#E8B878' : '#9A641E' }
+          : { backgroundColor: isDark ? '#20293A' : '#F0EDF2', color: isDark ? '#9CA8BC' : '#6D6672' };
   const moveMonth = (amount: number) => {
     const next = new Date(year, month + amount, 1);
     setMonthDate(next);
@@ -1807,7 +1808,7 @@ function TaskScheduleCalendar({ tasks, plans, externalEvents, now, designMode, c
     const visibleFreePlans = freePlanEntries.slice(0, calendarPlanDisplayLimit);
     const hiddenFreePlanCount = Math.max(0, freePlanEntries.length - visibleFreePlans.length);
     return <>
-      <View style={[styles.scheduleCalendarCard, designMode !== 'chic' && styles.scheduleCalendarCardMinimal, isDark && styles.darkSurface, { backgroundColor: isDark ? '#FFFFFF' : theme.colors.surface, borderColor: isDark ? '#D6D9DE' : theme.colors.border, borderRadius: designMode !== 'chic' ? 2 : theme.radius.large }]}>
+      <View style={[styles.scheduleCalendarCard, designMode !== 'chic' && styles.scheduleCalendarCardMinimal, isDark && styles.darkSurface, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border, borderRadius: designMode !== 'chic' ? 16 : theme.radius.large }]}>
         <View style={styles.scheduleCalendarHeader}><View><Text style={[styles.scheduleMonthTitle, isDark && styles.darkCalendarText]}>これから7日間</Text><Text style={[styles.scheduleMonthCopy, isDark && styles.darkCalendarAccent]}>今日から6日後までの予定</Text></View><Pressable onPress={() => onPremium('month')}><Text style={[styles.scheduleAgendaEdit, isDark && styles.darkCalendarAccent]}>月表示 Premium</Text></Pressable></View>
         <ScheduleFilterChips value={scheduleFilter} designMode={designMode} onChange={setScheduleFilter} compact />
         <View style={styles.scheduleGrid}>{freeDates.map(({ date, key }) => {
@@ -1815,7 +1816,7 @@ function TaskScheduleCalendar({ tasks, plans, externalEvents, now, designMode, c
           const taskCount = scheduleFilter === 'plans' ? 0 : tasks.filter((task) => taskDates(task).includes(key)).length;
           const planCount = scheduleFilter === 'tasks' ? 0 : plans.filter((item) => isPlanOnDate(item, key)).length;
           const count = taskCount + planCount;
-          return <Pressable key={key} style={[styles.scheduleDayCell, selected && styles.scheduleDayCellSelected, selected && { backgroundColor: isDark ? '#EEEAF7' : '#F3EEFF', borderColor: theme.colors.primaryAccent }]} onPress={() => setSelectedDate(key)}><Text style={[styles.scheduleDayNumber, date.getDay() === 0 && styles.scheduleSundayNumber, date.getDay() === 6 && styles.scheduleSaturdayNumber, selected && styles.scheduleSelectedNumber]}>{date.getMonth() + 1}/{date.getDate()}</Text>{calendarMarks[key] && <Text style={styles.scheduleCalendarMark}>{calendarMarks[key]}</Text>}{count > 0 && <Text style={[styles.scheduleMoreText, selected && styles.scheduleMoreTextSelected]}>{count}件</Text>}</Pressable>;
+          return <Pressable key={key} style={[styles.scheduleDayCell, selected && styles.scheduleDayCellSelected, selected && { backgroundColor: isDark ? theme.colors.softAccent : '#F3EEFF', borderColor: theme.colors.primaryAccent }]} onPress={() => setSelectedDate(key)}><Text style={[styles.scheduleDayNumber, date.getDay() === 0 && styles.scheduleSundayNumber, date.getDay() === 6 && styles.scheduleSaturdayNumber, selected && styles.scheduleSelectedNumber]}>{date.getMonth() + 1}/{date.getDate()}</Text>{calendarMarks[key] && <Text style={styles.scheduleCalendarMark}>{calendarMarks[key]}</Text>}{count > 0 && <Text style={[styles.scheduleMoreText, selected && styles.scheduleMoreTextSelected]}>{count}件</Text>}</Pressable>;
         })}</View>
       </View>
       <CalendarMarkPicker date={freeSelected} mark={calendarMarks[freeSelected]} onSet={onSetCalendarMark} designMode={designMode} />
@@ -1829,7 +1830,7 @@ function TaskScheduleCalendar({ tasks, plans, externalEvents, now, designMode, c
   }
 
   return <>
-      <View style={[styles.scheduleCalendarCard, designMode !== 'chic' && styles.scheduleCalendarCardMinimal, isDark && styles.darkSurface, { backgroundColor: isDark ? '#FFFFFF' : theme.colors.surface, borderColor: isDark ? '#D6D9DE' : theme.colors.border, borderRadius: designMode !== 'chic' ? 2 : theme.radius.large }]}>
+      <View style={[styles.scheduleCalendarCard, designMode !== 'chic' && styles.scheduleCalendarCardMinimal, isDark && styles.darkSurface, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border, borderRadius: designMode !== 'chic' ? 16 : theme.radius.large }]}>
       {designMode === 'chic' && !isCheckChicPattern(chicPattern) && <View pointerEvents="none" style={styles.calendarPatternCorner}><ChicPatternDecor pattern={chicPattern} accent="#D986A1" warm="#A997C8" /></View>}
         <View style={styles.scheduleCalendarHeader}>
           <Pressable style={styles.scheduleMonthArrow} onPress={() => moveMonth(-1)}><Text style={styles.scheduleMonthArrowText}>‹</Text></Pressable>
@@ -1854,7 +1855,7 @@ function TaskScheduleCalendar({ tasks, plans, externalEvents, now, designMode, c
         const dayItemCount = dayTasks.length + dayPlans.length + dayCompletedTasks.length + dayExternalEvents.length;
         const selected = key === selectedDate;
         const today = key === dateKey(now);
-        return <Pressable key={key} style={[styles.scheduleDayCell, designMode === 'minimal' && styles.scheduleDayCellMinimal, today && styles.scheduleDayCellToday, selected && styles.scheduleDayCellSelected, selected && { backgroundColor: isDark ? '#EEEAF7' : '#F3EEFF', borderColor: theme.colors.primaryAccent }]} onPress={() => setSelectedDate(key)}>
+        return <Pressable key={key} style={[styles.scheduleDayCell, designMode === 'minimal' && styles.scheduleDayCellMinimal, today && styles.scheduleDayCellToday, selected && styles.scheduleDayCellSelected, selected && { backgroundColor: isDark ? theme.colors.softAccent : '#F3EEFF', borderColor: theme.colors.primaryAccent }]} onPress={() => setSelectedDate(key)}>
           <Text style={[styles.scheduleDayNumber, date.getDay() === 0 && styles.scheduleSundayNumber, date.getDay() === 6 && styles.scheduleSaturdayNumber, today && styles.scheduleTodayNumber, selected && styles.scheduleSelectedNumber]}>{date.getDate()}</Text>
           {calendarMarks[key] && <Text style={styles.scheduleCalendarMark}>{calendarMarks[key]}</Text>}
           <View style={styles.scheduleEventStack}>

@@ -115,7 +115,7 @@ export function HomeScreen({
 
       <View style={styles.bucketTabs}>{([{ id: 'now', label: '今やる' }, { id: 'later', label: 'あとで' }, { id: 'waiting', label: '待ち' }] as { id: TaskBucket; label: string }[]).map((item) => {
         const count = tasks.filter((task) => (task.bucket ?? 'now') === item.id).length;
-        return <Pressable key={item.id} style={[styles.bucketTab, designMode === 'minimal' && styles.bucketTabMinimal, designMode === 'chic' && styles.bucketTabChic, bucketFilter === item.id && styles.bucketTabActive, bucketFilter === item.id && designMode === 'chic' && styles.bucketTabActiveChic, isDark && styles.darkSurface]} onPress={() => setBucketFilter(item.id)}><Text style={[styles.bucketTabText, bucketFilter === item.id && styles.bucketTabTextActive, isDark && styles.darkBodyText]}>{item.label} {count}</Text></Pressable>;
+        return <Pressable key={item.id} style={[styles.bucketTab, designMode === 'minimal' && styles.bucketTabMinimal, designMode === 'chic' && styles.bucketTabChic, bucketFilter === item.id && styles.bucketTabActive, bucketFilter === item.id && isDark && styles.bucketTabActiveDark, bucketFilter === item.id && designMode === 'chic' && styles.bucketTabActiveChic, isDark && styles.darkSurface]} onPress={() => setBucketFilter(item.id)}><Text style={[styles.bucketTabText, bucketFilter === item.id && styles.bucketTabTextActive, isDark && styles.darkBodyText]}>{item.label} {count}</Text></Pressable>;
       })}</View>
 
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterChips}>
@@ -235,7 +235,7 @@ function VoiceQuickAddCard({ designMode, chicPattern, onQuickAdd }: { designMode
   };
 
   return (
-    <View style={[styles.voiceAddCard, designMode === 'minimal' && styles.voiceAddCardMinimal, isDark && styles.darkSurface, designMode === 'chic' && styles.voiceAddCardChic]}>
+    <View style={[styles.voiceAddCard, designMode === 'minimal' && styles.voiceAddCardMinimal, isDark && styles.voiceAddCardDark, designMode === 'chic' && styles.voiceAddCardChic]}>
       {designMode === 'chic' && !isCheckChicPattern(chicPattern) && <PatternDecor pattern={chicPattern} accent="#D986A1" warm="#A997C8" />}
       <View style={designMode === 'chic' ? styles.voiceAddPaperChic : styles.voiceAddPaperMinimal}>
         <View style={styles.voiceAddHeading}>
@@ -247,27 +247,27 @@ function VoiceQuickAddCard({ designMode, chicPattern, onQuickAdd }: { designMode
           onChangeText={setTitle}
           placeholder="話してそのまま追加"
           placeholderTextColor="#A29DAA"
-          style={[styles.voiceAddInput, designMode === 'minimal' && styles.voiceAddInputMinimal, designMode === 'chic' && styles.voiceAddInputChic]}
+          style={[styles.voiceAddInput, designMode === 'minimal' && styles.voiceAddInputMinimal, isDark && styles.voiceAddInputDark, designMode === 'chic' && styles.voiceAddInputChic]}
           returnKeyType="done"
           onSubmitEditing={submit}
         />
         <View style={styles.voiceAddChoicesRow}>
-          <Pressable style={[styles.voiceAddChoice, designMode === 'minimal' && styles.voiceAddChoiceMinimal, designMode === 'chic' && styles.voiceAddChoiceChic]} onPress={() => setFieldOpen('category')}>
-            <Text style={styles.voiceAddChoiceLabel}>ジャンル</Text>
-            <Text numberOfLines={1} style={styles.voiceAddChoiceValue}>{category}</Text>
+          <Pressable style={[styles.voiceAddChoice, designMode === 'minimal' && styles.voiceAddChoiceMinimal, isDark && styles.voiceAddChoiceDark, designMode === 'chic' && styles.voiceAddChoiceChic]} onPress={() => setFieldOpen('category')}>
+            <Text style={[styles.voiceAddChoiceLabel, isDark && styles.voiceAddChoiceLabelDark]}>ジャンル</Text>
+            <Text numberOfLines={1} style={[styles.voiceAddChoiceValue, isDark && styles.voiceAddChoiceValueDark]}>{category}</Text>
           </Pressable>
-          <Pressable style={[styles.voiceAddChoice, designMode === 'minimal' && styles.voiceAddChoiceMinimal, designMode === 'chic' && styles.voiceAddChoiceChic]} onPress={() => setFieldOpen('priority')}>
-            <Text style={styles.voiceAddChoiceLabel}>優先度</Text>
-            <Text numberOfLines={1} style={styles.voiceAddChoiceValue}>{priority}</Text>
+          <Pressable style={[styles.voiceAddChoice, designMode === 'minimal' && styles.voiceAddChoiceMinimal, isDark && styles.voiceAddChoiceDark, designMode === 'chic' && styles.voiceAddChoiceChic]} onPress={() => setFieldOpen('priority')}>
+            <Text style={[styles.voiceAddChoiceLabel, isDark && styles.voiceAddChoiceLabelDark]}>優先度</Text>
+            <Text numberOfLines={1} style={[styles.voiceAddChoiceValue, isDark && styles.voiceAddChoiceValueDark]}>{priority}</Text>
           </Pressable>
-          <Pressable style={[styles.voiceAddChoice, designMode === 'minimal' && styles.voiceAddChoiceMinimal, designMode === 'chic' && styles.voiceAddChoiceChic]} onPress={() => setShowDatePicker(true)}>
-            <Text style={styles.voiceAddChoiceLabel}>実行日</Text>
-            <Text numberOfLines={1} style={styles.voiceAddChoiceValue}>{scheduledDate}</Text>
+          <Pressable style={[styles.voiceAddChoice, designMode === 'minimal' && styles.voiceAddChoiceMinimal, isDark && styles.voiceAddChoiceDark, designMode === 'chic' && styles.voiceAddChoiceChic]} onPress={() => setShowDatePicker(true)}>
+            <Text style={[styles.voiceAddChoiceLabel, isDark && styles.voiceAddChoiceLabelDark]}>実行日</Text>
+            <Text numberOfLines={1} style={[styles.voiceAddChoiceValue, isDark && styles.voiceAddChoiceValueDark]}>{scheduledDate}</Text>
           </Pressable>
-          <Pressable style={[styles.voiceAddChoice, designMode === 'minimal' && styles.voiceAddChoiceMinimal, designMode === 'chic' && styles.voiceAddChoiceChic]} onPress={() => setShowTimePicker(true)}><Text style={styles.voiceAddChoiceLabel}>実行時間</Text><Text numberOfLines={1} style={styles.voiceAddChoiceValue}>{scheduledTime || '指定なし'}</Text></Pressable>
+          <Pressable style={[styles.voiceAddChoice, designMode === 'minimal' && styles.voiceAddChoiceMinimal, isDark && styles.voiceAddChoiceDark, designMode === 'chic' && styles.voiceAddChoiceChic]} onPress={() => setShowTimePicker(true)}><Text style={[styles.voiceAddChoiceLabel, isDark && styles.voiceAddChoiceLabelDark]}>実行時間</Text><Text numberOfLines={1} style={[styles.voiceAddChoiceValue, isDark && styles.voiceAddChoiceValueDark]}>{scheduledTime || '指定なし'}</Text></Pressable>
         </View>
-        <Pressable style={styles.routineToggleRow} onPress={() => setIsRoutine((value) => !value)}><View style={[styles.routineToggleBox, isRoutine && styles.routineToggleBoxActive]}><Text style={styles.routineToggleCheck}>{isRoutine ? '✓' : ''}</Text></View><View><Text style={styles.routineToggleTitle}>ルーティンにする</Text><Text style={styles.routineToggleCopy}>毎日の継続状況を分析に表示</Text></View></Pressable>
-        <Pressable style={[styles.voiceAddRegister, designMode === 'minimal' && styles.voiceAddRegisterMinimal, designMode === 'chic' && styles.voiceAddRegisterChic]} onPress={submit}>
+        <Pressable style={styles.routineToggleRow} onPress={() => setIsRoutine((value) => !value)}><View style={[styles.routineToggleBox, isRoutine && styles.routineToggleBoxActive, isRoutine && designMode === 'minimal' && styles.routineToggleBoxActiveMinimal, isRoutine && isDark && styles.routineToggleBoxActiveDark]}><Text style={styles.routineToggleCheck}>{isRoutine ? '✓' : ''}</Text></View><View><Text style={[styles.routineToggleTitle, isDark && styles.routineToggleTitleDark]}>ルーティンにする</Text><Text style={[styles.routineToggleCopy, isDark && styles.routineToggleCopyDark]}>毎日の継続状況を分析に表示</Text></View></Pressable>
+        <Pressable style={[styles.voiceAddRegister, designMode === 'minimal' && styles.voiceAddRegisterMinimal, isDark && styles.voiceAddRegisterDark, designMode === 'chic' && styles.voiceAddRegisterChic]} onPress={submit}>
           <Text style={styles.voiceAddRegisterText}>登録</Text>
         </Pressable>
       </View>

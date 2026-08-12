@@ -38,15 +38,15 @@ const shared = {
 export function getThemeTokens(mode: DesignMode): ThemeTokens {
   if (mode === 'dark') return {
     ...shared,
-    colors: { screenBackground: '#0B0A12', surface: '#171421', secondarySurface: '#241D34', primaryText: '#FAF8FF', secondaryText: '#B9B1C9', primaryAccent: '#CDBBFF', secondaryAccent: '#8FE0EA', softAccent: '#302348', border: '#403653', success: '#8FD7AE', warning: '#F0C47A', danger: '#F08D9B' },
-    radius: { large: 8, small: 5, button: 6, chip: 6, modal: 12 },
-    shadow: { color: '#000000', opacity: 0.34, radius: 16, y: 6 },
+    colors: { screenBackground: '#101522', surface: '#181F2E', secondarySurface: '#20293A', primaryText: '#F4F7FC', secondaryText: '#9CA8BC', primaryAccent: '#6F8DFF', secondaryAccent: '#7ED6C4', softAccent: '#26365F', border: '#303B50', success: '#7ED6C4', warning: '#E8B878', danger: '#EF8E8E' },
+    radius: { large: 16, small: 10, button: 12, chip: 10, modal: 18 },
+    shadow: { color: '#000000', opacity: 0.26, radius: 14, y: 5 },
   };
   if (mode === 'minimal') return {
     ...shared,
-    colors: { screenBackground: '#F2F2F0', surface: '#FEFEFC', secondarySurface: '#E8E9E6', primaryText: '#202127', secondaryText: '#72757D', primaryAccent: '#25262C', secondaryAccent: '#646872', softAccent: '#E6E5EE', border: '#D6D7D3', success: '#446552', warning: '#80633E', danger: '#9A4646' },
-    radius: { large: 8, small: 5, button: 6, chip: 6, modal: 12 },
-    shadow: { color: '#25262C', opacity: 0.05, radius: 12, y: 4 },
+    colors: { screenBackground: '#F7F7F5', surface: '#FFFFFF', secondarySurface: '#EEF2F8', primaryText: '#182235', secondaryText: '#68748A', primaryAccent: '#4F6FED', secondaryAccent: '#5FAFA4', softAccent: '#E8EEFF', border: '#DCE2EC', success: '#4F9A83', warning: '#C58A4A', danger: '#C65E67' },
+    radius: { large: 16, small: 10, button: 12, chip: 10, modal: 18 },
+    shadow: { color: '#1B2B4A', opacity: 0.08, radius: 12, y: 4 },
   };
   if (mode === 'photo') return {
     ...shared,

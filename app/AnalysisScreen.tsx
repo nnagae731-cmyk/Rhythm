@@ -133,7 +133,7 @@ export function AnalysisScreen({
           ['insights', '時間と行動'],
           ['routine', 'ルーティン'],
         ] as [AnalysisTab, string][]).map(([id, label]) => (
-          <Pressable key={id} style={[styles.tab, tab === id && { backgroundColor: designMode === 'dark' ? '#F5F7FA' : theme.colors.primaryAccent }]} onPress={() => setTab(id)}>
+          <Pressable key={id} style={[styles.tab, tab === id && { backgroundColor: designMode === 'dark' ? '#26365F' : theme.colors.primaryAccent, borderColor: designMode === 'dark' ? '#6F8DFF' : theme.colors.primaryAccent }]} onPress={() => setTab(id)}>
             <Text style={[styles.tabText, tab === id && styles.tabTextActive, tab === id && designMode === 'dark' && styles.tabTextActiveDark]}>{label}{id === 'insights' && planTier === 'free' ? ' 🔒' : ''}</Text>
           </Pressable>
         ))}
@@ -145,11 +145,11 @@ export function AnalysisScreen({
             <Text style={[styles.activityTitle, designMode === 'dark' && styles.darkMetricText]}>出発・準備の実績</Text>
             <View style={styles.activityRow}>
               <View style={styles.activityMetric}>
-                <Text style={[styles.activityValue, { color: theme.colors.primaryAccent }]}>{departureActivity.preparationCount}</Text>
+                <Text style={[styles.activityValue, { color: designMode === 'dark' ? '#8EA6FF' : theme.colors.primaryAccent }]}>{departureActivity.preparationCount}</Text>
                 <Text style={[styles.activityLabel, designMode === 'dark' && styles.darkMetricText]}>準備開始</Text>
               </View>
               <View style={styles.activityMetric}>
-                <Text style={[styles.activityValue, { color: theme.colors.primaryAccent }]}>{departureActivity.departureCount}</Text>
+                <Text style={[styles.activityValue, { color: designMode === 'dark' ? '#8EA6FF' : theme.colors.primaryAccent }]}>{departureActivity.departureCount}</Text>
                 <Text style={[styles.activityLabel, designMode === 'dark' && styles.darkMetricText]}>出発</Text>
               </View>
               <View style={styles.activityLatest}>
@@ -193,32 +193,32 @@ const styles = StyleSheet.create({
   hero: { padding: 18, marginBottom: 14, backgroundColor: '#F4F0FF', borderRadius: 22, position: 'relative', overflow: 'hidden' },
   analysisBowRibbon: { position: 'absolute', right: 6, top: 2, width: 108, height: 86, zIndex: 3 },
   analysisFrameRibbon: { position: 'absolute', left: 6, right: 6, top: 6, bottom: 6, zIndex: 3 },
-  heroMinimal: { borderRadius: 2, backgroundColor: '#111', borderTopWidth: 4, borderTopColor: '#777' },
+  heroMinimal: { borderRadius: 16, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#DCE2EC' },
   heroChic: { backgroundColor: '#FCE9EF', borderWidth: 1, borderColor: '#F2CAD7' },
   kicker: { color: '#80798B', fontSize: 10, fontWeight: '800', letterSpacing: 1 },
-  kickerMinimal: { color: '#FFFFFF' },
+  kickerMinimal: { color: '#4F6FED' },
   title: { color: '#292530', fontSize: 28, fontWeight: '900', marginTop: 5 },
-  titleMinimal: { color: '#FFFFFF' },
+  titleMinimal: { color: '#182235' },
   heroCopy: { color: '#6F6878', fontSize: 12, marginTop: 7, lineHeight: 19 },
-  heroCopyMinimal: { color: '#FFFFFF' },
+  heroCopyMinimal: { color: '#68748A' },
   tabs: { flexDirection: 'row', gap: 7, marginBottom: 20 },
   tab: { flex: 1, paddingVertical: 11, backgroundColor: '#EEEAF0', borderRadius: 12, alignItems: 'center' },
   tabText: { color: '#625D68', fontWeight: '800' },
   tabTextActive: { color: '#FFF' },
-  tabTextActiveDark: { color: '#101114' },
+  tabTextActiveDark: { color: '#FFFFFF' },
   sectionTitle: { color: '#292530', fontSize: 21, fontWeight: '900' },
   sectionCopy: { color: '#797280', fontSize: 12, lineHeight: 18, marginTop: 5, marginBottom: 14 },
-  darkPanelText: { color: '#101114', backgroundColor: '#FFFFFF', borderRadius: 4, paddingHorizontal: 10, paddingVertical: 6 },
+  darkPanelText: { color: '#F4F7FC', backgroundColor: '#20293A', borderRadius: 12, paddingHorizontal: 10, paddingVertical: 6 },
   grid: { gap: 10 },
   behaviorList: { gap: 10 },
   routineCard: { padding: 18, borderRadius: 18, borderWidth: 1, borderColor: '#E5DFEC', backgroundColor: '#FFF', },
-  routineCardDark: { backgroundColor: '#FFFFFF', borderColor: '#D8D4E0' },
+  routineCardDark: { backgroundColor: '#181F2E', borderColor: '#303B50' },
   routineTaskGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   routineDots: { flexDirection: 'row', flexWrap: 'wrap', gap: 3, marginTop: 8 },
   routineDay: { alignItems: 'center', gap: 2, width: 20 },
   routineDot: { width: 17, height: 17, borderRadius: 4, borderWidth: 1, borderColor: '#DAD4E2', alignItems: 'center', justifyContent: 'center', backgroundColor: '#FAF8FC' },
   routineDotActive: { backgroundColor: '#7559E8', borderColor: '#7559E8' },
-  routineDotActiveDark: { backgroundColor: '#B9A8D8', borderColor: '#7B6BE8' },
+  routineDotActiveDark: { backgroundColor: '#6F8DFF', borderColor: '#6F8DFF' },
   routineDotText: { color: '#FFF', fontSize: 11, fontWeight: '900' },
   routineDayLabel: { color: '#817A88', fontSize: 7, fontWeight: '700' },
   routineTaskRow: { width: '48%', borderWidth: 1, borderColor: '#ECE8F0', borderRadius: 10, padding: 9, backgroundColor: '#FFFFFF' },
@@ -235,7 +235,7 @@ const styles = StyleSheet.create({
   routineSummaryUnit: { color: '#817A88', fontSize: 11, fontWeight: '700' },
   routineSummaryLabel: { color: '#817A88', fontSize: 9, fontWeight: '700', marginTop: 2 },
   activityCard: { padding: 16, marginBottom: 14, borderRadius: 18, borderWidth: 1, backgroundColor: '#FFF' },
-  activityCardDark: { backgroundColor: '#FFFFFF' },
+  activityCardDark: { backgroundColor: '#181F2E' },
   activityTitle: { color: '#292530', fontSize: 15, fontWeight: '900', marginBottom: 12 },
   activityRow: { flexDirection: 'row', alignItems: 'center', gap: 14 },
   activityMetric: { minWidth: 62 },
@@ -250,7 +250,7 @@ const styles = StyleSheet.create({
   metricLabel: { color: '#756F7C', fontSize: 11, fontWeight: '900' },
   metricValue: { fontSize: 25, fontWeight: '900', marginTop: 8 },
   metricSummary: { color: '#5E5864', fontSize: 12, marginTop: 5 },
-  darkMetricText: { color: '#101114' },
+  darkMetricText: { color: '#F4F7FC' },
   sample: { color: '#938C98', fontSize: 10, fontWeight: '700', marginTop: 9 },
   dataState: { paddingVertical: 8 },
   dataStateTitle: { color: '#3C3741', fontSize: 16, fontWeight: '900' },
