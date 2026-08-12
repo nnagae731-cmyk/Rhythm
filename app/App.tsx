@@ -481,6 +481,7 @@ export default function App() {
   const [chicCheckColor, setChicCheckColor] = useState<ChicCheckColor>('cool');
   const [affirmations, setAffirmations] = useState<Affirmation[]>([]);
   const [photoTheme, setPhotoTheme] = useState<PhotoThemeSettings>({ placement: 'background' });
+  const [pendingTopPhoto, setPendingTopPhoto] = useState<{ target: Exclude<PhotoThemePhotoTarget, 'background' | 'focus'>; uri: string }>();
   const [recoveryHistory, setRecoveryHistory] = useState<RecoveryRecord[]>([]);
   const [focusSessions, setFocusSessions] = useState<FocusSession[]>([]);
   const [behaviorEvents, setBehaviorEvents] = useState<BehaviorEvent[]>([]);
@@ -590,12 +591,20 @@ export default function App() {
     const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], allowsEditing: true, aspect, quality: 0.82 });
     const selectedAsset = result.canceled ? undefined : result.assets[0];
     if (!selectedAsset?.uri) return;
-    setPhotoTheme((current) => {
-      if (target === 'background') return { ...current, placement: 'background', imageUri: selectedAsset.uri };
-      if (target === 'focus') return { ...current, focusBackgroundUri: selectedAsset.uri };
-      return { ...current, topImageUris: { ...current.topImageUris, [target]: selectedAsset.uri } };
-    });
+    if (target === 'background') {
+      setPhotoTheme((current) => ({ ...current, placement: 'background', imageUri: selectedAsset.uri }));
+    } else if (target === 'focus') {
+      setPhotoTheme((current) => ({ ...current, focusBackgroundUri: selectedAsset.uri }));
+    } else {
+      setPendingTopPhoto({ target, uri: selectedAsset.uri });
+    }
   }, [openPremiumFeature, planTier]);
+
+  const applyPendingTopPhoto = React.useCallback(() => {
+    if (!pendingTopPhoto) return;
+    setPhotoTheme((current) => ({ ...current, topImageUris: { ...current.topImageUris, [pendingTopPhoto.target]: pendingTopPhoto.uri } }));
+    setPendingTopPhoto(undefined);
+  }, [pendingTopPhoto]);
 
   const saveTaskAsTemplate = React.useCallback((task: Task) => {
     if (!hasPremiumAccess(planTier, 'saved_task_templates')) {
@@ -1457,6 +1466,19 @@ export default function App() {
         components={{ CompactNumberSetting }}
       />
       <PremiumModal visible={premiumOpen} initialFeatureId={premiumTargetFeature} designMode={uiDesignMode} chicPattern={effectiveChicPattern} onClose={() => setPremiumOpen(false)} styles={styles} helpers={{ getThemeTokens }} components={{ ChicPatternDecor, isCheckChicPattern }} />
+      <Modal visible={Boolean(pendingTopPhoto)} transparent animationType="fade" onRequestClose={() => setPendingTopPhoto(undefined)}>
+        <Pressable style={styles.modalBackdrop} onPress={() => setPendingTopPhoto(undefined)}>
+          <Pressable style={[styles.modalSheet, styles.photoCropPreviewSheet]} onPress={(event) => event.stopPropagation()}>
+            <Text style={styles.photoCropPreviewTitle}>トップ画像の見え方</Text>
+            <Text style={styles.photoCropPreviewCopy}>この横長枠が、画面上部で実際に表示される大きさです。</Text>
+            {pendingTopPhoto && <Image source={{ uri: pendingTopPhoto.uri }} resizeMode="cover" style={styles.photoCropPreviewImage} />}
+            <View style={styles.photoCropPreviewActions}>
+              <Pressable style={styles.photoCropPreviewSecondary} onPress={() => setPendingTopPhoto(undefined)}><Text style={styles.photoCropPreviewSecondaryText}>選び直す</Text></Pressable>
+              <Pressable style={styles.photoCropPreviewPrimary} onPress={applyPendingTopPhoto}><Text style={styles.photoCropPreviewPrimaryText}>このまま使う</Text></Pressable>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
       <GuideModal visible={guideOpen} styles={styles} onClose={() => setGuideOpen(false)} />
     </SafeAreaView>
   );
