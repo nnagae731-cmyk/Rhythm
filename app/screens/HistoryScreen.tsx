@@ -1,3 +1,4 @@
+import * as ImagePicker from 'expo-image-picker';
 import React, { useState } from 'react';
 import { Image, Modal, Pressable, Text, TextInput, View } from 'react-native';
 import { ChicPattern } from '../theme';
@@ -8,8 +9,9 @@ import { DepartureCheckIn } from '../departureCheckIn';
 import { FocusSession } from '../focusSession';
 import { RecoveryRecord } from '../recovery';
 import { CalendarMarks, DeparturePlan, MonthlyReview, Task, ThemeMode, WishMonthMap } from '../types';
+import { normalizeMonthlyReview } from '../features/wish/wishUtils';
 
-export function HistoryScreen({ tasks, wishMonths, calendarMarks, onSetCalendarMark, recoveryHistory, focusSessions, departureCheckIns, departurePlans, behaviorEvents, completionIcon, designMode, chicPattern, planTier, onPremium, onSaveTemplate, onRestore, onUpdateReview, onDeleteReview, styles, helpers, components }: { tasks: Task[]; wishMonths: WishMonthMap; calendarMarks: CalendarMarks; onSetCalendarMark: (date: string, mark?: string) => void; recoveryHistory: RecoveryRecord[]; focusSessions: FocusSession[]; departureCheckIns: DepartureCheckIn[]; departurePlans: DeparturePlan[]; behaviorEvents: BehaviorEvent[]; completionIcon: string; designMode: ThemeMode; chicPattern: ChicPattern; planTier: PlanTier; onPremium: (featureId?: PremiumGuideFeatureId) => void; onSaveTemplate: (task: Task) => void; onRestore: (id: string) => void; onUpdateReview: (monthKey: string, reviewKey: string, updates: Partial<MonthlyReview>) => void; onDeleteReview: (monthKey: string, reviewKey: string) => void; styles: any; helpers: any; components: any }) {
+export function HistoryScreen({ tasks, wishMonths, calendarMarks, onSetCalendarMark, recoveryHistory, focusSessions, departureCheckIns, departurePlans, behaviorEvents, completionIcon, designMode, chicPattern, planTier, onPremium, onSaveTemplate, onRestore, onSaveDailyReview, onUpdateReview, onDeleteReview, styles, helpers, components }: { tasks: Task[]; wishMonths: WishMonthMap; calendarMarks: CalendarMarks; onSetCalendarMark: (date: string, mark?: string) => void; recoveryHistory: RecoveryRecord[]; focusSessions: FocusSession[]; departureCheckIns: DepartureCheckIn[]; departurePlans: DeparturePlan[]; behaviorEvents: BehaviorEvent[]; completionIcon: string; designMode: ThemeMode; chicPattern: ChicPattern; planTier: PlanTier; onPremium: (featureId?: PremiumGuideFeatureId) => void; onSaveTemplate: (task: Task) => void; onRestore: (id: string) => void; onSaveDailyReview: (monthKey: string, draft: MonthlyReview) => void; onUpdateReview: (monthKey: string, reviewKey: string, updates: Partial<MonthlyReview>) => void; onDeleteReview: (monthKey: string, reviewKey: string) => void; styles: any; helpers: any; components: any }) {
   const { dateKey, formatLiveTime } = helpers;
   const { AchievementVessel, CalendarMarkPicker } = components;
   const now = new Date();
@@ -26,9 +28,11 @@ export function HistoryScreen({ tasks, wishMonths, calendarMarks, onSetCalendarM
 
   const premiumHistory = hasPremiumAccess(planTier, 'full_history');
   const [selectedReview, setSelectedReview] = useState<MonthlyReview | null>(null);
+  const [selectedReviewPhotoIndex, setSelectedReviewPhotoIndex] = useState(0);
   const [editingReview, setEditingReview] = useState<{ monthKey: string; reviewKey: string; review: MonthlyReview } | null>(null);
   const [reviewEditNote, setReviewEditNote] = useState('');
   const [reviewEditMemo, setReviewEditMemo] = useState('');
+  const [journalDraft, setJournalDraft] = useState<MonthlyReview>({ date: dateKey(now), photos: [], photo: '', shortNote: '', memo: '', satisfaction: 0 });
   const historyTasks = premiumHistory ? tasks : tasks.filter((task) => task.completedAt && isWithinFreeHistory(task.completedAt, now));
   const completedByDay = historyTasks.reduce<Record<string, Task[]>>((result, task) => {
     if (!task.completedAt) return result;
@@ -95,6 +99,7 @@ export function HistoryScreen({ tasks, wishMonths, calendarMarks, onSetCalendarM
     return undefined;
   };
   const selectedReviewEntry = selectedReview ? reviewEntries.find((entry) => entry.review === selectedReview) : undefined;
+  const selectedDayReviewEntry = reviewEntries.find((entry) => entry.review.date === selectedKey);
   const monthEntries = Object.entries(calendarCompletedByDay).filter(([key]) => key.startsWith(monthPrefix));
   const monthlyCount = monthEntries.reduce((sum, [, items]) => sum + items.length, 0);
   const activeDays = monthEntries.length;
@@ -116,6 +121,32 @@ export function HistoryScreen({ tasks, wishMonths, calendarMarks, onSetCalendarM
       result[key] = current;
       return result;
     }, {})).slice(0, 8);
+  const selectedDayReview = reviewsByDay[selectedKey]?.[0];
+  const selectedJournalPhotos = journalDraft.photos?.filter(Boolean) ?? (journalDraft.photo ? [journalDraft.photo] : []);
+  const maxJournalPhotos = planTier === 'premium' ? 3 : 1;
+  const loadJournalDraft = (key: string) => {
+    const existing = reviewsByDay[key]?.[0];
+    setJournalDraft(existing ? normalizeMonthlyReview(existing) : { id: undefined, date: key, photo: '', photos: [], shortNote: '', memo: '', satisfaction: 0 });
+  };
+  const chooseJournalPhoto = async () => {
+    if (selectedJournalPhotos.length >= maxJournalPhotos) {
+      if (planTier !== 'premium') onPremium('month');
+      return;
+    }
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permission.granted) return;
+    const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], allowsEditing: true, aspect: [4, 3], quality: 0.78 });
+    const uri = result.canceled ? undefined : result.assets?.[0]?.uri;
+    if (!uri) return;
+    setJournalDraft((current) => {
+      const photos = [...(current.photos?.filter(Boolean) ?? (current.photo ? [current.photo] : [])), uri];
+      return { ...current, photo: photos[0] ?? '', photos };
+    });
+  };
+  const saveJournal = () => {
+    const photos = journalDraft.photos?.filter(Boolean) ?? (journalDraft.photo ? [journalDraft.photo] : []);
+    onSaveDailyReview(selectedKey.slice(0, 7), { ...journalDraft, id: selectedDayReview?.id ?? journalDraft.id, date: selectedKey, photo: photos[0] ?? '', photos, shortNote: journalDraft.shortNote?.trim() ?? '', memo: journalDraft.memo?.trim() ?? '' });
+  };
 
   return (
     <>
@@ -144,7 +175,7 @@ export function HistoryScreen({ tasks, wishMonths, calendarMarks, onSetCalendarM
             const dayMark = calendarMarks[key] ?? autoMarkForDay(key);
             const selected = key === selectedKey;
             return (
-              <Pressable key={key} style={[styles.dayCell, selected && styles.daySelected]} onPress={() => { setSelectedKey(key); if (dayReviews[0]) setSelectedReview(dayReviews[0]); }}>
+              <Pressable key={key} style={[styles.dayCell, selected && styles.daySelected]} onPress={() => { setSelectedKey(key); loadJournalDraft(key); setSelectedReview(null); }}>
                 <Text style={[styles.dayNumber, selected && styles.dayNumberSelected]}>{day}</Text>
                 {dayMark && <Text style={styles.historyCalendarMark}>{dayMark}</Text>}
                 {count > 0 && <View style={styles.dayDone}><Text style={styles.dayDoneText}>{count}</Text></View>}
@@ -154,6 +185,21 @@ export function HistoryScreen({ tasks, wishMonths, calendarMarks, onSetCalendarM
           })}
         </View>
         <CalendarMarkPicker date={selectedKey} mark={calendarMarks[selectedKey]} onSet={onSetCalendarMark} designMode={designMode} />
+        <View style={[styles.journalEditor, designMode === 'minimal' && styles.journalEditorMinimal, isDark && styles.darkPanel]}>
+          <View style={styles.journalEditorHeader}>
+            <View><Text style={[styles.journalEditorTitle, isDark && styles.darkBodyText]}>今日の記録</Text><Text style={[styles.journalEditorDate, isDark && styles.darkAccentText]}>{selectedKey.replaceAll('-', '.')}</Text></View>
+            <Text style={[styles.journalEditorCount, isDark && styles.darkAccentText]}>写真 {selectedJournalPhotos.length} / {maxJournalPhotos}</Text>
+          </View>
+          <View style={styles.journalPhotoRow}>
+            {selectedJournalPhotos.map((uri, index) => <View key={`${uri}-${index}`} style={styles.journalPhotoWrap}><Pressable onPress={() => { setSelectedReview({ ...journalDraft, photo: uri, photos: selectedJournalPhotos }); setSelectedReviewPhotoIndex(index); }}><Image source={{ uri }} style={styles.journalPhotoThumb} /></Pressable><Pressable style={styles.journalPhotoRemove} onPress={() => setJournalDraft((current) => { const photos = (current.photos?.filter(Boolean) ?? (current.photo ? [current.photo] : [])).filter((_, photoIndex) => photoIndex !== index); return { ...current, photo: photos[0] ?? '', photos }; })}><Text style={styles.journalPhotoRemoveText}>×</Text></Pressable></View>)}
+            {selectedJournalPhotos.length < maxJournalPhotos && <Pressable style={styles.journalPhotoAdd} onPress={() => void chooseJournalPhoto()}><Text style={styles.journalPhotoAddIcon}>＋</Text><Text style={styles.journalPhotoAddText}>写真を追加</Text></Pressable>}
+          </View>
+          {planTier !== 'premium' && <Text style={[styles.journalPhotoHint, isDark && styles.darkAccentText]}>無料版は1枚まで。Premiumでは1日3枚まで残せます。</Text>}
+          <TextInput value={journalDraft.shortNote ?? ''} onChangeText={(shortNote) => setJournalDraft((current) => ({ ...current, shortNote }))} placeholder="今日のひとこと" placeholderTextColor={isDark ? '#786C94' : '#A29DAA'} style={[styles.journalInput, isDark && styles.darkInput]} />
+          <TextInput value={journalDraft.memo ?? ''} onChangeText={(memo) => setJournalDraft((current) => ({ ...current, memo }))} placeholder="今日のことを少し残す" placeholderTextColor={isDark ? '#786C94' : '#A29DAA'} multiline style={[styles.journalInput, styles.journalMemo, isDark && styles.darkInput]} />
+          <View style={styles.journalSatisfactionRow}>{[1, 2, 3, 4, 5].map((value) => <Pressable key={value} style={[styles.journalSatisfaction, journalDraft.satisfaction === value && styles.journalSatisfactionActive]} onPress={() => setJournalDraft((current) => ({ ...current, satisfaction: value }))}><Text style={[styles.journalSatisfactionText, journalDraft.satisfaction === value && styles.journalSatisfactionTextActive]}>{value}</Text></Pressable>)}<Text style={[styles.journalSatisfactionLabel, isDark && styles.darkAccentText]}>満足度</Text></View>
+          <View style={styles.journalActions}><Pressable style={styles.journalSaveButton} onPress={saveJournal}><Text style={styles.journalSaveButtonText}>{selectedDayReviewEntry ? '更新する' : '保存する'}</Text></Pressable>{selectedDayReviewEntry && <Pressable style={styles.journalDeleteButton} onPress={() => { onDeleteReview(selectedDayReviewEntry.monthKey, selectedDayReviewEntry.reviewKey); loadJournalDraft(selectedKey); }}><Text style={styles.journalDeleteButtonText}>削除</Text></Pressable>}</View>
+        </View>
         {(reviewsByDay[selectedKey] ?? []).length > 0 && <View style={styles.reviewDaySummary}><Text style={styles.reviewDaySummaryTitle}>この日の振り返り</Text>{(reviewsByDay[selectedKey] ?? []).map((review, index) => <Pressable key={review.id ?? `${selectedKey}-${index}`} style={styles.reviewDayRow} onPress={() => setSelectedReview(review)}><Text style={styles.reviewDayIcon}>✦</Text><View style={{ flex: 1 }}><Text style={styles.reviewDayText}>{review.shortNote || review.memo || '写真の記録'}</Text><Text style={styles.reviewDayHint}>タップして記録を見る</Text></View></Pressable>)}</View>}
         {(completedWishesByDay[selectedKey] ?? []).length > 0 && <View style={styles.reviewDaySummary}><Text style={styles.reviewDaySummaryTitle}>この日に叶ったこと</Text>{(completedWishesByDay[selectedKey] ?? []).map((wish) => <View key={wish.id} style={styles.reviewDayRow}><Text style={styles.reviewDayIcon}>🌟</Text><View style={{ flex: 1 }}><Text style={styles.reviewDayText}>{wish.title}</Text><Text style={styles.reviewDayHint}>叶えたいことを完了</Text></View></View>)}</View>}
         {(departurePlansByDay[selectedKey] ?? []).length > 0 && <View style={styles.reviewDaySummary}><Text style={styles.reviewDaySummaryTitle}>この日の出発予定</Text>{(departurePlansByDay[selectedKey] ?? []).map((plan) => <View key={plan.id ?? plan.title} style={styles.reviewDayRow}><Text style={styles.reviewDayIcon}>↗</Text><View style={{ flex: 1 }}><Text style={styles.reviewDayText}>{plan.title}</Text><Text style={styles.reviewDayHint}>{plan.arrival} 到着 ・ {plan.destination || '目的地未設定'}</Text></View></View>)}</View>}
@@ -182,7 +228,11 @@ export function HistoryScreen({ tasks, wishMonths, calendarMarks, onSetCalendarM
       <Modal visible={Boolean(selectedReview)} transparent animationType="fade" onRequestClose={() => setSelectedReview(null)}>
         <Pressable style={styles.modalBackdrop} onPress={() => setSelectedReview(null)}>
           <Pressable style={styles.reviewPhotoModal} onPress={(event) => event.stopPropagation()}>
-            {selectedReview?.photo ? <Image source={{ uri: selectedReview.photo }} style={styles.reviewPhotoLarge} /> : <View style={styles.reviewPhotoLargeEmpty}><Text style={styles.reviewPhotoLargeEmptyText}>写真なし</Text></View>}
+            {(() => {
+              const photos = selectedReview?.photos?.filter(Boolean) ?? (selectedReview?.photo ? [selectedReview.photo] : []);
+              const photo = photos[selectedReviewPhotoIndex] ?? photos[0];
+              return photo ? <><Image source={{ uri: photo }} style={styles.reviewPhotoLarge} />{photos.length > 1 && <View style={styles.reviewPhotoPager}>{photos.map((uri, index) => <Pressable key={uri} style={[styles.reviewPhotoPagerDot, index === selectedReviewPhotoIndex && styles.reviewPhotoPagerDotActive]} onPress={() => setSelectedReviewPhotoIndex(index)}><Text style={styles.reviewPhotoPagerText}>{index + 1}</Text></Pressable>)}</View>}</> : <View style={styles.reviewPhotoLargeEmpty}><Text style={styles.reviewPhotoLargeEmptyText}>写真なし</Text></View>;
+            })()}
             {selectedReview?.shortNote ? <Text style={styles.reviewPhotoModalNote}>{selectedReview.shortNote}</Text> : null}
             {selectedReview?.memo ? <Text style={styles.reviewPhotoModalMemo}>{selectedReview.memo}</Text> : null}
             <View style={styles.reviewPhotoModalActions}>

@@ -50,20 +50,11 @@ function sectionText(mode: DesignMode, chic: string, minimal: string) {
   return mode === 'minimal' ? minimal : chic;
 }
 
-function createEmptyReviewDraft(): MonthlyReview {
-  return { photo: '', date: '', shortNote: '', memo: '', satisfaction: 0 };
-}
-
-function hasReviewContent(review: MonthlyReview) {
-  return Boolean(review.photo || review.date || review.shortNote || review.memo || review.satisfaction);
-}
-
+function createEmptyReviewDraft(): MonthlyReview { return { photo: '', photos: [], date: '', shortNote: '', memo: '', satisfaction: 0 }; }
+function hasReviewContent(review: MonthlyReview) { return Boolean(review.photo || review.photos?.length || review.date || review.shortNote || review.memo || review.satisfaction); }
 function monthDays(month: string) {
-  const parts = month.split('-').map(Number);
-  const year = parts[0] ?? new Date().getFullYear();
-  const monthNumber = parts[1] ?? new Date().getMonth() + 1;
-  const firstWeekday = new Date(year, monthNumber - 1, 1).getDay();
-  const totalDays = new Date(year, monthNumber, 0).getDate();
+  const parts = month.split('-').map(Number); const year = parts[0] ?? new Date().getFullYear(); const monthNumber = parts[1] ?? new Date().getMonth() + 1;
+  const firstWeekday = new Date(year, monthNumber - 1, 1).getDay(); const totalDays = new Date(year, monthNumber, 0).getDate();
   return [...Array(firstWeekday).fill(null), ...Array.from({ length: totalDays }, (_, index) => String(index + 1).padStart(2, '0'))];
 }
 
@@ -81,10 +72,7 @@ export function WishScreen({ designMode: rawDesignMode, chicPattern, monthLabel,
 
   useEffect(() => {
     setThemeDraft(state.theme ?? '');
-    if (suppressReviewSyncRef.current) {
-      suppressReviewSyncRef.current = false;
-      return;
-    }
+    if (suppressReviewSyncRef.current) { suppressReviewSyncRef.current = false; return; }
     setReviewDraft(normalizeMonthlyReview(state.review));
   }, [state.review, state.theme]);
 
@@ -420,6 +408,7 @@ export function WishScreen({ designMode: rawDesignMode, chicPattern, monthLabel,
             )}
           </SectionCard>
 
+          {false && <>
           <SectionCard
             designMode={designMode}
             chicPattern={chicPattern}
@@ -510,6 +499,7 @@ export function WishScreen({ designMode: rawDesignMode, chicPattern, monthLabel,
               </View>
             </SectionCard>
           )}
+          </>}
         </ScrollView>
       </KeyboardAvoidingView>
 

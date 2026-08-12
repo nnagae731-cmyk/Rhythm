@@ -286,9 +286,16 @@ function getPlanDestinationQuery(plan: DeparturePlan) {
   return (plan.destination?.trim() || plan.title.trim()).trim();
 }
 
-function PremiumRoutePreview({ plan, now, designMode, onOpenMap }: { plan: DeparturePlan; now: Date; designMode: DesignMode; onOpenMap: (query: string) => void }) {
+function PremiumRoutePreview({ plan, now, designMode, onOpenMap }: { plan?: DeparturePlan; now: Date; designMode: DesignMode; onOpenMap: (query: string) => void }) {
   const theme = getThemeTokens(designMode);
   const isDark = designMode === 'dark';
+  if (!plan) {
+    return <View style={[styles.routePreviewCard, { borderColor: isDark ? '#D6D9DE' : theme.colors.border, backgroundColor: isDark ? '#FFFFFF' : theme.colors.surface }]}>
+      <Text style={styles.routePreviewBadge}>PREMIUM</Text>
+      <Text style={[styles.routePreviewTitle, isDark && styles.darkBodyText]}>次の予定に合わせて出発を考える</Text>
+      <Text style={[styles.routePreviewCopy, isDark && styles.darkAccentText]}>出発カウントダウンを設定した予定が入ると、いちばん近い予定の準備・出発時刻をここに表示します。</Text>
+    </View>;
+  }
   const destinationQuery = getPlanDestinationQuery(plan);
   const moments = getDepartureMoments(plan);
 
@@ -481,7 +488,7 @@ export default function App() {
   const [chicCheckColor, setChicCheckColor] = useState<ChicCheckColor>('cool');
   const [affirmations, setAffirmations] = useState<Affirmation[]>([]);
   const [photoTheme, setPhotoTheme] = useState<PhotoThemeSettings>({ placement: 'background' });
-  const [pendingTopPhoto, setPendingTopPhoto] = useState<{ target: Exclude<PhotoThemePhotoTarget, 'background' | 'focus'>; uri: string }>();
+  const [pendingTopPhoto, setPendingTopPhoto] = useState<{ target: Exclude<PhotoThemePhotoTarget, 'background' | 'focus'>; uri: string; adjustment: { scale: number; offsetX: number; offsetY: number } }>();
   const [recoveryHistory, setRecoveryHistory] = useState<RecoveryRecord[]>([]);
   const [focusSessions, setFocusSessions] = useState<FocusSession[]>([]);
   const [behaviorEvents, setBehaviorEvents] = useState<BehaviorEvent[]>([]);
@@ -519,6 +526,7 @@ export default function App() {
   const uiDesignMode: Exclude<DesignMode, 'photo'> = designMode === 'photo' ? 'chic' : designMode;
   const photoBackgroundUri = photoThemeEnabled && photoTheme.placement !== 'top' ? photoTheme.imageUri : undefined;
   const photoTopImageUri = photoThemeEnabled ? photoTheme.topImageUris?.[screen] ?? (photoTheme.placement === 'top' ? photoTheme.imageUri : undefined) : undefined;
+  const photoTopImageAdjustment = photoThemeEnabled ? photoTheme.topImageAdjustments?.[screen] : undefined;
   const focusBackgroundUri = photoThemeEnabled ? photoTheme.focusBackgroundUri : undefined;
   const effectiveChicPattern = getEffectiveChicPattern(planTier, chicPattern) as ChicPattern;
   const currentWishMonthKey = wishMonthKey(now);
@@ -545,6 +553,17 @@ export default function App() {
       // 履歴から削除した直後に、前のレビューを入力欄へ復元しない。
       // 旧形式 review は互換用に残すが、現在の入力 draft は常に空へ戻す。
       return { ...current, [monthKey]: { ...monthState, review: {}, reviews: remaining } };
+    });
+  }, []);
+  const saveDailyReview = React.useCallback((monthKey: string, draft: MonthlyReview) => {
+    setWishMonths((current) => {
+      const monthState = getMonthlyWishState(current, monthKey);
+      const reviews = monthState.reviews?.length ? monthState.reviews : (monthState.review && (monthState.review.photo || monthState.review.date || monthState.review.shortNote || monthState.review.memo || monthState.review.satisfaction) ? [monthState.review] : []);
+      const photos = draft.photos?.filter(Boolean) ?? (draft.photo ? [draft.photo] : []);
+      const nextReview: MonthlyReview = { ...draft, id: draft.id ?? `journal-${draft.date ?? Date.now()}`, photo: photos[0] ?? '', photos };
+      const existingIndex = reviews.findIndex((review) => review.id === nextReview.id || review.date === nextReview.date);
+      const nextReviews = existingIndex >= 0 ? reviews.map((review, index) => index === existingIndex ? { ...review, ...nextReview } : review) : [...reviews, nextReview];
+      return { ...current, [monthKey]: { ...monthState, review: {}, reviews: nextReviews } };
     });
   }, []);
   const openPremiumFeature = React.useCallback((featureId: PremiumGuideFeatureId = DEFAULT_PREMIUM_GUIDE_FEATURE) => {
@@ -587,8 +606,11 @@ export default function App() {
       Alert.alert('写真へのアクセスを許可すると、背景やトップ画像に設定できます。');
       return;
     }
-    const aspect: [number, number] = target === 'background' || target === 'focus' ? [4, 3] : [5, 2];
-    const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], allowsEditing: true, aspect, quality: 0.82 });
+    const isTopImage = target !== 'background' && target !== 'focus';
+    const aspect: [number, number] = [4, 3];
+    // iOS の標準トリミングは横長比率を指定しても正方形になることがあるため、
+    // トップ画像だけはアプリ内の横長プレビューで位置を確定する。
+    const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], allowsEditing: !isTopImage, aspect, quality: 0.82 });
     const selectedAsset = result.canceled ? undefined : result.assets[0];
     if (!selectedAsset?.uri) return;
     if (target === 'background') {
@@ -596,13 +618,17 @@ export default function App() {
     } else if (target === 'focus') {
       setPhotoTheme((current) => ({ ...current, focusBackgroundUri: selectedAsset.uri }));
     } else {
-      setPendingTopPhoto({ target, uri: selectedAsset.uri });
+      setPendingTopPhoto({ target, uri: selectedAsset.uri, adjustment: { scale: 1, offsetX: 0, offsetY: 0 } });
     }
   }, [openPremiumFeature, planTier]);
 
   const applyPendingTopPhoto = React.useCallback(() => {
     if (!pendingTopPhoto) return;
-    setPhotoTheme((current) => ({ ...current, topImageUris: { ...current.topImageUris, [pendingTopPhoto.target]: pendingTopPhoto.uri } }));
+    setPhotoTheme((current) => ({
+      ...current,
+      topImageUris: { ...current.topImageUris, [pendingTopPhoto.target]: pendingTopPhoto.uri },
+      topImageAdjustments: { ...current.topImageAdjustments, [pendingTopPhoto.target]: pendingTopPhoto.adjustment },
+    }));
     setPendingTopPhoto(undefined);
   }, [pendingTopPhoto]);
 
@@ -1267,7 +1293,7 @@ export default function App() {
         <BThemeRibbonPreload />
         <CThemeRibbonPreload />
         {uiDesignMode === 'chic' && !photoThemeEnabled && <View pointerEvents="none" style={StyleSheet.absoluteFillObject}><ChicPatternDecor pattern={effectiveChicPattern} accent={isCheckChicPattern(effectiveChicPattern) ? getChicCheckColor(chicCheckColor).accent : getChicPatternVisual(effectiveChicPattern).accent} warm={isCheckChicPattern(effectiveChicPattern) ? getChicCheckColor(chicCheckColor).warm : getChicPatternVisual(effectiveChicPattern).warm} checkColor={chicCheckColor} /></View>}
-        {photoTopImageUri ? <><Header designMode={uiDesignMode} now={now} compact /><Image source={{ uri: photoTopImageUri }} resizeMode="cover" style={styles.photoThemeTopImage} /></> : <Header designMode={uiDesignMode} now={now} />}
+        {photoTopImageUri ? <><Header designMode={uiDesignMode} now={now} compact /><View style={styles.photoThemeTopImage}><Image source={{ uri: photoTopImageUri }} resizeMode="cover" style={[styles.photoThemeTopImageContent, { transform: [{ scale: photoTopImageAdjustment?.scale ?? 1 }, { translateX: photoTopImageAdjustment?.offsetX ?? 0 }, { translateY: photoTopImageAdjustment?.offsetY ?? 0 }] }]} /></View></> : <Header designMode={uiDesignMode} now={now} />}
 
         <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
           {screen === 'home' && (
@@ -1427,7 +1453,7 @@ export default function App() {
               planTier={planTier}
               onPremium={openPremiumFeature}
               onRemoveRoutine={(taskId) => Alert.alert('ルーティンから外しますか？', 'タスク自体と完了履歴は残ります。', [{ text: 'キャンセル', style: 'cancel' }, { text: 'ルーティンから外す', style: 'destructive', onPress: () => setTasks((current) => current.map((task) => task.id === taskId ? { ...task, isRoutine: false, routineId: undefined } : task)) }])}
-              recordContent={<HistoryScreen tasks={tasks} wishMonths={wishMonths} calendarMarks={calendarMarks} onSetCalendarMark={(date, mark) => setCalendarMarks((current) => { const next = { ...current }; if (mark) next[date] = mark; else delete next[date]; return next; })} recoveryHistory={recoveryHistory} focusSessions={focusSessions} departureCheckIns={departureCheckIns} departurePlans={departurePlans} behaviorEvents={behaviorEvents} completionIcon={completionIcon} designMode={uiDesignMode} chicPattern={effectiveChicPattern} planTier={planTier} onPremium={openPremiumFeature} onSaveTemplate={saveTaskAsTemplate} onRestore={(id) => setTasks((current) => current.map((task) => task.id === id ? { ...task, done: false, completedAt: undefined } : task))} onUpdateReview={updateWishReview} onDeleteReview={deleteWishReview} styles={styles} helpers={{ dateKey, formatLiveTime }} components={{ AchievementVessel, CalendarMarkPicker }} />}
+              recordContent={<HistoryScreen tasks={tasks} wishMonths={wishMonths} calendarMarks={calendarMarks} onSetCalendarMark={(date, mark) => setCalendarMarks((current) => { const next = { ...current }; if (mark) next[date] = mark; else delete next[date]; return next; })} recoveryHistory={recoveryHistory} focusSessions={focusSessions} departureCheckIns={departureCheckIns} departurePlans={departurePlans} behaviorEvents={behaviorEvents} completionIcon={completionIcon} designMode={uiDesignMode} chicPattern={effectiveChicPattern} planTier={planTier} onPremium={openPremiumFeature} onSaveTemplate={saveTaskAsTemplate} onRestore={(id) => setTasks((current) => current.map((task) => task.id === id ? { ...task, done: false, completedAt: undefined } : task))} onSaveDailyReview={saveDailyReview} onUpdateReview={updateWishReview} onDeleteReview={deleteWishReview} styles={styles} helpers={{ dateKey, formatLiveTime }} components={{ AchievementVessel, CalendarMarkPicker }} />}
             />
           )}
         </ScrollView>
@@ -1471,7 +1497,18 @@ export default function App() {
           <Pressable style={[styles.modalSheet, styles.photoCropPreviewSheet]} onPress={(event) => event.stopPropagation()}>
             <Text style={styles.photoCropPreviewTitle}>トップ画像の見え方</Text>
             <Text style={styles.photoCropPreviewCopy}>この横長枠が、画面上部で実際に表示される大きさです。</Text>
-            {pendingTopPhoto && <Image source={{ uri: pendingTopPhoto.uri }} resizeMode="cover" style={styles.photoCropPreviewImage} />}
+            {pendingTopPhoto && <View style={styles.photoCropPreviewImage}><Image source={{ uri: pendingTopPhoto.uri }} resizeMode="cover" style={[styles.photoCropPreviewImageContent, { transform: [{ scale: pendingTopPhoto.adjustment.scale }, { translateX: pendingTopPhoto.adjustment.offsetX }, { translateY: pendingTopPhoto.adjustment.offsetY }] }]} /></View>}
+            {pendingTopPhoto && <View style={styles.photoCropControls}>
+              <Text style={styles.photoCropControlsLabel}>表示位置を整える</Text>
+              <View style={styles.photoCropControlRow}>
+                <Pressable style={styles.photoCropControlButton} onPress={() => setPendingTopPhoto((current) => current ? { ...current, adjustment: { ...current.adjustment, offsetX: Math.max(-72, current.adjustment.offsetX - 14) } } : current)}><Text style={styles.photoCropControlButtonText}>←</Text></Pressable>
+                <Pressable style={styles.photoCropControlButton} onPress={() => setPendingTopPhoto((current) => current ? { ...current, adjustment: { ...current.adjustment, offsetY: Math.max(-44, current.adjustment.offsetY - 10) } } : current)}><Text style={styles.photoCropControlButtonText}>↑</Text></Pressable>
+                <Pressable style={styles.photoCropControlButton} onPress={() => setPendingTopPhoto((current) => current ? { ...current, adjustment: { ...current.adjustment, offsetY: Math.min(44, current.adjustment.offsetY + 10) } } : current)}><Text style={styles.photoCropControlButtonText}>↓</Text></Pressable>
+                <Pressable style={styles.photoCropControlButton} onPress={() => setPendingTopPhoto((current) => current ? { ...current, adjustment: { ...current.adjustment, offsetX: Math.min(72, current.adjustment.offsetX + 14) } } : current)}><Text style={styles.photoCropControlButtonText}>→</Text></Pressable>
+                <Pressable style={styles.photoCropControlButton} onPress={() => setPendingTopPhoto((current) => current ? { ...current, adjustment: { ...current.adjustment, scale: Math.max(1, Number((current.adjustment.scale - 0.1).toFixed(1))), offsetX: 0, offsetY: 0 } } : current)}><Text style={styles.photoCropControlButtonText}>−</Text></Pressable>
+                <Pressable style={styles.photoCropControlButton} onPress={() => setPendingTopPhoto((current) => current ? { ...current, adjustment: { ...current.adjustment, scale: Math.min(1.7, Number((current.adjustment.scale + 0.1).toFixed(1))) } } : current)}><Text style={styles.photoCropControlButtonText}>＋</Text></Pressable>
+              </View>
+            </View>}
             <View style={styles.photoCropPreviewActions}>
               <Pressable style={styles.photoCropPreviewSecondary} onPress={() => setPendingTopPhoto(undefined)}><Text style={styles.photoCropPreviewSecondaryText}>選び直す</Text></Pressable>
               <Pressable style={styles.photoCropPreviewPrimary} onPress={applyPendingTopPhoto}><Text style={styles.photoCropPreviewPrimaryText}>このまま使う</Text></Pressable>

@@ -77,6 +77,7 @@ export type WishAction = {
 export type MonthlyReview = {
   id?: string;
   photo?: string;
+  photos?: string[];
   date?: string;
   shortNote?: string;
   memo?: string;
@@ -107,6 +108,7 @@ export type PhotoThemeSettings = {
   imageUri?: string;
   placement: 'background' | 'top';
   topImageUris?: Partial<Record<PhotoThemeTopSlot, string>>;
+  topImageAdjustments?: Partial<Record<PhotoThemeTopSlot, { scale: number; offsetX: number; offsetY: number }>>;
   focusBackgroundUri?: string;
 };
 

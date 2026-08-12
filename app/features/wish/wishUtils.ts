@@ -35,9 +35,11 @@ export function calculateWishProgress(state: MonthlyWishState) {
 }
 
 export function normalizeMonthlyReview(review?: MonthlyReview): MonthlyReview {
+  const photos = review?.photos?.filter(Boolean) ?? (review?.photo ? [review.photo] : []);
   return {
     id: review?.id,
-    photo: review?.photo ?? '',
+    photo: photos[0] ?? '',
+    photos,
     date: review?.date ?? '',
     shortNote: review?.shortNote ?? '',
     memo: review?.memo ?? '',
