@@ -1302,7 +1302,7 @@ export default function App() {
         <BThemeRibbonPreload />
         <CThemeRibbonPreload />
         {uiDesignMode === 'chic' && !photoThemeEnabled && <View pointerEvents="none" style={StyleSheet.absoluteFillObject}><ChicPatternDecor pattern={effectiveChicPattern} accent={isCheckChicPattern(effectiveChicPattern) ? getChicCheckColor(chicCheckColor).accent : getChicPatternVisual(effectiveChicPattern).accent} warm={isCheckChicPattern(effectiveChicPattern) ? getChicCheckColor(chicCheckColor).warm : getChicPatternVisual(effectiveChicPattern).warm} checkColor={chicCheckColor} /></View>}
-        {photoTopImageUri ? <><Header designMode={uiDesignMode} now={now} compact /><View style={styles.photoThemeTopImage}><Image source={{ uri: photoTopImageUri }} resizeMode="cover" style={[styles.photoThemeTopImageContent, { transform: [{ scale: photoTopImageAdjustment?.scale ?? 1 }, { translateX: photoTopImageAdjustment?.offsetX ?? 0 }, { translateY: photoTopImageAdjustment?.offsetY ?? 0 }] }]} /></View></> : <Header designMode={uiDesignMode} now={now} />}
+        {photoTopImageUri ? <><Header designMode={uiDesignMode} now={now} compact /><View style={styles.photoThemeTopImage}><Image source={{ uri: photoTopImageUri }} resizeMode="contain" style={[styles.photoThemeTopImageContent, { transform: [{ scale: photoTopImageAdjustment?.scale ?? 1 }, { translateX: photoTopImageAdjustment?.offsetX ?? 0 }, { translateY: photoTopImageAdjustment?.offsetY ?? 0 }] }]} /></View></> : <Header designMode={uiDesignMode} now={now} />}
 
         <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
           {screen === 'home' && (
