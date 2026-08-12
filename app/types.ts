@@ -108,6 +108,8 @@ export type PhotoThemeSettings = {
   imageUri?: string;
   placement: 'background' | 'top';
   topImageUris?: Partial<Record<PhotoThemeTopSlot, string>>;
+  /** 元画像URI。表示用URIが切り取られた旧データの場合もフォールバックする。 */
+  topImageOriginalUris?: Partial<Record<PhotoThemeTopSlot, string>>;
   topImageAdjustments?: Partial<Record<PhotoThemeTopSlot, { scale: number; offsetX: number; offsetY: number }>>;
   focusBackgroundUri?: string;
 };

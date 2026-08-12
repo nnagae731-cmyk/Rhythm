@@ -488,7 +488,7 @@ export default function App() {
   const [chicCheckColor, setChicCheckColor] = useState<ChicCheckColor>('cool');
   const [affirmations, setAffirmations] = useState<Affirmation[]>([]);
   const [photoTheme, setPhotoTheme] = useState<PhotoThemeSettings>({ placement: 'background' });
-  const [pendingTopPhoto, setPendingTopPhoto] = useState<{ target: Exclude<PhotoThemePhotoTarget, 'background' | 'focus'>; uri: string; adjustment: { scale: number; offsetX: number; offsetY: number } }>();
+  const [pendingTopPhoto, setPendingTopPhoto] = useState<{ target: Exclude<PhotoThemePhotoTarget, 'background' | 'focus'>; uri: string; originalUri: string; adjustment: { scale: number; offsetX: number; offsetY: number } }>();
   const [recoveryHistory, setRecoveryHistory] = useState<RecoveryRecord[]>([]);
   const [focusSessions, setFocusSessions] = useState<FocusSession[]>([]);
   const [behaviorEvents, setBehaviorEvents] = useState<BehaviorEvent[]>([]);
@@ -525,7 +525,7 @@ export default function App() {
   const photoThemeEnabled = designMode === 'photo' && hasPremiumAccess(planTier, 'photo_design');
   const uiDesignMode: Exclude<DesignMode, 'photo'> = designMode === 'photo' ? 'chic' : designMode;
   const photoBackgroundUri = photoThemeEnabled && photoTheme.placement !== 'top' ? photoTheme.imageUri : undefined;
-  const photoTopImageUri = photoThemeEnabled ? photoTheme.topImageUris?.[screen] ?? (photoTheme.placement === 'top' ? photoTheme.imageUri : undefined) : undefined;
+  const photoTopImageUri = photoThemeEnabled ? photoTheme.topImageOriginalUris?.[screen] ?? photoTheme.topImageUris?.[screen] ?? (photoTheme.placement === 'top' ? photoTheme.imageUri : undefined) : undefined;
   const photoTopImageAdjustment = photoThemeEnabled ? photoTheme.topImageAdjustments?.[screen] : undefined;
   const focusBackgroundUri = photoThemeEnabled ? photoTheme.focusBackgroundUri : undefined;
   const effectiveChicPattern = getEffectiveChicPattern(planTier, chicPattern) as ChicPattern;
@@ -618,7 +618,7 @@ export default function App() {
     } else if (target === 'focus') {
       setPhotoTheme((current) => ({ ...current, focusBackgroundUri: selectedAsset.uri }));
     } else {
-      setPendingTopPhoto({ target, uri: selectedAsset.uri, adjustment: { scale: 1, offsetX: 0, offsetY: 0 } });
+      setPendingTopPhoto({ target, uri: selectedAsset.uri, originalUri: selectedAsset.uri, adjustment: { scale: 1, offsetX: 0, offsetY: 0 } });
     }
   }, [openPremiumFeature, planTier]);
 
@@ -626,7 +626,8 @@ export default function App() {
     if (!pendingTopPhoto) return;
     setPhotoTheme((current) => ({
       ...current,
-      topImageUris: { ...current.topImageUris, [pendingTopPhoto.target]: pendingTopPhoto.uri },
+      topImageUris: { ...current.topImageUris, [pendingTopPhoto.target]: pendingTopPhoto.originalUri },
+      topImageOriginalUris: { ...current.topImageOriginalUris, [pendingTopPhoto.target]: pendingTopPhoto.originalUri },
       topImageAdjustments: { ...current.topImageAdjustments, [pendingTopPhoto.target]: pendingTopPhoto.adjustment },
     }));
     setPendingTopPhoto(undefined);
@@ -1496,8 +1497,8 @@ export default function App() {
         <Pressable style={styles.modalBackdrop} onPress={() => setPendingTopPhoto(undefined)}>
           <Pressable style={[styles.modalSheet, styles.photoCropPreviewSheet]} onPress={(event) => event.stopPropagation()}>
             <Text style={styles.photoCropPreviewTitle}>トップ画像の見え方</Text>
-            <Text style={styles.photoCropPreviewCopy}>この横長枠が、画面上部で実際に表示される大きさです。</Text>
-            {pendingTopPhoto && <View style={styles.photoCropPreviewImage}><Image source={{ uri: pendingTopPhoto.uri }} resizeMode="cover" style={[styles.photoCropPreviewImageContent, { transform: [{ scale: pendingTopPhoto.adjustment.scale }, { translateX: pendingTopPhoto.adjustment.offsetX }, { translateY: pendingTopPhoto.adjustment.offsetY }] }]} /></View>}
+            <Text style={styles.photoCropPreviewCopy}>元画像を切り取らず、この横長枠の中で位置と拡大率を調整できます。</Text>
+            {pendingTopPhoto && <View style={styles.photoCropPreviewImage}><Image source={{ uri: pendingTopPhoto.originalUri }} resizeMode="cover" style={[styles.photoCropPreviewImageContent, { transform: [{ scale: pendingTopPhoto.adjustment.scale }, { translateX: pendingTopPhoto.adjustment.offsetX }, { translateY: pendingTopPhoto.adjustment.offsetY }] }]} /></View>}
             {pendingTopPhoto && <View style={styles.photoCropControls}>
               <Text style={styles.photoCropControlsLabel}>表示位置を整える</Text>
               <View style={styles.photoCropControlRow}>
