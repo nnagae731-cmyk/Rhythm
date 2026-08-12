@@ -27,7 +27,7 @@ export const styles = StyleSheet.create({
   photoCropPreviewSheet: { paddingHorizontal: 20, paddingBottom: 22 },
   photoCropPreviewTitle: { color: colors.ink, fontSize: 19, fontWeight: '900', marginTop: 6 },
   photoCropPreviewCopy: { color: colors.muted, fontSize: 11, lineHeight: 17, fontWeight: '700', marginTop: 6, marginBottom: 16 },
-    photoCropPreviewImage: { width: '100%', aspectRatio: 1.35, borderRadius: 18, backgroundColor: '#E9DDE0', overflow: 'hidden', alignItems: 'center', justifyContent: 'center' },
+    photoCropPreviewImage: { width: '100%', aspectRatio: 2.5, borderRadius: 18, backgroundColor: '#E9DDE0', overflow: 'hidden', alignItems: 'center', justifyContent: 'center' },
     photoCropPreviewImageContent: { width: '100%', height: '100%' },
     photoCropPreviewFrame: { position: 'absolute', left: 8, right: 8, top: '30%', height: '40%', borderWidth: 2, borderColor: '#FFFFFF', borderRadius: 10, backgroundColor: 'rgba(117,89,232,0.10)', alignItems: 'center', justifyContent: 'center' },
     photoCropPreviewFrameText: { color: '#FFFFFF', fontSize: 10, fontWeight: '900', textShadowColor: 'rgba(0,0,0,0.35)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 2 },
