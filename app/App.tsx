@@ -1511,7 +1511,7 @@ export default function App() {
           <Pressable style={[styles.modalSheet, styles.photoCropPreviewSheet]} onPress={(event) => event.stopPropagation()}>
             <Text style={styles.photoCropPreviewTitle}>トップ画像の見え方</Text>
             <Text style={styles.photoCropPreviewCopy}>元画像を切り取らず、この横長枠の中で位置と拡大率を調整できます。</Text>
-            {pendingTopPhoto && <View style={styles.photoCropPreviewImage}><Image source={{ uri: pendingTopPhoto.originalUri }} resizeMode="cover" style={[styles.photoCropPreviewImageContent, { transform: [{ scale: pendingTopPhoto.adjustment.scale }, { translateX: pendingTopPhoto.adjustment.offsetX }, { translateY: pendingTopPhoto.adjustment.offsetY }] }]} /></View>}
+            {pendingTopPhoto && <View style={styles.photoCropPreviewImage}><Image source={{ uri: pendingTopPhoto.originalUri }} resizeMode="contain" style={[styles.photoCropPreviewImageContent, { transform: [{ scale: pendingTopPhoto.adjustment.scale }, { translateX: pendingTopPhoto.adjustment.offsetX }, { translateY: pendingTopPhoto.adjustment.offsetY }] }]} /><View pointerEvents="none" style={styles.photoCropPreviewFrame}><Text style={styles.photoCropPreviewFrameText}>実際の表示範囲</Text></View></View>}
             {pendingTopPhoto && <View style={styles.photoCropControls}>
               <Text style={styles.photoCropControlsLabel}>表示位置を整える</Text>
               <View style={styles.photoCropControlRow}>

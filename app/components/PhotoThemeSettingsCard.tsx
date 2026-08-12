@@ -55,9 +55,9 @@ export function PhotoThemeSettingsCard({ photoTheme, designMode, planTier, onPre
           {uri ? <Image source={{ uri }} style={localStyles.slotPreview} /> : <View style={localStyles.slotEmpty}><Text style={localStyles.slotEmptyText}>＋</Text></View>}
           <Text style={localStyles.slotLabel}>{slot.label}</Text>
           <View style={localStyles.slotActions}>
-            <Pressable onPress={() => onPick(slot.id)}><Text style={localStyles.slotActionText}>{uri ? '変更' : '選ぶ'}</Text></Pressable>
-            {uri && <Pressable onPress={() => onAdjust(slot.id)}><Text style={localStyles.slotActionText}>位置調整</Text></Pressable>}
-            {uri && <Pressable onPress={() => onClear(slot.id)}><Text style={localStyles.slotRemoveText}>外す</Text></Pressable>}
+            <Pressable hitSlop={6} style={[localStyles.slotActionButton, !uri && localStyles.slotActionButtonFull]} onPress={() => onPick(slot.id)}><Text style={localStyles.slotActionText}>{uri ? '変更' : '選ぶ'}</Text></Pressable>
+            {uri && <Pressable hitSlop={6} style={localStyles.slotActionButton} onPress={() => onAdjust(slot.id)}><Text style={localStyles.slotActionText}>位置調整</Text></Pressable>}
+            {uri && <Pressable hitSlop={6} style={localStyles.slotRemoveButton} onPress={() => onClear(slot.id)}><Text style={localStyles.slotRemoveText}>外す</Text></Pressable>}
           </View>
         </View>;
       })}
@@ -88,7 +88,10 @@ const localStyles = StyleSheet.create({
   slotEmpty: { width: '100%', aspectRatio: 2.5, borderRadius: 8, alignItems: 'center', justifyContent: 'center', backgroundColor: '#F8EFF2' },
   slotEmptyText: { color: '#A98797', fontSize: 20, fontWeight: '400' },
   slotLabel: { color: '#403644', fontSize: 10, fontWeight: '900', marginTop: 6 },
-  slotActions: { flexDirection: 'row', gap: 8, marginTop: 4 },
-  slotActionText: { color: '#7559E8', fontSize: 10, fontWeight: '900' },
-  slotRemoveText: { color: '#B85060', fontSize: 10, fontWeight: '900' },
+  slotActions: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 7 },
+  slotActionButton: { minHeight: 34, minWidth: 44, paddingHorizontal: 9, paddingVertical: 7, borderRadius: 9, alignItems: 'center', justifyContent: 'center', backgroundColor: '#F0E9FF' },
+  slotActionButtonFull: { flex: 1 },
+  slotRemoveButton: { minHeight: 34, minWidth: 38, paddingHorizontal: 8, paddingVertical: 7, borderRadius: 9, alignItems: 'center', justifyContent: 'center', backgroundColor: '#FFF0F2' },
+  slotActionText: { color: '#7559E8', fontSize: 11, fontWeight: '900' },
+  slotRemoveText: { color: '#B85060', fontSize: 11, fontWeight: '900' },
 });
