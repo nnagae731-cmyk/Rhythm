@@ -18,6 +18,7 @@ type Props = {
   planTier: PlanTier;
   onPremium: (featureId?: PremiumGuideFeatureId) => void;
   onPick: (target: PhotoThemePhotoTarget) => void;
+  onAdjust: (target: PhotoThemeTopSlot) => void;
   onClear: (target: PhotoThemePhotoTarget) => void;
   styles: any;
 };
@@ -26,7 +27,7 @@ function PhotoPreview({ uri, label }: { uri?: string; label: string }) {
   return uri ? <Image source={{ uri }} style={localStyles.preview} /> : <View style={localStyles.emptyPreview}><Text style={localStyles.emptyPreviewText}>{label}</Text></View>;
 }
 
-export function PhotoThemeSettingsCard({ photoTheme, designMode, planTier, onPremium, onPick, onClear, styles }: Props) {
+export function PhotoThemeSettingsCard({ photoTheme, designMode, planTier, onPremium, onPick, onAdjust, onClear, styles }: Props) {
   const isDark = designMode === 'dark';
   if (planTier !== 'premium') return <Pressable style={styles.savedTemplateLocked} onPress={() => onPremium('photo_design')}>
     <View style={{ flex: 1 }}><Text style={styles.savedTemplateLockedTitle}>写真デザイン</Text><Text style={styles.savedTemplateLockedCopy}>好きな写真を背景やトップ画像に使えます</Text></View>
@@ -49,12 +50,13 @@ export function PhotoThemeSettingsCard({ photoTheme, designMode, planTier, onPre
     <Text style={localStyles.note}>今日・予定・分析・叶えたいこと・設定の5画面に、それぞれ1枚ずつ設定できます。</Text>
     <View style={localStyles.slotGrid}>
       {topSlots.map((slot) => {
-        const uri = photoTheme.topImageUris?.[slot.id];
+        const uri = photoTheme.topImageOriginalUris?.[slot.id] ?? photoTheme.topImageUris?.[slot.id];
         return <View key={slot.id} style={localStyles.slotCard}>
           {uri ? <Image source={{ uri }} style={localStyles.slotPreview} /> : <View style={localStyles.slotEmpty}><Text style={localStyles.slotEmptyText}>＋</Text></View>}
           <Text style={localStyles.slotLabel}>{slot.label}</Text>
           <View style={localStyles.slotActions}>
             <Pressable onPress={() => onPick(slot.id)}><Text style={localStyles.slotActionText}>{uri ? '変更' : '選ぶ'}</Text></Pressable>
+            {uri && <Pressable onPress={() => onAdjust(slot.id)}><Text style={localStyles.slotActionText}>位置調整</Text></Pressable>}
             {uri && <Pressable onPress={() => onClear(slot.id)}><Text style={localStyles.slotRemoveText}>外す</Text></Pressable>}
           </View>
         </View>;

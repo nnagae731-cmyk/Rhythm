@@ -610,7 +610,7 @@ export default function App() {
     const aspect: [number, number] = [4, 3];
     // iOS の標準トリミングは横長比率を指定しても正方形になることがあるため、
     // トップ画像だけはアプリ内の横長プレビューで位置を確定する。
-    const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], allowsEditing: !isTopImage, aspect, quality: 0.82 });
+    const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], allowsEditing: !isTopImage, ...(isTopImage ? {} : { aspect }), quality: isTopImage ? 1 : 0.82 });
     const selectedAsset = result.canceled ? undefined : result.assets[0];
     if (!selectedAsset?.uri) return;
     if (target === 'background') {
@@ -621,6 +621,12 @@ export default function App() {
       setPendingTopPhoto({ target, uri: selectedAsset.uri, originalUri: selectedAsset.uri, adjustment: { scale: 1, offsetX: 0, offsetY: 0 } });
     }
   }, [openPremiumFeature, planTier]);
+
+  const adjustTopPhoto = React.useCallback((target: Exclude<PhotoThemePhotoTarget, 'background' | 'focus'>) => {
+    const originalUri = photoTheme.topImageOriginalUris?.[target] ?? photoTheme.topImageUris?.[target];
+    if (!originalUri) return;
+    setPendingTopPhoto({ target, uri: originalUri, originalUri, adjustment: photoTheme.topImageAdjustments?.[target] ?? { scale: 1, offsetX: 0, offsetY: 0 } });
+  }, [photoTheme]);
 
   const applyPendingTopPhoto = React.useCallback(() => {
     if (!pendingTopPhoto) return;
@@ -807,6 +813,8 @@ export default function App() {
           placement: saved.photoTheme?.placement === 'top' ? 'top' : 'background',
           imageUri: saved.photoTheme?.imageUri,
           topImageUris: saved.photoTheme?.topImageUris ?? {},
+          topImageOriginalUris: saved.photoTheme?.topImageOriginalUris ?? saved.photoTheme?.topImageUris ?? {},
+          topImageAdjustments: saved.photoTheme?.topImageAdjustments ?? {},
           focusBackgroundUri: saved.photoTheme?.focusBackgroundUri,
         });
         setRecoveryHistory(saved.recoveryHistory ?? []);
@@ -1426,12 +1434,17 @@ export default function App() {
                onSaveAffirmation={saveAffirmation}
                onDeleteAffirmation={deleteAffirmation}
                onPickPhotoTheme={(target) => void pickPhotoTheme(target)}
+               onAdjustPhotoTheme={(target) => adjustTopPhoto(target)}
                onClearPhotoTheme={(target) => setPhotoTheme((current) => {
                  if (target === 'background') return { ...current, imageUri: undefined };
                  if (target === 'focus') return { ...current, focusBackgroundUri: undefined };
                  const topImageUris = { ...current.topImageUris };
+                 const topImageOriginalUris = { ...current.topImageOriginalUris };
+                 const topImageAdjustments = { ...current.topImageAdjustments };
                  delete topImageUris[target];
-                 return { ...current, topImageUris };
+                 delete topImageOriginalUris[target];
+                 delete topImageAdjustments[target];
+                 return { ...current, topImageUris, topImageOriginalUris, topImageAdjustments };
                })}
               templates={taskTemplates}
               savedTemplates={savedTaskTemplates}

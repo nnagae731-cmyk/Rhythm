@@ -1,5 +1,5 @@
 import React from 'react';
-import { Alert, Modal, Pressable, ScrollView, Share, Text, View } from 'react-native';
+import { Alert, Modal, Pressable, ScrollView, Share, Text, TextInput, View } from 'react-native';
 import { DesignMode, getThemeTokens } from '../theme';
 import { createRecoveryRecord, getRecoveryOptions, RecoveryOption, RecoveryRecord } from '../recovery';
 import { DeparturePlan } from '../types';
@@ -16,18 +16,25 @@ type RecoveryModalProps = {
 };
 
 export function RecoveryModal({ visible, plan, now, designMode, onClose, onApply, onPremium, styles }: RecoveryModalProps) {
+  const [contactEditing, setContactEditing] = React.useState(false);
+  const [contactDraft, setContactDraft] = React.useState('');
   if (!plan) return null;
   const theme = getThemeTokens(designMode);
   const options = getRecoveryOptions(plan, now);
   const estimatedArrival = options[0]?.estimatedArrival ?? plan.arrival;
-  const applyOption = async (option: RecoveryOption) => {
+  const applyOption = async (option: RecoveryOption, customMessage?: string) => {
     const record = createRecoveryRecord(plan, option);
     if (!record) {
       Alert.alert('この予定はまだ保存されていません');
       return;
     }
-    if (option.action === 'contact' && option.contactMessage) {
-      const result = await Share.share({ message: option.contactMessage });
+    if (option.action === 'contact') {
+      const message = customMessage?.trim();
+      if (!message) {
+        Alert.alert('連絡文を入力してね', '共有する文面を入力すると送信できます。');
+        return;
+      }
+      const result = await Share.share({ message });
       if (result.action !== Share.sharedAction) return;
     }
     onApply(record);
@@ -53,6 +60,9 @@ export function RecoveryModal({ visible, plan, now, designMode, onClose, onApply
                   if (locked) {
                     onClose();
                     onPremium();
+                  } else if (option.action === 'contact') {
+                    setContactEditing(true);
+                    setContactDraft('');
                   } else {
                     void applyOption(option);
                   }
@@ -68,6 +78,14 @@ export function RecoveryModal({ visible, plan, now, designMode, onClose, onApply
                 </Pressable>
               );
             })}
+            {contactEditing && <View style={styles.recoveryContactEditor}>
+              <Text style={styles.recoveryContactLabel}>共有する連絡文</Text>
+              <TextInput value={contactDraft} onChangeText={setContactDraft} multiline placeholder="例：少し遅れます。到着は10分ほど遅れる見込みです。" placeholderTextColor="#A29DAA" style={styles.recoveryContactInput} />
+              <View style={styles.recoveryContactActions}>
+                <Pressable onPress={() => setContactEditing(false)}><Text style={styles.cancelText}>戻る</Text></Pressable>
+                <Pressable style={styles.recoveryContactSend} onPress={() => { const option = options.find((item) => item.action === 'contact'); if (option) void applyOption(option, contactDraft); }}><Text style={styles.recoveryContactSendText}>共有する</Text></Pressable>
+              </View>
+            </View>}
             <Text style={styles.recoveryNote}>位置情報や経路検索はまだ使わず、登録済みの移動時間から計算しています。</Text>
             <Pressable onPress={onClose}><Text style={styles.cancelText}>閉じる</Text></Pressable>
           </ScrollView>
