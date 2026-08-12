@@ -56,7 +56,7 @@ export function PhotoThemeSettingsCard({ photoTheme, designMode, planTier, onPre
           <Text style={localStyles.slotLabel}>{slot.label}</Text>
           <View style={localStyles.slotActions}>
             <Pressable hitSlop={6} style={[localStyles.slotActionButton, !uri && localStyles.slotActionButtonFull]} onPress={() => onPick(slot.id)}><Text style={localStyles.slotActionText}>{uri ? '変更' : '選ぶ'}</Text></Pressable>
-            {uri && <Pressable hitSlop={6} style={localStyles.slotActionButton} onPress={() => onAdjust(slot.id)}><Text style={localStyles.slotActionText}>位置調整</Text></Pressable>}
+            {uri && <Pressable hitSlop={6} style={localStyles.slotActionButton} onPress={() => onAdjust(slot.id)}><Text style={localStyles.slotActionText}>再調整</Text></Pressable>}
             {uri && <Pressable hitSlop={6} style={localStyles.slotRemoveButton} onPress={() => onClear(slot.id)}><Text style={localStyles.slotRemoveText}>外す</Text></Pressable>}
           </View>
         </View>;

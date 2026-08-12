@@ -1,4 +1,5 @@
 import * as Calendar from 'expo-calendar';
+import * as ImageManipulator from 'expo-image-manipulator';
 import * as ImagePicker from 'expo-image-picker';
 import * as Notifications from 'expo-notifications';
 import { Audio } from 'expo-av';
@@ -408,6 +409,19 @@ function getChicPatternVisual(pattern: ChicPattern) {
   return { background: '#FFF4F7', accent: '#D986A1', warm: '#A997C8' };
 }
 
+function getTopImageCrop(sourceWidth: number, sourceHeight: number, adjustment: { scale: number; offsetX: number; offsetY: number }) {
+  const targetAspect = 2.5;
+  const baseWidth = Math.min(sourceWidth, sourceHeight * targetAspect);
+  const scale = Math.max(1, adjustment.scale);
+  const width = Math.max(1, Math.min(sourceWidth, Math.round(baseWidth / scale)));
+  const height = Math.max(1, Math.min(sourceHeight, Math.round(width / targetAspect)));
+  const maxX = Math.max(0, sourceWidth - width);
+  const maxY = Math.max(0, sourceHeight - height);
+  const x = Math.max(0, Math.min(maxX, Math.round(maxX / 2 - adjustment.offsetX * sourceWidth / 320)));
+  const y = Math.max(0, Math.min(maxY, Math.round(maxY / 2 - adjustment.offsetY * sourceHeight / 220)));
+  return { originX: x, originY: y, width, height };
+}
+
 async function ensureNotifications() {
   const permission = await Notifications.requestPermissionsAsync();
   if (!permission.granted) return false;
@@ -488,7 +502,7 @@ export default function App() {
   const [chicCheckColor, setChicCheckColor] = useState<ChicCheckColor>('cool');
   const [affirmations, setAffirmations] = useState<Affirmation[]>([]);
   const [photoTheme, setPhotoTheme] = useState<PhotoThemeSettings>({ placement: 'background' });
-  const [pendingTopPhoto, setPendingTopPhoto] = useState<{ target: Exclude<PhotoThemePhotoTarget, 'background' | 'focus'>; uri: string; originalUri: string; adjustment: { scale: number; offsetX: number; offsetY: number } }>();
+  const [pendingTopPhoto, setPendingTopPhoto] = useState<{ target: Exclude<PhotoThemePhotoTarget, 'background' | 'focus'>; originalUri: string; sourceWidth: number; sourceHeight: number; adjustment: { scale: number; offsetX: number; offsetY: number } }>();
   const [recoveryHistory, setRecoveryHistory] = useState<RecoveryRecord[]>([]);
   const [focusSessions, setFocusSessions] = useState<FocusSession[]>([]);
   const [behaviorEvents, setBehaviorEvents] = useState<BehaviorEvent[]>([]);
@@ -525,8 +539,7 @@ export default function App() {
   const photoThemeEnabled = designMode === 'photo' && hasPremiumAccess(planTier, 'photo_design');
   const uiDesignMode: Exclude<DesignMode, 'photo'> = designMode === 'photo' ? 'chic' : designMode;
   const photoBackgroundUri = photoThemeEnabled && photoTheme.placement !== 'top' ? photoTheme.imageUri : undefined;
-  const photoTopImageUri = photoThemeEnabled ? photoTheme.topImageOriginalUris?.[screen] ?? photoTheme.topImageUris?.[screen] ?? (photoTheme.placement === 'top' ? photoTheme.imageUri : undefined) : undefined;
-  const photoTopImageAdjustment = photoThemeEnabled ? photoTheme.topImageAdjustments?.[screen] : undefined;
+  const photoTopImageUri = photoThemeEnabled ? photoTheme.topImageUris?.[screen] ?? photoTheme.topImageOriginalUris?.[screen] ?? (photoTheme.placement === 'top' ? photoTheme.imageUri : undefined) : undefined;
   const focusBackgroundUri = photoThemeEnabled ? photoTheme.focusBackgroundUri : undefined;
   const effectiveChicPattern = getEffectiveChicPattern(planTier, chicPattern) as ChicPattern;
   const currentWishMonthKey = wishMonthKey(now);
@@ -610,7 +623,7 @@ export default function App() {
     const aspect: [number, number] = [4, 3];
     // iOS の標準トリミングは横長比率を指定しても正方形になることがあるため、
     // トップ画像だけはアプリ内の横長プレビューで位置を確定する。
-    const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], allowsEditing: !isTopImage, ...(isTopImage ? {} : { aspect }), quality: isTopImage ? 1 : 0.82 });
+    const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], allowsEditing: false, ...(isTopImage ? {} : { aspect }), quality: isTopImage ? 1 : 0.82 });
     const selectedAsset = result.canceled ? undefined : result.assets[0];
     if (!selectedAsset?.uri) return;
     if (target === 'background') {
@@ -618,25 +631,31 @@ export default function App() {
     } else if (target === 'focus') {
       setPhotoTheme((current) => ({ ...current, focusBackgroundUri: selectedAsset.uri }));
     } else {
-      setPendingTopPhoto({ target, uri: selectedAsset.uri, originalUri: selectedAsset.uri, adjustment: { scale: 1, offsetX: 0, offsetY: 0 } });
+      setPendingTopPhoto({ target, originalUri: selectedAsset.uri, sourceWidth: selectedAsset.width || 1000, sourceHeight: selectedAsset.height || 1000, adjustment: { scale: 1, offsetX: 0, offsetY: 0 } });
     }
   }, [openPremiumFeature, planTier]);
 
   const adjustTopPhoto = React.useCallback((target: Exclude<PhotoThemePhotoTarget, 'background' | 'focus'>) => {
     const originalUri = photoTheme.topImageOriginalUris?.[target] ?? photoTheme.topImageUris?.[target];
     if (!originalUri) return;
-    setPendingTopPhoto({ target, uri: originalUri, originalUri, adjustment: photoTheme.topImageAdjustments?.[target] ?? { scale: 1, offsetX: 0, offsetY: 0 } });
+    Image.getSize(originalUri, (sourceWidth, sourceHeight) => setPendingTopPhoto({ target, originalUri, sourceWidth, sourceHeight, adjustment: photoTheme.topImageAdjustments?.[target] ?? { scale: 1, offsetX: 0, offsetY: 0 } }), () => setPendingTopPhoto({ target, originalUri, sourceWidth: 1000, sourceHeight: 1000, adjustment: photoTheme.topImageAdjustments?.[target] ?? { scale: 1, offsetX: 0, offsetY: 0 } }));
   }, [photoTheme]);
 
-  const applyPendingTopPhoto = React.useCallback(() => {
+  const applyPendingTopPhoto = React.useCallback(async () => {
     if (!pendingTopPhoto) return;
-    setPhotoTheme((current) => ({
-      ...current,
-      topImageUris: { ...current.topImageUris, [pendingTopPhoto.target]: pendingTopPhoto.originalUri },
-      topImageOriginalUris: { ...current.topImageOriginalUris, [pendingTopPhoto.target]: pendingTopPhoto.originalUri },
-      topImageAdjustments: { ...current.topImageAdjustments, [pendingTopPhoto.target]: pendingTopPhoto.adjustment },
-    }));
-    setPendingTopPhoto(undefined);
+    try {
+      const crop = getTopImageCrop(pendingTopPhoto.sourceWidth, pendingTopPhoto.sourceHeight, pendingTopPhoto.adjustment);
+      const result = await ImageManipulator.manipulateAsync(pendingTopPhoto.originalUri, [{ crop }, { resize: { width: 1000, height: 400 } }], { compress: 0.9, format: ImageManipulator.SaveFormat.JPEG });
+      setPhotoTheme((current) => ({
+        ...current,
+        topImageUris: { ...current.topImageUris, [pendingTopPhoto.target]: result.uri },
+        topImageOriginalUris: { ...current.topImageOriginalUris, [pendingTopPhoto.target]: pendingTopPhoto.originalUri },
+        topImageAdjustments: { ...current.topImageAdjustments, [pendingTopPhoto.target]: pendingTopPhoto.adjustment },
+      }));
+      setPendingTopPhoto(undefined);
+    } catch {
+      Alert.alert('トップ画像を調整できませんでした', 'もう一度画像を選び直して試してください。');
+    }
   }, [pendingTopPhoto]);
 
   const saveTaskAsTemplate = React.useCallback((task: Task) => {
@@ -1302,7 +1321,7 @@ export default function App() {
         <BThemeRibbonPreload />
         <CThemeRibbonPreload />
         {uiDesignMode === 'chic' && !photoThemeEnabled && <View pointerEvents="none" style={StyleSheet.absoluteFillObject}><ChicPatternDecor pattern={effectiveChicPattern} accent={isCheckChicPattern(effectiveChicPattern) ? getChicCheckColor(chicCheckColor).accent : getChicPatternVisual(effectiveChicPattern).accent} warm={isCheckChicPattern(effectiveChicPattern) ? getChicCheckColor(chicCheckColor).warm : getChicPatternVisual(effectiveChicPattern).warm} checkColor={chicCheckColor} /></View>}
-        {photoTopImageUri ? <><Header designMode={uiDesignMode} now={now} compact /><View style={styles.photoThemeTopImage}><Image source={{ uri: photoTopImageUri }} resizeMode="cover" style={[styles.photoThemeTopImageContent, { transform: [{ scale: photoTopImageAdjustment?.scale ?? 1 }, { translateX: photoTopImageAdjustment?.offsetX ?? 0 }, { translateY: photoTopImageAdjustment?.offsetY ?? 0 }] }]} /></View></> : <Header designMode={uiDesignMode} now={now} />}
+        {photoTopImageUri ? <><Header designMode={uiDesignMode} now={now} compact /><View style={styles.photoThemeTopImage}><Image source={{ uri: photoTopImageUri }} resizeMode="contain" style={styles.photoThemeTopImageContent} /></View></> : <Header designMode={uiDesignMode} now={now} />}
 
         <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
           {screen === 'home' && (
