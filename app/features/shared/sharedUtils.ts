@@ -1,4 +1,5 @@
 import { DeparturePlan, SharedActionStatus, SharedAttendanceStatus, SharedEvent, SharedParticipant, SharedParticipantPrefs } from '../../types';
+import { dateKey } from '../tasks/taskUtils';
 
 export const sharedActionStatuses: SharedActionStatus[] = ['未準備', '準備中', '今から出る', '移動中', '少し遅れそう', '到着した', '参加できない'];
 export const sharedAttendanceStatuses: SharedAttendanceStatus[] = ['参加', '不参加'];
@@ -66,7 +67,7 @@ export function normalizeSharedEvent(packet: Partial<SharedEvent>): SharedEvent 
     createdAt: packet.createdAt ?? new Date().toISOString(),
     updatedAt: packet.updatedAt ?? new Date().toISOString(),
     title: packet.title ?? '予定',
-    date: packet.date ?? new Date().toISOString().slice(0, 10),
+    date: packet.date ?? dateKey(),
     destination: packet.destination,
     arrival: packet.arrival ?? '10:00',
     travelMinutes: packet.travelMinutes ?? 30,

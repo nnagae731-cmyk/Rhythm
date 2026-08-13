@@ -3,6 +3,8 @@ export type BehaviorEventType =
   | 'notification_action'
   | 'task_completed'
   | 'task_completion_reverted'
+  | 'routine_state_changed'
+  | 'routine_deactivated'
   | 'focus_started'
   | 'focus_stopped'
   | 'focus_completed'
@@ -29,6 +31,12 @@ export type BehaviorEvent = {
   scheduledAt?: string;
   actualAt?: string;
   taskCompletionDate?: string;
+  /** Stable identity for routine history. Kept even when the task is deleted. */
+  routineId?: string;
+  routineTitleSnapshot?: string;
+  /** Local target day (YYYY-MM-DD) for a routine completion or its undo. */
+  routineTargetDate?: string;
+  routineCompleted?: boolean;
   deltaMinutes?: number;
   focusSessionId?: string;
   plannedDurationMinutes?: number;
@@ -52,13 +60,50 @@ export function appendBehaviorEvents(current: BehaviorEvent[], next: BehaviorEve
   return next.reduce(appendBehaviorEvent, current);
 }
 
-export function createTaskCompletedBehaviorEvent(args: { taskId: string; taskTitle: string; occurredAt: Date; source?: BehaviorEventSource }): BehaviorEvent {
-  return event(`task_completed:${args.taskId}`, 'task_completed', args.source ?? 'manual', args.occurredAt, { taskId: args.taskId, taskTitleSnapshot: args.taskTitle, actualAt: args.occurredAt.toISOString() });
+export function createTaskCompletedBehaviorEvent(args: { taskId: string; taskTitle: string; occurredAt: Date; source?: BehaviorEventSource; routineId?: string; routineTitle?: string; routineTargetDate?: string }): BehaviorEvent {
+  return event(`task_completed:${args.taskId}`, 'task_completed', args.source ?? 'manual', args.occurredAt, {
+    taskId: args.taskId,
+    taskTitleSnapshot: args.taskTitle,
+    actualAt: args.occurredAt.toISOString(),
+    routineId: args.routineId,
+    routineTitleSnapshot: args.routineTitle,
+    routineTargetDate: args.routineTargetDate,
+  });
 }
 
 /** Records an explicit undo so daily routine history can use the last valid state. */
-export function createTaskCompletionRevertedBehaviorEvent(args: { taskId: string; taskTitle: string; occurredAt: Date; completedAt?: string; source?: BehaviorEventSource }): BehaviorEvent {
-  return event(`task_completion_reverted:${args.taskId}:${args.occurredAt.getTime()}`, 'task_completion_reverted', args.source ?? 'manual', args.occurredAt, { taskId: args.taskId, taskTitleSnapshot: args.taskTitle, actualAt: args.occurredAt.toISOString(), taskCompletionDate: args.completedAt });
+export function createTaskCompletionRevertedBehaviorEvent(args: { taskId: string; taskTitle: string; occurredAt: Date; completedAt?: string; source?: BehaviorEventSource; routineId?: string; routineTitle?: string; routineTargetDate?: string }): BehaviorEvent {
+  return event(`task_completion_reverted:${args.taskId}:${args.occurredAt.getTime()}`, 'task_completion_reverted', args.source ?? 'manual', args.occurredAt, {
+    taskId: args.taskId,
+    taskTitleSnapshot: args.taskTitle,
+    actualAt: args.occurredAt.toISOString(),
+    taskCompletionDate: args.completedAt,
+    routineId: args.routineId,
+    routineTitleSnapshot: args.routineTitle,
+    routineTargetDate: args.routineTargetDate,
+  });
+}
+
+export function createRoutineDeactivatedBehaviorEvent(args: { routineId: string; routineTitle: string; taskId?: string; occurredAt: Date; targetDate: string }): BehaviorEvent {
+  return event(`routine_deactivated:${args.routineId}:${args.occurredAt.getTime()}`, 'routine_deactivated', 'manual', args.occurredAt, {
+    taskId: args.taskId,
+    taskTitleSnapshot: args.routineTitle,
+    routineId: args.routineId,
+    routineTitleSnapshot: args.routineTitle,
+    routineTargetDate: args.targetDate,
+  });
+}
+
+/** A non-award event that preserves the last same-day routine state even after its task is deleted. */
+export function createRoutineStateChangedBehaviorEvent(args: { taskId: string; routineId: string; routineTitle: string; occurredAt: Date; targetDate: string; completed: boolean; source?: BehaviorEventSource }): BehaviorEvent {
+  return event(`routine_state:${args.taskId}:${args.targetDate}:${args.occurredAt.getTime()}`, 'routine_state_changed', args.source ?? 'manual', args.occurredAt, {
+    taskId: args.taskId,
+    taskTitleSnapshot: args.routineTitle,
+    routineId: args.routineId,
+    routineTitleSnapshot: args.routineTitle,
+    routineTargetDate: args.targetDate,
+    routineCompleted: args.completed,
+  });
 }
 
 export function createNotificationScheduledEvent(args: { notificationInstanceId: string; taskId: string; taskTitle: string; scheduledAt: Date; occurredAt: Date }): BehaviorEvent {

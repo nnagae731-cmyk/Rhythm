@@ -88,7 +88,7 @@ function shortDate(key?: string): string {
 }
 
 type RoutineResumeSummary = {
-  state: 'continuing' | 'interrupted' | 'resumed' | 'before';
+  state: 'continuing' | 'interrupted' | 'resumed' | 'before' | 'deactivated';
   latestInterruptionStart?: string;
   latestResumeDate?: string;
   latestResumeFrom?: string;
@@ -100,36 +100,67 @@ type RoutineResumeSummary = {
   postResumeStreak: number;
 };
 
-function routineDayCompleted(events: BehaviorEvent[], tasks: Task[], routineMemberIds: Set<string>, dayKey: string): boolean {
+type RoutineHistory = { id: string; title: string; memberIds: Set<string>; endedAt?: string; active: boolean };
+
+function routineEventDay(event: BehaviorEvent) {
+  return event.routineTargetDate ?? localDateKey(event.type === 'task_completion_reverted' && event.taskCompletionDate ? event.taskCompletionDate : event.occurredAt);
+}
+
+function isRoutineStateEvent(event: BehaviorEvent) {
+  return event.type === 'routine_state_changed' || event.type === 'task_completed' || event.type === 'task_completion_reverted';
+}
+
+function routineEventsFor(events: BehaviorEvent[], routine: RoutineHistory) {
+  return events.filter((event) => isRoutineStateEvent(event) && (event.routineId === routine.id || (!event.routineId && event.taskId && routine.memberIds.has(event.taskId))));
+}
+
+/** An explicitly ended routine never gains blank days after its final recorded day. */
+function routineAnalysisEndKey(events: BehaviorEvent[], tasks: Task[], routine: RoutineHistory, today = new Date()) {
+  const todayKey = localDateKey(today);
+  if (routine.active || !routine.endedAt) return todayKey;
+  const endedKey = localDateKey(routine.endedAt);
+  const recordedKeys = [
+    ...routineEventsFor(events, routine).map(routineEventDay),
+    ...tasks.filter((task) => routine.memberIds.has(task.id) && task.done && task.completedAt).map((task) => localDateKey(task.completedAt!)),
+  ].filter((key) => key <= endedKey).sort();
+  return recordedKeys.at(-1) ?? endedKey;
+}
+
+function routineDayCompleted(events: BehaviorEvent[], tasks: Task[], routine: RoutineHistory, dayKey: string): boolean {
   const dayEvents = events
-    .filter((event) => (event.type === 'task_completed' || event.type === 'task_completion_reverted') && event.taskId && routineMemberIds.has(event.taskId))
-    .filter((event) => localDateKey(event.type === 'task_completion_reverted' && event.taskCompletionDate ? event.taskCompletionDate : event.occurredAt) === dayKey)
+    .filter((event) => isRoutineStateEvent(event) && (event.routineId === routine.id || (!event.routineId && event.taskId && routine.memberIds.has(event.taskId))))
+    .filter((event) => routineEventDay(event) === dayKey)
     .sort((a, b) => new Date(a.occurredAt).getTime() - new Date(b.occurredAt).getTime());
   let completed = false;
-  dayEvents.forEach((event) => { completed = event.type === 'task_completed'; });
+  dayEvents.forEach((event) => {
+    if (event.type === 'routine_state_changed') completed = Boolean(event.routineCompleted);
+    else if (event.type === 'task_completed') completed = true;
+    else if (event.type === 'task_completion_reverted') completed = false;
+  });
   const current = tasks
-    .filter((task) => routineMemberIds.has(task.id) && task.done && task.completedAt && localDateKey(task.completedAt) === dayKey)
+    .filter((task) => routine.memberIds.has(task.id) && task.done && task.completedAt && localDateKey(task.completedAt) === dayKey)
     .sort((a, b) => new Date(a.completedAt!).getTime() - new Date(b.completedAt!).getTime())
     .at(-1);
   if (current && (!dayEvents.at(-1) || new Date(current.completedAt!).getTime() >= new Date(dayEvents.at(-1)!.occurredAt).getTime())) completed = true;
   return completed;
 }
 
-function getRoutineResumeSummary(events: BehaviorEvent[], tasks: Task[], routineMemberIds: Set<string>, today = new Date()): RoutineResumeSummary {
-  const routineEvents = events.filter((event) => (event.type === 'task_completed' || event.type === 'task_completion_reverted') && event.taskId && routineMemberIds.has(event.taskId));
+function getRoutineResumeSummary(events: BehaviorEvent[], tasks: Task[], routine: RoutineHistory, today = new Date()): RoutineResumeSummary {
+  const routineEvents = routineEventsFor(events, routine);
   const relevantDayKeys = [
     ...routineEvents.map((event) => localDateKey(event.type === 'task_completion_reverted' && event.taskCompletionDate ? event.taskCompletionDate : event.occurredAt)),
-    ...tasks.filter((task) => routineMemberIds.has(task.id) && task.done && task.completedAt).map((task) => localDateKey(task.completedAt!)),
+    ...tasks.filter((task) => routine.memberIds.has(task.id) && task.done && task.completedAt).map((task) => localDateKey(task.completedAt!)),
   ].sort();
-  const empty: RoutineResumeSummary = { state: 'before', currentInterruptionDays: 0, interruptionsThisMonth: 0, resumesThisMonth: 0, longestStreak: 0, postResumeStreak: 0 };
-  const firstCompletionKey = relevantDayKeys.find((key) => routineDayCompleted(routineEvents, tasks, routineMemberIds, key));
+  const empty: RoutineResumeSummary = { state: routine.active ? 'before' : 'deactivated', currentInterruptionDays: 0, interruptionsThisMonth: 0, resumesThisMonth: 0, longestStreak: 0, postResumeStreak: 0 };
+  const firstCompletionKey = relevantDayKeys.find((key) => routineDayCompleted(routineEvents, tasks, routine, key));
   if (!firstCompletionKey) return empty;
 
   const todayKey = localDateKey(today);
+  const endKey = routineAnalysisEndKey(events, tasks, routine, today);
   const currentMonth = todayKey.slice(0, 7);
   const dayStates: Array<{ key: string; completed: boolean }> = [];
-  for (let key = firstCompletionKey; key <= todayKey; key = addLocalDays(key, 1)) {
-    dayStates.push({ key, completed: routineDayCompleted(routineEvents, tasks, routineMemberIds, key) });
+  for (let key = firstCompletionKey; key <= endKey; key = addLocalDays(key, 1)) {
+    dayStates.push({ key, completed: routineDayCompleted(routineEvents, tasks, routine, key) });
   }
 
   let latestInterruptionStart: string | undefined;
@@ -170,7 +201,9 @@ function getRoutineResumeSummary(events: BehaviorEvent[], tasks: Task[], routine
       ? dayStates.length
       : [...dayStates].reverse().findIndex((day) => !day.completed)
     : 0;
-  const state = !todayCompleted
+  const state = !routine.active
+    ? 'deactivated'
+    : !todayCompleted
     ? 'interrupted'
     : latestResumeDate
       ? 'resumed'
@@ -189,22 +222,66 @@ function getRoutineResumeSummary(events: BehaviorEvent[], tasks: Task[], routine
   };
 }
 
+function getRoutineHistories(events: BehaviorEvent[], tasks: Task[]): RoutineHistory[] {
+  const active = new Map<string, RoutineHistory>();
+  tasks.filter((task) => task.isRoutine).forEach((task) => {
+    const id = task.routineId ?? task.id;
+    const current = active.get(id) ?? { id, title: task.title, memberIds: new Set<string>(), active: true };
+    current.memberIds.add(task.id);
+    current.title = task.title || current.title;
+    active.set(id, current);
+  });
+  const histories = new Map<string, RoutineHistory>(active);
+  events.filter((event) => event.routineId).sort((a, b) => new Date(a.occurredAt).getTime() - new Date(b.occurredAt).getTime()).forEach((event) => {
+    const id = event.routineId!;
+    const current = histories.get(id) ?? { id, title: event.routineTitleSnapshot ?? event.taskTitleSnapshot ?? 'ルーティン', memberIds: new Set<string>(), active: false };
+    if (event.taskId) current.memberIds.add(event.taskId);
+    current.title = event.routineTitleSnapshot ?? current.title;
+    if (event.type === 'routine_deactivated') {
+      current.active = false;
+      current.endedAt = event.occurredAt;
+    } else if (event.type === 'routine_state_changed' && current.endedAt && new Date(event.occurredAt).getTime() > new Date(current.endedAt).getTime()) {
+      current.active = true;
+      current.endedAt = undefined;
+    }
+    histories.set(id, current);
+  });
+  tasks.filter((task) => task.routineId && task.routineEndedAt).forEach((task) => {
+    const id = task.routineId!;
+    const current = histories.get(id) ?? { id, title: task.title, memberIds: new Set<string>(), active: false };
+    current.memberIds.add(task.id);
+    current.title = task.title || current.title;
+    current.active = false;
+    current.endedAt = task.routineEndedAt;
+    histories.set(id, current);
+  });
+  // 現在のタスクが再び有効なルーティンなら、過去の解除イベントより現在の状態を優先する。
+  // これにより同じ routineId を再開した場合も、履歴を分断せず継続中として扱える。
+  tasks.filter((task) => task.isRoutine).forEach((task) => {
+    const id = task.routineId ?? task.id;
+    const current = histories.get(id);
+    if (!current) return;
+    current.active = true;
+    current.endedAt = undefined;
+  });
+  return [...histories.values()];
+}
+
 function RoutineResumePanel({ events, tasks, designMode }: { events: BehaviorEvent[]; tasks: Task[]; designMode: DesignMode }) {
-  const routineTasks = Array.from(new Map(tasks.filter((task) => task.isRoutine).map((task) => [task.routineId ?? task.id, task])).values());
+  const routines = getRoutineHistories(events, tasks);
   const isDark = designMode === 'dark';
-  if (routineTasks.length === 0) return null;
+  if (routines.length === 0) return null;
   return <>
     <Text style={[styles.sectionTitle, { marginTop: 22 }, isDark && styles.darkMetricText]}>ルーティンの中断・再開</Text>
     <Text style={[styles.sectionCopy, isDark && styles.darkSecondaryText]}>お休みの期間も、戻れた日を大切に記録します。</Text>
-    <View style={styles.routineResumeList}>{routineTasks.map((task) => {
-      const routineKey = task.routineId ?? task.id;
-      const routineMemberIds = new Set(tasks.filter((candidate) => candidate.isRoutine && (candidate.routineId ?? candidate.id) === routineKey).map((candidate) => candidate.id));
-      routineMemberIds.add(task.id);
-      const summary = getRoutineResumeSummary(events, tasks, routineMemberIds);
-      const stateLabel = summary.state === 'continuing' ? '継続中' : summary.state === 'interrupted' ? '中断中' : summary.state === 'resumed' ? '再開済み' : '開始前';
+    <View style={styles.routineResumeList}>{routines.map((routine) => {
+      const summary = getRoutineResumeSummary(events, tasks, routine);
+      const stateLabel = summary.state === 'continuing' ? '継続中' : summary.state === 'interrupted' ? '中断中' : summary.state === 'resumed' ? '再開済み' : summary.state === 'deactivated' ? '解除済み' : '開始前';
       const stateCopy = summary.state === 'before'
         ? '最初の1回を記録すると、ここから流れを振り返れます。'
-        : summary.state === 'interrupted'
+        : summary.state === 'deactivated'
+          ? 'ルーティンを外した日までの記録を残しています。'
+          : summary.state === 'interrupted'
           ? `現在${summary.currentInterruptionDays}日間お休み中です。戻るタイミングはいつでも大丈夫。`
           : summary.state === 'resumed' && summary.latestResumeDate && summary.latestResumeFrom
             ? `${shortDate(summary.latestResumeFrom)}に中断し、${shortDate(summary.latestResumeDate)}に再開しました。`
@@ -212,14 +289,14 @@ function RoutineResumePanel({ events, tasks, designMode }: { events: BehaviorEve
       const resumeCopy = summary.latestResumeDate && summary.latestGapDays !== undefined
         ? `${summary.latestGapDays}日ぶりに再開できています。`
         : '戻れた日が増えるほど、あなたのペースが見えてきます。';
-      return <View key={task.id} style={[styles.routineResumeCard, isDark && styles.routineResumeCardDark]}>
-        <View style={styles.routineResumeHeader}><Text numberOfLines={1} style={[styles.routineResumeTitle, isDark && styles.darkMetricText]}>{task.title}</Text><Text style={[styles.routineResumeState, isDark && styles.routineResumeStateDark]}>{stateLabel}</Text></View>
+      return <View key={routine.id} style={[styles.routineResumeCard, isDark && styles.routineResumeCardDark]}>
+        <View style={styles.routineResumeHeader}><Text numberOfLines={1} style={[styles.routineResumeTitle, isDark && styles.darkMetricText]}>{routine.title}</Text><Text style={[styles.routineResumeState, isDark && styles.routineResumeStateDark]}>{stateLabel}</Text></View>
         <Text style={[styles.routineResumeCopy, isDark && styles.darkSecondaryText]}>{stateCopy}</Text>
         {summary.state !== 'before' && <Text style={[styles.routineResumeCopy, styles.routineResumeSubcopy, isDark && styles.darkMutedMetricText]}>{resumeCopy}</Text>}
         <View style={styles.routineResumeFacts}>
-          <View style={styles.routineResumeFact}><Text style={[styles.routineResumeFactLabel, isDark && styles.darkMutedMetricText]}>直近の中断</Text><Text style={[styles.routineResumeFactValue, isDark && styles.darkMetricText]}>{shortDate(summary.latestInterruptionStart)}</Text></View>
-          <View style={styles.routineResumeFact}><Text style={[styles.routineResumeFactLabel, isDark && styles.darkMutedMetricText]}>直近の再開</Text><Text style={[styles.routineResumeFactValue, isDark && styles.darkMetricText]}>{shortDate(summary.latestResumeDate)}</Text></View>
-          <View style={styles.routineResumeFact}><Text style={[styles.routineResumeFactLabel, isDark && styles.darkMutedMetricText]}>中断日数</Text><Text style={[styles.routineResumeFactValue, isDark && styles.darkMetricText]}>{summary.state === 'interrupted' ? `${summary.currentInterruptionDays}日` : summary.latestGapDays === undefined ? '—' : `${summary.latestGapDays}日`}</Text></View>
+          <View style={[styles.routineResumeFact, isDark && styles.routineResumeFactDark]}><Text style={[styles.routineResumeFactLabel, isDark && styles.darkMutedMetricText]}>直近の中断</Text><Text style={[styles.routineResumeFactValue, isDark && styles.darkMetricText]}>{shortDate(summary.latestInterruptionStart)}</Text></View>
+          <View style={[styles.routineResumeFact, isDark && styles.routineResumeFactDark]}><Text style={[styles.routineResumeFactLabel, isDark && styles.darkMutedMetricText]}>直近の再開</Text><Text style={[styles.routineResumeFactValue, isDark && styles.darkMetricText]}>{shortDate(summary.latestResumeDate)}</Text></View>
+          <View style={[styles.routineResumeFact, isDark && styles.routineResumeFactDark]}><Text style={[styles.routineResumeFactLabel, isDark && styles.darkMutedMetricText]}>中断日数</Text><Text style={[styles.routineResumeFactValue, isDark && styles.darkMetricText]}>{summary.state === 'interrupted' ? `${summary.currentInterruptionDays}日` : summary.latestGapDays === undefined ? '—' : `${summary.latestGapDays}日`}</Text></View>
         </View>
         <Text style={[styles.routineResumeStats, isDark && styles.darkSecondaryText]}>今月は中断 {summary.interruptionsThisMonth}回 ・ 再開 {summary.resumesThisMonth}回</Text>
         <Text style={[styles.routineResumeStats, isDark && styles.darkSecondaryText]}>最長連続 {summary.longestStreak}日 ・ 再開後の連続 {summary.postResumeStreak}日</Text>
@@ -229,20 +306,19 @@ function RoutineResumePanel({ events, tasks, designMode }: { events: BehaviorEve
 }
 
 function RoutineProgressPanel({ events, tasks, designMode, onRemoveRoutine }: { events: BehaviorEvent[]; tasks: Task[]; designMode: DesignMode; onRemoveRoutine: (taskId: string) => void }) {
-  const routineTasks = Array.from(new Map(tasks.filter((task) => task.isRoutine).map((task) => [task.routineId ?? task.id, task])).values());
+  const routineTasks = getRoutineHistories(events, tasks);
   const today = new Date();
   const palette = designMode === 'chic' ? ['#E68BA8', '#E7B56A', '#8EC7B3', '#9FA8E8', '#C39BD3'] : designMode === 'dark' ? ['#8EA6FF', '#AFC2FF', '#7ED6C4', '#C5B4FF', '#F0A8BA'] : ['#171717', '#3A3A3A', '#5C5C5C', '#7A7A7A', '#A0A0A0'];
   if (routineTasks.length === 0) return <View style={[styles.routineCard, designMode === 'dark' && styles.routineCardDark]}><Text style={[styles.sectionTitle, designMode === 'dark' && styles.darkMetricText]}>ルーティンの継続</Text><Text style={[styles.sectionCopy, designMode === 'dark' && styles.darkSecondaryText]}>タスク登録時に「ルーティンにする」を選ぶと、継続率を確認できます。</Text></View>;
-  return <View style={[styles.routineCard, designMode === 'dark' && styles.routineCardDark]}><Text style={[styles.sectionTitle, designMode === 'dark' && styles.darkMetricText]}>ルーティンの継続</Text><Text style={[styles.sectionCopy, designMode === 'dark' && styles.darkSecondaryText]}>続けられた日が丸で増えていきます。連続日数と継続率を確認できます。</Text><View style={styles.routineTaskGrid}>{routineTasks.map((task, taskIndex) => {
-    const routineKey = task.routineId ?? task.id;
-    const routineMemberIds = new Set(tasks.filter((candidate) => candidate.isRoutine && (candidate.routineId ?? candidate.id) === routineKey).map((candidate) => candidate.id));
-    routineMemberIds.add(task.id);
-    const routineEvents = events.filter((event) => (event.type === 'task_completed' || event.type === 'task_completion_reverted') && event.taskId && routineMemberIds.has(event.taskId));
-    const firstCompletion = routineEvents.filter((event) => event.type === 'task_completed').map((event) => new Date(event.occurredAt)).sort((a, b) => a.getTime() - b.getTime())[0];
-    const created = task.createdAt ? new Date(task.createdAt) : firstCompletion ?? today;
+  return <View style={[styles.routineCard, designMode === 'dark' && styles.routineCardDark]}><Text style={[styles.sectionTitle, designMode === 'dark' && styles.darkMetricText]}>ルーティンの継続</Text><Text style={[styles.sectionCopy, designMode === 'dark' && styles.darkSecondaryText]}>続けられた日が丸で増えていきます。連続日数と継続率を確認できます。</Text><View style={styles.routineTaskGrid}>{routineTasks.map((routine, taskIndex) => {
+    const routineEvents = routineEventsFor(events, routine);
+    const firstCompletion = routineEvents.filter((event) => event.type === 'task_completed').map((event) => dateFromLocalKey(routineEventDay(event))).sort((a, b) => a.getTime() - b.getTime())[0];
+    const representativeTask = tasks.find((task) => routine.memberIds.has(task.id));
+    const created = representativeTask?.createdAt ? new Date(representativeTask.createdAt) : firstCompletion ?? today;
     const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate());
     const createdStart = new Date(created.getFullYear(), created.getMonth(), created.getDate());
-    const ageDays = Math.max(0, Math.floor((todayStart.getTime() - createdStart.getTime()) / 86400000));
+    const analysisEnd = new Date(`${routineAnalysisEndKey(events, tasks, routine, today)}T12:00:00`);
+    const ageDays = Math.max(0, Math.floor((analysisEnd.getTime() - createdStart.getTime()) / 86400000));
     const cycleDay = (ageDays % 21) + 1;
     const cycleStart = new Date(createdStart);
     cycleStart.setDate(cycleStart.getDate() + Math.floor(ageDays / 21) * 21);
@@ -253,21 +329,16 @@ function RoutineProgressPanel({ events, tasks, designMode, onRemoveRoutine }: { 
     });
     const todayKey = localDateKey(today);
     const completionForDay = (dayKey: string) => {
-      const dayEvents = routineEvents.filter((event) => localDateKey(event.type === 'task_completion_reverted' && event.taskCompletionDate ? event.taskCompletionDate : event.occurredAt) === dayKey).sort((a, b) => new Date(a.occurredAt).getTime() - new Date(b.occurredAt).getTime());
-      let active = false;
-      dayEvents.forEach((event) => { active = event.type === 'task_completed'; });
-      const current = tasks.filter((candidate) => routineMemberIds.has(candidate.id)).filter((candidate) => candidate.done && candidate.completedAt && localDateKey(candidate.completedAt) === dayKey).sort((a, b) => new Date(a.completedAt!).getTime() - new Date(b.completedAt!).getTime()).at(-1);
-      if (current && (!dayEvents.at(-1) || new Date(current.completedAt!).getTime() >= new Date(dayEvents.at(-1)!.occurredAt).getTime())) active = true;
-      return active;
+      return routineDayCompleted(routineEvents, tasks, routine, dayKey);
     };
     const completedDays = new Set(taskDays.filter((day) => day.key <= todayKey && completionForDay(day.key)).map((day) => day.key));
     const activeDays = taskDays.slice(0, cycleDay).filter((day) => completedDays.has(day.key)).length;
-    const historicalDays = new Set(routineEvents.map((event) => localDateKey(event.type === 'task_completion_reverted' && event.taskCompletionDate ? event.taskCompletionDate : event.occurredAt)));
+    const historicalDays = new Set(routineEvents.map(routineEventDay));
     const totalCompletedDays = [...historicalDays].filter((dayKey) => completionForDay(dayKey)).length;
     let streak = 0;
     for (let index = cycleDay - 1; index >= 0 && completedDays.has(taskDays[index]!.key); index -= 1) streak += 1;
     const color = palette[taskIndex % palette.length]!;
-    return <View key={task.id} style={[styles.routineTaskRow, designMode === 'dark' && styles.routineTaskRowDark]}><View style={styles.routineTaskHeader}><Text numberOfLines={1} style={[styles.routineTaskTitle, designMode === 'dark' && styles.darkMetricText]}>{task.title}</Text><View style={styles.routineTaskActions}><Text style={[styles.routineTaskRate, { color }]}>{Math.round((activeDays / cycleDay) * 100)}%</Text><Pressable accessibilityLabel={`${task.title}をルーティンから外す`} hitSlop={8} onPress={() => onRemoveRoutine(task.id)} style={[styles.routineRemoveButton, designMode === 'dark' && styles.routineRemoveButtonDark]}><Text style={[styles.routineRemoveText, designMode === 'dark' && styles.routineRemoveTextDark]}>×</Text></Pressable></View></View><View style={styles.routineDots}>{taskDays.map((day, index) => { const achieved = index < cycleDay && completedDays.has(day.key); const future = index >= cycleDay; const isToday = day.key === todayKey; return <View key={day.key} style={styles.routineDay}><View style={[styles.routineDot, designMode === 'dark' && styles.routineDotDark, achieved && { backgroundColor: color, borderColor: color }, future && styles.routineDotFuture, isToday && styles.routineDotToday]} /><Text style={[styles.routineDayLabel, designMode === 'dark' && styles.darkMetricText]}>{day.label}</Text></View>; })}</View><Text style={[styles.routineStreak, designMode === 'dark' && styles.routineStreakDark]}>今のサイクル {activeDays} / {cycleDay}日 ・ 連続 {streak}日 ・ 累計 {totalCompletedDays}日</Text></View>;
+    return <View key={routine.id} style={[styles.routineTaskRow, designMode === 'dark' && styles.routineTaskRowDark]}><View style={styles.routineTaskHeader}><Text numberOfLines={1} style={[styles.routineTaskTitle, designMode === 'dark' && styles.darkMetricText]}>{routine.title}</Text><View style={styles.routineTaskActions}><Text style={[styles.routineTaskRate, { color }]}>{Math.round((activeDays / cycleDay) * 100)}%</Text>{routine.active && representativeTask && <Pressable accessibilityLabel={`${routine.title}をルーティンから外す`} hitSlop={8} onPress={() => onRemoveRoutine(representativeTask.id)} style={[styles.routineRemoveButton, designMode === 'dark' && styles.routineRemoveButtonDark]}><Text style={[styles.routineRemoveText, designMode === 'dark' && styles.routineRemoveTextDark]}>×</Text></Pressable>}</View></View><View style={styles.routineDots}>{taskDays.map((day, index) => { const achieved = index < cycleDay && completedDays.has(day.key); const future = index >= cycleDay; const isToday = day.key === todayKey; return <View key={day.key} style={styles.routineDay}><View style={[styles.routineDot, designMode === 'dark' && styles.routineDotDark, achieved && { backgroundColor: color, borderColor: color }, future && styles.routineDotFuture, isToday && styles.routineDotToday]} /><Text style={[styles.routineDayLabel, designMode === 'dark' && styles.darkMetricText]}>{day.label}</Text></View>; })}</View><Text style={[styles.routineStreak, designMode === 'dark' && styles.routineStreakDark]}>今のサイクル {activeDays} / {cycleDay}日 ・ 連続 {streak}日 ・ 累計 {totalCompletedDays}日</Text></View>;
   })}</View></View>;
 }
 
@@ -433,6 +504,7 @@ const styles = StyleSheet.create({
   routineResumeSubcopy: { fontSize: 11, fontWeight: '700', marginTop: 4 },
   routineResumeFacts: { flexDirection: 'row', gap: 7, marginTop: 13 },
   routineResumeFact: { flex: 1, minWidth: 0, borderRadius: 10, backgroundColor: '#F7F4F8', padding: 8 },
+  routineResumeFactDark: { backgroundColor: '#20293A', borderWidth: 1, borderColor: '#303B50' },
   routineResumeFactLabel: { color: '#817A88', fontSize: 9, fontWeight: '800' },
   routineResumeFactValue: { color: '#38323F', fontSize: 12, fontWeight: '900', marginTop: 4 },
   routineResumeStats: { color: '#756F7C', fontSize: 10, fontWeight: '800', marginTop: 8 },

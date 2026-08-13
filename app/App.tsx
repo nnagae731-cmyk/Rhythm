@@ -13,7 +13,7 @@ import { getChicPatternFeatureId, getEffectiveChicPattern, getEffectiveNudgeMode
 import { AnalysisScreen } from './AnalysisScreen';
 import { BThemeRibbonDecoration, BThemeRibbonPreload } from './components/BThemeRibbonDecoration';
 import { CThemeRibbonDecoration, CThemeRibbonPreload } from './components/CThemeRibbonDecoration';
-import { appendBehaviorEvent, appendBehaviorEvents, BehaviorEvent, createDeparturePreparationStartedEvent, createDepartureStartedEvent, createFocusCompletedBehaviorEvent, createFocusStartedEvent, createFocusStoppedEvent, createNotificationActionEvent, createNotificationScheduledEvent, createTaskCompletedBehaviorEvent, createTaskCompletionRevertedBehaviorEvent, NotificationAction } from './behaviorEvents';
+import { appendBehaviorEvent, appendBehaviorEvents, BehaviorEvent, createDeparturePreparationStartedEvent, createDepartureStartedEvent, createFocusCompletedBehaviorEvent, createFocusStartedEvent, createFocusStoppedEvent, createNotificationActionEvent, createNotificationScheduledEvent, createRoutineDeactivatedBehaviorEvent, createRoutineStateChangedBehaviorEvent, createTaskCompletedBehaviorEvent, createTaskCompletionRevertedBehaviorEvent, NotificationAction } from './behaviorEvents';
 import { DEFAULT_PREMIUM_GUIDE_FEATURE, PremiumGuideFeatureId } from './premiumGuide';
 import { createPremiumTaskTemplate, hasSameTemplateSettings, PremiumTaskTemplate, summarizePremiumTaskTemplate } from './taskTemplates';
 import { Header } from './components/Header';
@@ -28,7 +28,7 @@ import { BottomNav } from './components/BottomNav';
 import { GuideModal } from './components/GuideModal';
 import { RecoveryModal } from './components/RecoveryModal';
 import { styles } from './styles/appStyles';
-import { Affirmation, CalendarMarks, Category, DeparturePlan, DeparturePreparationStatus, MonthlyReview, MonthlyWishState, NudgeMode, PersistedState, PhotoThemePhotoTarget, PhotoThemeSettings, Priority, RepeatRule, Screen, SharedEvent, SharedParticipantPrefs, Task, ThemeMode, TimeTab, UrgencyStatus, WidgetSize, WishAction, WishMonthMap } from './types';
+import { Affirmation, CalendarMarks, Category, DeparturePlan, DeparturePreparationStatus, MonthlyReview, MonthlyWishState, NudgeMode, PersistedState, PhotoThemePhotoTarget, PhotoThemeSettings, Priority, RepeatRule, Screen, SharedEvent, SharedParticipantPrefs, Task, TaskBucket, ThemeMode, TimeTab, UrgencyStatus, WidgetSize, WishAction, WishMonthMap } from './types';
 import { initialPlan } from './storage/rhythmState';
 import { loadRhythmState, saveRhythmState } from './storage/rhythmStorage';
 import { categories, priorities, completionIcons, categoryColors, designModes, chicUtilityPalettes } from './features/tasks/taskUtils';
@@ -40,6 +40,7 @@ import { WishScreen } from './WishScreen';
 import { SharedEventScreen } from './SharedEventScreen';
 import { TopImageCropModal } from './components/TopImageCropModal';
 import { cropRectToPixels, displayToNormalizedRect, getContainBounds, getInitialCropRect, NormalizedCropRect } from './features/photo/topImageCrop';
+import { deleteManagedPhotoUri, persistPhotoUri } from './features/photo/persistentPhoto';
 import {
   Alert,
   Animated,
@@ -130,6 +131,22 @@ function dateForReminder(day: string, clock: string) {
   return result;
 }
 
+function normalizeTaskDateKey(value: string | undefined) {
+  const match = value?.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+  if (!match) return undefined;
+  return `${match[1]}-${String(Number(match[2])).padStart(2, '0')}-${String(Number(match[3])).padStart(2, '0')}`;
+}
+
+function reviewIdentity(review: MonthlyReview) {
+  return review.id ?? `${review.date ?? ''}|${review.shortNote ?? ''}|${review.memo ?? ''}|${review.satisfaction ?? 0}`;
+}
+
+function reviewsForMonth(monthState: MonthlyWishState) {
+  if (monthState.reviews?.length) return monthState.reviews;
+  const review = monthState.review;
+  return review && (review.photo || review.date || review.shortNote || review.memo || review.satisfaction) ? [review] : [];
+}
+
 function normalizePlanDate(day: string | undefined) {
   const match = day?.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
   if (match) return `${match[1]}-${String(Number(match[2])).padStart(2, '0')}-${String(Number(match[3])).padStart(2, '0')}`;
@@ -174,7 +191,7 @@ function completeTasksWithRepeats(current: Task[], ids: string[]) {
         done: false,
         completedAt: undefined,
         deadlineDate: task.deadlineDate ? advanceDateValue(task.deadlineDate, rule) : undefined,
-        remindDate: task.remindDate ? advanceDateValue(task.remindDate, rule) : undefined,
+        remindDate: task.remindAt ? advanceDateValue(task.remindDate ?? task.scheduledDate ?? dateKey(), rule) : undefined,
         scheduledDate: advanceDateValue(task.scheduledDate ?? dateKey(), rule),
         scheduledTime: task.scheduledTime,
         isRoutine: task.isRoutine,
@@ -479,7 +496,10 @@ export default function App() {
   const [timelineInitialTab, setTimelineInitialTab] = useState<TimeTab>('departure');
   const [tasks, setTasks] = useState<Task[]>([]);
   const tasksRef = React.useRef<Task[]>([]);
+  const scheduleTaskNotificationsRef = React.useRef<(task: Task) => Promise<void>>(async () => undefined);
   const hydratedRef = React.useRef(false);
+  const persistenceDisabledRef = React.useRef(false);
+  const saveFailureNotifiedRef = React.useRef(false);
   const pendingNotificationCompletionIdsRef = React.useRef<string[]>([]);
   const pendingDepartureCheckInIdsRef = React.useRef<string[]>([]);
   const pendingDeparturePreparationIdsRef = React.useRef<Array<{ id: string; status: DeparturePreparationStatus }>>([]);
@@ -548,16 +568,16 @@ export default function App() {
   const updateWishReview = React.useCallback((monthKey: string, reviewKey: string, updates: Partial<MonthlyReview>) => {
     setWishMonths((current) => {
       const monthState = getMonthlyWishState(current, monthKey);
-      const reviews = monthState.reviews?.length ? monthState.reviews : (monthState.review && (monthState.review.photo || monthState.review.date || monthState.review.shortNote || monthState.review.memo || monthState.review.satisfaction) ? [monthState.review] : []);
-      const updated = reviews.map((review) => (review.id === reviewKey || (!review.id && `${review.date ?? ''}|${review.shortNote ?? ''}|${review.memo ?? ''}|${review.satisfaction ?? 0}` === reviewKey) ? { ...review, ...updates } : review));
+      const reviews = reviewsForMonth(monthState);
+      const updated = reviews.map((review) => reviewIdentity(review) === reviewKey ? { ...review, ...updates } : review);
       return { ...current, [monthKey]: { ...monthState, review: updated[updated.length - 1] ?? monthState.review, reviews: updated } };
     });
   }, []);
   const deleteWishReview = React.useCallback((monthKey: string, reviewKey: string) => {
     setWishMonths((current) => {
       const monthState = getMonthlyWishState(current, monthKey);
-      const reviews = monthState.reviews?.length ? monthState.reviews : (monthState.review && (monthState.review.photo || monthState.review.date || monthState.review.shortNote || monthState.review.memo || monthState.review.satisfaction) ? [monthState.review] : []);
-      const remaining = reviews.filter((review) => !(review.id === reviewKey || (!review.id && `${review.date ?? ''}|${review.shortNote ?? ''}|${review.memo ?? ''}|${review.satisfaction ?? 0}` === reviewKey)));
+      const reviews = reviewsForMonth(monthState);
+      const remaining = reviews.filter((review) => reviewIdentity(review) !== reviewKey);
       // 履歴から削除した直後に、前のレビューを入力欄へ復元しない。
       // 旧形式 review は互換用に残すが、現在の入力 draft は常に空へ戻す。
       return { ...current, [monthKey]: { ...monthState, review: {}, reviews: remaining } };
@@ -566,7 +586,7 @@ export default function App() {
   const saveDailyReview = React.useCallback((monthKey: string, draft: MonthlyReview) => {
     setWishMonths((current) => {
       const monthState = getMonthlyWishState(current, monthKey);
-      const reviews = monthState.reviews?.length ? monthState.reviews : (monthState.review && (monthState.review.photo || monthState.review.date || monthState.review.shortNote || monthState.review.memo || monthState.review.satisfaction) ? [monthState.review] : []);
+      const reviews = reviewsForMonth(monthState);
       const photos = draft.photos?.filter(Boolean) ?? (draft.photo ? [draft.photo] : []);
       const nextReview: MonthlyReview = { ...draft, id: draft.id ?? `journal-${draft.date ?? Date.now()}`, photo: photos[0] ?? '', photos };
       const existingIndex = reviews.findIndex((review) => review.id === nextReview.id || review.date === nextReview.date);
@@ -621,12 +641,29 @@ export default function App() {
     const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], allowsEditing: false, ...(isTopImage ? {} : { aspect }), quality: isTopImage ? 1 : 0.82 });
     const selectedAsset = result.canceled ? undefined : result.assets[0];
     if (!selectedAsset?.uri) return;
+    if (isTopImage) {
+      // 調整を確定するまでは選択元をそのまま使い、不要な端末内コピーを作らない。
+      setPendingTopPhoto({ target: target as Exclude<PhotoThemePhotoTarget, 'background' | 'focus'>, originalUri: selectedAsset.uri, sourceWidth: selectedAsset.width || 1000, sourceHeight: selectedAsset.height || 1000 });
+      return;
+    }
+    let persistentUri: string;
+    try {
+      persistentUri = persistPhotoUri(selectedAsset.uri, target);
+    } catch (error) {
+      console.warn('Could not persist selected Rhythm photo.', error);
+      Alert.alert('写真を保存できませんでした', 'もう一度選び直してください。');
+      return;
+    }
     if (target === 'background') {
-      setPhotoTheme((current) => ({ ...current, placement: 'background', imageUri: selectedAsset.uri }));
+      setPhotoTheme((current) => {
+        deleteManagedPhotoUri(current.imageUri, [persistentUri, current.focusBackgroundUri, ...Object.values(current.topImageUris ?? {}), ...Object.values(current.topImageOriginalUris ?? {})]);
+        return { ...current, placement: 'background', imageUri: persistentUri };
+      });
     } else if (target === 'focus') {
-      setPhotoTheme((current) => ({ ...current, focusBackgroundUri: selectedAsset.uri }));
-    } else {
-      setPendingTopPhoto({ target, originalUri: selectedAsset.uri, sourceWidth: selectedAsset.width || 1000, sourceHeight: selectedAsset.height || 1000 });
+      setPhotoTheme((current) => {
+        deleteManagedPhotoUri(current.focusBackgroundUri, [persistentUri, current.imageUri, ...Object.values(current.topImageUris ?? {}), ...Object.values(current.topImageOriginalUris ?? {})]);
+        return { ...current, focusBackgroundUri: persistentUri };
+      });
     }
   }, [openPremiumFeature, planTier]);
 
@@ -642,12 +679,18 @@ export default function App() {
       const normalized = cropOverride ?? pendingTopPhoto.cropRect ?? getInitialNormalizedCrop(pendingTopPhoto.sourceWidth, pendingTopPhoto.sourceHeight);
       const crop = cropRectToPixels(normalized, pendingTopPhoto.sourceWidth, pendingTopPhoto.sourceHeight);
       const result = await ImageManipulator.manipulateAsync(pendingTopPhoto.originalUri, [{ crop }, { resize: { width: 1000, height: 400 } }], { compress: 0.9, format: ImageManipulator.SaveFormat.JPEG });
-      setPhotoTheme((current) => ({
-        ...current,
-        topImageUris: { ...current.topImageUris, [pendingTopPhoto.target]: result.uri },
-        topImageOriginalUris: { ...current.topImageOriginalUris, [pendingTopPhoto.target]: pendingTopPhoto.originalUri },
-        topImageCropRects: { ...current.topImageCropRects, [pendingTopPhoto.target]: normalized },
-      }));
+      const originalUri = persistPhotoUri(pendingTopPhoto.originalUri, `top-original-${pendingTopPhoto.target}`);
+      const displayUri = persistPhotoUri(result.uri, `top-${pendingTopPhoto.target}`);
+      setPhotoTheme((current) => {
+        const previousDisplayUri = current.topImageUris?.[pendingTopPhoto.target];
+        const previousOriginalUri = current.topImageOriginalUris?.[pendingTopPhoto.target];
+        const topImageUris = { ...current.topImageUris, [pendingTopPhoto.target]: displayUri };
+        const topImageOriginalUris = { ...current.topImageOriginalUris, [pendingTopPhoto.target]: originalUri };
+        const retainedUris = [current.imageUri, current.focusBackgroundUri, ...Object.values(topImageUris), ...Object.values(topImageOriginalUris)];
+        deleteManagedPhotoUri(previousDisplayUri, retainedUris);
+        deleteManagedPhotoUri(previousOriginalUri, retainedUris);
+        return { ...current, topImageUris, topImageOriginalUris, topImageCropRects: { ...current.topImageCropRects, [pendingTopPhoto.target]: normalized } };
+      });
       setPendingTopPhoto(undefined);
     } catch {
       Alert.alert('トップ画像を調整できませんでした', 'もう一度画像を選び直して試してください。');
@@ -754,14 +797,31 @@ export default function App() {
   }, [recordBehaviorEvent]);
 
   const completeTaskIds = React.useCallback((ids: string[], source: 'manual' | 'notification' = 'manual') => {
+    const previousTasks = tasksRef.current;
     const result = completeTasksAndCollectEvents(tasksRef.current, ids);
     if (result.tasks === tasksRef.current) return;
     tasksRef.current = result.tasks;
     setTasks(result.tasks);
     if (result.newlyCompleted.length === 0) return;
     result.newlyCompleted.forEach((task) => { void cancelPendingTaskNotifications(task.id); });
+    const previousIds = new Set(previousTasks.map((task) => task.id));
+    result.tasks.filter((task) => !previousIds.has(task.id) && !task.done).forEach((nextTask) => {
+      void scheduleTaskNotificationsRef.current(nextTask);
+    });
     void playCompletionSound();
-    result.newlyCompleted.forEach((task) => recordBehaviorEvent(createTaskCompletedBehaviorEvent({ taskId: task.id, taskTitle: task.title, occurredAt: new Date(task.completedAt!), source })));
+    result.newlyCompleted.forEach((task) => {
+      const completedAt = new Date(task.completedAt!);
+      recordBehaviorEvent(createTaskCompletedBehaviorEvent({
+        taskId: task.id,
+        taskTitle: task.title,
+        occurredAt: completedAt,
+        source,
+        routineId: task.isRoutine ? task.routineId ?? task.id : undefined,
+        routineTitle: task.isRoutine ? task.title : undefined,
+        routineTargetDate: task.isRoutine ? dateKey(completedAt) : undefined,
+      }));
+      if (task.isRoutine) recordBehaviorEvent(createRoutineStateChangedBehaviorEvent({ taskId: task.id, routineId: task.routineId ?? task.id, routineTitle: task.title, occurredAt: completedAt, targetDate: dateKey(completedAt), completed: true, source }));
+    });
   }, [recordBehaviorEvent]);
 
   const markDeparturePlanAsDeparted = React.useCallback((planId: string, source: 'manual' | 'notification' = 'manual') => {
@@ -798,8 +858,18 @@ export default function App() {
     const next = tasksRef.current.map((task) => task.id === taskId ? { ...task, done: false, completedAt: undefined } : task);
     tasksRef.current = next;
     setTasks(next);
-    if (target.isRoutine) {
-      recordBehaviorEvent(createTaskCompletionRevertedBehaviorEvent({ taskId: target.id, taskTitle: target.title, occurredAt: new Date(), completedAt: target.completedAt, source }));
+    if (target.routineId && (!target.routineEndedAt || new Date(target.completedAt!).getTime() <= new Date(target.routineEndedAt).getTime())) {
+      recordBehaviorEvent(createTaskCompletionRevertedBehaviorEvent({
+        taskId: target.id,
+        taskTitle: target.title,
+        occurredAt: new Date(),
+        completedAt: target.completedAt,
+        source,
+        routineId: target.routineId,
+        routineTitle: target.title,
+        routineTargetDate: dateKey(target.completedAt!),
+      }));
+      recordBehaviorEvent(createRoutineStateChangedBehaviorEvent({ taskId: target.id, routineId: target.routineId, routineTitle: target.title, occurredAt: new Date(), targetDate: dateKey(target.completedAt!), completed: false, source }));
     }
   }, [recordBehaviorEvent]);
 
@@ -839,7 +909,12 @@ export default function App() {
     loadRhythmState()
       .then((saved) => {
         if (!saved) return;
-        const loadedTasks = saved.tasks ? saved.tasks.map((task) => ({ ...task, category: (task.category ?? 'その他') as Category, priority: (task.priority ?? '中') as Priority })) : [];
+        const loadedTasks = saved.tasks ? saved.tasks.map((task) => ({
+          ...task,
+          category: (task.category ?? 'その他') as Category,
+          priority: (task.priority ?? '中') as Priority,
+          routineId: task.routineId ?? (task.isRoutine ? task.id : undefined),
+        })) : [];
         tasksRef.current = loadedTasks;
         setTasks(loadedTasks);
         if (saved.plan) setPlan({ ...saved.plan, date: normalizePlanDate(saved.plan.date) });
@@ -869,7 +944,18 @@ export default function App() {
         });
         setRecoveryHistory(saved.recoveryHistory ?? []);
         setFocusSessions(saved.focusSessions ?? []);
-        const loadedBehaviorEvents = saved.behaviorEvents ?? [];
+        const loadedBehaviorEvents = (saved.behaviorEvents ?? []).map((event) => {
+          if ((event.type !== 'task_completed' && event.type !== 'task_completion_reverted') || event.routineId) return event;
+          const matchedTask = loadedTasks.find((task) => task.id === event.taskId)
+            ?? loadedTasks.find((task) => Boolean(task.routineId) && task.title.trim() === event.taskTitleSnapshot?.trim());
+          if (!matchedTask?.routineId) return event;
+          return {
+            ...event,
+            routineId: matchedTask.routineId,
+            routineTitleSnapshot: matchedTask.title,
+            routineTargetDate: dateKey(event.type === 'task_completion_reverted' && event.taskCompletionDate ? event.taskCompletionDate : event.occurredAt),
+          };
+        });
         behaviorEventsRef.current = loadedBehaviorEvents;
         setBehaviorEvents(loadedBehaviorEvents);
         if (saved.taskTemplates) setTaskTemplates(saved.taskTemplates);
@@ -886,7 +972,11 @@ export default function App() {
         sharedParticipantPrefsByTokenRef.current = loadedSharedParticipantPrefsByToken;
         setSharedParticipantPrefsByToken(loadedSharedParticipantPrefsByToken);
       })
-      .catch(() => Alert.alert('保存データを読み込めませんでした'))
+      .catch((error) => {
+        console.warn('Rhythm hydration failed; keeping the persisted value untouched.', error);
+        persistenceDisabledRef.current = true;
+        Alert.alert('保存データを読み込めませんでした', 'データは初期化せず、そのまま残しています。');
+      })
       .finally(() => {
         hydratedRef.current = true;
         setHydrated(true);
@@ -1051,7 +1141,14 @@ export default function App() {
   useEffect(() => {
     if (!hydrated) return;
     const state: PersistedState = { tasks, plan, departurePlans, widgetSize, showCompleted, completionIcon, designMode, taskTemplates, savedTaskTemplates, chicPattern, chicCheckColor, recoveryHistory, focusSessions, departureCheckIns, behaviorEvents, wishMonths, calendarMarks, sharedEvents, sharedParticipantIdsByToken, sharedParticipantPrefsByToken, departurePreparationStatuses, affirmations, photoTheme };
-    saveRhythmState(state).catch(() => undefined);
+    if (persistenceDisabledRef.current) return;
+    saveRhythmState(state).catch((error) => {
+      console.warn('Rhythm state save failed.', error);
+      if (!saveFailureNotifiedRef.current) {
+        saveFailureNotifiedRef.current = true;
+        Alert.alert('保存できませんでした', '空き容量や端末の設定を確認して、もう一度お試しください。');
+      }
+    });
   }, [tasks, plan, departurePlans, widgetSize, showCompleted, completionIcon, designMode, taskTemplates, savedTaskTemplates, chicPattern, chicCheckColor, recoveryHistory, focusSessions, departureCheckIns, behaviorEvents, wishMonths, calendarMarks, sharedEvents, sharedParticipantIdsByToken, sharedParticipantPrefsByToken, departurePreparationStatuses, affirmations, photoTheme, hydrated]);
 
   useEffect(() => {
@@ -1083,17 +1180,19 @@ export default function App() {
 
   const priorityRank: Record<Priority, number> = { 高: 0, 中: 1, 低: 2 };
   const todayTaskDate = dateKey(now);
+  const isVisibleToday = React.useCallback((task: Task) => !task.done && (!normalizeTaskDateKey(task.scheduledDate) || normalizeTaskDateKey(task.scheduledDate)! <= todayTaskDate), [todayTaskDate]);
   const visibleTasks = tasks
-    .filter((task) => !task.done && task.scheduledDate === todayTaskDate)
+    .filter(isVisibleToday)
     .sort((a, b) => Number(a.done) - Number(b.done) || priorityRank[a.priority] - priorityRank[b.priority]);
-  const remaining = tasks.filter((task) => !task.done && task.scheduledDate === todayTaskDate).length;
+  const remaining = visibleTasks.length;
   const dangerousTask = [...tasks]
     .filter((task) => !task.done && task.navigationEnabled && task.deadlineDate)
     .sort((a, b) => urgencyLevel(getUrgencyStatus(b, now)) - urgencyLevel(getUrgencyStatus(a, now)))[0];
 
   const addTask = (title: string, category: Category, priority: Priority, remindDate?: string, remindAt?: string, deadlineDate?: string, deadlineTime?: string, deadlineNotifyBefore?: number, navigationEnabled?: boolean, preparationMinutes?: number, travelMinutes?: number, bufferMinutes?: number, repeatRule: RepeatRule = 'none', nudgeMode: NudgeMode = 'once', scheduledDate?: string, scheduledTime?: string, isRoutine = false) => {
     const routineLimit = hasPremiumAccess(planTier, 'full_history') ? 100 : 5;
-    if (isRoutine && tasksRef.current.filter((item) => item.isRoutine).length >= routineLimit) {
+    const activeRoutineIds = new Set(tasksRef.current.filter((item) => item.isRoutine).map((item) => item.routineId ?? item.id));
+    if (isRoutine && activeRoutineIds.size >= routineLimit) {
       Alert.alert('ルーティン登録数の上限', `現在のプランでは${routineLimit}件まで登録できます。`);
       return;
     }
@@ -1129,14 +1228,31 @@ export default function App() {
   const updateTask = (title: string, category: Category, priority: Priority, remindDate?: string, remindAt?: string, deadlineDate?: string, deadlineTime?: string, deadlineNotifyBefore?: number, navigationEnabled?: boolean, preparationMinutes?: number, travelMinutes?: number, bufferMinutes?: number, repeatRule: RepeatRule = 'none', nudgeMode: NudgeMode = 'once', scheduledDate?: string, scheduledTime?: string, isRoutine = false) => {
     if (!editingTask) return;
     const routineLimit = hasPremiumAccess(planTier, 'full_history') ? 100 : 5;
-    const routineCount = tasksRef.current.filter((item) => item.isRoutine && item.id !== editingTask.id).length;
-    if (isRoutine && routineCount >= routineLimit) {
+    const existingRoutineId = editingTask.routineId ?? editingTask.id;
+    const activeRoutineIds = new Set(tasksRef.current.filter((item) => item.isRoutine && (item.routineId ?? item.id) !== existingRoutineId).map((item) => item.routineId ?? item.id));
+    if (isRoutine && !editingTask.isRoutine && activeRoutineIds.size >= routineLimit) {
       Alert.alert('ルーティン登録数の上限', `現在のプランでは${routineLimit}件まで登録できます。`);
       return;
     }
-    const updated = { ...editingTask, title, category, priority, remindDate, remindAt, deadlineDate, deadlineTime, deadlineNotifyBefore, navigationEnabled, preparationMinutes, travelMinutes, bufferMinutes, repeatRule, isRoutine, routineId: isRoutine ? editingTask.routineId ?? editingTask.id : editingTask.routineId, nudgeMode, scheduledDate: scheduledDate ?? editingTask.scheduledDate ?? dateKey(now), scheduledTime };
-    setTasks((current) => current.map((task) => task.id === editingTask.id ? updated : task));
+    const reactivatesRoutine = isRoutine && !editingTask.isRoutine && Boolean(editingTask.routineId);
+    const endedAt = editingTask.isRoutine && !isRoutine ? new Date().toISOString() : editingTask.routineEndedAt;
+    const updated = { ...editingTask, title, category, priority, remindDate, remindAt, deadlineDate, deadlineTime, deadlineNotifyBefore, navigationEnabled, preparationMinutes, travelMinutes, bufferMinutes, repeatRule, isRoutine, routineId: isRoutine ? editingTask.routineId ?? editingTask.id : editingTask.routineId, routineEndedAt: isRoutine ? undefined : endedAt, nudgeMode, scheduledDate: scheduledDate ?? editingTask.scheduledDate ?? dateKey(now), scheduledTime };
+    const nextTasks = tasksRef.current.map((task) => {
+      if (task.id === editingTask.id) return updated;
+      if (editingTask.isRoutine && !isRoutine && (task.routineId ?? task.id) === existingRoutineId) {
+        return { ...task, isRoutine: false, routineEndedAt: endedAt };
+      }
+      return task;
+    });
+    tasksRef.current = nextTasks;
+    setTasks(nextTasks);
     setEditingTask(null);
+    if (editingTask.isRoutine && !isRoutine && updated.routineId && endedAt) {
+      recordBehaviorEvent(createRoutineDeactivatedBehaviorEvent({ routineId: updated.routineId, routineTitle: editingTask.title, taskId: editingTask.id, occurredAt: new Date(endedAt), targetDate: dateKey(endedAt) }));
+    }
+    if (reactivatesRoutine && updated.routineId) {
+      recordBehaviorEvent(createRoutineStateChangedBehaviorEvent({ taskId: updated.id, routineId: updated.routineId, routineTitle: updated.title, occurredAt: new Date(), targetDate: dateKey(), completed: Boolean(updated.done), source: 'manual' }));
+    }
     void scheduleAllTaskNotifications(updated);
   };
 
@@ -1152,7 +1268,8 @@ export default function App() {
       Alert.alert('通知がオフです', '端末設定からRhythmの通知を許可してください。');
       return;
     }
-    const date = task.remindDate ? dateForReminder(task.remindDate, task.remindAt) : dateForClock(task.remindAt);
+    const reminderDate = normalizeTaskDateKey(task.remindDate) ?? normalizeTaskDateKey(task.scheduledDate);
+    const date = reminderDate ? dateForReminder(reminderDate, task.remindAt) : dateForClock(task.remindAt);
     if (date.getTime() <= Date.now()) {
       Alert.alert('過去の日時です', '現在より後のリマインド日時を設定してください。');
       return;
@@ -1187,16 +1304,19 @@ export default function App() {
     const notificationDate = new Date(deadline.getTime() - task.deadlineNotifyBefore * 60_000);
     if (notificationDate.getTime() <= Date.now()) return;
     const timing = task.deadlineNotifyBefore === 0 ? '期限時刻です' : `期限まであと${task.deadlineNotifyBefore >= 60 ? `${task.deadlineNotifyBefore / 60}時間` : `${task.deadlineNotifyBefore}分`}`;
+    const notificationInstanceId = `deadline:${task.id}:${notificationDate.toISOString()}`;
     await Notifications.scheduleNotificationAsync({
+      identifier: notificationInstanceId,
       content: {
         title: timing,
         body: task.title,
         categoryIdentifier: 'TASK_ACTIONS',
-        data: { taskId: task.id, notificationKind: 'deadline' },
+        data: { taskId: task.id, notificationInstanceId, notificationKind: 'deadline' },
         sound: 'default',
       },
       trigger: { type: Notifications.SchedulableTriggerInputTypes.DATE, date: notificationDate },
     });
+    recordBehaviorEvent(createNotificationScheduledEvent({ notificationInstanceId, taskId: task.id, taskTitle: task.title, scheduledAt: notificationDate, occurredAt: new Date() }));
   };
 
   const scheduleDeparture = async (targetPlan = plan) => {
@@ -1260,6 +1380,7 @@ export default function App() {
     }
     Alert.alert('出発サポートを設定しました', `${formatLiveTime(moments.prepare)}から${count}段階でお知らせします。`);
   };
+  scheduleTaskNotificationsRef.current = scheduleAllTaskNotifications;
 
   const createTaskFromWishAction = (action: WishAction) => {
     if (tasks.some((task) => !task.done && task.title.trim() === action.title.trim())) {
@@ -1384,10 +1505,31 @@ export default function App() {
               }}
               onDelete={deleteTaskById}
               onDeleteSelected={() => deleteSelectedTasks(selectedTaskIds)}
-              onDuplicate={(task) => setTasks((current) => [{ ...task, id: `${Date.now()}-copy`, title: `${task.title}（コピー）`, done: false, completedAt: undefined }, ...current])}
+              onDuplicate={(task) => {
+                // 通知は複製せず、複製後にユーザーが改めて設定する。
+                // 過去のルーティンIDも引き継がない独立したタスクにする。
+                const duplicate = { ...task, id: `${Date.now()}-copy`, title: `${task.title}（コピー）`, done: false, completedAt: undefined, isRoutine: false, routineId: undefined, routineEndedAt: undefined, remindDate: undefined, remindAt: undefined, deadlineNotifyBefore: undefined, nudgeMode: 'once' as NudgeMode };
+                tasksRef.current = [duplicate, ...tasksRef.current];
+                setTasks(tasksRef.current);
+              }}
               onSaveTemplate={saveTaskAsTemplate}
-              onPostpone={(id) => setTasks((current) => current.map((task) => task.id === id ? { ...task, scheduledDate: todayInputValue(1), bucket: 'later' } : task))}
-              onBucket={(id, bucket) => setTasks((current) => current.map((task) => task.id === id ? { ...task, bucket } : task))}
+              onPostpone={(id) => {
+                const task = tasksRef.current.find((item) => item.id === id);
+                if (!task) return;
+                const tomorrow = todayInputValue(1);
+                const updated = { ...task, scheduledDate: tomorrow, remindDate: task.remindAt ? tomorrow : task.remindDate, bucket: 'later' as TaskBucket };
+                tasksRef.current = tasksRef.current.map((item) => item.id === id ? updated : item);
+                setTasks(tasksRef.current);
+                void scheduleAllTaskNotifications(updated);
+              }}
+              onBucket={(id, bucket) => {
+                const task = tasksRef.current.find((item) => item.id === id);
+                if (!task) return;
+                const updated = { ...task, bucket };
+                tasksRef.current = tasksRef.current.map((item) => item.id === id ? updated : item);
+                setTasks(tasksRef.current);
+                void scheduleAllTaskNotifications(updated);
+              }}
               onOpenTime={(tab) => { setTimelineInitialTab(tab); setScreen('timeline'); }}
                onOpenWish={openWish}
               styles={styles}
@@ -1488,15 +1630,28 @@ export default function App() {
                onPickPhotoTheme={(target) => void pickPhotoTheme(target)}
                onAdjustPhotoTheme={(target) => adjustTopPhoto(target)}
                onClearPhotoTheme={(target) => setPhotoTheme((current) => {
-                 if (target === 'background') return { ...current, imageUri: undefined };
-                 if (target === 'focus') return { ...current, focusBackgroundUri: undefined };
+                 if (target === 'background') {
+                   deleteManagedPhotoUri(current.imageUri, [current.focusBackgroundUri, ...Object.values(current.topImageUris ?? {}), ...Object.values(current.topImageOriginalUris ?? {})]);
+                   return { ...current, imageUri: undefined };
+                 }
+                 if (target === 'focus') {
+                   deleteManagedPhotoUri(current.focusBackgroundUri, [current.imageUri, ...Object.values(current.topImageUris ?? {}), ...Object.values(current.topImageOriginalUris ?? {})]);
+                   return { ...current, focusBackgroundUri: undefined };
+                 }
                  const topImageUris = { ...current.topImageUris };
                  const topImageOriginalUris = { ...current.topImageOriginalUris };
                  const topImageAdjustments = { ...current.topImageAdjustments };
+                 const topImageCropRects = { ...current.topImageCropRects };
+                 const removedDisplayUri = topImageUris[target];
+                 const removedOriginalUri = topImageOriginalUris[target];
                  delete topImageUris[target];
                  delete topImageOriginalUris[target];
                  delete topImageAdjustments[target];
-                 return { ...current, topImageUris, topImageOriginalUris, topImageAdjustments };
+                 delete topImageCropRects[target];
+                 const retainedUris = [current.imageUri, current.focusBackgroundUri, ...Object.values(topImageUris), ...Object.values(topImageOriginalUris)];
+                 deleteManagedPhotoUri(removedDisplayUri, retainedUris);
+                 deleteManagedPhotoUri(removedOriginalUri, retainedUris);
+                 return { ...current, topImageUris, topImageOriginalUris, topImageAdjustments, topImageCropRects };
                })}
               templates={taskTemplates}
               savedTemplates={savedTaskTemplates}
@@ -1518,7 +1673,16 @@ export default function App() {
               designMode={uiDesignMode}
               planTier={planTier}
               onPremium={openPremiumFeature}
-              onRemoveRoutine={(taskId) => Alert.alert('ルーティンから外しますか？', 'タスク自体と完了履歴は残ります。', [{ text: 'キャンセル', style: 'cancel' }, { text: 'ルーティンから外す', style: 'destructive', onPress: () => setTasks((current) => current.map((task) => task.id === taskId ? { ...task, isRoutine: false } : task)) }])}
+              onRemoveRoutine={(taskId) => Alert.alert('ルーティンから外しますか？', 'タスク自体と完了履歴は残ります。', [{ text: 'キャンセル', style: 'cancel' }, { text: 'ルーティンから外す', style: 'destructive', onPress: () => {
+                const target = tasksRef.current.find((task) => task.id === taskId);
+                if (!target) return;
+                const endedAt = new Date().toISOString();
+                const routineId = target.routineId ?? target.id;
+                const next = tasksRef.current.map((task) => (task.routineId ?? task.id) === routineId ? { ...task, isRoutine: false, routineEndedAt: endedAt } : task);
+                tasksRef.current = next;
+                setTasks(next);
+                recordBehaviorEvent(createRoutineDeactivatedBehaviorEvent({ routineId, routineTitle: target.title, taskId: target.id, occurredAt: new Date(endedAt), targetDate: dateKey(endedAt) }));
+              } }])}
               recordContent={<HistoryScreen tasks={tasks} wishMonths={wishMonths} calendarMarks={calendarMarks} onSetCalendarMark={(date, mark) => setCalendarMarks((current) => { const next = { ...current }; if (mark) next[date] = mark; else delete next[date]; return next; })} recoveryHistory={recoveryHistory} focusSessions={focusSessions} departureCheckIns={departureCheckIns} departurePlans={departurePlans} behaviorEvents={behaviorEvents} completionIcon={completionIcon} designMode={uiDesignMode} chicPattern={effectiveChicPattern} planTier={planTier} onPremium={openPremiumFeature} onSaveTemplate={saveTaskAsTemplate} onRestore={restoreTaskById} onSaveDailyReview={saveDailyReview} onUpdateReview={updateWishReview} onDeleteReview={deleteWishReview} styles={styles} helpers={{ dateKey, formatLiveTime }} components={{ AchievementVessel, CalendarMarkPicker }} />}
             />
           )}
@@ -1577,7 +1741,8 @@ function FocusMode({ tasks, designMode, backgroundImageUri, onFocusCompleted, on
     const today = dateKey();
     const seenTitles = new Set<string>();
     return tasks.filter((task) => {
-      if (task.done || task.scheduledDate !== today) return false;
+      const scheduledDate = normalizeTaskDateKey(task.scheduledDate);
+      if (task.done || (scheduledDate && scheduledDate > today)) return false;
       const titleKey = task.title.trim();
       if (seenTitles.has(titleKey)) return false;
       seenTitles.add(titleKey);
@@ -1600,12 +1765,6 @@ function FocusMode({ tasks, designMode, backgroundImageUri, onFocusCompleted, on
     const selectedStillExists = availableTasks.some((task) => task.id === selectedTaskId);
     if (!selectedStillExists) {
       setSelectedTaskId(availableTasks[0]?.id ?? '');
-    }
-
-    const activeSession = sessionRef.current;
-    if (activeSession?.taskId && !availableTasks.some((task) => task.id === activeSession.taskId)) {
-      // 削除・完了済みのタスク名を、これから作られる集中完了記録へ残さない。
-      sessionRef.current = { ...activeSession, taskId: undefined, taskTitle: undefined };
     }
   }, [availableTasks, selectedTaskId]);
 
@@ -1695,7 +1854,7 @@ function FocusMode({ tasks, designMode, backgroundImageUri, onFocusCompleted, on
       {backgroundImageUri && <><Image source={{ uri: backgroundImageUri }} resizeMode="cover" style={styles.focusHeroPhoto} /><View pointerEvents="none" style={styles.focusHeroPhotoShade} /></>}
       {isChic && <><View style={styles.focusChicFlowerOne}><Text>✿</Text></View><View style={styles.focusChicFlowerTwo}><Text>✦</Text></View></>}
       <Text style={[styles.focusEyebrow, isMinimal && styles.focusEyebrowMinimal, isDark && styles.focusEyebrowDark, isChic && styles.focusEyebrowLight]}>{running ? '集中中' : '集中タイマー'}</Text>
-      <Text style={[styles.focusTitle, isMinimal && styles.focusTitleMinimal, !isMinimal && styles.focusTitleLight]}>{selectedTask?.title ?? '集中するタスクを選ぼう'}</Text>
+      <Text style={[styles.focusTitle, isMinimal && styles.focusTitleMinimal, !isMinimal && styles.focusTitleLight]}>{sessionRef.current?.taskTitle ?? selectedTask?.title ?? '集中するタスクを選ぼう'}</Text>
       <Text style={[styles.focusCopy, isMinimal && styles.focusCopyMinimal, isDark && styles.focusCopyDark, isChic && styles.focusCopyLight]}>{modeCopy}</Text>
       <View style={[styles.focusTimerRing, isMinimal && styles.focusTimerRingMinimal, isDark && styles.focusTimerRingDark, isChic && styles.focusTimerRingChic, ]}>
         <Text style={[styles.focusTime, isMinimal && styles.focusTimeMinimal, !isMinimal && styles.focusTimeLight]}>{String(minutes).padStart(2, '0')}:{String(seconds).padStart(2, '0')}</Text>
@@ -2092,7 +2251,7 @@ function TodayWinStrip({ tasks, designMode, chicPattern, onRestore }: { tasks: T
   const theme = getThemeTokens(designMode);
   const now = new Date();
   const todayKey = dateKey(now);
-  const scheduledToday = tasks.filter((task) => task.scheduledDate === todayKey);
+  const scheduledToday = tasks.filter((task) => !task.scheduledDate || normalizeTaskDateKey(task.scheduledDate)! <= todayKey);
   const completedToday = tasks.filter((task) => task.done && task.completedAt && dateKey(task.completedAt) === todayKey);
   const count = completedToday.length;
   const drop = React.useRef(new Animated.Value(1)).current;

@@ -10,6 +10,7 @@ import { FocusSession } from '../focusSession';
 import { RecoveryRecord } from '../recovery';
 import { CalendarMarks, DeparturePlan, MonthlyReview, Task, ThemeMode, WishMonthMap } from '../types';
 import { normalizeMonthlyReview } from '../features/wish/wishUtils';
+import { persistPhotoUri } from '../features/photo/persistentPhoto';
 
 export function HistoryScreen({ tasks, wishMonths, calendarMarks, onSetCalendarMark, recoveryHistory, focusSessions, departureCheckIns, departurePlans, behaviorEvents, completionIcon, designMode, chicPattern, planTier, onPremium, onSaveTemplate, onRestore, onSaveDailyReview, onUpdateReview, onDeleteReview, styles, helpers, components }: { tasks: Task[]; wishMonths: WishMonthMap; calendarMarks: CalendarMarks; onSetCalendarMark: (date: string, mark?: string) => void; recoveryHistory: RecoveryRecord[]; focusSessions: FocusSession[]; departureCheckIns: DepartureCheckIn[]; departurePlans: DeparturePlan[]; behaviorEvents: BehaviorEvent[]; completionIcon: string; designMode: ThemeMode; chicPattern: ChicPattern; planTier: PlanTier; onPremium: (featureId?: PremiumGuideFeatureId) => void; onSaveTemplate: (task: Task) => void; onRestore: (id: string) => void; onSaveDailyReview: (monthKey: string, draft: MonthlyReview) => void; onUpdateReview: (monthKey: string, reviewKey: string, updates: Partial<MonthlyReview>) => void; onDeleteReview: (monthKey: string, reviewKey: string) => void; styles: any; helpers: any; components: any }) {
   const { dateKey, formatLiveTime } = helpers;
@@ -47,7 +48,7 @@ export function HistoryScreen({ tasks, wishMonths, calendarMarks, onSetCalendarM
     setHistoryMonthDate(next);
     setSelectedKey(dateKey(next));
   };
-  const calendarTasks = premiumHistory ? tasks : tasks.filter((task) => task.completedAt?.startsWith(monthPrefix));
+  const calendarTasks = premiumHistory ? tasks : tasks.filter((task) => task.completedAt && dateKey(task.completedAt).startsWith(monthPrefix));
   const calendarCompletedByDay = calendarTasks.reduce<Record<string, Task[]>>((result, task) => {
     if (!task.completedAt) return result;
     const key = dateKey(task.completedAt);
@@ -104,7 +105,7 @@ export function HistoryScreen({ tasks, wishMonths, calendarMarks, onSetCalendarM
   const monthlyCount = monthEntries.reduce((sum, [, items]) => sum + items.length, 0);
   const activeDays = monthEntries.length;
   const bestDayCount = monthEntries.reduce((best, [, items]) => Math.max(best, items.length), 0);
-  const monthlyFocusSessions = focusSessions.filter((session) => session.completedAt.startsWith(monthPrefix));
+  const monthlyFocusSessions = focusSessions.filter((session) => dateKey(session.completedAt).startsWith(monthPrefix));
   const monthlyFocusMinutes = monthlyFocusSessions.reduce((sum, session) => sum + session.durationMinutes, 0);
   const visibleRecoveryHistory = premiumHistory ? recoveryHistory : recoveryHistory.filter((record) => isWithinFreeHistory(record.occurredAt, now));
   const visibleFocusSessions = premiumHistory ? focusSessions : focusSessions.filter((session) => isWithinFreeHistory(session.completedAt, now));
@@ -138,8 +139,15 @@ export function HistoryScreen({ tasks, wishMonths, calendarMarks, onSetCalendarM
     const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], allowsEditing: true, aspect: [4, 3], quality: 0.78 });
     const uri = result.canceled ? undefined : result.assets?.[0]?.uri;
     if (!uri) return;
+    let persistentUri: string;
+    try {
+      persistentUri = persistPhotoUri(uri, 'journal');
+    } catch (error) {
+      console.warn('Could not persist journal photo.', error);
+      return;
+    }
     setJournalDraft((current) => {
-      const photos = [...(current.photos?.filter(Boolean) ?? (current.photo ? [current.photo] : [])), uri];
+      const photos = [...(current.photos?.filter(Boolean) ?? (current.photo ? [current.photo] : [])), persistentUri];
       return { ...current, photo: photos[0] ?? '', photos };
     });
   };

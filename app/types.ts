@@ -35,6 +35,8 @@ export type Task = {
   repeatRule?: RepeatRule;
   isRoutine?: boolean;
   routineId?: string;
+  /** Set only when the routine is explicitly turned off; preserved for historical analysis. */
+  routineEndedAt?: string;
   bucket?: TaskBucket;
   nudgeMode?: NudgeMode;
   scheduledDate?: string;
