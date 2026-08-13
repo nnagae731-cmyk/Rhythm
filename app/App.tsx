@@ -1903,9 +1903,10 @@ function ScheduleFilterChips({ value, designMode, onChange, compact = false }: {
 
 function CalendarMarkPicker({ date, mark, onSet, designMode }: { date: string; mark?: string; onSet: (date: string, mark?: string) => void; designMode: DesignMode }) {
   const stickers = ['🌸', '💗', '☕', '⭐', '🎯', '📌'];
-  return <View style={[styles.calendarMarkPicker, designMode === 'minimal' && styles.calendarMarkPickerMinimal]}>
-    <View style={{ flex: 1 }}><Text style={styles.calendarMarkTitle}>この日に目印</Text><Text style={styles.calendarMarkCopy}>{mark ? `${mark} を表示中` : 'シールを選んで予定や記録を目立たせる'}</Text></View>
-    <View style={styles.calendarMarkChoices}>{stickers.map((sticker) => <Pressable key={sticker} style={[styles.calendarMarkChoice, mark === sticker && styles.calendarMarkChoiceActive]} onPress={() => onSet(date, mark === sticker ? undefined : sticker)}><Text style={styles.calendarMarkChoiceText}>{sticker}</Text></Pressable>)}{mark && <Pressable style={styles.calendarMarkClear} onPress={() => onSet(date, undefined)}><Text style={styles.calendarMarkClearText}>×</Text></Pressable>}</View>
+  const isDark = designMode === 'dark';
+  return <View style={[styles.calendarMarkPicker, designMode === 'minimal' && styles.calendarMarkPickerMinimal, isDark && styles.darkCalendarMarkPicker]}>
+    <View style={{ flex: 1 }}><Text style={[styles.calendarMarkTitle, isDark && styles.darkBodyText]}>この日に目印</Text><Text style={[styles.calendarMarkCopy, isDark && styles.darkMutedText]}>{mark ? `${mark} を表示中` : 'シールを選んで予定や記録を目立たせる'}</Text></View>
+    <View style={styles.calendarMarkChoices}>{stickers.map((sticker) => <Pressable key={sticker} style={[styles.calendarMarkChoice, isDark && styles.darkCalendarMarkChoice, mark === sticker && styles.calendarMarkChoiceActive, mark === sticker && isDark && styles.darkCalendarMarkChoiceActive]} onPress={() => onSet(date, mark === sticker ? undefined : sticker)}><Text style={styles.calendarMarkChoiceText}>{sticker}</Text></Pressable>)}{mark && <Pressable style={[styles.calendarMarkClear, isDark && styles.darkCalendarMarkClear]} onPress={() => onSet(date, undefined)}><Text style={[styles.calendarMarkClearText, isDark && styles.darkBodyText]}>×</Text></Pressable>}</View>
   </View>;
 }
 
