@@ -3,6 +3,7 @@ import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-nati
 import Svg, { Circle, Line, Path, Text as SvgText } from 'react-native-svg';
 import { BehaviorEvent } from './behaviorEvents';
 import { buildInsightDashboard, formatComparison, formatMetricAverage, formatPointValue, InsightCondition, InsightConditionView, InsightMetric, InsightRange, InsightRate, InsightSuggestion, insightPointDateLabel } from './features/analytics/insightDashboard';
+import { buildRoutineInterruptionSummary, formatRoutineDate, getRoutineHistories as getRoutineHistoryList, RoutineInterruptionSummary } from './features/analytics/routineInterruptionAnalysis';
 import { hasPremiumAccess, PlanTier } from './premiumAccess';
 import { PremiumGuideFeatureId } from './premiumGuide';
 import { DesignMode, getThemeTokens } from './theme';
@@ -21,228 +22,64 @@ function PremiumGate({ onPremium, dark = false }: { onPremium: () => void; dark?
   );
 }
 
-function localDateKey(value: Date | string): string {
-  const date = value instanceof Date ? value : new Date(value);
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
-}
-
-function dateFromLocalKey(key: string): Date {
-  const [year, month, day] = key.split('-').map(Number);
-  return new Date(year ?? new Date().getFullYear(), (month ?? 1) - 1, day ?? 1);
-}
-
-function addLocalDays(key: string, amount: number): string {
-  const date = dateFromLocalKey(key);
-  date.setDate(date.getDate() + amount);
-  return localDateKey(date);
-}
-
-function dayDistance(startKey: string, endKey: string): number {
-  return Math.max(0, Math.round((dateFromLocalKey(endKey).getTime() - dateFromLocalKey(startKey).getTime()) / 86_400_000));
-}
-
-function shortDate(key?: string): string {
-  if (!key) return '—';
-  const date = dateFromLocalKey(key);
-  return `${date.getMonth() + 1}月${date.getDate()}日`;
-}
-
-type RoutineHistory = { id: string; title: string; memberIds: Set<string>; endedAt?: string; active: boolean };
-
-function routineEventDay(event: BehaviorEvent) {
-  return event.routineTargetDate ?? localDateKey(event.type === 'task_completion_reverted' && event.taskCompletionDate ? event.taskCompletionDate : event.occurredAt);
-}
-
-function isRoutineStateEvent(event: BehaviorEvent) {
-  return event.type === 'routine_state_changed' || event.type === 'task_completed' || event.type === 'task_completion_reverted';
-}
-
-function routineEventsFor(events: BehaviorEvent[], routine: RoutineHistory) {
-  return events.filter((event) => isRoutineStateEvent(event) && (event.routineId === routine.id || (!event.routineId && event.taskId && routine.memberIds.has(event.taskId))));
-}
-
-/** An explicitly ended routine never gains blank days after its final recorded day. */
-function routineAnalysisEndKey(events: BehaviorEvent[], tasks: Task[], routine: RoutineHistory, today = new Date()) {
-  const todayKey = localDateKey(today);
-  if (routine.active || !routine.endedAt) return todayKey;
-  const endedKey = localDateKey(routine.endedAt);
-  const recordedKeys = [
-    ...routineEventsFor(events, routine).map(routineEventDay),
-    ...tasks.filter((task) => routine.memberIds.has(task.id) && task.done && task.completedAt).map((task) => localDateKey(task.completedAt!)),
-  ].filter((key) => key <= endedKey).sort();
-  return recordedKeys.at(-1) ?? endedKey;
-}
-
-function routineDayCompleted(events: BehaviorEvent[], tasks: Task[], routine: RoutineHistory, dayKey: string): boolean {
-  const dayEvents = events
-    .filter((event) => isRoutineStateEvent(event) && (event.routineId === routine.id || (!event.routineId && event.taskId && routine.memberIds.has(event.taskId))))
-    .filter((event) => routineEventDay(event) === dayKey)
-    .sort((a, b) => new Date(a.occurredAt).getTime() - new Date(b.occurredAt).getTime());
-  let completed = false;
-  dayEvents.forEach((event) => {
-    if (event.type === 'routine_state_changed') completed = Boolean(event.routineCompleted);
-    else if (event.type === 'task_completed') completed = true;
-    else if (event.type === 'task_completion_reverted') completed = false;
-  });
-  const current = tasks
-    .filter((task) => routine.memberIds.has(task.id) && task.done && task.completedAt && localDateKey(task.completedAt) === dayKey)
-    .sort((a, b) => new Date(a.completedAt!).getTime() - new Date(b.completedAt!).getTime())
-    .at(-1);
-  if (current && (!dayEvents.at(-1) || new Date(current.completedAt!).getTime() >= new Date(dayEvents.at(-1)!.occurredAt).getTime())) completed = true;
-  return completed;
-}
-
-function getRoutineHistories(events: BehaviorEvent[], tasks: Task[]): RoutineHistory[] {
-  const active = new Map<string, RoutineHistory>();
-  tasks.filter((task) => task.isRoutine).forEach((task) => {
-    const id = task.routineId ?? task.id;
-    const current = active.get(id) ?? { id, title: task.title, memberIds: new Set<string>(), active: true };
-    current.memberIds.add(task.id);
-    current.title = task.title || current.title;
-    active.set(id, current);
-  });
-  const histories = new Map<string, RoutineHistory>(active);
-  events.filter((event) => event.routineId).sort((a, b) => new Date(a.occurredAt).getTime() - new Date(b.occurredAt).getTime()).forEach((event) => {
-    const id = event.routineId!;
-    const current = histories.get(id) ?? { id, title: event.routineTitleSnapshot ?? event.taskTitleSnapshot ?? 'ルーティン', memberIds: new Set<string>(), active: false };
-    if (event.taskId) current.memberIds.add(event.taskId);
-    current.title = event.routineTitleSnapshot ?? current.title;
-    if (event.type === 'routine_deactivated') {
-      current.active = false;
-      current.endedAt = event.occurredAt;
-    } else if (event.type === 'routine_state_changed' && current.endedAt && new Date(event.occurredAt).getTime() > new Date(current.endedAt).getTime()) {
-      current.active = true;
-      current.endedAt = undefined;
-    }
-    histories.set(id, current);
-  });
-  tasks.filter((task) => task.routineId && task.routineEndedAt).forEach((task) => {
-    const id = task.routineId!;
-    const current = histories.get(id) ?? { id, title: task.title, memberIds: new Set<string>(), active: false };
-    current.memberIds.add(task.id);
-    current.title = task.title || current.title;
-    current.active = false;
-    current.endedAt = task.routineEndedAt;
-    histories.set(id, current);
-  });
-  // 現在のタスクが再び有効なルーティンなら、過去の解除イベントより現在の状態を優先する。
-  // これにより同じ routineId を再開した場合も、履歴を分断せず継続中として扱える。
-  tasks.filter((task) => task.isRoutine).forEach((task) => {
-    const id = task.routineId ?? task.id;
-    const current = histories.get(id);
-    if (!current) return;
-    current.active = true;
-    current.endedAt = undefined;
-  });
-  return [...histories.values()];
-}
-
-type RoutineResumeSummary = {
-  state: 'continuing' | 'interrupted' | 'resumed' | 'before' | 'deactivated';
-  latestInterruptionStart?: string;
-  latestResumeDate?: string;
-  latestResumeFrom?: string;
-  latestGapDays?: number;
-  currentInterruptionDays: number;
-  interruptionsThisMonth: number;
-  resumesThisMonth: number;
-  longestStreak: number;
-  postResumeStreak: number;
-};
-
-function getRoutineResumeSummary(events: BehaviorEvent[], tasks: Task[], routine: RoutineHistory, today = new Date()): RoutineResumeSummary {
-  const routineEvents = routineEventsFor(events, routine);
-  const relevantDayKeys = [...routineEvents.map(routineEventDay), ...tasks.filter((task) => routine.memberIds.has(task.id) && task.done && task.completedAt).map((task) => localDateKey(task.completedAt!))].sort();
-  const empty: RoutineResumeSummary = { state: routine.active ? 'before' : 'deactivated', currentInterruptionDays: 0, interruptionsThisMonth: 0, resumesThisMonth: 0, longestStreak: 0, postResumeStreak: 0 };
-  const firstCompletionKey = relevantDayKeys.find((key) => routineDayCompleted(routineEvents, tasks, routine, key));
-  if (!firstCompletionKey) return empty;
-
-  const todayKey = localDateKey(today);
-  const endKey = routineAnalysisEndKey(events, tasks, routine, today);
-  const currentMonth = todayKey.slice(0, 7);
-  const days: Array<{ key: string; completed: boolean }> = [];
-  for (let key = firstCompletionKey; key <= endKey; key = addLocalDays(key, 1)) days.push({ key, completed: routineDayCompleted(routineEvents, tasks, routine, key) });
-
-  let latestInterruptionStart: string | undefined;
-  let latestResumeDate: string | undefined;
-  let latestResumeFrom: string | undefined;
-  let latestGapDays: number | undefined;
-  let interruptionsThisMonth = 0;
-  let resumesThisMonth = 0;
-  let activeInterruptionStart: string | undefined;
-  let longestStreak = 0;
-  let currentRun = 0;
-  days.forEach((day, index) => {
-    if (day.completed) {
-      currentRun += 1;
-      longestStreak = Math.max(longestStreak, currentRun);
-      if (index > 0 && !days[index - 1]!.completed && activeInterruptionStart) {
-        latestResumeDate = day.key;
-        latestResumeFrom = activeInterruptionStart;
-        latestGapDays = dayDistance(activeInterruptionStart, day.key);
-        if (day.key.startsWith(currentMonth)) resumesThisMonth += 1;
-        activeInterruptionStart = undefined;
-      }
-    } else {
-      currentRun = 0;
-      if (index > 0 && days[index - 1]!.completed) {
-        activeInterruptionStart = day.key;
-        latestInterruptionStart = day.key;
-        if (day.key.startsWith(currentMonth)) interruptionsThisMonth += 1;
-      }
-    }
-  });
-  const todayCompleted = days.at(-1)?.completed ?? false;
-  const postResumeStreak = todayCompleted ? (() => { let count = 0; for (let index = days.length - 1; index >= 0 && days[index]!.completed; index -= 1) count += 1; return count; })() : 0;
-  return {
-    state: !routine.active ? 'deactivated' : !todayCompleted ? 'interrupted' : latestResumeDate ? 'resumed' : 'continuing',
-    latestInterruptionStart,
-    latestResumeDate,
-    latestResumeFrom,
-    latestGapDays,
-    currentInterruptionDays: activeInterruptionStart ? dayDistance(activeInterruptionStart, todayKey) + 1 : 0,
-    interruptionsThisMonth,
-    resumesThisMonth,
-    longestStreak,
-    postResumeStreak,
-  };
+function RoutineHistoryModal({ summary, title, designMode, onClose }: { summary?: RoutineInterruptionSummary; title?: string; designMode: DesignMode; onClose: () => void }) {
+  const theme = getThemeTokens(designMode);
+  const isDark = designMode === 'dark';
+  if (!summary) return null;
+  return <Modal transparent animationType="slide" visible onRequestClose={onClose}>
+    <View style={styles.routineHistoryBackdrop}>
+      <View style={[styles.routineHistorySheet, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }, isDark && styles.routineHistorySheetDark]}>
+        <View style={styles.routineHistoryHeader}><View style={styles.routineHistoryHeading}><Text style={[styles.routineHistoryTitle, { color: theme.colors.primaryText }]}>{title}</Text><Text style={[styles.routineHistorySubtitle, { color: theme.colors.secondaryText }]}>中断・再開の履歴</Text></View><Pressable onPress={onClose} accessibilityLabel="履歴を閉じる" style={[styles.routineHistoryClose, { borderColor: theme.colors.border }]}><Text style={[styles.routineHistoryCloseText, { color: theme.colors.primaryText }]}>閉じる</Text></Pressable></View>
+        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.routineHistoryList}>
+          {summary.history.map((record) => <View key={`${record.interruptionStart}:${record.resumedAt ?? 'current'}`} style={[styles.routineHistoryItem, { backgroundColor: isDark ? '#20293A' : theme.colors.secondarySurface, borderColor: theme.colors.border }]}>
+            <Text style={[styles.routineHistoryDate, { color: theme.colors.primaryText }]}>{formatRoutineDate(record.interruptionStart)}〜{formatRoutineDate(record.interruptionEnd)}</Text>
+            {record.resumedAt ? <><Text style={[styles.routineHistoryCopy, { color: theme.colors.secondaryText }]}>{record.offDays}日お休みして、{formatRoutineDate(record.resumedAt)}に再開</Text><Text style={[styles.routineHistoryMeta, { color: theme.colors.secondaryText }]}>再開後 {record.postResumeStreak}日継続</Text></> : <Text style={[styles.routineHistoryCopy, { color: theme.colors.secondaryText }]}>現在 {record.offDays}日お休み中です。今日からまた始められます</Text>}
+          </View>)}
+          {summary.deactivatedAt && <View style={[styles.routineHistoryItem, { backgroundColor: isDark ? '#20293A' : theme.colors.secondarySurface, borderColor: theme.colors.border }]}><Text style={[styles.routineHistoryDate, { color: theme.colors.primaryText }]}>{formatRoutineDate(summary.deactivatedAt)}</Text><Text style={[styles.routineHistoryCopy, { color: theme.colors.secondaryText }]}>この日にルーティンを解除しました</Text></View>}
+          {!summary.history.length && <Text style={[styles.routineHistoryEmpty, { color: theme.colors.secondaryText }]}>まだ中断・再開の記録はありません</Text>}
+        </ScrollView>
+      </View>
+    </View>
+  </Modal>;
 }
 
 function RoutineProgressPanel({ events, tasks, designMode, onRemoveRoutine }: { events: BehaviorEvent[]; tasks: Task[]; designMode: DesignMode; onRemoveRoutine: (taskId: string) => void }) {
-  const routineTasks = getRoutineHistories(events, tasks);
-  const today = new Date();
-  const palette = designMode === 'chic' ? ['#E68BA8', '#E7B56A', '#8EC7B3', '#9FA8E8', '#C39BD3'] : designMode === 'dark' ? ['#8EA6FF', '#AFC2FF', '#7ED6C4', '#C5B4FF', '#F0A8BA'] : ['#171717', '#3A3A3A', '#5C5C5C', '#7A7A7A', '#A0A0A0'];
-  if (routineTasks.length === 0) return <View style={[styles.routineCard, designMode === 'dark' && styles.routineCardDark]}><Text style={[styles.sectionTitle, designMode === 'dark' && styles.darkMetricText]}>ルーティンの継続</Text><Text style={[styles.sectionCopy, designMode === 'dark' && styles.darkSecondaryText]}>タスク登録時に「ルーティンにする」を選ぶと、継続率を確認できます。</Text></View>;
-  return <View style={[styles.routineCard, designMode === 'dark' && styles.routineCardDark]}><Text style={[styles.sectionTitle, designMode === 'dark' && styles.darkMetricText]}>ルーティンの継続</Text><Text style={[styles.sectionCopy, designMode === 'dark' && styles.darkSecondaryText]}>続けられた日が丸で増えていきます。連続日数と継続率を確認できます。</Text><View style={styles.routineTaskGrid}>{routineTasks.map((routine, taskIndex) => {
-    const routineEvents = routineEventsFor(events, routine);
-    const firstCompletion = routineEvents.filter((event) => event.type === 'task_completed').map((event) => dateFromLocalKey(routineEventDay(event))).sort((a, b) => a.getTime() - b.getTime())[0];
-    const representativeTask = tasks.find((task) => routine.memberIds.has(task.id));
-    const created = representativeTask?.createdAt ? new Date(representativeTask.createdAt) : firstCompletion ?? today;
-    const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate());
-    const createdStart = new Date(created.getFullYear(), created.getMonth(), created.getDate());
-    const analysisEnd = new Date(`${routineAnalysisEndKey(events, tasks, routine, today)}T12:00:00`);
-    const ageDays = Math.max(0, Math.floor((analysisEnd.getTime() - createdStart.getTime()) / 86400000));
-    const cycleDay = (ageDays % 21) + 1;
-    const cycleStart = new Date(createdStart);
-    cycleStart.setDate(cycleStart.getDate() + Math.floor(ageDays / 21) * 21);
-    const taskDays = Array.from({ length: 21 }, (_, index) => {
-      const date = new Date(cycleStart);
-      date.setDate(cycleStart.getDate() + index);
-      return { key: `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`, label: `${date.getMonth() + 1}/${date.getDate()}` };
-    });
-    const todayKey = localDateKey(today);
-    const completionForDay = (dayKey: string) => {
-      return routineDayCompleted(routineEvents, tasks, routine, dayKey);
-    };
-    const completedDays = new Set(taskDays.filter((day) => day.key <= todayKey && completionForDay(day.key)).map((day) => day.key));
-    const activeDays = taskDays.slice(0, cycleDay).filter((day) => completedDays.has(day.key)).length;
-    const historicalDays = new Set(routineEvents.map(routineEventDay));
-    const totalCompletedDays = [...historicalDays].filter((dayKey) => completionForDay(dayKey)).length;
-    let streak = 0;
-    for (let index = cycleDay - 1; index >= 0 && completedDays.has(taskDays[index]!.key); index -= 1) streak += 1;
-    const color = palette[taskIndex % palette.length]!;
-    return <View key={routine.id} style={[styles.routineTaskRow, designMode === 'dark' && styles.routineTaskRowDark]}><View style={styles.routineTaskHeader}><Text numberOfLines={1} style={[styles.routineTaskTitle, designMode === 'dark' && styles.darkMetricText]}>{routine.title}</Text><View style={styles.routineTaskActions}><Text style={[styles.routineTaskRate, { color }]}>{Math.round((activeDays / cycleDay) * 100)}%</Text>{routine.active && representativeTask && <Pressable accessibilityLabel={`${routine.title}をルーティンから外す`} hitSlop={8} onPress={() => onRemoveRoutine(representativeTask.id)} style={[styles.routineRemoveButton, designMode === 'dark' && styles.routineRemoveButtonDark]}><Text style={[styles.routineRemoveText, designMode === 'dark' && styles.routineRemoveTextDark]}>×</Text></Pressable>}</View></View><View style={styles.routineDots}>{taskDays.map((day, index) => { const achieved = index < cycleDay && completedDays.has(day.key); const future = index >= cycleDay; const isToday = day.key === todayKey; return <View key={day.key} style={styles.routineDay}><View style={[styles.routineDot, designMode === 'dark' && styles.routineDotDark, achieved && { backgroundColor: color, borderColor: color }, future && styles.routineDotFuture, isToday && styles.routineDotToday]} /><Text style={[styles.routineDayLabel, designMode === 'dark' && styles.darkMetricText]}>{day.label}</Text></View>; })}</View><Text style={[styles.routineStreak, designMode === 'dark' && styles.routineStreakDark]}>今のサイクル {activeDays} / {cycleDay}日 ・ 連続 {streak}日 ・ 累計 {totalCompletedDays}日</Text></View>;
-  })}</View></View>;
+  const routineTasks = useMemo(() => getRoutineHistoryList(events, tasks), [events, tasks]);
+  const [historyTarget, setHistoryTarget] = useState<{ title: string; summary: RoutineInterruptionSummary }>();
+  const palette = designMode === 'chic' ? ['#E68BA8', '#E7B56A', '#8EC7B3', '#9FA8E8', '#C39BD3'] : designMode === 'dark' ? ['#8EA6FF', '#AFC2FF', '#7ED6C4', '#C5B4FF', '#8EA6FF'] : ['#171717', '#3A3A3A', '#5C5C5C', '#7A7A7A', '#A0A0A0'];
+  const isDark = designMode === 'dark';
+  if (routineTasks.length === 0) return <View style={[styles.routineCard, isDark && styles.routineCardDark]}><Text style={[styles.sectionTitle, isDark && styles.darkMetricText]}>ルーティンの継続</Text><Text style={[styles.sectionCopy, isDark && styles.darkSecondaryText]}>タスク登録時に「ルーティンにする」を選ぶと、継続率を確認できます。</Text></View>;
+  return <>
+    <View style={[styles.routineCard, isDark && styles.routineCardDark]}>
+      <Text style={[styles.sectionTitle, isDark && styles.darkMetricText]}>ルーティンの継続</Text>
+      <Text style={[styles.sectionCopy, isDark && styles.darkSecondaryText]}>続けられた日が丸で増えていきます。連続日数と継続率を確認できます。</Text>
+      <View style={styles.routineTaskGrid}>{routineTasks.map((routine, taskIndex) => {
+        const summary = buildRoutineInterruptionSummary(events, tasks, routine);
+        const representativeTask = tasks.find((task) => routine.memberIds.has(task.id) && task.isRoutine);
+        const color = palette[taskIndex % palette.length]!;
+        const latest = summary.latestRecord;
+        const latestCopy = latest ? latest.resumedAt
+          ? `${formatRoutineDate(latest.interruptionStart)}に中断・${formatRoutineDate(latest.resumedAt)}に再開`
+          : `${formatRoutineDate(latest.interruptionStart)}からお休み中`
+          : '中断・再開の記録はまだありません';
+        const statusColor = summary.status === 'interrupted' ? (isDark ? '#F4C983' : '#B16C76') : summary.status === 'deactivated' ? (isDark ? '#8F9BB0' : '#777772') : summary.status === 'waiting' ? (isDark ? '#B4C0D4' : '#68636D') : color;
+        return <View key={routine.id} style={[styles.routineTaskRow, isDark && styles.routineTaskRowDark]}>
+          <View style={styles.routineTaskHeader}>
+            <Text numberOfLines={1} style={[styles.routineTaskTitle, isDark && styles.darkMetricText]}>{routine.title}</Text>
+            <View style={styles.routineTaskActions}><Text style={[styles.routineTaskRate, { color }]}>{summary.completionRate}%</Text>{routine.active && representativeTask && <Pressable accessibilityLabel={`${routine.title}をルーティンから外す`} hitSlop={8} onPress={() => onRemoveRoutine(representativeTask.id)} style={[styles.routineRemoveButton, isDark && styles.routineRemoveButtonDark]}><Text style={[styles.routineRemoveText, isDark && styles.routineRemoveTextDark]}>×</Text></Pressable>}</View>
+          </View>
+          <Text style={[styles.routineRateCaption, isDark && styles.darkSecondaryText]}>継続率　{summary.completedCycleDays} / {summary.cycleDays}日</Text>
+          <View style={styles.routineDots}>{summary.displayDays.map((day) => <View key={day.key} style={styles.routineDay}><View style={[styles.routineDot, isDark && styles.routineDotDark, day.completed && { backgroundColor: color, borderColor: color }, day.future && styles.routineDotFuture, day.today && styles.routineDotToday]} /><Text style={[styles.routineDayLabel, isDark && styles.darkMetricText]}>{day.label}</Text></View>)}</View>
+          <Text style={[styles.routineStreak, isDark && styles.routineStreakDark]}>連続 {summary.currentStreak}日 ・ 累計 {summary.totalCompletedDays}日</Text>
+          <View style={[styles.routineStatusRow, isDark && styles.routineStatusRowDark]}><Text style={[styles.routineStatusLabel, { color: statusColor }]}>{summary.statusLabel}</Text><Text style={[styles.routineStatusCopy, isDark && styles.darkSecondaryText]}>{summary.statusCopy}</Text></View>
+          {summary.status !== 'before' && <Text style={[styles.routineLatest, isDark && styles.darkMutedMetricText]}>{latestCopy}</Text>}
+          <Text style={[styles.routineResumeCount, isDark && styles.darkSecondaryText]}>今月：中断 {summary.interruptionsThisMonth}回・再開 {summary.resumesThisMonth}回</Text>
+          {summary.history.length > 1 && <Pressable onPress={() => setHistoryTarget({ title: routine.title, summary })} style={styles.routineHistoryLink}><Text style={[styles.routineHistoryLinkText, { color }]}>中断・再開の履歴を見る 〉</Text></Pressable>}
+        </View>;
+      })}</View>
+    </View>
+    <RoutineHistoryModal summary={historyTarget?.summary} title={historyTarget?.title} designMode={designMode} onClose={() => setHistoryTarget(undefined)} />
+  </>;
 }
 
 function DashboardCard({ children, designMode, style }: { children: ReactNode; designMode: DesignMode; style?: any }) {
@@ -329,42 +166,6 @@ function ConditionChart({ data, designMode }: { data: InsightCondition[]; design
   })}</View>;
 }
 
-function RoutineResumePanel({ events, tasks, designMode }: { events: BehaviorEvent[]; tasks: Task[]; designMode: DesignMode }) {
-  const routines = getRoutineHistories(events, tasks);
-  const isDark = designMode === 'dark';
-  if (!routines.length) return null;
-  return <>
-    <Text style={[styles.sectionTitle, { marginTop: 4 }, isDark && styles.darkMetricText]}>ルーティンの中断・再開</Text>
-    <Text style={[styles.sectionCopy, isDark && styles.darkSecondaryText]}>お休みの期間も、戻れた日を大切に記録します。</Text>
-    <View style={styles.routineResumeList}>{routines.map((routine) => {
-      const summary = getRoutineResumeSummary(events, tasks, routine);
-      const stateLabel = summary.state === 'continuing' ? '継続中' : summary.state === 'interrupted' ? '中断中' : summary.state === 'resumed' ? '再開済み' : summary.state === 'deactivated' ? '解除済み' : '開始前';
-      const stateCopy = summary.state === 'before'
-        ? '最初の1回を記録すると、ここから流れを振り返れます。'
-        : summary.state === 'deactivated'
-          ? 'ルーティンを外した日までの記録を残しています。'
-          : summary.state === 'interrupted'
-          ? `現在${summary.currentInterruptionDays}日間お休み中です。戻るタイミングはいつでも大丈夫。`
-          : summary.latestResumeDate && summary.latestResumeFrom
-            ? `${shortDate(summary.latestResumeFrom)}に中断し、${shortDate(summary.latestResumeDate)}に再開しました。`
-            : '今の流れを、そのまま続けられています。';
-      const resumeCopy = summary.latestResumeDate && summary.latestGapDays !== undefined ? `${summary.latestGapDays}日ぶりに再開できています。` : '戻れた日が増えるほど、あなたのペースが見えてきます。';
-      return <View key={routine.id} style={[styles.routineResumeCard, isDark && styles.routineResumeCardDark]}>
-        <View style={styles.routineResumeHeader}><Text numberOfLines={1} style={[styles.routineResumeTitle, isDark && styles.darkMetricText]}>{routine.title}</Text><Text style={[styles.routineResumeState, isDark && styles.routineResumeStateDark]}>{stateLabel}</Text></View>
-        <Text style={[styles.routineResumeCopy, isDark && styles.darkSecondaryText]}>{stateCopy}</Text>
-        {summary.state !== 'before' && <Text style={[styles.routineResumeCopy, styles.routineResumeSubcopy, isDark && styles.darkMutedMetricText]}>{resumeCopy}</Text>}
-        <View style={styles.routineResumeFacts}>
-          <View style={[styles.routineResumeFact, isDark && styles.routineResumeFactDark]}><Text style={[styles.routineResumeFactLabel, isDark && styles.darkMutedMetricText]}>直近の中断</Text><Text style={[styles.routineResumeFactValue, isDark && styles.darkMetricText]}>{shortDate(summary.latestInterruptionStart)}</Text></View>
-          <View style={[styles.routineResumeFact, isDark && styles.routineResumeFactDark]}><Text style={[styles.routineResumeFactLabel, isDark && styles.darkMutedMetricText]}>直近の再開</Text><Text style={[styles.routineResumeFactValue, isDark && styles.darkMetricText]}>{shortDate(summary.latestResumeDate)}</Text></View>
-          <View style={[styles.routineResumeFact, isDark && styles.routineResumeFactDark]}><Text style={[styles.routineResumeFactLabel, isDark && styles.darkMutedMetricText]}>中断日数</Text><Text style={[styles.routineResumeFactValue, isDark && styles.darkMetricText]}>{summary.state === 'interrupted' ? `${summary.currentInterruptionDays}日` : summary.latestGapDays === undefined ? '—' : `${summary.latestGapDays}日`}</Text></View>
-        </View>
-        <Text style={[styles.routineResumeStats, isDark && styles.darkSecondaryText]}>今月は中断 {summary.interruptionsThisMonth}回 ・ 再開 {summary.resumesThisMonth}回</Text>
-        <Text style={[styles.routineResumeStats, isDark && styles.darkSecondaryText]}>最長連続 {summary.longestStreak}日 ・ 再開後の連続 {summary.postResumeStreak}日</Text>
-      </View>;
-    })}</View>
-  </>;
-}
-
 function InsightDashboardView({ events, tasks, plans, designMode, onApplySuggestion }: { events: BehaviorEvent[]; tasks: Task[]; plans: DeparturePlan[]; designMode: DesignMode; onApplySuggestion: (suggestion: InsightSuggestion) => void }) {
   const [range, setRange] = useState<InsightRange>('30d');
   const [metric, setMetric] = useState<InsightMetric>('preparation');
@@ -419,8 +220,6 @@ function InsightDashboardView({ events, tasks, plans, designMode, onApplySuggest
       <ConditionChart data={conditionData} designMode={designMode} />
       <Text style={[styles.dashboardCaption, { color: theme.colors.secondaryText }]}>記録が少ない曜日・時間帯は、傾向として断定しません</Text>
     </DashboardCard>
-
-    <RoutineResumePanel events={events} tasks={tasks} designMode={designMode} />
 
     {dashboard.suggestion && <DashboardCard designMode={designMode} style={[styles.suggestionCard, { borderColor: theme.colors.primaryAccent }]}>
       <Text style={[styles.dashboardKicker, { color: theme.colors.primaryAccent }]}>Rhythmからの提案</Text>
@@ -532,26 +331,50 @@ const styles = StyleSheet.create({
   sectionCopy: { color: '#797280', fontSize: 12, lineHeight: 18, marginTop: 5, marginBottom: 14 },
   routineCard: { padding: 18, borderRadius: 18, borderWidth: 1, borderColor: '#E5DFEC', backgroundColor: '#FFF', },
   routineCardDark: { backgroundColor: '#181F2E', borderColor: '#303B50' },
-  routineTaskGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  routineTaskGrid: { gap: 10 },
   routineDots: { flexDirection: 'row', flexWrap: 'wrap', gap: 3, marginTop: 8 },
-  routineDay: { alignItems: 'center', gap: 2, width: 20 },
-  routineDot: { width: 17, height: 17, borderRadius: 999, borderWidth: 1, borderColor: '#DAD4E2', backgroundColor: 'transparent' },
+  routineDay: { alignItems: 'center', gap: 2, width: '13.4%' },
+  routineDot: { width: 15, height: 15, borderRadius: 999, borderWidth: 1, borderColor: '#DAD4E2', backgroundColor: 'transparent' },
   routineDotDark: { borderColor: '#65738D' },
   routineDotFuture: { opacity: 0.35 },
   routineDotToday: { borderWidth: 2 },
   routineDayLabel: { color: '#817A88', fontSize: 7, fontWeight: '700' },
-  routineTaskRow: { width: '48%', borderWidth: 1, borderColor: '#ECE8F0', borderRadius: 10, padding: 9, backgroundColor: '#FFFFFF' },
+  routineTaskRow: { width: '100%', borderWidth: 1, borderColor: '#ECE8F0', borderRadius: 14, padding: 11, backgroundColor: '#FFFFFF' },
   routineTaskRowDark: { backgroundColor: '#20293A', borderColor: '#303B50' },
   routineTaskHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   routineTaskActions: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   routineTaskTitle: { color: '#292530', fontSize: 12, fontWeight: '900', flex: 1, marginRight: 5 },
   routineTaskRate: { fontSize: 14, fontWeight: '900' },
+  routineRateCaption: { color: '#817A88', fontSize: 10, fontWeight: '800', marginTop: 3 },
   routineRemoveButton: { width: 20, height: 20, borderRadius: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: '#F1EDF4' },
   routineRemoveButtonDark: { backgroundColor: '#303B50' },
   routineRemoveText: { color: '#7D7386', fontSize: 16, fontWeight: '700', lineHeight: 18 },
   routineRemoveTextDark: { color: '#FF8F9C' },
   routineStreak: { color: '#817A88', fontSize: 9, fontWeight: '800', marginTop: 7 },
   routineStreakDark: { color: '#B4C0D4' },
+  routineStatusRow: { borderTopWidth: 1, borderTopColor: '#ECE8F0', marginTop: 10, paddingTop: 9, gap: 4 },
+  routineStatusRowDark: { borderTopColor: '#303B50' },
+  routineStatusLabel: { fontSize: 12, fontWeight: '900' },
+  routineStatusCopy: { color: '#625D68', fontSize: 11, lineHeight: 16, fontWeight: '700' },
+  routineLatest: { color: '#817A88', fontSize: 10, lineHeight: 15, marginTop: 8, fontWeight: '700' },
+  routineResumeCount: { color: '#756F7C', fontSize: 10, marginTop: 7, fontWeight: '800' },
+  routineHistoryLink: { alignSelf: 'flex-start', marginTop: 9, paddingVertical: 3 },
+  routineHistoryLinkText: { fontSize: 11, fontWeight: '900' },
+  routineHistoryBackdrop: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(8, 12, 20, 0.48)' },
+  routineHistorySheet: { maxHeight: '72%', minHeight: 260, borderTopWidth: 1, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 18 },
+  routineHistorySheetDark: { backgroundColor: '#181F2E' },
+  routineHistoryHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 12 },
+  routineHistoryHeading: { flex: 1 },
+  routineHistoryTitle: { fontSize: 18, fontWeight: '900' },
+  routineHistorySubtitle: { fontSize: 11, fontWeight: '800', marginTop: 3 },
+  routineHistoryClose: { borderWidth: 1, borderRadius: 12, paddingHorizontal: 11, paddingVertical: 8 },
+  routineHistoryCloseText: { fontSize: 11, fontWeight: '900' },
+  routineHistoryList: { gap: 9, paddingBottom: 16 },
+  routineHistoryItem: { borderWidth: 1, borderRadius: 14, padding: 12 },
+  routineHistoryDate: { fontSize: 13, fontWeight: '900' },
+  routineHistoryCopy: { fontSize: 12, lineHeight: 18, fontWeight: '700', marginTop: 5 },
+  routineHistoryMeta: { fontSize: 11, fontWeight: '800', marginTop: 4 },
+  routineHistoryEmpty: { fontSize: 12, fontWeight: '700', textAlign: 'center', paddingVertical: 22 },
   activityCard: { padding: 16, marginBottom: 14, borderRadius: 18, borderWidth: 1, backgroundColor: '#FFF' },
   activityCardDark: { backgroundColor: '#181F2E' },
   activityTitle: { color: '#292530', fontSize: 15, fontWeight: '900', marginBottom: 12 },
@@ -621,21 +444,6 @@ const styles = StyleSheet.create({
   conditionFill: { width: '100%', minHeight: 0, borderRadius: 9 },
   conditionLabel: { fontSize: 11, fontWeight: '900', marginTop: 7 },
   conditionMeta: { fontSize: 8, lineHeight: 12, fontWeight: '700', textAlign: 'center', marginTop: 2 },
-  routineResumeList: { gap: 10 },
-  routineResumeCard: { padding: 15, borderRadius: 16, borderWidth: 1, borderColor: '#E5DFEC', backgroundColor: '#FFFFFF' },
-  routineResumeCardDark: { backgroundColor: '#181F2E', borderColor: '#303B50' },
-  routineResumeHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
-  routineResumeTitle: { color: '#292530', fontSize: 14, fontWeight: '900', flex: 1 },
-  routineResumeState: { color: '#6F51C8', backgroundColor: '#EEE9FF', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 999, fontSize: 10, fontWeight: '900' },
-  routineResumeStateDark: { color: '#DDE5FF', backgroundColor: '#26365F' },
-  routineResumeCopy: { color: '#5E5864', fontSize: 12, fontWeight: '700', lineHeight: 18, marginTop: 10 },
-  routineResumeSubcopy: { fontSize: 11, fontWeight: '700', marginTop: 4 },
-  routineResumeFacts: { flexDirection: 'row', gap: 7, marginTop: 13 },
-  routineResumeFact: { flex: 1, minWidth: 0, borderRadius: 10, backgroundColor: '#F7F4F8', padding: 8 },
-  routineResumeFactDark: { backgroundColor: '#20293A', borderWidth: 1, borderColor: '#303B50' },
-  routineResumeFactLabel: { color: '#817A88', fontSize: 9, fontWeight: '800' },
-  routineResumeFactValue: { color: '#38323F', fontSize: 12, fontWeight: '900', marginTop: 4 },
-  routineResumeStats: { color: '#756F7C', fontSize: 10, fontWeight: '800', marginTop: 8 },
   suggestionCard: { borderWidth: 2 },
   suggestionTitle: { fontSize: 18, fontWeight: '900', marginTop: 8 },
   suggestionValues: { flexDirection: 'row', alignItems: 'center', gap: 16, marginTop: 15 },
