@@ -38,6 +38,8 @@ import { cancelPendingTaskNotifications } from './features/tasks/taskNotificatio
 import { cancelPendingDepartureNotifications } from './features/departure/departureNotifications';
 import { WishScreen } from './WishScreen';
 import { SharedEventScreen } from './SharedEventScreen';
+import { TopImageCropModal } from './components/TopImageCropModal';
+import { cropRectToPixels, displayToNormalizedRect, getContainBounds, getInitialCropRect, NormalizedCropRect } from './features/photo/topImageCrop';
 import {
   Alert,
   Animated,
@@ -409,17 +411,10 @@ function getChicPatternVisual(pattern: ChicPattern) {
   return { background: '#FFF4F7', accent: '#D986A1', warm: '#A997C8' };
 }
 
-function getTopImageCrop(sourceWidth: number, sourceHeight: number, adjustment: { scale: number; offsetX: number; offsetY: number }) {
-  const targetAspect = 2.5;
-  const baseWidth = Math.min(sourceWidth, sourceHeight * targetAspect);
-  const scale = Math.max(1, adjustment.scale);
-  const width = Math.max(1, Math.min(sourceWidth, Math.round(baseWidth / scale)));
-  const height = Math.max(1, Math.min(sourceHeight, Math.round(width / targetAspect)));
-  const maxX = Math.max(0, sourceWidth - width);
-  const maxY = Math.max(0, sourceHeight - height);
-  const x = Math.max(0, Math.min(maxX, Math.round(maxX / 2 - adjustment.offsetX * sourceWidth / 320)));
-  const y = Math.max(0, Math.min(maxY, Math.round(maxY / 2 - adjustment.offsetY * sourceHeight / 220)));
-  return { originX: x, originY: y, width, height };
+function getInitialNormalizedCrop(sourceWidth: number, sourceHeight: number): NormalizedCropRect {
+  const bounds = getContainBounds(sourceWidth, sourceHeight, sourceWidth, sourceHeight);
+  const rect = getInitialCropRect(bounds);
+  return displayToNormalizedRect(rect, bounds);
 }
 
 async function ensureNotifications() {
@@ -502,7 +497,7 @@ export default function App() {
   const [chicCheckColor, setChicCheckColor] = useState<ChicCheckColor>('cool');
   const [affirmations, setAffirmations] = useState<Affirmation[]>([]);
   const [photoTheme, setPhotoTheme] = useState<PhotoThemeSettings>({ placement: 'background' });
-  const [pendingTopPhoto, setPendingTopPhoto] = useState<{ target: Exclude<PhotoThemePhotoTarget, 'background' | 'focus'>; originalUri: string; sourceWidth: number; sourceHeight: number; adjustment: { scale: number; offsetX: number; offsetY: number } }>();
+  const [pendingTopPhoto, setPendingTopPhoto] = useState<{ target: Exclude<PhotoThemePhotoTarget, 'background' | 'focus'>; originalUri: string; sourceWidth: number; sourceHeight: number; cropRect?: NormalizedCropRect }>();
   const [recoveryHistory, setRecoveryHistory] = useState<RecoveryRecord[]>([]);
   const [focusSessions, setFocusSessions] = useState<FocusSession[]>([]);
   const [behaviorEvents, setBehaviorEvents] = useState<BehaviorEvent[]>([]);
@@ -631,26 +626,27 @@ export default function App() {
     } else if (target === 'focus') {
       setPhotoTheme((current) => ({ ...current, focusBackgroundUri: selectedAsset.uri }));
     } else {
-      setPendingTopPhoto({ target, originalUri: selectedAsset.uri, sourceWidth: selectedAsset.width || 1000, sourceHeight: selectedAsset.height || 1000, adjustment: { scale: 1, offsetX: 0, offsetY: 0 } });
+      setPendingTopPhoto({ target, originalUri: selectedAsset.uri, sourceWidth: selectedAsset.width || 1000, sourceHeight: selectedAsset.height || 1000 });
     }
   }, [openPremiumFeature, planTier]);
 
   const adjustTopPhoto = React.useCallback((target: Exclude<PhotoThemePhotoTarget, 'background' | 'focus'>) => {
     const originalUri = photoTheme.topImageOriginalUris?.[target] ?? photoTheme.topImageUris?.[target];
     if (!originalUri) return;
-    Image.getSize(originalUri, (sourceWidth, sourceHeight) => setPendingTopPhoto({ target, originalUri, sourceWidth, sourceHeight, adjustment: photoTheme.topImageAdjustments?.[target] ?? { scale: 1, offsetX: 0, offsetY: 0 } }), () => setPendingTopPhoto({ target, originalUri, sourceWidth: 1000, sourceHeight: 1000, adjustment: photoTheme.topImageAdjustments?.[target] ?? { scale: 1, offsetX: 0, offsetY: 0 } }));
+    Image.getSize(originalUri, (sourceWidth, sourceHeight) => setPendingTopPhoto({ target, originalUri, sourceWidth, sourceHeight, cropRect: photoTheme.topImageCropRects?.[target] }), () => setPendingTopPhoto({ target, originalUri, sourceWidth: 1000, sourceHeight: 1000, cropRect: photoTheme.topImageCropRects?.[target] }));
   }, [photoTheme]);
 
-  const applyPendingTopPhoto = React.useCallback(async () => {
+  const applyPendingTopPhoto = React.useCallback(async (cropOverride?: NormalizedCropRect) => {
     if (!pendingTopPhoto) return;
     try {
-      const crop = getTopImageCrop(pendingTopPhoto.sourceWidth, pendingTopPhoto.sourceHeight, pendingTopPhoto.adjustment);
+      const normalized = cropOverride ?? pendingTopPhoto.cropRect ?? getInitialNormalizedCrop(pendingTopPhoto.sourceWidth, pendingTopPhoto.sourceHeight);
+      const crop = cropRectToPixels(normalized, pendingTopPhoto.sourceWidth, pendingTopPhoto.sourceHeight);
       const result = await ImageManipulator.manipulateAsync(pendingTopPhoto.originalUri, [{ crop }, { resize: { width: 1000, height: 400 } }], { compress: 0.9, format: ImageManipulator.SaveFormat.JPEG });
       setPhotoTheme((current) => ({
         ...current,
         topImageUris: { ...current.topImageUris, [pendingTopPhoto.target]: result.uri },
         topImageOriginalUris: { ...current.topImageOriginalUris, [pendingTopPhoto.target]: pendingTopPhoto.originalUri },
-        topImageAdjustments: { ...current.topImageAdjustments, [pendingTopPhoto.target]: pendingTopPhoto.adjustment },
+        topImageCropRects: { ...current.topImageCropRects, [pendingTopPhoto.target]: normalized },
       }));
       setPendingTopPhoto(undefined);
     } catch {
@@ -834,6 +830,7 @@ export default function App() {
           topImageUris: saved.photoTheme?.topImageUris ?? {},
           topImageOriginalUris: saved.photoTheme?.topImageOriginalUris ?? saved.photoTheme?.topImageUris ?? {},
           topImageAdjustments: saved.photoTheme?.topImageAdjustments ?? {},
+          topImageCropRects: saved.photoTheme?.topImageCropRects ?? {},
           focusBackgroundUri: saved.photoTheme?.focusBackgroundUri,
         });
         setRecoveryHistory(saved.recoveryHistory ?? []);
@@ -1525,30 +1522,7 @@ export default function App() {
         components={{ CompactNumberSetting }}
       />
       <PremiumModal visible={premiumOpen} initialFeatureId={premiumTargetFeature} designMode={uiDesignMode} chicPattern={effectiveChicPattern} onClose={() => setPremiumOpen(false)} styles={styles} helpers={{ getThemeTokens }} components={{ ChicPatternDecor, isCheckChicPattern }} />
-      <Modal visible={Boolean(pendingTopPhoto)} transparent animationType="fade" onRequestClose={() => setPendingTopPhoto(undefined)}>
-        <Pressable style={styles.modalBackdrop} onPress={() => setPendingTopPhoto(undefined)}>
-          <Pressable style={[styles.modalSheet, styles.photoCropPreviewSheet]} onPress={(event) => event.stopPropagation()}>
-            <Text style={styles.photoCropPreviewTitle}>トップ画像の見え方</Text>
-            <Text style={styles.photoCropPreviewCopy}>元画像を切り取らず、この横長枠の中で位置と拡大率を調整できます。</Text>
-            {pendingTopPhoto && <View style={styles.photoCropPreviewImage}><Image source={{ uri: pendingTopPhoto.originalUri }} resizeMode="cover" style={[styles.photoCropPreviewImageContent, { transform: [{ scale: pendingTopPhoto.adjustment.scale }, { translateX: pendingTopPhoto.adjustment.offsetX }, { translateY: pendingTopPhoto.adjustment.offsetY }] }]} /></View>}
-            {pendingTopPhoto && <View style={styles.photoCropControls}>
-              <Text style={styles.photoCropControlsLabel}>表示位置を整える</Text>
-              <View style={styles.photoCropControlRow}>
-                <Pressable style={styles.photoCropControlButton} onPress={() => setPendingTopPhoto((current) => current ? { ...current, adjustment: { ...current.adjustment, offsetX: Math.max(-72, current.adjustment.offsetX - 14) } } : current)}><Text style={styles.photoCropControlButtonText}>←</Text></Pressable>
-                <Pressable style={styles.photoCropControlButton} onPress={() => setPendingTopPhoto((current) => current ? { ...current, adjustment: { ...current.adjustment, offsetY: Math.max(-44, current.adjustment.offsetY - 10) } } : current)}><Text style={styles.photoCropControlButtonText}>↑</Text></Pressable>
-                <Pressable style={styles.photoCropControlButton} onPress={() => setPendingTopPhoto((current) => current ? { ...current, adjustment: { ...current.adjustment, offsetY: Math.min(44, current.adjustment.offsetY + 10) } } : current)}><Text style={styles.photoCropControlButtonText}>↓</Text></Pressable>
-                <Pressable style={styles.photoCropControlButton} onPress={() => setPendingTopPhoto((current) => current ? { ...current, adjustment: { ...current.adjustment, offsetX: Math.min(72, current.adjustment.offsetX + 14) } } : current)}><Text style={styles.photoCropControlButtonText}>→</Text></Pressable>
-                <Pressable style={styles.photoCropControlButton} onPress={() => setPendingTopPhoto((current) => current ? { ...current, adjustment: { ...current.adjustment, scale: Math.max(1, Number((current.adjustment.scale - 0.1).toFixed(1))), offsetX: 0, offsetY: 0 } } : current)}><Text style={styles.photoCropControlButtonText}>−</Text></Pressable>
-                <Pressable style={styles.photoCropControlButton} onPress={() => setPendingTopPhoto((current) => current ? { ...current, adjustment: { ...current.adjustment, scale: Math.min(1.7, Number((current.adjustment.scale + 0.1).toFixed(1))) } } : current)}><Text style={styles.photoCropControlButtonText}>＋</Text></Pressable>
-              </View>
-            </View>}
-            <View style={styles.photoCropPreviewActions}>
-              <Pressable style={styles.photoCropPreviewSecondary} onPress={() => setPendingTopPhoto(undefined)}><Text style={styles.photoCropPreviewSecondaryText}>選び直す</Text></Pressable>
-              <Pressable style={styles.photoCropPreviewPrimary} onPress={applyPendingTopPhoto}><Text style={styles.photoCropPreviewPrimaryText}>調整完了</Text></Pressable>
-            </View>
-          </Pressable>
-        </Pressable>
-      </Modal>
+      <TopImageCropModal visible={Boolean(pendingTopPhoto)} uri={pendingTopPhoto?.originalUri} sourceWidth={pendingTopPhoto?.sourceWidth ?? 1} sourceHeight={pendingTopPhoto?.sourceHeight ?? 1} initialRect={pendingTopPhoto?.cropRect} styles={styles} onCancel={() => setPendingTopPhoto(undefined)} onReselect={() => { if (pendingTopPhoto) void pickPhotoTheme(pendingTopPhoto.target); }} onUse={(cropRect) => { void applyPendingTopPhoto(cropRect); }} />
       <GuideModal visible={guideOpen} styles={styles} onClose={() => setGuideOpen(false)} />
     </SafeAreaView>
   );

@@ -38,8 +38,8 @@ function PremiumFeatureEntryCard({ number, title, active, designMode, chicPatter
   const isMono = designMode !== 'chic';
   return <Pressable onPress={onPress} style={[styles.premiumEntryCard, active && styles.premiumEntryCardActive, isMono && styles.premiumEntryCardMinimal, designMode === 'dark' && styles.premiumEntryCardDark, designMode === 'chic' && styles.premiumEntryCardChic]}>
     {designMode === 'chic' && !isCheckChicPattern(chicPattern) && <View pointerEvents="none" style={styles.premiumEntryPattern}><ChicPatternDecor pattern={chicPattern} accent="#D986A1" warm="#A997C8" density="compact" /></View>}
-    <Text style={[styles.premiumEntryNumber, active && styles.premiumEntryNumberActive]}>{number}</Text>
-    <Text numberOfLines={2} style={[styles.premiumEntryTitle, active && styles.premiumEntryTitleActive]}>{title}</Text>
+    <Text style={[styles.premiumEntryNumber, active && styles.premiumEntryNumberActive, designMode === 'dark' && styles.premiumEntryNumberDark]}>{number}</Text>
+    <Text numberOfLines={2} style={[styles.premiumEntryTitle, active && styles.premiumEntryTitleActive, designMode === 'dark' && styles.premiumEntryTitleDark]}>{title}</Text>
   </Pressable>;
 }
 

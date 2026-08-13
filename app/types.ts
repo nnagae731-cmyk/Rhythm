@@ -5,6 +5,7 @@ import { DepartureCheckIn } from './departureCheckIn';
 import { PlanTier } from './premiumAccess';
 import { BehaviorEvent } from './behaviorEvents';
 import { PremiumTaskTemplate } from './taskTemplates';
+import type { NormalizedCropRect } from './features/photo/topImageCrop';
 
 export type Screen = 'home' | 'timeline' | 'analysis' | 'settings' | 'wish';
 export type TimeTab = 'departure' | 'deadline' | 'calendar' | 'focus';
@@ -111,6 +112,7 @@ export type PhotoThemeSettings = {
   /** 元画像URI。表示用URIが切り取られた旧データの場合もフォールバックする。 */
   topImageOriginalUris?: Partial<Record<PhotoThemeTopSlot, string>>;
   topImageAdjustments?: Partial<Record<PhotoThemeTopSlot, { scale: number; offsetX: number; offsetY: number }>>;
+  topImageCropRects?: Partial<Record<PhotoThemeTopSlot, NormalizedCropRect>>;
   focusBackgroundUri?: string;
 };
 

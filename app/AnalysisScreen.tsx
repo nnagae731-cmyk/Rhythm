@@ -9,22 +9,22 @@ import { Task } from './types';
 
 type AnalysisTab = 'records' | 'insights' | 'routine';
 
-function DataState({ result }: { result: AnalysisResult }) {
+function DataState({ result, dark = false }: { result: AnalysisResult; dark?: boolean }) {
   if (result.status === 'insufficient') {
     return (
-      <View style={styles.dataState}>
-        <Text style={styles.dataStateTitle}>まだ記録中です</Text>
-        <Text style={styles.dataStateCopy}>Rhythmを使うと、少しずつ傾向が見えてきます</Text>
-        <Text style={styles.sample}>記録 {result.sampleCount}回</Text>
+      <View style={[styles.dataState, dark && styles.dataStateDark]}>
+        <Text style={[styles.dataStateTitle, dark && styles.darkMetricText]}>まだ記録中です</Text>
+        <Text style={[styles.dataStateCopy, dark && styles.darkSecondaryText]}>Rhythmを使うと、少しずつ傾向が見えてきます</Text>
+        <Text style={[styles.sample, dark && styles.darkSecondaryText]}>記録 {result.sampleCount}回</Text>
       </View>
     );
   }
   if (result.status === 'early') {
     return (
-      <View style={styles.early}>
-        <Text style={styles.earlyTitle}>少しずつ見えてきました</Text>
-        <Text style={styles.dataStateCopy}>まだ記録が少ないため、参考として表示しています</Text>
-        <Text style={styles.sample}>記録 {result.sampleCount}回</Text>
+      <View style={[styles.early, dark && styles.earlyDark]}>
+        <Text style={[styles.earlyTitle, dark && styles.darkMetricText]}>少しずつ見えてきました</Text>
+        <Text style={[styles.dataStateCopy, dark && styles.darkSecondaryText]}>まだ記録が少ないため、参考として表示しています</Text>
+        <Text style={[styles.sample, dark && styles.darkSecondaryText]}>記録 {result.sampleCount}回</Text>
       </View>
     );
   }
@@ -37,7 +37,7 @@ function MetricCard({ title, value, result, designMode }: { title: string; value
     <View style={[styles.metricCard, designMode !== 'chic' && styles.metricMinimal, designMode === 'chic' && styles.metricChic, { borderColor: theme.colors.border }]}> 
       <Text style={[styles.metricLabel, designMode === 'dark' && styles.darkMetricText]}>{title}</Text>
       {result.status === 'insufficient' || result.status === 'early' ? (
-        <DataState result={result} />
+        <DataState result={result} dark={designMode === 'dark'} />
       ) : (
         <>
           <Text style={[styles.metricValue, { color: theme.colors.primaryAccent }]}>{value ?? result.summary}</Text>
@@ -89,7 +89,7 @@ function RoutineProgressPanel({ events, tasks, designMode, onRemoveRoutine }: { 
     let streak = 0;
     for (let index = cycleDay - 1; index >= 0 && completedDays.has(taskDays[index]!.key); index -= 1) streak += 1;
     const color = palette[taskIndex % palette.length]!;
-    return <View key={task.id} style={styles.routineTaskRow}><View style={styles.routineTaskHeader}><Text numberOfLines={1} style={[styles.routineTaskTitle, designMode === 'dark' && styles.darkMetricText]}>{task.title}</Text><View style={styles.routineTaskActions}><Text style={[styles.routineTaskRate, { color }]}>{Math.round((activeDays / cycleDay) * 100)}%</Text><Pressable accessibilityLabel={`${task.title}をルーティンから外す`} hitSlop={8} onPress={() => onRemoveRoutine(task.id)} style={styles.routineRemoveButton}><Text style={styles.routineRemoveText}>×</Text></Pressable></View></View><View style={styles.routineDots}>{taskDays.map((day, index) => { const active = index < cycleDay && completedDays.has(day.key); return <View key={day.key} style={styles.routineDay}><View style={[styles.routineDot, active && { backgroundColor: color, borderColor: color }]}><Text style={[styles.routineDotText, !active && styles.routineDotTextInactive]}>{active ? '✓' : ''}</Text></View><Text style={[styles.routineDayLabel, designMode === 'dark' && styles.darkMetricText]}>{day.label}</Text></View>; })}</View><Text style={[styles.routineStreak, designMode === 'dark' && styles.darkMetricText]}>今のサイクル {activeDays} / {cycleDay}日 ・ 連続 {streak}日 ・ 累計 {totalCompletedDays}日</Text></View>;
+    return <View key={task.id} style={[styles.routineTaskRow, designMode === 'dark' && styles.routineTaskRowDark]}><View style={styles.routineTaskHeader}><Text numberOfLines={1} style={[styles.routineTaskTitle, designMode === 'dark' && styles.darkMetricText]}>{task.title}</Text><View style={styles.routineTaskActions}><Text style={[styles.routineTaskRate, { color }]}>{Math.round((activeDays / cycleDay) * 100)}%</Text><Pressable accessibilityLabel={`${task.title}をルーティンから外す`} hitSlop={8} onPress={() => onRemoveRoutine(task.id)} style={styles.routineRemoveButton}><Text style={styles.routineRemoveText}>×</Text></Pressable></View></View><View style={styles.routineDots}>{taskDays.map((day, index) => { const active = index < cycleDay && completedDays.has(day.key); return <View key={day.key} style={styles.routineDay}><View style={[styles.routineDot, active && { backgroundColor: color, borderColor: color }]}><Text style={[styles.routineDotText, !active && styles.routineDotTextInactive]}>{active ? '✓' : ''}</Text></View><Text style={[styles.routineDayLabel, designMode === 'dark' && styles.darkMetricText]}>{day.label}</Text></View>; })}</View><Text style={[styles.routineStreak, designMode === 'dark' && styles.routineStreakDark]}>今のサイクル {activeDays} / {cycleDay}日 ・ 連続 {streak}日 ・ 累計 {totalCompletedDays}日</Text></View>;
   })}</View></View>;
 }
 
@@ -146,14 +146,14 @@ export function AnalysisScreen({
             <View style={styles.activityRow}>
               <View style={styles.activityMetric}>
                 <Text style={[styles.activityValue, { color: designMode === 'dark' ? '#8EA6FF' : theme.colors.primaryAccent }]}>{departureActivity.preparationCount}</Text>
-                <Text style={[styles.activityLabel, designMode === 'dark' && styles.darkMetricText]}>準備開始</Text>
+                <Text style={[styles.activityLabel, designMode === 'dark' && styles.activityLabelDark]}>準備開始</Text>
               </View>
               <View style={styles.activityMetric}>
                 <Text style={[styles.activityValue, { color: designMode === 'dark' ? '#8EA6FF' : theme.colors.primaryAccent }]}>{departureActivity.departureCount}</Text>
-                <Text style={[styles.activityLabel, designMode === 'dark' && styles.darkMetricText]}>出発</Text>
+                <Text style={[styles.activityLabel, designMode === 'dark' && styles.activityLabelDark]}>出発</Text>
               </View>
               <View style={styles.activityLatest}>
-                <Text style={styles.activityLatestLabel}>最新の記録</Text>
+                <Text style={[styles.activityLatestLabel, designMode === 'dark' && styles.activityLatestLabelDark]}>最新の記録</Text>
                 <Text style={[styles.activityLatestValue, designMode === 'dark' && styles.darkMetricText]}>
                   {departureActivity.latest ? departureActivity.latest.type === 'departure_started' ? '出発しました' : '準備を始めました' : 'まだ記録はありません'}
                 </Text>
@@ -222,6 +222,7 @@ const styles = StyleSheet.create({
   routineDotText: { color: '#FFF', fontSize: 11, fontWeight: '900' },
   routineDayLabel: { color: '#817A88', fontSize: 7, fontWeight: '700' },
   routineTaskRow: { width: '48%', borderWidth: 1, borderColor: '#ECE8F0', borderRadius: 10, padding: 9, backgroundColor: '#FFFFFF' },
+  routineTaskRowDark: { backgroundColor: '#20293A', borderColor: '#303B50' },
   routineTaskHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   routineTaskActions: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   routineTaskTitle: { color: '#292530', fontSize: 12, fontWeight: '900', flex: 1, marginRight: 5 },
@@ -229,6 +230,7 @@ const styles = StyleSheet.create({
   routineRemoveButton: { width: 20, height: 20, borderRadius: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: '#F1EDF4' },
   routineRemoveText: { color: '#7D7386', fontSize: 16, fontWeight: '700', lineHeight: 18 },
   routineStreak: { color: '#817A88', fontSize: 9, fontWeight: '800', marginTop: 7 },
+  routineStreakDark: { color: '#B4C0D4' },
   routineDotTextInactive: { color: 'transparent' },
   routineSummary: { flexDirection: 'row', justifyContent: 'space-between', borderTopWidth: 1, borderTopColor: '#ECE8F0', marginTop: 16, paddingTop: 14 },
   routineSummaryValue: { color: '#292530', fontSize: 20, fontWeight: '900' },
@@ -241,8 +243,10 @@ const styles = StyleSheet.create({
   activityMetric: { minWidth: 62 },
   activityValue: { fontSize: 25, fontWeight: '900' },
   activityLabel: { color: '#756F7C', fontSize: 11, fontWeight: '800', marginTop: 2 },
+  activityLabelDark: { color: '#B4C0D4' },
   activityLatest: { flex: 1, borderLeftWidth: 1, borderLeftColor: '#E5E0E8', paddingLeft: 14 },
   activityLatestLabel: { color: '#938C98', fontSize: 10, fontWeight: '800' },
+  activityLatestLabelDark: { color: '#9CA8BC' },
   activityLatestValue: { color: '#3C3741', fontSize: 12, fontWeight: '800', marginTop: 4 },
   metricCard: { padding: 17, borderRadius: 18, borderWidth: 1, backgroundColor: '#FFF' },
   metricMinimal: { borderRadius: 1, borderColor: '#222', borderLeftWidth: 5 },
@@ -251,11 +255,14 @@ const styles = StyleSheet.create({
   metricValue: { fontSize: 25, fontWeight: '900', marginTop: 8 },
   metricSummary: { color: '#5E5864', fontSize: 12, marginTop: 5 },
   darkMetricText: { color: '#F4F7FC' },
+  darkSecondaryText: { color: '#B4C0D4' },
   sample: { color: '#938C98', fontSize: 10, fontWeight: '700', marginTop: 9 },
   dataState: { paddingVertical: 8 },
+  dataStateDark: { backgroundColor: '#20293A', borderRadius: 10, paddingHorizontal: 10 },
   dataStateTitle: { color: '#3C3741', fontSize: 16, fontWeight: '900' },
   dataStateCopy: { color: '#7D7684', fontSize: 11, lineHeight: 17, marginTop: 4 },
   early: { marginTop: 8, padding: 10, backgroundColor: '#F8F3E8', borderRadius: 10 },
+  earlyDark: { backgroundColor: '#20293A' },
   earlyTitle: { color: '#6E5932', fontSize: 14, fontWeight: '900' },
   premiumGate: { alignItems: 'center', backgroundColor: '#25202C', borderRadius: 22, padding: 25 },
   premiumLock: { color: '#F5D78B', fontSize: 28 },

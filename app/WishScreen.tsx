@@ -61,8 +61,9 @@ function monthDays(month: string) {
 export function WishScreen({ designMode: rawDesignMode, chicPattern, monthLabel, state, onSaveState, onCreateTaskFromAction, onBack }: WishScreenProps) {
   // Mono DarkはMono Lightと同じレイアウトを使い、色だけを反転する。
   const designMode: 'minimal' | 'chic' = rawDesignMode === 'dark' || rawDesignMode === 'photo' ? 'minimal' : rawDesignMode;
+  const isDark = rawDesignMode === 'dark';
   const theme = getThemeTokens(rawDesignMode);
-  const darkAccent = rawDesignMode === 'dark' ? '#C7B7FF' : theme.colors.primaryAccent;
+  const darkAccent = rawDesignMode === 'dark' ? '#8EA6FF' : theme.colors.primaryAccent;
   const progress = useMemo(() => calculateWishProgress(state), [state]);
   const [themeDraft, setThemeDraft] = useState(state.theme ?? '');
   const [reviewDraft, setReviewDraft] = useState<MonthlyReview>(normalizeMonthlyReview(state.review));
@@ -232,25 +233,26 @@ export function WishScreen({ designMode: rawDesignMode, chicPattern, monthLabel,
     <View style={[styles.screen, designMode === 'minimal' ? styles.screenMinimal : styles.screenChic, rawDesignMode === 'dark' && styles.screenDark]}>
       <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
-          <Pressable style={[styles.backButton, designMode === 'minimal' ? styles.backButtonMinimal : styles.backButtonChic]} onPress={onBack}>
+          <Pressable style={[styles.backButton, designMode === 'minimal' ? styles.backButtonMinimal : styles.backButtonChic, isDark && styles.backButtonDark]} onPress={onBack}>
             <Text style={[styles.backButtonText, { color: darkAccent }]}>ホームへ戻る</Text>
           </Pressable>
 
           <SectionCard
             designMode={designMode}
+            dark={isDark}
             chicPattern={chicPattern}
             showBRibbon={designMode === 'chic' && chicPattern === 'checkLavenderSatin'}
             showCRibbon={designMode === 'chic' && chicPattern === 'checkBeigeNoir'}
             title="今月のテーマ"
             subtitle={monthLabel}
           >
-            <View style={[styles.themePanel, designMode === 'minimal' ? styles.themePanelMinimal : styles.themePanelChic]}>
+            <View style={[styles.themePanel, designMode === 'minimal' ? styles.themePanelMinimal : styles.themePanelChic, isDark && styles.themePanelDark]}>
               <TextInput
                 value={themeDraft}
                 onChangeText={setThemeDraft}
                 placeholder="今月は、どんな自分でいたい？"
                 placeholderTextColor={theme.colors.secondaryText}
-                style={[styles.themeInput, designMode === 'minimal' ? styles.themeInputMinimal : styles.themeInputChic]}
+                style={[styles.themeInput, designMode === 'minimal' ? styles.themeInputMinimal : styles.themeInputChic, isDark && styles.themeInputDark]}
                 multiline
               />
               <View style={styles.rowActions}>
@@ -273,6 +275,7 @@ export function WishScreen({ designMode: rawDesignMode, chicPattern, monthLabel,
 
           <SectionCard
             designMode={designMode}
+            dark={isDark}
             chicPattern={chicPattern}
             title="叶えたいこと"
             subtitle="今月の願い"
@@ -286,6 +289,7 @@ export function WishScreen({ designMode: rawDesignMode, chicPattern, monthLabel,
                   style={[
                     styles.itemCard,
                     designMode === 'minimal' ? styles.itemCardMinimal : styles.itemCardChic,
+                    isDark && styles.itemCardDark,
                     wish.completed && styles.itemCardDone,
                   ]}
                   onPress={() => undefined}
@@ -299,7 +303,7 @@ export function WishScreen({ designMode: rawDesignMode, chicPattern, monthLabel,
                     <Text style={[styles.completionCheckText, wish.completed && styles.completionCheckTextActive]}>✓</Text>
                   </Pressable>
                   <View style={styles.itemBody}>
-                    <Text style={[styles.itemTitle, wish.completed && styles.itemTitleDone]}>{wish.title}</Text>
+                    <Text style={[styles.itemTitle, isDark && styles.itemTitleDark, wish.completed && styles.itemTitleDone]}>{wish.title}</Text>
                       <Text style={[styles.itemMeta, { color: theme.colors.secondaryText }]}>{wish.completed ? `完了${wish.completedAt ? ` ・ ${new Date(wish.completedAt).getMonth() + 1}/${new Date(wish.completedAt).getDate()}` : ''}` : '進行中'}</Text>
                   </View>
                   <View style={styles.itemActions}>
@@ -314,13 +318,14 @@ export function WishScreen({ designMode: rawDesignMode, chicPattern, monthLabel,
               ))}
             </View>
 
-            <Pressable style={[styles.addRow, designMode === 'minimal' ? styles.addRowMinimal : styles.addRowChic]} onPress={() => openWishEditor()}>
+            <Pressable style={[styles.addRow, designMode === 'minimal' ? styles.addRowMinimal : styles.addRowChic, isDark && styles.addRowDark]} onPress={() => openWishEditor()}>
               <Text style={[styles.addRowText, { color: darkAccent }]}>＋ 叶えたいことを追加</Text>
             </Pressable>
           </SectionCard>
 
           <SectionCard
             designMode={designMode}
+            dark={isDark}
             chicPattern={chicPattern}
             title="叶えるための行動"
             subtitle="行動"
@@ -339,6 +344,7 @@ export function WishScreen({ designMode: rawDesignMode, chicPattern, monthLabel,
                     style={[
                       styles.itemCard,
                       designMode === 'minimal' ? styles.itemCardMinimal : styles.itemCardChic,
+                      isDark && styles.itemCardDark,
                       action.completed && styles.itemCardDone,
                     ]}
                     onPress={() => undefined}
@@ -352,7 +358,7 @@ export function WishScreen({ designMode: rawDesignMode, chicPattern, monthLabel,
                       <Text style={[styles.completionCheckText, action.completed && styles.completionCheckTextActive]}>✓</Text>
                     </Pressable>
                     <View style={styles.itemBody}>
-                      <Text style={[styles.itemTitle, action.completed && styles.itemTitleDone]}>{action.title}</Text>
+                      <Text style={[styles.itemTitle, isDark && styles.itemTitleDark, action.completed && styles.itemTitleDone]}>{action.title}</Text>
                       <Text style={[styles.itemMeta, { color: theme.colors.secondaryText }]}>{wish ? `願い: ${wish.title}` : '願い未選択'}</Text>
                     </View>
                     <View style={styles.itemActions}>
@@ -372,7 +378,7 @@ export function WishScreen({ designMode: rawDesignMode, chicPattern, monthLabel,
             </View>
 
             <Pressable
-              style={[styles.addRow, designMode === 'minimal' ? styles.addRowMinimal : styles.addRowChic, !wishes.length && styles.addRowDisabled]}
+              style={[styles.addRow, designMode === 'minimal' ? styles.addRowMinimal : styles.addRowChic, isDark && styles.addRowDark, !wishes.length && styles.addRowDisabled]}
               onPress={() => wishes.length ? openActionEditor() : Alert.alert('先に叶えたいことを1つ作ってね')}
             >
               <Text style={[styles.addRowText, { color: rawDesignMode === 'dark' ? darkAccent : wishes.length ? theme.colors.primaryAccent : theme.colors.secondaryText }]}>＋ 行動を追加</Text>
@@ -383,14 +389,15 @@ export function WishScreen({ designMode: rawDesignMode, chicPattern, monthLabel,
             designMode={designMode}
             chicPattern={chicPattern}
             title="今月の進捗"
+            dark={isDark}
             subtitle={`${progress.progress}%`}
           >
             {designMode === 'minimal' ? (
               <View style={styles.progressMinimal}>
-                <Text style={styles.progressNumberMinimal}>{progress.progress}%</Text>
+                <Text style={[styles.progressNumberMinimal, isDark && styles.progressNumberDark]}>{progress.progress}%</Text>
                 <View style={styles.statGrid}>
-                  <StatCard label="叶えたいこと" value={`${progress.wishCompleted} / ${progress.wishTotal}`} minimal />
-                  <StatCard label="行動" value={`${progress.actionCompleted} / ${progress.actionTotal}`} minimal />
+                  <StatCard label="叶えたいこと" value={`${progress.wishCompleted} / ${progress.wishTotal}`} minimal dark={isDark} />
+                  <StatCard label="行動" value={`${progress.actionCompleted} / ${progress.actionTotal}`} minimal dark={isDark} />
                 </View>
               </View>
             ) : (
@@ -505,14 +512,14 @@ export function WishScreen({ designMode: rawDesignMode, chicPattern, monthLabel,
 
       <Modal visible={editor.visible} transparent animationType="fade" onRequestClose={() => setEditor(emptyEditor)}>
         <Pressable style={styles.modalBackdrop} onPress={() => setEditor(emptyEditor)}>
-          <Pressable style={[styles.editorSheet, designMode === 'minimal' ? styles.editorSheetMinimal : styles.editorSheetChic]} onPress={(event) => event.stopPropagation()}>
+          <Pressable style={[styles.editorSheet, designMode === 'minimal' ? styles.editorSheetMinimal : styles.editorSheetChic, isDark && styles.editorSheetDark]} onPress={(event) => event.stopPropagation()}>
             <Text style={[styles.editorTitle, { color: theme.colors.primaryText }]}>{editor.mode === 'wish' ? (editor.id ? '叶えたいことを編集' : '叶えたいことを追加') : editor.id ? '行動を編集' : '行動を追加'}</Text>
             <TextInput
               value={editor.title}
               onChangeText={(value) => setEditor((current) => ({ ...current, title: value }))}
                 placeholder={editor.mode === 'wish' ? '叶えたいこと' : '叶えるための行動'}
               placeholderTextColor={theme.colors.secondaryText}
-              style={[styles.editorInput, designMode === 'minimal' ? styles.editorInputMinimal : styles.editorInputChic]}
+              style={[styles.editorInput, designMode === 'minimal' ? styles.editorInputMinimal : styles.editorInputChic, isDark && styles.editorInputDark]}
             />
             {editor.mode === 'action' && (
               <View style={styles.wishSelectWrap}>
@@ -521,10 +528,10 @@ export function WishScreen({ designMode: rawDesignMode, chicPattern, monthLabel,
                   {state.wishes.map((wish) => (
                     <Pressable
                       key={wish.id}
-                      style={[styles.wishChip, editor.wishId === wish.id && styles.wishChipActive, designMode === 'minimal' ? styles.wishChipMinimal : styles.wishChipChic]}
+                      style={[styles.wishChip, editor.wishId === wish.id && styles.wishChipActive, designMode === 'minimal' ? styles.wishChipMinimal : styles.wishChipChic, isDark && styles.wishChipDark]}
                       onPress={() => setEditor((current) => ({ ...current, wishId: wish.id }))}
                     >
-                      <Text style={[styles.wishChipText, editor.wishId === wish.id && styles.wishChipTextActive]}>{wish.title}</Text>
+                      <Text style={[styles.wishChipText, isDark && styles.wishChipTextDark, editor.wishId === wish.id && styles.wishChipTextActive]}>{wish.title}</Text>
                     </Pressable>
                   ))}
                 </ScrollView>
@@ -588,6 +595,7 @@ function SectionCard({
   title,
   subtitle,
   designMode,
+  dark = false,
   chicPattern,
   showBRibbon = false,
   showCRibbon = false,
@@ -596,30 +604,31 @@ function SectionCard({
   title: string;
   subtitle?: string;
   designMode: DesignMode;
+  dark?: boolean;
   chicPattern: ChicPattern;
   showBRibbon?: boolean;
   showCRibbon?: boolean;
   children: React.ReactNode;
 }) {
   return (
-    <View style={[styles.sectionCard, designMode === 'minimal' ? styles.sectionCardMinimal : styles.sectionCardChic]}>
+    <View style={[styles.sectionCard, designMode === 'minimal' ? styles.sectionCardMinimal : styles.sectionCardChic, dark && styles.sectionCardDark]}>
       {showBRibbon && <BThemeRibbonDecoration journal={title.includes('九☆')} />}
       {showCRibbon && <CThemeRibbonDecoration journal={title.includes('九☆')} />}
       {designMode === 'chic' && <WishBackdrop pattern={chicPattern} />}
       <View style={styles.sectionHeader}>
-        <Text style={[styles.sectionTitle, { color: sectionText(designMode, '#392F34', '#171715') }]}>{title}</Text>
-        {subtitle ? <Text style={[styles.sectionSubtitle, { color: sectionText(designMode, '#8B7B82', '#777772') }]}>{subtitle}</Text> : null}
+        <Text style={[styles.sectionTitle, { color: sectionText(designMode, '#392F34', '#171715') }, designMode === 'minimal' && styles.sectionTitleDark, dark && styles.sectionTitleDark]}>{title}</Text>
+        {subtitle ? <Text style={[styles.sectionSubtitle, { color: sectionText(designMode, '#8B7B82', '#777772') }, designMode === 'minimal' && styles.sectionSubtitleDark, dark && styles.sectionSubtitleDark]}>{subtitle}</Text> : null}
       </View>
       {children}
     </View>
   );
 }
 
-function StatCard({ label, value, minimal = false }: { label: string; value: string; minimal?: boolean }) {
+function StatCard({ label, value, minimal = false, dark = false }: { label: string; value: string; minimal?: boolean; dark?: boolean }) {
   return (
-    <View style={[styles.statCard, minimal ? styles.statCardMinimal : styles.statCardChic]}>
-      <Text style={[styles.statLabel, minimal ? styles.statLabelMinimal : styles.statLabelChic]}>{label}</Text>
-      <Text style={[styles.statValue, minimal ? styles.statValueMinimal : styles.statValueChic]}>{value}</Text>
+    <View style={[styles.statCard, minimal ? styles.statCardMinimal : styles.statCardChic, dark && styles.statCardDark]}>
+      <Text style={[styles.statLabel, minimal ? styles.statLabelMinimal : styles.statLabelChic, dark && styles.statLabelDark]}>{label}</Text>
+      <Text style={[styles.statValue, minimal ? styles.statValueMinimal : styles.statValueChic, dark && styles.statValueDark]}>{value}</Text>
     </View>
   );
 }
@@ -645,21 +654,27 @@ const styles = StyleSheet.create({
   backButton: { alignSelf: 'flex-start', paddingHorizontal: 12, paddingVertical: 10, borderWidth: 1, borderRadius: 12, backgroundColor: '#FFFFFF' },
   backButtonMinimal: { borderRadius: 2, borderColor: '#111111' },
   backButtonChic: { borderColor: '#E8D9E2', backgroundColor: '#FFF3F5' },
+  backButtonDark: { backgroundColor: '#181F2E', borderColor: '#303B50' },
   backButtonText: { fontSize: 12, fontWeight: '900' },
   sectionCard: { borderWidth: 1, borderRadius: 22, padding: 14, overflow: 'hidden', position: 'relative' },
   wishBowRibbon: { position: 'absolute', right: 4, top: 0, width: 112, height: 88, zIndex: 3 },
   wishFrameRibbon: { position: 'absolute', left: 5, right: 5, top: 5, bottom: 5, zIndex: 3 },
   sectionCardMinimal: { backgroundColor: '#FFFFFF', borderColor: '#111111', borderRadius: 4 },
   sectionCardChic: { backgroundColor: '#FFF3F5', borderColor: '#F0DFE5', borderRadius: 26, shadowColor: '#D986A1', shadowOpacity: 0.08, shadowRadius: 10, shadowOffset: { width: 0, height: 4 } },
+  sectionCardDark: { backgroundColor: '#181F2E', borderColor: '#303B50', shadowColor: '#000000', shadowOpacity: 0.16 },
   sectionHeader: { marginBottom: 10, zIndex: 1 },
   sectionTitle: { fontSize: 16, fontWeight: '900' },
   sectionSubtitle: { fontSize: 10, fontWeight: '800', marginTop: 2 },
   themePanel: { borderWidth: 1, borderRadius: 16, padding: 12, gap: 10, backgroundColor: '#FFFFFF' },
   themePanelMinimal: { borderColor: '#111111', borderRadius: 2 },
   themePanelChic: { borderColor: '#E8D9E2' },
+  themePanelDark: { backgroundColor: '#20293A', borderColor: '#303B50' },
   themeInput: { minHeight: 78, borderWidth: 1, borderRadius: 14, paddingHorizontal: 12, paddingVertical: 12, fontSize: 15, fontWeight: '800', color: '#282538', textAlignVertical: 'top', backgroundColor: '#FFFFFF' },
+  sectionTitleDark: { color: '#F4F7FC' },
+  sectionSubtitleDark: { color: '#B4C0D4' },
   themeInputMinimal: { borderColor: '#111111', borderRadius: 2 },
   themeInputChic: { borderColor: '#E7D9E3' },
+  themeInputDark: { backgroundColor: '#181F2E', borderColor: '#40506A', color: '#F4F7FC' },
   rowActions: { flexDirection: 'row', gap: 8, justifyContent: 'flex-end' },
   secondaryButton: { minWidth: 82, paddingHorizontal: 14, paddingVertical: 11, borderRadius: 12, alignItems: 'center', backgroundColor: '#F0EDF4' },
   secondaryButtonMinimal: { borderColor: '#111111', borderWidth: 1, backgroundColor: '#FFFFFF', borderRadius: 2 },
@@ -679,9 +694,11 @@ const styles = StyleSheet.create({
   completionCheckTextActive: { color: '#FFFFFF' },
   itemCardMinimal: { borderColor: '#111111', borderRadius: 2 },
   itemCardChic: { borderColor: '#E5DFEA' },
+  itemCardDark: { backgroundColor: '#20293A', borderColor: '#303B50' },
   itemCardDone: { opacity: 0.62 },
   itemBody: { flex: 1 },
   itemTitle: { fontSize: 14, fontWeight: '900', color: '#282538' },
+  itemTitleDark: { color: '#F4F7FC' },
   itemTitleDone: { textDecorationLine: 'line-through' },
   itemMeta: { fontSize: 10, fontWeight: '800', marginTop: 4 },
   itemActions: { alignItems: 'flex-end', gap: 6 },
@@ -690,10 +707,12 @@ const styles = StyleSheet.create({
   addRow: { marginTop: 12, paddingVertical: 12, alignItems: 'center', borderWidth: 1, borderRadius: 14, backgroundColor: '#FFFFFF' },
   addRowMinimal: { borderColor: '#111111', borderRadius: 2 },
   addRowChic: { borderColor: '#E0D5E1', backgroundColor: '#FFF8FA' },
+  addRowDark: { borderColor: '#40506A', backgroundColor: '#20293A' },
   addRowDisabled: { opacity: 0.45 },
   addRowText: { fontSize: 13, fontWeight: '900' },
   progressMinimal: { gap: 12 },
   progressNumberMinimal: { fontSize: 42, lineHeight: 46, fontWeight: '300', color: '#111111' },
+  progressNumberDark: { color: '#F4F7FC' },
   statGrid: { flexDirection: 'row', gap: 10 },
   progressChic: { flexDirection: 'row', alignItems: 'center', gap: 16 },
   ring: { width: 122, height: 122, borderRadius: 61, borderWidth: 10, borderColor: '#E9D1DC', alignItems: 'center', justifyContent: 'center', backgroundColor: '#FFFFFF' },
@@ -709,6 +728,9 @@ const styles = StyleSheet.create({
   statValue: { fontSize: 20, fontWeight: '900', color: '#171715', marginTop: 4 },
   statValueMinimal: { color: '#111111' },
   statValueChic: { color: '#392F34' },
+  statCardDark: { backgroundColor: '#20293A', borderColor: '#40506A' },
+  statLabelDark: { color: '#B4C0D4' },
+  statValueDark: { color: '#F4F7FC' },
   reviewPanel: { gap: 10, borderWidth: 1, borderRadius: 16, padding: 12, backgroundColor: '#FFFFFF' },
   reviewPanelMinimal: { borderColor: '#111111', borderRadius: 2 },
   reviewPanelChic: { borderColor: '#E8D9E2', backgroundColor: '#FFFFFF' },
@@ -762,18 +784,22 @@ const styles = StyleSheet.create({
   editorSheet: { borderRadius: 18, padding: 16, gap: 10 },
   editorSheetMinimal: { borderRadius: 4, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#111111' },
   editorSheetChic: { backgroundColor: '#FFF3F5', borderWidth: 1, borderColor: '#F0DFE5' },
+  editorSheetDark: { backgroundColor: '#181F2E', borderColor: '#303B50' },
   editorTitle: { fontSize: 16, fontWeight: '900' },
   editorInput: { minHeight: 52, borderWidth: 1, borderRadius: 14, paddingHorizontal: 12, paddingVertical: 10, backgroundColor: '#FFFFFF', fontSize: 13, fontWeight: '800', color: '#282538' },
   editorInputMinimal: { borderColor: '#111111', borderRadius: 2 },
   editorInputChic: { borderColor: '#E7D9E3' },
+  editorInputDark: { backgroundColor: '#20293A', borderColor: '#40506A', color: '#F4F7FC' },
   wishSelectWrap: { gap: 6 },
   editorMeta: { fontSize: 10, fontWeight: '800' },
   wishSelectRow: { gap: 8, paddingVertical: 4 },
   wishChip: { borderWidth: 1, borderRadius: 999, paddingHorizontal: 12, paddingVertical: 9, backgroundColor: '#FFFFFF' },
   wishChipMinimal: { borderColor: '#111111', borderRadius: 2 },
   wishChipChic: { borderColor: '#DDD7E1' },
+  wishChipDark: { backgroundColor: '#20293A', borderColor: '#40506A' },
   wishChipActive: { backgroundColor: '#F4D8E2', borderColor: '#D986A1' },
   wishChipText: { fontSize: 11, fontWeight: '800', color: '#777772' },
+  wishChipTextDark: { color: '#B4C0D4' },
   wishChipTextActive: { color: '#392F34' },
   editorToggleRow: { flexDirection: 'row', gap: 8, alignItems: 'center', justifyContent: 'space-between' },
   toggleChip: { borderWidth: 1, borderRadius: 999, paddingHorizontal: 14, paddingVertical: 9, backgroundColor: '#FFFFFF' },

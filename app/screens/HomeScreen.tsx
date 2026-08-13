@@ -239,8 +239,8 @@ function VoiceQuickAddCard({ designMode, chicPattern, onQuickAdd }: { designMode
       {designMode === 'chic' && !isCheckChicPattern(chicPattern) && <PatternDecor pattern={chicPattern} accent="#D986A1" warm="#A997C8" />}
       <View style={designMode === 'chic' ? styles.voiceAddPaperChic : styles.voiceAddPaperMinimal}>
         <View style={styles.voiceAddHeading}>
-          <Text style={styles.quickAddTitle}>音声でひとつ追加</Text>
-          <Text style={styles.voiceAddHint}>キーボードのマイクで話して、そのまま入力できます</Text>
+          <Text style={[styles.quickAddTitle, isDark && styles.darkBodyText]}>音声でひとつ追加</Text>
+          <Text style={[styles.voiceAddHint, isDark && styles.darkMutedText]}>キーボードのマイクで話して、そのまま入力できます</Text>
         </View>
         <TextInput
           value={title}

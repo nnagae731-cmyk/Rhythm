@@ -50,7 +50,7 @@ export function PhotoThemeSettingsCard({ photoTheme, designMode, planTier, onPre
     <Text style={localStyles.note}>今日・予定・分析・叶えたいこと・設定の5画面に、それぞれ1枚ずつ設定できます。</Text>
     <View style={localStyles.slotGrid}>
       {topSlots.map((slot) => {
-        const uri = photoTheme.topImageOriginalUris?.[slot.id] ?? photoTheme.topImageUris?.[slot.id];
+        const uri = photoTheme.topImageUris?.[slot.id] ?? photoTheme.topImageOriginalUris?.[slot.id];
         return <View key={slot.id} style={localStyles.slotCard}>
           {uri ? <Image source={{ uri }} style={localStyles.slotPreview} /> : <View style={localStyles.slotEmpty}><Text style={localStyles.slotEmptyText}>＋</Text></View>}
           <Text style={localStyles.slotLabel}>{slot.label}</Text>

@@ -102,61 +102,61 @@ export function TaskModal({ visible, task, templates, savedTemplates, designMode
         <Pressable style={[styles.modalSheet, { backgroundColor: theme.colors.screenBackground, borderRadius: theme.radius.modal }]} onPress={(event) => event.stopPropagation()}>
           <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false} contentContainerStyle={styles.modalScroll}>
           <View style={styles.modalHandle} />
-          <Text style={styles.modalTitle}>{task ? 'タスクを編集' : '新しいタスク'}</Text>
+          <Text style={[styles.modalTitle, designMode === 'dark' && styles.modalTitleDark]}>{task ? 'タスクを編集' : '新しいタスク'}</Text>
           {!task && templates.length > 0 && <><Text style={styles.templateGroupLabel}>クイックひな型</Text><ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.taskTemplates}>{templates.map((item) => <Pressable key={item} style={styles.taskTemplateChip} onPress={() => setTitle(item)}><Text style={styles.taskTemplateText}>＋ {item}</Text></Pressable>)}</ScrollView></>}
           {!task && (hasPremiumAccess(planTier, 'saved_task_templates') ? <View style={styles.savedTemplatePicker}><Text style={styles.templateGroupLabel}>マイひな型</Text>{savedTemplates.length === 0 ? <Text style={styles.savedTemplateEmpty}>タスクの「•••」から設定ごと保存できます。</Text> : <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.savedTemplateChips}>{savedTemplates.map((template) => <Pressable key={template.id} style={styles.savedTemplateChip} onPress={() => applySavedTemplate(template)}><Text numberOfLines={1} style={styles.savedTemplateChipTitle}>{template.title}</Text><Text numberOfLines={2} style={styles.savedTemplateChipCopy}>{summarizePremiumTaskTemplate(template)}</Text><Text style={styles.savedTemplateChoose}>選ぶ ›</Text></Pressable>)}</ScrollView>}</View> : <Pressable style={styles.savedTemplateLocked} onPress={() => onPremium('templates')}><View style={{ flex: 1 }}><Text style={styles.savedTemplateLockedTitle}>マイひな型</Text><Text style={styles.savedTemplateLockedCopy}>一度作った設定を、次からそのまま使う</Text></View><Text style={styles.taskTemplateSavePremium}>Premium機能</Text></Pressable>)}
-          <Text style={styles.fieldLabel}>やること・忘れたくないこと</Text>
+          <Text style={[styles.fieldLabel, designMode === 'dark' && styles.fieldLabelDark]}>やること・忘れたくないこと</Text>
           <TextInput
             autoFocus
             value={title}
             onChangeText={setTitle}
             placeholder="例：資料をバッグに入れる"
-            placeholderTextColor="#A29DAA"
-            style={styles.modalInput}
+            placeholderTextColor={designMode === 'dark' ? '#9CA8BC' : '#69758A'}
+            style={[styles.modalInput, designMode === 'dark' && styles.darkInput]}
             selectionColor={colors.violet}
             returnKeyType="done"
             onSubmitEditing={save}
           />
-          <Text style={[styles.fieldLabel, { marginTop: 18 }]}>ジャンル</Text>
+          <Text style={[styles.fieldLabel, { marginTop: 18 }, designMode === 'dark' && styles.fieldLabelDark]}>ジャンル</Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.categoryChoices}>
             {categories.map((item) => (
               <Pressable key={item} style={[styles.categoryChoice, { backgroundColor: theme.colors.secondarySurface }, category === item && styles.categoryChoiceActive, category === item && { backgroundColor: theme.colors.softAccent, borderColor: theme.colors.primaryAccent }]} onPress={() => setCategory(item)}>
-                <Text style={styles.categoryChoiceText}>{item}</Text>
+                <Text style={[styles.categoryChoiceText, designMode === 'dark' && styles.categoryChoiceTextDark]}>{item}</Text>
               </Pressable>
             ))}
           </ScrollView>
-          <Text style={[styles.fieldLabel, { marginTop: 17 }]}>優先度</Text>
+          <Text style={[styles.fieldLabel, { marginTop: 17 }, designMode === 'dark' && styles.fieldLabelDark]}>優先度</Text>
           <View style={styles.priorityChoices}>
             {priorities.map((item) => (
-              <Pressable key={item} style={[styles.priorityChoice, { backgroundColor: theme.colors.secondarySurface }, priority === item && styles.priorityChoiceActive, priority === item && { backgroundColor: theme.colors.softAccent, borderColor: theme.colors.primaryAccent }]} onPress={() => setPriority(item)}>
-                <Text style={[styles.priorityChoiceText, priority === item && styles.priorityChoiceTextActive]}>{item}</Text>
+              <Pressable key={item} style={[styles.priorityChoice, designMode === 'dark' && styles.priorityChoiceDark, { backgroundColor: designMode === 'dark' ? undefined : theme.colors.secondarySurface }, priority === item && styles.priorityChoiceActive, priority === item && designMode === 'dark' && styles.priorityChoiceActiveDark, priority === item && designMode !== 'dark' && { backgroundColor: theme.colors.softAccent, borderColor: theme.colors.primaryAccent }]} onPress={() => setPriority(item)}>
+                <Text style={[styles.priorityChoiceText, designMode === 'dark' && styles.priorityChoiceTextDark, priority === item && styles.priorityChoiceTextActive, priority === item && designMode === 'dark' && styles.priorityChoiceTextActiveDark]}>{item}</Text>
               </Pressable>
             ))}
           </View>
-          <Text style={[styles.fieldLabel, { marginTop: 17 }]}>実行する日</Text>
+          <Text style={[styles.fieldLabel, { marginTop: 17 }, designMode === 'dark' && styles.fieldLabelDark]}>実行する日</Text>
           <View style={styles.taskDateQuickRow}>
-            <Pressable style={styles.taskDateQuick} onPress={() => setScheduledDate(todayInputValue())}><Text style={styles.taskDateQuickText}>今日</Text></Pressable>
-            <Pressable style={styles.taskDateQuick} onPress={() => setScheduledDate(todayInputValue(1))}><Text style={styles.taskDateQuickText}>明日</Text></Pressable>
-            <Pressable style={styles.taskDatePickerButton} onPress={() => setShowScheduledDatePicker((value) => !value)}><Text style={styles.taskDatePickerText}>▣ {scheduledDate}</Text></Pressable>
+            <Pressable style={[styles.taskDateQuick, designMode === 'dark' && styles.quickDateButtonDark]} onPress={() => setScheduledDate(todayInputValue())}><Text style={[styles.taskDateQuickText, designMode === 'dark' && styles.quickDateTextDark]}>今日</Text></Pressable>
+            <Pressable style={[styles.taskDateQuick, designMode === 'dark' && styles.quickDateButtonDark]} onPress={() => setScheduledDate(todayInputValue(1))}><Text style={[styles.taskDateQuickText, designMode === 'dark' && styles.quickDateTextDark]}>明日</Text></Pressable>
+            <Pressable style={[styles.taskDatePickerButton, designMode === 'dark' && styles.pickerButtonDark]} onPress={() => setShowScheduledDatePicker((value) => !value)}><Text style={[styles.taskDatePickerText, designMode === 'dark' && styles.pickerButtonTextDark]}>▣ {scheduledDate}</Text></Pressable>
           </View>
           {showScheduledDatePicker && <DateTimePicker value={dateForReminder(scheduledDate, '12:00')} mode="date" minimumDate={new Date()} display={Platform.OS === 'ios' ? 'inline' : 'default'} onChange={(event: DateTimePickerEvent, selected) => { if (Platform.OS !== 'ios') setShowScheduledDatePicker(false); if (event.type === 'set' && selected) setScheduledDate(dateKey(selected)); }} />}
           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 10 }}><View><Text style={styles.fieldLabel}>実行する時間（任意）</Text><Text style={styles.switchCopy}>指定したタスクだけスケジュールに表示</Text></View><Pressable style={[styles.taskDatePickerButton, { minWidth: 115 }]} onPress={() => setShowScheduledTimePicker((value) => !value)}><Text style={styles.taskDatePickerText}>{scheduledTime || '時間を指定'}</Text></Pressable></View>
           {showScheduledTimePicker && <DateTimePicker value={dateForReminder(scheduledDate, scheduledTime || '09:00')} mode="time" display={Platform.OS === 'ios' ? 'spinner' : 'default'} onChange={(event: DateTimePickerEvent, selected) => { if (Platform.OS !== 'ios') setShowScheduledTimePicker(false); if (event.type === 'set' && selected) { setScheduledTime(formatLiveTime(selected)); setShowScheduledTimePicker(false); } }} />}
-          <Text style={[styles.fieldLabel, { marginTop: 17 }]}>繰り返し・ルーティン</Text>
+          <Text style={[styles.fieldLabel, { marginTop: 17 }, designMode === 'dark' && styles.fieldLabelDark]}>繰り返し・ルーティン</Text>
           <View style={styles.repeatChoices}>
-            {repeatOptions.map((option) => <Pressable key={option.id} style={[styles.repeatChoice, { backgroundColor: theme.colors.secondarySurface }, repeatRule === option.id && styles.repeatChoiceActive, repeatRule === option.id && { backgroundColor: theme.colors.softAccent, borderColor: theme.colors.primaryAccent }]} onPress={() => setRepeatRule(option.id)}><Text style={[styles.repeatChoiceText, repeatRule === option.id && styles.repeatChoiceTextActive]}>{option.label}</Text></Pressable>)}
+            {repeatOptions.map((option) => <Pressable key={option.id} style={[styles.repeatChoice, designMode === 'dark' && styles.repeatChoiceDark, { backgroundColor: designMode === 'dark' ? undefined : theme.colors.secondarySurface }, repeatRule === option.id && styles.repeatChoiceActive, repeatRule === option.id && designMode === 'dark' && styles.repeatChoiceActiveDark, repeatRule === option.id && designMode !== 'dark' && { backgroundColor: theme.colors.softAccent, borderColor: theme.colors.primaryAccent }]} onPress={() => setRepeatRule(option.id)}><Text style={[styles.repeatChoiceText, designMode === 'dark' && styles.repeatChoiceTextDark, repeatRule === option.id && styles.repeatChoiceTextActive, repeatRule === option.id && designMode === 'dark' && styles.repeatChoiceTextActiveDark]}>{option.label}</Text></Pressable>)}
           </View>
-          <Pressable style={styles.routineToggleRow} onPress={() => setIsRoutine((value) => !value)}><View style={[styles.routineToggleBox, isRoutine && styles.routineToggleBoxActive]}><Text style={styles.routineToggleCheck}>{isRoutine ? '✓' : ''}</Text></View><View><Text style={styles.routineToggleTitle}>ルーティンにする</Text><Text style={styles.routineToggleCopy}>継続率と連続日数を分析に表示</Text></View></Pressable>
+          <Pressable style={styles.routineToggleRow} onPress={() => setIsRoutine((value) => !value)}><View style={[styles.routineToggleBox, isRoutine && styles.routineToggleBoxActive]}><Text style={styles.routineToggleCheck}>{isRoutine ? '✓' : ''}</Text></View><View><Text style={[styles.routineToggleTitle, designMode === 'dark' && styles.routineToggleTitleDark]}>ルーティンにする</Text><Text style={[styles.routineToggleCopy, designMode === 'dark' && styles.routineToggleCopyDark]}>継続率と連続日数を分析に表示</Text></View></Pressable>
           <View style={styles.switchRow}>
             <View>
-              <Text style={styles.switchTitle}>追加リマインド</Text>
+              <Text style={[styles.switchTitle, designMode === 'dark' && styles.switchTitleDark]}>追加リマインド</Text>
               <Text style={styles.switchCopy}>期限とは別の日時にも通知します</Text>
             </View>
             <Switch value={remind} onValueChange={setRemind} trackColor={{ true: colors.violet }} />
           </View>
           <View style={styles.switchRow}>
             <View>
-              <Text style={styles.switchTitle}>期限を設定</Text>
+              <Text style={[styles.switchTitle, designMode === 'dark' && styles.switchTitleDark]}>期限を設定</Text>
               <Text style={styles.switchCopy}>残り時間と期限超過を表示します</Text>
             </View>
             <Switch value={hasDeadline} onValueChange={setHasDeadline} trackColor={{ true: colors.coral }} />
@@ -169,23 +169,23 @@ export function TaskModal({ visible, task, templates, savedTemplates, designMode
                 <Pressable style={styles.quickDeadlineButton} onPress={() => setDeadlineDate(todayInputValue(7))}><Text style={styles.quickDeadlineText}>1週間後</Text></Pressable>
               </View>
               <View style={styles.remindTimeRow}>
-                <Text style={styles.numberLabel}>期限日</Text>
-                <Pressable style={styles.pickerButton} onPress={() => setShowDeadlineDatePicker((value) => !value)}><Text style={styles.pickerButtonText}>▣ {deadlineDate}</Text></Pressable>
+                <Text style={[styles.numberLabel, designMode === 'dark' && styles.numberLabelDark]}>期限日</Text>
+                <Pressable style={[styles.pickerButton, designMode === 'dark' && styles.pickerButtonDark]} onPress={() => setShowDeadlineDatePicker((value) => !value)}><Text style={[styles.pickerButtonText, designMode === 'dark' && styles.pickerButtonTextDark]}>▣ {deadlineDate}</Text></Pressable>
               </View>
               {showDeadlineDatePicker && <DateTimePicker value={dateForReminder(deadlineDate, deadlineTime)} mode="date" minimumDate={new Date()} display={Platform.OS === 'ios' ? 'inline' : 'default'} onChange={(event: DateTimePickerEvent, selected) => {
                 if (Platform.OS !== 'ios') setShowDeadlineDatePicker(false);
                 if (event.type === 'set' && selected) setDeadlineDate(dateKey(selected));
               }} />}
               <View style={styles.remindTimeRow}>
-                <Text style={styles.numberLabel}>リミット時刻</Text>
-                <Pressable style={styles.pickerButton} onPress={() => setShowDeadlineTimePicker((value) => !value)}><Text style={[styles.pickerButtonText, { color: colors.coral }]}>◷ {deadlineTime}</Text></Pressable>
+                <Text style={[styles.numberLabel, designMode === 'dark' && styles.numberLabelDark]}>リミット時刻</Text>
+                <Pressable style={[styles.pickerButton, designMode === 'dark' && styles.pickerButtonDark]} onPress={() => setShowDeadlineTimePicker((value) => !value)}><Text style={[styles.pickerButtonText, { color: designMode === 'dark' ? '#8EA6FF' : colors.coral }]}>◷ {deadlineTime}</Text></Pressable>
               </View>
               {showDeadlineTimePicker && <DateTimePicker value={dateForReminder(deadlineDate, deadlineTime)} mode="time" display={Platform.OS === 'ios' ? 'spinner' : 'default'} onChange={(event: DateTimePickerEvent, selected) => {
                 if (Platform.OS !== 'ios') setShowDeadlineTimePicker(false);
                 if (event.type === 'set' && selected) setDeadlineTime(`${String(selected.getHours()).padStart(2, '0')}:${String(selected.getMinutes()).padStart(2, '0')}`);
               }} />}
               <View style={styles.deadlineNotifyRow}>
-                <View><Text style={styles.numberLabel}>期限前に通知</Text><Text style={styles.switchCopy}>期限の設定と連動します</Text></View>
+                <View><Text style={[styles.numberLabel, designMode === 'dark' && styles.numberLabelDark]}>期限前に通知</Text><Text style={[styles.switchCopy, designMode === 'dark' && styles.switchCopyDark]}>期限の設定と連動します</Text></View>
                 <Switch value={deadlineNotify} onValueChange={setDeadlineNotify} trackColor={{ true: colors.coral }} />
               </View>
               {deadlineNotify && <View style={styles.notifyChoices}>
@@ -213,16 +213,16 @@ export function TaskModal({ visible, task, templates, savedTemplates, designMode
                 <Pressable style={styles.quickDateButton} onPress={() => setRemindDate(todayInputValue(1))}><Text style={styles.quickDateText}>明日</Text></Pressable>
               </View>
               <View style={styles.remindTimeRow}>
-                <View><Text style={styles.numberLabel}>日付</Text><Text style={styles.inputHint}>YYYY-MM-DD</Text></View>
+                <View><Text style={[styles.numberLabel, designMode === 'dark' && styles.numberLabelDark]}>日付</Text><Text style={[styles.inputHint, designMode === 'dark' && styles.inputHintDark]}>YYYY-MM-DD</Text></View>
                 <TextInput style={styles.remindDateInput} value={remindDate} onChangeText={setRemindDate} maxLength={10} keyboardType="numbers-and-punctuation" selectionColor={colors.violet} />
               </View>
               <View style={styles.remindTimeRow}>
                 <Text style={styles.numberLabel}>時刻</Text>
                 <TextInput style={styles.remindTimeInput} value={time} onChangeText={setTime} maxLength={5} keyboardType="numbers-and-punctuation" selectionColor={colors.violet} />
               </View>
-              <Text style={[styles.numberLabel, { marginTop: 13, marginBottom: 8 }]}>通知スルー防止</Text>
+              <Text style={[styles.numberLabel, { marginTop: 13, marginBottom: 8 }, designMode === 'dark' && styles.numberLabelDark]}>通知スルー防止</Text>
               <View style={styles.nudgeChoices}>
-                {([{ id: 'once', label: '1回', copy: '通常' }, { id: 'repeat', label: '2回', copy: 'Premium' }, { id: 'strong', label: '3回', copy: 'Premium' }] as { id: NudgeMode; label: string; copy: string }[]).map((item) => { const locked = item.id !== 'once' && !hasPremiumAccess(planTier, item.id === 'repeat' ? 'repeat_nudge' : 'strong_nudge'); return <Pressable key={item.id} style={[styles.nudgeChoice, nudgeMode === item.id && styles.nudgeChoiceActive]} onPress={() => locked ? onPremium('nudge') : setNudgeMode(item.id)}><Text style={[styles.nudgeChoiceTitle, nudgeMode === item.id && styles.nudgeChoiceTitleActive]}>{item.label}{locked ? ' 🔒' : ''}</Text><Text style={[styles.nudgeChoiceCopy, nudgeMode === item.id && styles.nudgeChoiceCopyActive]}>{item.copy}</Text></Pressable>; })}
+                {([{ id: 'once', label: '1回', copy: '通常' }, { id: 'repeat', label: '2回', copy: 'Premium' }, { id: 'strong', label: '3回', copy: 'Premium' }] as { id: NudgeMode; label: string; copy: string }[]).map((item) => { const locked = item.id !== 'once' && !hasPremiumAccess(planTier, item.id === 'repeat' ? 'repeat_nudge' : 'strong_nudge'); return <Pressable key={item.id} style={[styles.nudgeChoice, designMode === 'dark' && styles.nudgeChoiceDark, nudgeMode === item.id && styles.nudgeChoiceActive, nudgeMode === item.id && designMode === 'dark' && styles.nudgeChoiceActiveDark]} onPress={() => locked ? onPremium('nudge') : setNudgeMode(item.id)}><Text style={[styles.nudgeChoiceTitle, designMode === 'dark' && styles.nudgeChoiceTitleDark, nudgeMode === item.id && styles.nudgeChoiceTitleActive, nudgeMode === item.id && designMode === 'dark' && styles.nudgeChoiceTitleActiveDark]}>{item.label}{locked ? ' 🔒' : ''}</Text><Text style={[styles.nudgeChoiceCopy, designMode === 'dark' && styles.nudgeChoiceCopyDark, nudgeMode === item.id && styles.nudgeChoiceCopyActive, nudgeMode === item.id && designMode === 'dark' && styles.nudgeChoiceCopyActiveDark]}>{item.copy}</Text></Pressable>; })}
               </View>
             </View>
           )}
