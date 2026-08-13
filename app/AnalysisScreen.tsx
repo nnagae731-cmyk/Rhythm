@@ -66,6 +66,168 @@ function localDateKey(value: Date | string): string {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 }
 
+function dateFromLocalKey(key: string): Date {
+  const [year, month, day] = key.split('-').map(Number);
+  return new Date(year ?? new Date().getFullYear(), (month ?? 1) - 1, day ?? 1);
+}
+
+function addLocalDays(key: string, amount: number): string {
+  const date = dateFromLocalKey(key);
+  date.setDate(date.getDate() + amount);
+  return localDateKey(date);
+}
+
+function dayDistance(startKey: string, endKey: string): number {
+  return Math.max(0, Math.round((dateFromLocalKey(endKey).getTime() - dateFromLocalKey(startKey).getTime()) / 86_400_000));
+}
+
+function shortDate(key?: string): string {
+  if (!key) return '—';
+  const date = dateFromLocalKey(key);
+  return `${date.getMonth() + 1}月${date.getDate()}日`;
+}
+
+type RoutineResumeSummary = {
+  state: 'continuing' | 'interrupted' | 'resumed' | 'before';
+  latestInterruptionStart?: string;
+  latestResumeDate?: string;
+  latestResumeFrom?: string;
+  latestGapDays?: number;
+  currentInterruptionDays: number;
+  interruptionsThisMonth: number;
+  resumesThisMonth: number;
+  longestStreak: number;
+  postResumeStreak: number;
+};
+
+function routineDayCompleted(events: BehaviorEvent[], tasks: Task[], routineMemberIds: Set<string>, dayKey: string): boolean {
+  const dayEvents = events
+    .filter((event) => (event.type === 'task_completed' || event.type === 'task_completion_reverted') && event.taskId && routineMemberIds.has(event.taskId))
+    .filter((event) => localDateKey(event.type === 'task_completion_reverted' && event.taskCompletionDate ? event.taskCompletionDate : event.occurredAt) === dayKey)
+    .sort((a, b) => new Date(a.occurredAt).getTime() - new Date(b.occurredAt).getTime());
+  let completed = false;
+  dayEvents.forEach((event) => { completed = event.type === 'task_completed'; });
+  const current = tasks
+    .filter((task) => routineMemberIds.has(task.id) && task.done && task.completedAt && localDateKey(task.completedAt) === dayKey)
+    .sort((a, b) => new Date(a.completedAt!).getTime() - new Date(b.completedAt!).getTime())
+    .at(-1);
+  if (current && (!dayEvents.at(-1) || new Date(current.completedAt!).getTime() >= new Date(dayEvents.at(-1)!.occurredAt).getTime())) completed = true;
+  return completed;
+}
+
+function getRoutineResumeSummary(events: BehaviorEvent[], tasks: Task[], routineMemberIds: Set<string>, today = new Date()): RoutineResumeSummary {
+  const routineEvents = events.filter((event) => (event.type === 'task_completed' || event.type === 'task_completion_reverted') && event.taskId && routineMemberIds.has(event.taskId));
+  const relevantDayKeys = [
+    ...routineEvents.map((event) => localDateKey(event.type === 'task_completion_reverted' && event.taskCompletionDate ? event.taskCompletionDate : event.occurredAt)),
+    ...tasks.filter((task) => routineMemberIds.has(task.id) && task.done && task.completedAt).map((task) => localDateKey(task.completedAt!)),
+  ].sort();
+  const empty: RoutineResumeSummary = { state: 'before', currentInterruptionDays: 0, interruptionsThisMonth: 0, resumesThisMonth: 0, longestStreak: 0, postResumeStreak: 0 };
+  const firstCompletionKey = relevantDayKeys.find((key) => routineDayCompleted(routineEvents, tasks, routineMemberIds, key));
+  if (!firstCompletionKey) return empty;
+
+  const todayKey = localDateKey(today);
+  const currentMonth = todayKey.slice(0, 7);
+  const dayStates: Array<{ key: string; completed: boolean }> = [];
+  for (let key = firstCompletionKey; key <= todayKey; key = addLocalDays(key, 1)) {
+    dayStates.push({ key, completed: routineDayCompleted(routineEvents, tasks, routineMemberIds, key) });
+  }
+
+  let latestInterruptionStart: string | undefined;
+  let latestResumeDate: string | undefined;
+  let latestResumeFrom: string | undefined;
+  let latestGapDays: number | undefined;
+  let interruptionsThisMonth = 0;
+  let resumesThisMonth = 0;
+  let activeInterruptionStart: string | undefined;
+  let longestStreak = 0;
+  let currentRun = 0;
+
+  dayStates.forEach((day, index) => {
+    if (day.completed) {
+      currentRun += 1;
+      longestStreak = Math.max(longestStreak, currentRun);
+      if (index > 0 && !dayStates[index - 1]!.completed && activeInterruptionStart) {
+        latestResumeDate = day.key;
+        latestResumeFrom = activeInterruptionStart;
+        latestGapDays = dayDistance(activeInterruptionStart, day.key);
+        if (day.key.startsWith(currentMonth)) resumesThisMonth += 1;
+        activeInterruptionStart = undefined;
+      }
+      return;
+    }
+
+    currentRun = 0;
+    if (index > 0 && dayStates[index - 1]!.completed) {
+      activeInterruptionStart = day.key;
+      latestInterruptionStart = day.key;
+      if (day.key.startsWith(currentMonth)) interruptionsThisMonth += 1;
+    }
+  });
+
+  const todayCompleted = dayStates.at(-1)?.completed ?? false;
+  const postResumeStreak = todayCompleted
+    ? [...dayStates].reverse().findIndex((day) => !day.completed) === -1
+      ? dayStates.length
+      : [...dayStates].reverse().findIndex((day) => !day.completed)
+    : 0;
+  const state = !todayCompleted
+    ? 'interrupted'
+    : latestResumeDate
+      ? 'resumed'
+      : 'continuing';
+  return {
+    state,
+    latestInterruptionStart,
+    latestResumeDate,
+    latestResumeFrom,
+    latestGapDays,
+    currentInterruptionDays: activeInterruptionStart ? dayDistance(activeInterruptionStart, todayKey) + 1 : 0,
+    interruptionsThisMonth,
+    resumesThisMonth,
+    longestStreak,
+    postResumeStreak,
+  };
+}
+
+function RoutineResumePanel({ events, tasks, designMode }: { events: BehaviorEvent[]; tasks: Task[]; designMode: DesignMode }) {
+  const routineTasks = Array.from(new Map(tasks.filter((task) => task.isRoutine).map((task) => [task.routineId ?? task.id, task])).values());
+  const isDark = designMode === 'dark';
+  if (routineTasks.length === 0) return null;
+  return <>
+    <Text style={[styles.sectionTitle, { marginTop: 22 }, isDark && styles.darkMetricText]}>ルーティンの中断・再開</Text>
+    <Text style={[styles.sectionCopy, isDark && styles.darkSecondaryText]}>お休みの期間も、戻れた日を大切に記録します。</Text>
+    <View style={styles.routineResumeList}>{routineTasks.map((task) => {
+      const routineKey = task.routineId ?? task.id;
+      const routineMemberIds = new Set(tasks.filter((candidate) => candidate.isRoutine && (candidate.routineId ?? candidate.id) === routineKey).map((candidate) => candidate.id));
+      routineMemberIds.add(task.id);
+      const summary = getRoutineResumeSummary(events, tasks, routineMemberIds);
+      const stateLabel = summary.state === 'continuing' ? '継続中' : summary.state === 'interrupted' ? '中断中' : summary.state === 'resumed' ? '再開済み' : '開始前';
+      const stateCopy = summary.state === 'before'
+        ? '最初の1回を記録すると、ここから流れを振り返れます。'
+        : summary.state === 'interrupted'
+          ? `現在${summary.currentInterruptionDays}日間お休み中です。戻るタイミングはいつでも大丈夫。`
+          : summary.state === 'resumed' && summary.latestResumeDate && summary.latestResumeFrom
+            ? `${shortDate(summary.latestResumeFrom)}に中断し、${shortDate(summary.latestResumeDate)}に再開しました。`
+            : '今の流れを、そのまま続けられています。';
+      const resumeCopy = summary.latestResumeDate && summary.latestGapDays !== undefined
+        ? `${summary.latestGapDays}日ぶりに再開できています。`
+        : '戻れた日が増えるほど、あなたのペースが見えてきます。';
+      return <View key={task.id} style={[styles.routineResumeCard, isDark && styles.routineResumeCardDark]}>
+        <View style={styles.routineResumeHeader}><Text numberOfLines={1} style={[styles.routineResumeTitle, isDark && styles.darkMetricText]}>{task.title}</Text><Text style={[styles.routineResumeState, isDark && styles.routineResumeStateDark]}>{stateLabel}</Text></View>
+        <Text style={[styles.routineResumeCopy, isDark && styles.darkSecondaryText]}>{stateCopy}</Text>
+        {summary.state !== 'before' && <Text style={[styles.routineResumeCopy, styles.routineResumeSubcopy, isDark && styles.darkMutedMetricText]}>{resumeCopy}</Text>}
+        <View style={styles.routineResumeFacts}>
+          <View style={styles.routineResumeFact}><Text style={[styles.routineResumeFactLabel, isDark && styles.darkMutedMetricText]}>直近の中断</Text><Text style={[styles.routineResumeFactValue, isDark && styles.darkMetricText]}>{shortDate(summary.latestInterruptionStart)}</Text></View>
+          <View style={styles.routineResumeFact}><Text style={[styles.routineResumeFactLabel, isDark && styles.darkMutedMetricText]}>直近の再開</Text><Text style={[styles.routineResumeFactValue, isDark && styles.darkMetricText]}>{shortDate(summary.latestResumeDate)}</Text></View>
+          <View style={styles.routineResumeFact}><Text style={[styles.routineResumeFactLabel, isDark && styles.darkMutedMetricText]}>中断日数</Text><Text style={[styles.routineResumeFactValue, isDark && styles.darkMetricText]}>{summary.state === 'interrupted' ? `${summary.currentInterruptionDays}日` : summary.latestGapDays === undefined ? '—' : `${summary.latestGapDays}日`}</Text></View>
+        </View>
+        <Text style={[styles.routineResumeStats, isDark && styles.darkSecondaryText]}>今月は中断 {summary.interruptionsThisMonth}回 ・ 再開 {summary.resumesThisMonth}回</Text>
+        <Text style={[styles.routineResumeStats, isDark && styles.darkSecondaryText]}>最長連続 {summary.longestStreak}日 ・ 再開後の連続 {summary.postResumeStreak}日</Text>
+      </View>;
+    })}</View>
+  </>;
+}
+
 function RoutineProgressPanel({ events, tasks, designMode, onRemoveRoutine }: { events: BehaviorEvent[]; tasks: Task[]; designMode: DesignMode; onRemoveRoutine: (taskId: string) => void }) {
   const routineTasks = Array.from(new Map(tasks.filter((task) => task.isRoutine).map((task) => [task.routineId ?? task.id, task])).values());
   const today = new Date();
@@ -197,6 +359,7 @@ export function AnalysisScreen({
             <MetricCard title="集中" result={focus} designMode={designMode} />
             <MetricCard title="通知の反応" value={snooze.summary} result={snooze} designMode={designMode} />
           </View>
+          <RoutineResumePanel events={events} tasks={tasks} designMode={designMode} />
         </>
       ) : tab === 'routine' ? (
         <RoutineProgressPanel events={events} tasks={tasks} designMode={designMode} onRemoveRoutine={onRemoveRoutine} />
@@ -259,6 +422,20 @@ const styles = StyleSheet.create({
   routineSummaryValue: { color: '#292530', fontSize: 20, fontWeight: '900' },
   routineSummaryUnit: { color: '#817A88', fontSize: 11, fontWeight: '700' },
   routineSummaryLabel: { color: '#817A88', fontSize: 9, fontWeight: '700', marginTop: 2 },
+  routineResumeList: { gap: 10 },
+  routineResumeCard: { padding: 15, borderRadius: 16, borderWidth: 1, borderColor: '#E5DFEC', backgroundColor: '#FFFFFF' },
+  routineResumeCardDark: { backgroundColor: '#181F2E', borderColor: '#303B50' },
+  routineResumeHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
+  routineResumeTitle: { color: '#292530', fontSize: 14, fontWeight: '900', flex: 1 },
+  routineResumeState: { color: '#6F51C8', backgroundColor: '#EEE9FF', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 999, fontSize: 10, fontWeight: '900' },
+  routineResumeStateDark: { color: '#DDE5FF', backgroundColor: '#26365F' },
+  routineResumeCopy: { color: '#5E5864', fontSize: 12, fontWeight: '700', lineHeight: 18, marginTop: 10 },
+  routineResumeSubcopy: { fontSize: 11, fontWeight: '700', marginTop: 4 },
+  routineResumeFacts: { flexDirection: 'row', gap: 7, marginTop: 13 },
+  routineResumeFact: { flex: 1, minWidth: 0, borderRadius: 10, backgroundColor: '#F7F4F8', padding: 8 },
+  routineResumeFactLabel: { color: '#817A88', fontSize: 9, fontWeight: '800' },
+  routineResumeFactValue: { color: '#38323F', fontSize: 12, fontWeight: '900', marginTop: 4 },
+  routineResumeStats: { color: '#756F7C', fontSize: 10, fontWeight: '800', marginTop: 8 },
   activityCard: { padding: 16, marginBottom: 14, borderRadius: 18, borderWidth: 1, backgroundColor: '#FFF' },
   activityCardDark: { backgroundColor: '#181F2E' },
   activityTitle: { color: '#292530', fontSize: 15, fontWeight: '900', marginBottom: 12 },
