@@ -1,6 +1,7 @@
 import { BehaviorEvent } from '../../behaviorEvents';
 import { DeparturePlan } from '../../types';
 import { dateForReminder } from '../tasks/taskUtils';
+import { isArrivalReversePlan } from './departurePlanMode';
 
 export type PreparationRecommendationSource =
   | 'destination'
@@ -152,7 +153,7 @@ function sameWeekdayAndNearbyArrival(observation: PreparationObservation, draft:
 function latestUsedMinutes(plans: DeparturePlan[], draft: DeparturePlan): number | undefined {
   const draftTime = dateForReminder(draft.date, draft.arrival).getTime();
   const candidates = plans
-    .filter((plan) => plan.id !== draft.id && plan.countdownEnabled !== false && Number.isFinite(plan.preparationMinutes))
+    .filter((plan) => plan.id !== draft.id && isArrivalReversePlan(plan) && Number.isFinite(plan.preparationMinutes))
     .filter((plan) => dateForReminder(plan.date, plan.arrival).getTime() <= draftTime)
     .sort((left, right) => dateForReminder(right.date, right.arrival).getTime() - dateForReminder(left.date, left.arrival).getTime());
   return candidates[0] ? roundToFive(candidates[0].preparationMinutes) : undefined;

@@ -5,7 +5,8 @@ import { DesignMode } from '../theme';
 export const STORAGE_KEY = 'rhythm-mvp-state-v1';
 
 export const initialPlan: DeparturePlan = {
-  title: '大切な予定',
+  title: '',
+  planMode: 'calendar_only',
   date: todayInputValue(),
   arrival: '10:00',
   travelMinutes: 40,

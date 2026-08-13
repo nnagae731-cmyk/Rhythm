@@ -54,6 +54,10 @@ export type DeparturePlan = {
   externalCalendarEventId?: string;
   /** false の予定は予定表だけへ表示し、出発の逆算・通知・カウントダウンを行わない。 */
   countdownEnabled?: boolean;
+  /** Explicit schedule mode for newly saved plans. */
+  planMode?: 'calendar_only' | 'departure_reminder' | 'arrival_reverse';
+  /** Used only by a direct-departure reminder. `arrival` remains for legacy plans. */
+  departureTime?: string;
   date: string;
   arrival: string;
   travelMinutes: number;

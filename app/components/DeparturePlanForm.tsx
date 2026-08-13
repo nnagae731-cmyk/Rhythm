@@ -2,7 +2,10 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Modal, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { BehaviorEvent } from '../behaviorEvents';
+import { getDeparturePlanMode, getPlanScheduledTime, isArrivalReversePlan, isDepartureReminderPlan } from '../features/departure/departurePlanMode';
 import { recommendPreparationMinutes } from '../features/departure/preparationLearning';
+import { PlanTier } from '../premiumAccess';
+import { PremiumGuideFeatureId } from '../premiumGuide';
 import { ChicPattern, DesignMode, getThemeTokens } from '../theme';
 import { DeparturePlan } from '../types';
 
@@ -15,8 +18,11 @@ type Props = {
   behaviorEvents: BehaviorEvent[];
   designMode: DesignMode;
   chicPattern: ChicPattern;
+  planTier: PlanTier;
   onChange: (plan: DeparturePlan) => void;
-  onSubmit: () => void;
+  onSubmit: () => Promise<boolean> | boolean | void;
+  onClose: () => void;
+  onPremium: (featureId?: PremiumGuideFeatureId) => void;
   dateKey: (date: Date | string) => string;
   formatLiveDate: (date: Date) => string;
   formatLiveTime: (date: Date) => string;
@@ -44,8 +50,11 @@ export function DeparturePlanForm({
   behaviorEvents,
   designMode,
   chicPattern: _chicPattern,
+  planTier,
   onChange,
   onSubmit,
+  onClose,
+  onPremium,
   dateKey,
   formatLiveDate,
   formatLiveTime,
@@ -57,7 +66,10 @@ export function DeparturePlanForm({
   const theme = getThemeTokens(designMode);
   const isDark = designMode === 'dark';
   const isDesign = designMode === 'chic' || designMode === 'photo';
-  const countdownEnabled = plan.countdownEnabled !== false;
+  const mode = getDeparturePlanMode(plan);
+  const isReverse = isArrivalReversePlan(plan);
+  const canUseReverse = isReverse && planTier === 'premium';
+  const isDirectDeparture = isDepartureReminderPlan(plan);
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showTimePicker, setShowTimePicker] = useState(false);
   const [durationEditor, setDurationEditor] = useState<DurationEditor>();
@@ -86,8 +98,8 @@ export function DeparturePlanForm({
 
   useEffect(() => {
     const resetForNextNewPlan = !plan.id
-      && plan.title === '新しい予定'
-      && previousDraftTitleRef.current !== '新しい予定';
+      && plan.title.trim() === ''
+      && previousDraftTitleRef.current.trim() !== '';
     if (resetForNextNewPlan) {
       manuallyAdjustedPreparationRef.current = false;
       autoAppliedRef.current = false;
@@ -102,8 +114,8 @@ export function DeparturePlanForm({
   }, [plan.id, recommendation.minutes, recommendation.sampleCount]);
 
   useEffect(() => {
-    if (!countdownEnabled || plan.id || manuallyAdjustedPreparationRef.current || autoAppliedRef.current) return;
-    const hasMeaningfulInput = plan.title.trim() !== '' && plan.title.trim() !== '新しい予定' || Boolean(plan.destination?.trim());
+    if (!canUseReverse || plan.id || manuallyAdjustedPreparationRef.current || autoAppliedRef.current) return;
+    const hasMeaningfulInput = plan.title.trim() !== '' || Boolean(plan.destination?.trim());
     if (!hasMeaningfulInput) return;
 
     const timer = setTimeout(() => {
@@ -114,9 +126,26 @@ export function DeparturePlanForm({
       }
     }, 450);
     return () => clearTimeout(timer);
-  }, [countdownEnabled, onChange, plan, recommendation]);
+  }, [canUseReverse, onChange, plan, recommendation]);
 
   const updatePlan = (patch: Partial<DeparturePlan>) => onChange({ ...plan, ...patch });
+  const selectMode = (nextMode: 'calendar_only' | 'departure_reminder' | 'arrival_reverse') => {
+    if (nextMode === 'arrival_reverse' && planTier !== 'premium') {
+      onPremium('route');
+      return;
+    }
+    const nextTime = getPlanScheduledTime(plan);
+    updatePlan({
+      planMode: nextMode,
+      countdownEnabled: nextMode !== 'calendar_only',
+      ...(nextMode === 'departure_reminder' ? { departureTime: nextTime, arrival: nextTime } : {}),
+    });
+    setShowDatePicker(false);
+    setShowTimePicker(false);
+    setDurationEditor(undefined);
+    setShowOtherDuration(false);
+  };
+  const selectedTime = getPlanScheduledTime(plan);
   const currentDuration = durationEditor ? plan[durationEditor.field] : 0;
   const durationChoiceValues = durationEditor?.field === 'preparationMinutes'
     ? [...new Set([...(durationEditor.values ?? []), recommendation.minutes])].sort((left, right) => left - right)
@@ -147,16 +176,16 @@ export function DeparturePlanForm({
     updatePlan({ [durationEditor.field]: Math.max(0, currentDuration + amount) } as Partial<DeparturePlan>);
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (!plan.title.trim()) {
       Alert.alert('予定名を入力してください');
       return;
     }
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(plan.date) || !isClock(plan.arrival)) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(plan.date) || !isClock(selectedTime)) {
       Alert.alert('日付と時刻を確認してください');
       return;
     }
-    onSubmit();
+    await onSubmit();
   };
 
   const fieldText = isDark ? styles.darkPrimaryText : { color: theme.colors.primaryText };
@@ -166,22 +195,27 @@ export function DeparturePlanForm({
 
   return <View style={styles.root}>
     <View style={[styles.editorHeader, { borderColor: theme.colors.border }]}>
-      <Text style={[styles.editorTitle, fieldText]}>{plan.id ? '予定を編集' : '予定を追加'}</Text>
-      <Text style={[styles.editorCopy, secondaryText]}>予定の形に合わせて、必要な項目だけ登録できます</Text>
+      <View style={styles.editorTitleRow}><View style={{ flex: 1 }}><Text style={[styles.editorTitle, fieldText]}>{plan.id ? '予定を編集' : '予定を追加'}</Text><Text style={[styles.editorCopy, secondaryText]}>予定の形に合わせて、必要な項目だけ登録できます</Text></View><Pressable accessibilityRole="button" style={[styles.closeButton, { borderColor: theme.colors.border }]} onPress={onClose}><Text style={[styles.closeButtonText, fieldText]}>閉じる</Text></Pressable></View>
     </View>
 
-    <View style={[styles.segmented, { borderColor: theme.colors.border, backgroundColor: isDark ? theme.colors.secondarySurface : '#F6F7FB' }, isDesign && styles.segmentedDesign]}>
+    <View style={[styles.segmented, styles.segmentedThree, { borderColor: theme.colors.border, backgroundColor: isDark ? theme.colors.secondarySurface : '#F6F7FB' }, isDesign && styles.segmentedDesign]}>
       <Pressable
-        onPress={() => updatePlan({ countdownEnabled: true })}
-        style={[styles.segmentButton, countdownEnabled && { backgroundColor: theme.colors.primaryAccent }, countdownEnabled && styles.segmentActive]}
+        onPress={() => selectMode('calendar_only')}
+        style={[styles.segmentButton, mode === 'calendar_only' && { backgroundColor: theme.colors.primaryAccent }, mode === 'calendar_only' && styles.segmentActive]}
       >
-        <Text style={[styles.segmentText, { color: countdownEnabled ? '#FFFFFF' : theme.colors.primaryText }]}>逆算する</Text>
+        <Text style={[styles.segmentText, { color: mode === 'calendar_only' ? '#FFFFFF' : theme.colors.primaryText }]}>予定表だけ</Text>
       </Pressable>
       <Pressable
-        onPress={() => updatePlan({ countdownEnabled: false })}
-        style={[styles.segmentButton, !countdownEnabled && { backgroundColor: theme.colors.primaryAccent }, !countdownEnabled && styles.segmentActive]}
+        onPress={() => selectMode('departure_reminder')}
+        style={[styles.segmentButton, mode === 'departure_reminder' && { backgroundColor: theme.colors.primaryAccent }, mode === 'departure_reminder' && styles.segmentActive]}
       >
-        <Text style={[styles.segmentText, { color: !countdownEnabled ? '#FFFFFF' : theme.colors.primaryText }]}>予定表だけ</Text>
+        <Text style={[styles.segmentText, { color: mode === 'departure_reminder' ? '#FFFFFF' : theme.colors.primaryText }]}>出発時刻</Text>
+      </Pressable>
+      <Pressable
+        onPress={() => selectMode('arrival_reverse')}
+        style={[styles.segmentButton, isReverse && { backgroundColor: theme.colors.primaryAccent }, isReverse && styles.segmentActive]}
+      >
+        <Text style={[styles.segmentText, { color: isReverse ? '#FFFFFF' : theme.colors.primaryText }]}>到着から逆算{planTier === 'free' ? '\nPremium' : ''}</Text>
       </Pressable>
     </View>
 
@@ -192,7 +226,7 @@ export function DeparturePlanForm({
         style={[styles.titleInput, input]}
         value={plan.title}
         onChangeText={(title) => updatePlan({ title })}
-        placeholder="例：免許更新"
+        placeholder="例：友人と待ち合わせ"
         placeholderTextColor={theme.colors.secondaryText}
         returnKeyType="next"
       />
@@ -201,34 +235,39 @@ export function DeparturePlanForm({
           <View style={styles.labelRow}><Text style={[styles.fieldLabel, fieldText]}>日付</Text><Text style={[styles.required, { color: theme.colors.primaryAccent }]}>必須</Text></View>
           <Pressable style={[styles.dateTimeButton, input]} onPress={() => setShowDatePicker((current) => !current)}>
             <Text style={[styles.dateTimeIcon, { color: theme.colors.primaryAccent }]}>□</Text>
-            <Text numberOfLines={1} style={[styles.dateTimeValue, fieldText]}>{formatLiveDate(dateForReminder(plan.date, plan.arrival))}</Text>
+            <Text numberOfLines={1} style={[styles.dateTimeValue, fieldText]}>{formatLiveDate(dateForReminder(plan.date, selectedTime))}</Text>
           </Pressable>
         </View>
         <View style={styles.dateTimeField}>
-          <View style={styles.labelRow}><Text style={[styles.fieldLabel, fieldText]}>{countdownEnabled ? '到着時刻' : '予定時刻'}</Text><Text style={[styles.required, { color: theme.colors.primaryAccent }]}>必須</Text></View>
+          <View style={styles.labelRow}><Text style={[styles.fieldLabel, fieldText]}>{canUseReverse ? '到着時刻' : isDirectDeparture ? '出発時刻' : '予定時刻'}</Text><Text style={[styles.required, { color: theme.colors.primaryAccent }]}>必須</Text></View>
           <Pressable style={[styles.dateTimeButton, input]} onPress={() => setShowTimePicker((current) => !current)}>
             <Text style={[styles.dateTimeIcon, { color: theme.colors.primaryAccent }]}>◷</Text>
-            <Text numberOfLines={1} style={[styles.dateTimeValue, fieldText]}>{formatLiveTime(dateForReminder(plan.date, plan.arrival))}{countdownEnabled ? ' 到着' : ''}</Text>
+            <Text numberOfLines={1} style={[styles.dateTimeValue, fieldText]}>{formatLiveTime(dateForReminder(plan.date, selectedTime))}{canUseReverse ? ' 到着' : ''}</Text>
           </Pressable>
         </View>
       </View>
       {showDatePicker && <DateTimePicker
-        value={dateForReminder(plan.date, plan.arrival)}
+        value={dateForReminder(plan.date, selectedTime)}
         mode="date"
         minimumDate={new Date()}
         display={Platform.OS === 'ios' ? 'inline' : 'default'}
+        themeVariant={isDark ? 'dark' : 'light'}
         onChange={(event, selected) => {
           if (Platform.OS !== 'ios') setShowDatePicker(false);
           if (event.type === 'set' && selected) updatePlan({ date: dateKey(selected) });
         }}
       />}
       {showTimePicker && <DateTimePicker
-        value={dateForReminder(plan.date, plan.arrival)}
+        value={dateForReminder(plan.date, selectedTime)}
         mode="time"
         display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+        themeVariant={isDark ? 'dark' : 'light'}
         onChange={(event, selected) => {
           if (Platform.OS !== 'ios') setShowTimePicker(false);
-          if (event.type === 'set' && selected) updatePlan({ arrival: `${String(selected.getHours()).padStart(2, '0')}:${String(selected.getMinutes()).padStart(2, '0')}` });
+          if (event.type === 'set' && selected) {
+            const time = `${String(selected.getHours()).padStart(2, '0')}:${String(selected.getMinutes()).padStart(2, '0')}`;
+            updatePlan(isDirectDeparture ? { departureTime: time, arrival: time } : { arrival: time });
+          }
         }}
       />}
     </View>
@@ -240,7 +279,7 @@ export function DeparturePlanForm({
         style={[styles.titleInput, input]}
         value={plan.destination ?? ''}
         onChangeText={(destination) => updatePlan({ destination })}
-        placeholder="例：千代ゴールド免許センター"
+        placeholder="例：博多駅"
         placeholderTextColor={theme.colors.secondaryText}
       />
       <Pressable
@@ -253,7 +292,7 @@ export function DeparturePlanForm({
       <Text style={[styles.destinationNote, secondaryText]}>地図アプリで目的地を確認できます</Text>
     </View>
 
-    {countdownEnabled && <View style={[styles.sectionCard, panel]}>
+    {canUseReverse && <View style={[styles.sectionCard, panel]}>
       <Text style={[styles.cardTitle, fieldText]}>Rhythmが逆算</Text>
       <View style={[styles.durationRows, { borderColor: theme.colors.border }]}>
         <Pressable style={styles.durationRow} onPress={() => openDurationEditor('preparationMinutes', '準備時間', PREPARATION_AND_TRAVEL_VALUES)}>
@@ -282,9 +321,9 @@ export function DeparturePlanForm({
     </View>}
 
     <View style={[styles.submitArea, { borderColor: theme.colors.border }]}>
-      {countdownEnabled && <Text style={[styles.finalTimeline, secondaryText]}>{formatLiveTime(moments.prepare)} 準備開始 ・ {formatLiveTime(moments.leave)} 出発</Text>}
-      <Pressable style={[styles.submitButton, { backgroundColor: theme.colors.primaryAccent }]} onPress={handleSubmit}>
-        <Text style={styles.submitButtonText}>{plan.id ? '変更を保存' : countdownEnabled ? 'この予定を登録' : '予定表に追加'}</Text>
+      {canUseReverse && <Text style={[styles.finalTimeline, secondaryText]}>{formatLiveTime(moments.prepare)} 準備開始 ・ {formatLiveTime(moments.leave)} 出発</Text>}
+      <Pressable accessibilityRole="button" style={[styles.submitButton, { backgroundColor: theme.colors.primaryAccent }]} onPress={() => void handleSubmit()}>
+        <Text style={styles.submitButtonText}>{plan.id ? '変更を保存' : canUseReverse ? 'この予定を登録' : isDirectDeparture ? '出発時刻を登録' : '予定表に追加'}</Text>
       </Pressable>
     </View>
 
@@ -312,14 +351,18 @@ export function DeparturePlanForm({
 
 const styles = StyleSheet.create({
   root: { gap: 16, paddingBottom: 12 },
-  editorHeader: { paddingBottom: 4, borderBottomWidth: StyleSheet.hairlineWidth },
+  editorHeader: { paddingBottom: 10, borderBottomWidth: StyleSheet.hairlineWidth },
+  editorTitleRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
+  closeButton: { minHeight: 44, paddingHorizontal: 12, borderWidth: 1, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
+  closeButtonText: { fontSize: 12, fontWeight: '900' },
   editorTitle: { fontSize: 24, fontWeight: '900', letterSpacing: -0.6 },
   editorCopy: { marginTop: 5, fontSize: 12, lineHeight: 18, fontWeight: '600' },
   segmented: { flexDirection: 'row', padding: 3, borderWidth: 1, borderRadius: 14, overflow: 'hidden' },
+  segmentedThree: { gap: 2 },
   segmentedDesign: { borderRadius: 18 },
   segmentButton: { flex: 1, minHeight: 46, alignItems: 'center', justifyContent: 'center', borderRadius: 10 },
   segmentActive: { shadowColor: '#4F6FED', shadowOpacity: 0.18, shadowOffset: { width: 0, height: 2 }, shadowRadius: 5, elevation: 2 },
-  segmentText: { fontSize: 15, fontWeight: '900' },
+  segmentText: { fontSize: 12, fontWeight: '900', textAlign: 'center', lineHeight: 16 },
   sectionCard: { borderWidth: 1, borderRadius: 18, padding: 16, shadowColor: '#1B2B4A', shadowOpacity: 0.05, shadowOffset: { width: 0, height: 4 }, shadowRadius: 12, elevation: 1 },
   cardTitle: { fontSize: 19, fontWeight: '900', marginBottom: 14, letterSpacing: -0.25 },
   labelRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 7 },

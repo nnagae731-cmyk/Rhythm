@@ -110,20 +110,23 @@ export function createNotificationScheduledEvent(args: { notificationInstanceId:
   return event(`notification_scheduled:${args.notificationInstanceId}`, 'notification_scheduled', 'system', args.occurredAt, { notificationInstanceId: args.notificationInstanceId, taskId: args.taskId, taskTitleSnapshot: args.taskTitle, scheduledAt: args.scheduledAt.toISOString() });
 }
 
-export function createNotificationActionEvent(args: { notificationInstanceId: string; action: NotificationAction; taskId?: string; taskTitle?: string; actualAt: Date; scheduledAt?: string }): BehaviorEvent {
+export function createNotificationActionEvent(args: { notificationInstanceId: string; action: NotificationAction; taskId?: string; taskTitle?: string; departurePlanId?: string; departurePlanTitle?: string; departurePlanDate?: string; actualAt: Date; scheduledAt?: string }): BehaviorEvent {
   return event(`notification_action:${args.notificationInstanceId}:${args.action}`, 'notification_action', 'notification', args.actualAt, {
     notificationInstanceId: args.notificationInstanceId,
     notificationAction: args.action,
     taskId: args.taskId,
     taskTitleSnapshot: args.taskTitle,
+    departurePlanId: args.departurePlanId,
+    departurePlanTitleSnapshot: args.departurePlanTitle,
+    departurePlanDate: args.departurePlanDate,
     actualAt: args.actualAt.toISOString(),
     scheduledAt: args.scheduledAt,
     deltaMinutes: args.scheduledAt ? calculateDeltaMinutes(args.scheduledAt, args.actualAt) : undefined,
   });
 }
 
-export function createDeparturePreparationStartedEvent(args: { planId: string; planTitle: string; planDate: string; scheduledAt: Date; actualAt: Date }): BehaviorEvent {
-  return event(`departure_preparation_started:${args.planId}:${args.planDate}`, 'departure_preparation_started', 'manual', args.actualAt, { departurePlanId: args.planId, departurePlanTitleSnapshot: args.planTitle, departurePlanDate: args.planDate, scheduledAt: args.scheduledAt.toISOString(), actualAt: args.actualAt.toISOString(), deltaMinutes: calculateDeltaMinutes(args.scheduledAt, args.actualAt) });
+export function createDeparturePreparationStartedEvent(args: { planId: string; planTitle: string; planDate: string; scheduledAt: Date; actualAt: Date; source?: BehaviorEventSource }): BehaviorEvent {
+  return event(`departure_preparation_started:${args.planId}:${args.planDate}`, 'departure_preparation_started', args.source ?? 'manual', args.actualAt, { departurePlanId: args.planId, departurePlanTitleSnapshot: args.planTitle, departurePlanDate: args.planDate, scheduledAt: args.scheduledAt.toISOString(), actualAt: args.actualAt.toISOString(), deltaMinutes: calculateDeltaMinutes(args.scheduledAt, args.actualAt) });
 }
 
 export function createDepartureStartedEvent(args: { planId: string; planTitle: string; planDate: string; scheduledAt: Date; actualAt: Date; source?: BehaviorEventSource }): BehaviorEvent {
