@@ -809,6 +809,7 @@ export default function App() {
     const next = tasksRef.current.filter((task) => task.id !== taskId);
     tasksRef.current = next;
     setTasks(next);
+    setSelectedTaskIds((current) => current.filter((id) => id !== taskId));
     void cancelPendingTaskNotifications(taskId);
   }, []);
 
@@ -1081,10 +1082,11 @@ export default function App() {
   };
 
   const priorityRank: Record<Priority, number> = { 高: 0, 中: 1, 低: 2 };
+  const todayTaskDate = dateKey(now);
   const visibleTasks = tasks
-    .filter((task) => !task.done && (!task.scheduledDate || task.scheduledDate <= dateKey(now)))
+    .filter((task) => !task.done && task.scheduledDate === todayTaskDate)
     .sort((a, b) => Number(a.done) - Number(b.done) || priorityRank[a.priority] - priorityRank[b.priority]);
-  const remaining = tasks.filter((task) => !task.done).length;
+  const remaining = tasks.filter((task) => !task.done && task.scheduledDate === todayTaskDate).length;
   const dangerousTask = [...tasks]
     .filter((task) => !task.done && task.navigationEnabled && task.deadlineDate)
     .sort((a, b) => urgencyLevel(getUrgencyStatus(b, now)) - urgencyLevel(getUrgencyStatus(a, now)))[0];
@@ -1571,7 +1573,17 @@ function TimeTabButton({ tab, active, designMode, chicPattern, themeAccent, seco
 }
 
 function FocusMode({ tasks, designMode, backgroundImageUri, onFocusCompleted, onBehaviorEvent }: { tasks: Task[]; designMode: DesignMode; backgroundImageUri?: string; onFocusCompleted: (session: FocusSession) => void; onBehaviorEvent: (event: BehaviorEvent) => void }) {
-  const availableTasks = tasks.filter((task) => !task.done);
+  const availableTasks = React.useMemo(() => {
+    const today = dateKey();
+    const seenTitles = new Set<string>();
+    return tasks.filter((task) => {
+      if (task.done || task.scheduledDate !== today) return false;
+      const titleKey = task.title.trim();
+      if (seenTitles.has(titleKey)) return false;
+      seenTitles.add(titleKey);
+      return true;
+    });
+  }, [tasks]);
   const [selectedTaskId, setSelectedTaskId] = useState(availableTasks[0]?.id ?? '');
   const [duration, setDuration] = useState(25);
   const [secondsLeft, setSecondsLeft] = useState(25 * 60);
@@ -1584,6 +1596,19 @@ function FocusMode({ tasks, designMode, backgroundImageUri, onFocusCompleted, on
   const behaviorCallbackRef = React.useRef(onBehaviorEvent);
   behaviorCallbackRef.current = onBehaviorEvent;
 
+  useEffect(() => {
+    const selectedStillExists = availableTasks.some((task) => task.id === selectedTaskId);
+    if (!selectedStillExists) {
+      setSelectedTaskId(availableTasks[0]?.id ?? '');
+    }
+
+    const activeSession = sessionRef.current;
+    if (activeSession?.taskId && !availableTasks.some((task) => task.id === activeSession.taskId)) {
+      // 削除・完了済みのタスク名を、これから作られる集中完了記録へ残さない。
+      sessionRef.current = { ...activeSession, taskId: undefined, taskTitle: undefined };
+    }
+  }, [availableTasks, selectedTaskId]);
+
   const finishSession = React.useCallback(() => {
     const activeSession = sessionRef.current;
     if (!activeSession) return;
@@ -1595,8 +1620,8 @@ function FocusMode({ tasks, designMode, backgroundImageUri, onFocusCompleted, on
     setRunning(false);
     setSecondsLeft(0);
     completionCallbackRef.current(session);
-    Alert.alert('集中タイム終了', selectedTask ? `「${selectedTask.title}」に取り組めました。少し休憩しよう。` : '少し休憩しよう。');
-  }, [selectedTask]);
+    Alert.alert('集中タイム終了', activeSession.taskTitle ? `「${activeSession.taskTitle}」に取り組めました。少し休憩しよう。` : '少し休憩しよう。');
+  }, []);
 
   const stopActiveSession = React.useCallback(() => {
     const activeSession = sessionRef.current;
@@ -2067,19 +2092,20 @@ function TodayWinStrip({ tasks, designMode, chicPattern, onRestore }: { tasks: T
   const theme = getThemeTokens(designMode);
   const now = new Date();
   const todayKey = dateKey(now);
+  const scheduledToday = tasks.filter((task) => task.scheduledDate === todayKey);
   const completedToday = tasks.filter((task) => task.done && task.completedAt && dateKey(task.completedAt) === todayKey);
   const count = completedToday.length;
   const drop = React.useRef(new Animated.Value(1)).current;
   const previous = React.useRef(count);
   const [dropVisible, setDropVisible] = useState(false);
   const [detailsOpen, setDetailsOpen] = useState(false);
-  const nextNowTask = [...tasks]
+  const nextNowTask = [...scheduledToday]
     .filter((task) => !task.done && (task.bucket ?? 'now') === 'now')
     .sort((a, b) => {
       const priority: Record<Priority, number> = { 高: 0, 中: 1, 低: 2 };
       return priority[a.priority] - priority[b.priority];
     })[0];
-  const remainingNow = tasks.filter((task) => !task.done && (task.bucket ?? 'now') === 'now').length;
+  const remainingNow = scheduledToday.filter((task) => !task.done && (task.bucket ?? 'now') === 'now').length;
   useEffect(() => {
     if (count > previous.current) {
       setDropVisible(true);
