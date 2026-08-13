@@ -200,11 +200,11 @@ export function WishScreen({ designMode: rawDesignMode, chicPattern, monthLabel,
                 multiline
               />
               <View style={styles.rowActions}>
-                <Pressable style={[styles.secondaryButton, designMode === 'minimal' ? styles.secondaryButtonMinimal : styles.secondaryButtonChic]} onPress={() => { setThemeDraft(''); commit((current) => ({ ...current, theme: '' })); }}>
+                <Pressable style={[styles.secondaryButton, designMode === 'minimal' ? styles.secondaryButtonMinimal : styles.secondaryButtonChic, isDark && styles.secondaryButtonDark]} onPress={() => { setThemeDraft(''); commit((current) => ({ ...current, theme: '' })); }}>
                   <Text style={[styles.secondaryButtonText, { color: theme.colors.secondaryText }]}>削除</Text>
                 </Pressable>
                 <Pressable
-                  style={[styles.primaryButton, designMode === 'minimal' ? styles.primaryButtonMinimal : styles.primaryButtonChic]}
+                  style={[styles.primaryButton, designMode === 'minimal' ? styles.primaryButtonMinimal : styles.primaryButtonChic, isDark && styles.primaryButtonDark]}
                   onPress={() => {
                     commit((current) => ({ ...current, theme: themeDraft.trim() }));
                     Keyboard.dismiss();
@@ -241,10 +241,10 @@ export function WishScreen({ designMode: rawDesignMode, chicPattern, monthLabel,
                   <Pressable
                     accessibilityRole="checkbox"
                     accessibilityState={{ checked: wish.completed }}
-                    style={[styles.completionCheck, wish.completed && styles.completionCheckActive, designMode === 'minimal' && styles.completionCheckMinimal]}
+                    style={[styles.completionCheck, designMode === 'minimal' && styles.completionCheckMinimal, isDark && styles.completionCheckDark, wish.completed && styles.completionCheckActive, wish.completed && isDark && styles.completionCheckActiveDark]}
                     onPress={() => toggleWish(wish.id)}
                   >
-                    <Text style={[styles.completionCheckText, wish.completed && styles.completionCheckTextActive]}>✓</Text>
+                    <Text style={[styles.completionCheckText, isDark && styles.completionCheckTextDark, wish.completed && styles.completionCheckTextActive]}>✓</Text>
                   </Pressable>
                   <View style={styles.itemBody}>
                     <Text style={[styles.itemTitle, isDark && styles.itemTitleDark, wish.completed && styles.itemTitleDone]}>{wish.title}</Text>
@@ -255,7 +255,7 @@ export function WishScreen({ designMode: rawDesignMode, chicPattern, monthLabel,
                       <Text style={[styles.itemActionText, { color: theme.colors.primaryAccent }]}>編集</Text>
                     </Pressable>
                     <Pressable onPress={() => deleteWish(wish.id)}>
-                      <Text style={[styles.itemActionText, styles.deleteText]}>削除</Text>
+                      <Text style={[styles.itemActionText, styles.deleteText, isDark && styles.deleteTextDark]}>削除</Text>
                     </Pressable>
                   </View>
                 </Pressable>
@@ -296,10 +296,10 @@ export function WishScreen({ designMode: rawDesignMode, chicPattern, monthLabel,
                     <Pressable
                       accessibilityRole="checkbox"
                       accessibilityState={{ checked: action.completed }}
-                      style={[styles.completionCheck, action.completed && styles.completionCheckActive, designMode === 'minimal' && styles.completionCheckMinimal]}
+                      style={[styles.completionCheck, designMode === 'minimal' && styles.completionCheckMinimal, isDark && styles.completionCheckDark, action.completed && styles.completionCheckActive, action.completed && isDark && styles.completionCheckActiveDark]}
                       onPress={() => toggleAction(action.id)}
                     >
-                      <Text style={[styles.completionCheckText, action.completed && styles.completionCheckTextActive]}>✓</Text>
+                    <Text style={[styles.completionCheckText, isDark && styles.completionCheckTextDark, action.completed && styles.completionCheckTextActive]}>✓</Text>
                     </Pressable>
                     <View style={styles.itemBody}>
                       <Text style={[styles.itemTitle, isDark && styles.itemTitleDark, action.completed && styles.itemTitleDone]}>{action.title}</Text>
@@ -313,7 +313,7 @@ export function WishScreen({ designMode: rawDesignMode, chicPattern, monthLabel,
                         <Text style={[styles.itemActionText, { color: theme.colors.primaryAccent }]}>編集</Text>
                       </Pressable>
                       <Pressable onPress={() => deleteAction(action.id)}>
-                        <Text style={[styles.itemActionText, styles.deleteText]}>削除</Text>
+                        <Text style={[styles.itemActionText, styles.deleteText, isDark && styles.deleteTextDark]}>削除</Text>
                       </Pressable>
                     </View>
                   </Pressable>
@@ -380,23 +380,23 @@ export function WishScreen({ designMode: rawDesignMode, chicPattern, monthLabel,
                   {state.wishes.map((wish) => (
                     <Pressable
                       key={wish.id}
-                      style={[styles.wishChip, editor.wishId === wish.id && styles.wishChipActive, designMode === 'minimal' ? styles.wishChipMinimal : styles.wishChipChic, isDark && styles.wishChipDark]}
+                      style={[styles.wishChip, designMode === 'minimal' ? styles.wishChipMinimal : styles.wishChipChic, isDark && styles.wishChipDark, editor.wishId === wish.id && styles.wishChipActive, editor.wishId === wish.id && isDark && styles.wishChipActiveDark]}
                       onPress={() => setEditor((current) => ({ ...current, wishId: wish.id }))}
                     >
-                      <Text style={[styles.wishChipText, isDark && styles.wishChipTextDark, editor.wishId === wish.id && styles.wishChipTextActive]}>{wish.title}</Text>
+                      <Text style={[styles.wishChipText, isDark && styles.wishChipTextDark, editor.wishId === wish.id && styles.wishChipTextActive, editor.wishId === wish.id && isDark && styles.wishChipTextActiveDark]}>{wish.title}</Text>
                     </Pressable>
                   ))}
                 </ScrollView>
               </View>
             )}
             <View style={styles.editorToggleRow}>
-              <Pressable style={[styles.toggleChip, editor.completed && styles.toggleChipActive, designMode === 'minimal' ? styles.toggleChipMinimal : styles.toggleChipChic]} onPress={() => setEditor((current) => ({ ...current, completed: !current.completed }))}>
-                <Text style={[styles.toggleChipText, editor.completed && styles.toggleChipTextActive]}>完了</Text>
+              <Pressable style={[styles.toggleChip, designMode === 'minimal' ? styles.toggleChipMinimal : styles.toggleChipChic, isDark && styles.toggleChipDark, editor.completed && styles.toggleChipActive, editor.completed && isDark && styles.toggleChipActiveDark]} onPress={() => setEditor((current) => ({ ...current, completed: !current.completed }))}>
+                <Text style={[styles.toggleChipText, isDark && styles.toggleChipTextDark, editor.completed && styles.toggleChipTextActive, editor.completed && isDark && styles.toggleChipTextActiveDark]}>完了</Text>
               </Pressable>
-              <Pressable style={[styles.editorCancel, designMode === 'minimal' ? styles.editorCancelMinimal : styles.editorCancelChic]} onPress={() => setEditor(emptyEditor)}>
+              <Pressable style={[styles.editorCancel, designMode === 'minimal' ? styles.editorCancelMinimal : styles.editorCancelChic, isDark && styles.editorCancelDark]} onPress={() => setEditor(emptyEditor)}>
                 <Text style={[styles.editorCancelText, { color: theme.colors.secondaryText }]}>閉じる</Text>
               </Pressable>
-              <Pressable style={[styles.primaryButton, designMode === 'minimal' ? styles.primaryButtonMinimal : styles.primaryButtonChic, styles.editorSaveButton]} onPress={saveEditor}>
+              <Pressable style={[styles.primaryButton, designMode === 'minimal' ? styles.primaryButtonMinimal : styles.primaryButtonChic, isDark && styles.primaryButtonDark, styles.editorSaveButton]} onPress={saveEditor}>
                 <Text style={styles.primaryButtonText}>保存</Text>
               </Pressable>
             </View>
@@ -433,8 +433,8 @@ function SectionCard({
       {showCRibbon && <CThemeRibbonDecoration journal={title.includes('九☆')} />}
       {designMode === 'chic' && <WishBackdrop pattern={chicPattern} />}
       <View style={styles.sectionHeader}>
-        <Text style={[styles.sectionTitle, { color: sectionText(designMode, '#392F34', '#171715') }, designMode === 'minimal' && styles.sectionTitleDark, dark && styles.sectionTitleDark]}>{title}</Text>
-        {subtitle ? <Text style={[styles.sectionSubtitle, { color: sectionText(designMode, '#8B7B82', '#777772') }, designMode === 'minimal' && styles.sectionSubtitleDark, dark && styles.sectionSubtitleDark]}>{subtitle}</Text> : null}
+        <Text style={[styles.sectionTitle, { color: sectionText(designMode, '#392F34', '#171715') }, dark && styles.sectionTitleDark]}>{title}</Text>
+        {subtitle ? <Text style={[styles.sectionSubtitle, { color: sectionText(designMode, '#8B7B82', '#777772') }, dark && styles.sectionSubtitleDark]}>{subtitle}</Text> : null}
       </View>
       {children}
     </View>
@@ -494,10 +494,12 @@ const styles = StyleSheet.create({
   secondaryButton: { minWidth: 82, paddingHorizontal: 14, paddingVertical: 11, borderRadius: 12, alignItems: 'center', backgroundColor: '#F0EDF4' },
   secondaryButtonMinimal: { borderColor: '#111111', borderWidth: 1, backgroundColor: '#FFFFFF', borderRadius: 12 },
   secondaryButtonChic: { backgroundColor: '#F7F0F4' },
+  secondaryButtonDark: { backgroundColor: '#20293A', borderColor: '#40506A', borderWidth: 1 },
   secondaryButtonText: { fontSize: 12, fontWeight: '900' },
   primaryButton: { minWidth: 82, paddingHorizontal: 14, paddingVertical: 11, borderRadius: 12, alignItems: 'center', backgroundColor: '#7559E8' },
   primaryButtonMinimal: { backgroundColor: '#111111', borderRadius: 12 },
   primaryButtonChic: { backgroundColor: '#7057B3' },
+  primaryButtonDark: { backgroundColor: '#26365F', borderColor: '#8EA6FF', borderWidth: 1 },
   primaryButtonText: { fontSize: 12, fontWeight: '900', color: '#FFFFFF' },
   listGap: { gap: 8 },
   emptyText: { fontSize: 11, lineHeight: 17, fontWeight: '700' },
@@ -505,7 +507,10 @@ const styles = StyleSheet.create({
   completionCheck: { width: 28, height: 28, borderRadius: 14, borderWidth: 1.5, borderColor: '#D986A1', alignItems: 'center', justifyContent: 'center', backgroundColor: '#FFFFFF' },
   completionCheckActive: { backgroundColor: '#D986A1', borderColor: '#D986A1' },
   completionCheckMinimal: { borderColor: '#111111' },
+  completionCheckDark: { backgroundColor: '#181F2E', borderColor: '#40506A' },
+  completionCheckActiveDark: { backgroundColor: '#26365F', borderColor: '#8EA6FF' },
   completionCheckText: { color: '#D986A1', fontSize: 17, lineHeight: 20, fontWeight: '900' },
+  completionCheckTextDark: { color: '#8EA6FF' },
   completionCheckTextActive: { color: '#FFFFFF' },
   itemCardMinimal: { borderColor: '#111111', borderRadius: 16 },
   itemCardChic: { borderColor: '#E5DFEA' },
@@ -519,6 +524,7 @@ const styles = StyleSheet.create({
   itemActions: { alignItems: 'flex-end', gap: 6 },
   itemActionText: { fontSize: 11, fontWeight: '900' },
   deleteText: { color: '#B95B67' },
+  deleteTextDark: { color: '#FF8F9C' },
   addRow: { marginTop: 12, paddingVertical: 12, alignItems: 'center', borderWidth: 1, borderRadius: 14, backgroundColor: '#FFFFFF' },
   addRowMinimal: { borderColor: '#111111', borderRadius: 14 },
   addRowChic: { borderColor: '#E0D5E1', backgroundColor: '#FFF8FA' },
@@ -564,19 +570,26 @@ const styles = StyleSheet.create({
   wishChipChic: { borderColor: '#DDD7E1' },
   wishChipDark: { backgroundColor: '#20293A', borderColor: '#40506A' },
   wishChipActive: { backgroundColor: '#F4D8E2', borderColor: '#D986A1' },
+  wishChipActiveDark: { backgroundColor: '#26365F', borderColor: '#8EA6FF' },
   wishChipText: { fontSize: 11, fontWeight: '800', color: '#777772' },
   wishChipTextDark: { color: '#B4C0D4' },
   wishChipTextActive: { color: '#392F34' },
+  wishChipTextActiveDark: { color: '#FFFFFF' },
   editorToggleRow: { flexDirection: 'row', gap: 8, alignItems: 'center', justifyContent: 'space-between' },
   toggleChip: { borderWidth: 1, borderRadius: 999, paddingHorizontal: 14, paddingVertical: 9, backgroundColor: '#FFFFFF' },
   toggleChipMinimal: { borderColor: '#111111', borderRadius: 999 },
   toggleChipChic: { borderColor: '#DDD7E1' },
   toggleChipActive: { backgroundColor: '#F4D8E2', borderColor: '#D986A1' },
+  toggleChipDark: { backgroundColor: '#20293A', borderColor: '#40506A' },
+  toggleChipActiveDark: { backgroundColor: '#26365F', borderColor: '#8EA6FF' },
   toggleChipText: { fontSize: 12, fontWeight: '900', color: '#777772' },
   toggleChipTextActive: { color: '#392F34' },
+  toggleChipTextDark: { color: '#B4C0D4' },
+  toggleChipTextActiveDark: { color: '#FFFFFF' },
   editorCancel: { flex: 1, borderWidth: 1, borderRadius: 12, paddingVertical: 11, alignItems: 'center', backgroundColor: '#FFFFFF' },
   editorCancelMinimal: { borderColor: '#111111', borderRadius: 12 },
   editorCancelChic: { borderColor: '#DDD7E1' },
+  editorCancelDark: { backgroundColor: '#20293A', borderColor: '#40506A' },
   editorCancelText: { fontSize: 12, fontWeight: '900' },
   editorSaveButton: { flex: 1 },
   patternBackdrop: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, opacity: 0.16, overflow: 'hidden' },

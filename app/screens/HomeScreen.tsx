@@ -95,14 +95,14 @@ export function HomeScreen({
       <VoiceQuickAddCard designMode={designMode} chicPattern={chicPattern} onQuickAdd={onQuickAdd} />
 
       <Pressable
-        style={[styles.wishShortcut, designMode === 'minimal' && styles.wishShortcutMinimal, designMode === 'chic' && styles.wishShortcutChic]}
+        style={[styles.wishShortcut, designMode === 'minimal' && styles.wishShortcutMinimal, designMode === 'chic' && styles.wishShortcutChic, isDark && styles.wishShortcutDark]}
         onPress={onOpenWish}
       >
         <View>
           <Text style={[styles.wishShortcutLabel, isDark && styles.darkBodyText]}>今月の叶えたいこと</Text>
           <Text style={[styles.wishShortcutText, isDark && styles.darkMutedText]}>今日から、願いの画面へ飛べます</Text>
         </View>
-        <Text style={styles.wishShortcutArrow}>›</Text>
+        <Text style={[styles.wishShortcutArrow, isDark && styles.darkAccentText]}>›</Text>
       </Pressable>
 
       <View style={[styles.sectionHeader, designMode === 'minimal' && styles.sectionHeaderMinimal, isDark && styles.darkPanel]}>
@@ -111,17 +111,17 @@ export function HomeScreen({
           <Text style={[styles.sectionSub, isDark && styles.darkMutedText]}>{remaining === 0 ? 'きれいに片づきました' : `あと${remaining}件です`}</Text>
         </View>
         <View style={styles.taskHeaderButtons}>
-          <Pressable style={styles.selectButton} onPress={onSelectionMode}><Text style={styles.selectButtonText}>{selectionMode ? '取消' : '選択'}</Text></Pressable>
+        <Pressable style={[styles.selectButton, isDark && styles.selectButtonDark]} onPress={onSelectionMode}><Text style={[styles.selectButtonText, isDark && styles.darkBodyText]}>{selectionMode ? '取消' : '選択'}</Text></Pressable>
         </View>
       </View>
 
       <View style={styles.bucketTabs}>{([{ id: 'now', label: '今やる' }, { id: 'later', label: 'あとで' }, { id: 'waiting', label: '待ち' }] as { id: TaskBucket; label: string }[]).map((item) => {
         const count = tasks.filter((task) => (task.bucket ?? 'now') === item.id).length;
-        return <Pressable key={item.id} style={[styles.bucketTab, designMode === 'minimal' && styles.bucketTabMinimal, designMode === 'chic' && styles.bucketTabChic, bucketFilter === item.id && styles.bucketTabActive, bucketFilter === item.id && isDark && styles.bucketTabActiveDark, bucketFilter === item.id && designMode === 'chic' && styles.bucketTabActiveChic, isDark && styles.darkSurface]} onPress={() => setBucketFilter(item.id)}><Text style={[styles.bucketTabText, bucketFilter === item.id && styles.bucketTabTextActive, isDark && styles.darkBodyText]}>{item.label} {count}</Text></Pressable>;
+        return <Pressable key={item.id} style={[styles.bucketTab, designMode === 'minimal' && styles.bucketTabMinimal, designMode === 'chic' && styles.bucketTabChic, isDark && styles.darkSurface, bucketFilter === item.id && styles.bucketTabActive, bucketFilter === item.id && isDark && styles.bucketTabActiveDark, bucketFilter === item.id && designMode === 'chic' && styles.bucketTabActiveChic]} onPress={() => setBucketFilter(item.id)}><Text style={[styles.bucketTabText, isDark && styles.darkBodyText, bucketFilter === item.id && styles.bucketTabTextActive]}>{item.label} {count}</Text></Pressable>;
       })}</View>
 
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterChips}>
-        {(['すべて', ...categories] as const).map((category) => <Pressable key={category} style={[styles.filterChip, categoryFilter === category && styles.filterChipActive]} onPress={() => setCategoryFilter(category)}><Text style={[styles.filterChipText, categoryFilter === category && styles.filterChipTextActive]}>{category}</Text></Pressable>)}
+        {(['すべて', ...categories] as const).map((category) => <Pressable key={category} style={[styles.filterChip, isDark && styles.filterChipDark, categoryFilter === category && styles.filterChipActive, categoryFilter === category && isDark && styles.filterChipActiveDark]} onPress={() => setCategoryFilter(category)}><Text style={[styles.filterChipText, isDark && styles.darkMutedText, categoryFilter === category && styles.filterChipTextActive, categoryFilter === category && isDark && styles.filterChipTextActiveDark]}>{category}</Text></Pressable>)}
       </ScrollView>
 
       <View style={styles.homeToolRow}>
@@ -145,15 +145,15 @@ export function HomeScreen({
       )}
 
       {displayTasks.length === 0 ? (
-        <Pressable style={[styles.emptyCard, designMode === 'minimal' && styles.emptyCardMinimal, designMode === 'chic' && styles.emptyCardChic, ]} onPress={onAdd}>
+        <Pressable style={[styles.emptyCard, designMode === 'minimal' && styles.emptyCardMinimal, designMode === 'chic' && styles.emptyCardChic, isDark && styles.darkEmptyCard]} onPress={onAdd}>
           {designMode === 'chic' && !isCheckChicPattern(chicPattern) && <PatternDecor pattern={chicPattern} accent="#D986A1" warm="#A997C8" />}
-          <View style={designMode === 'chic' ? styles.emptyChicGlass : styles.emptyPlainContent}><Text style={styles.emptyIcon}>○</Text><Text style={styles.emptyTitle}>最初のタスクを追加しよう</Text><Text style={styles.emptyCopy}>忘れたくないことを、ここに置いておけます。</Text></View>
+          <View style={designMode === 'chic' ? styles.emptyChicGlass : styles.emptyPlainContent}><Text style={[styles.emptyIcon, isDark && styles.darkAccentText]}>○</Text><Text style={[styles.emptyTitle, isDark && styles.darkBodyText]}>最初のタスクを追加しよう</Text><Text style={[styles.emptyCopy, isDark && styles.darkMutedText]}>忘れたくないことを、ここに置いておけます。</Text></View>
         </Pressable>
       ) : displayTasks.map((task) => { const chicPalette = getChicTaskPatternPalette(task.category); return (
-        <Pressable key={task.id} style={[styles.taskCard, designMode === 'minimal' && styles.taskCardMinimal, designMode === 'dark' && styles.darkSurface, designMode === 'chic' && styles.taskCardChic, designMode === 'chic' && { backgroundColor: chicPalette.background }, task.done && designMode !== 'chic' && styles.taskCardDone, task.done && designMode === 'chic' && styles.taskCardChicDone]} onPress={() => setActionTask(task)}>
+        <Pressable key={task.id} style={[styles.taskCard, designMode === 'minimal' && styles.taskCardMinimal, designMode === 'dark' && styles.darkSurface, designMode === 'chic' && styles.taskCardChic, designMode === 'chic' && { backgroundColor: chicPalette.background }, task.done && designMode !== 'chic' && styles.taskCardDone, task.done && isDark && styles.taskCardDoneDark, task.done && designMode === 'chic' && styles.taskCardChicDone]} onPress={() => setActionTask(task)}>
           {designMode === 'chic' && !isCheckChicPattern(chicPattern) && <PatternDecor pattern={chicPattern} accent={chicPalette.accent} warm={chicPalette.warm} density="compact" />}
           <View style={[styles.taskCardInner, designMode === 'chic' && styles.taskCardInnerChic, task.done && designMode === 'chic' && styles.taskCardInnerChicDone]}>
-          <Pressable style={[styles.check, task.done && styles.checkDone, task.done && designMode === 'chic' && { backgroundColor: '#D986A1', borderColor: '#D986A1' }, selectionMode && selectedTaskIds.includes(task.id) && styles.selectionChecked]} onPress={() => selectionMode ? onToggleSelection(task.id) : onToggle(task.id)}>
+          <Pressable style={[styles.check, isDark && styles.checkDark, task.done && styles.checkDone, task.done && isDark && styles.checkDoneDark, task.done && designMode === 'chic' && { backgroundColor: '#D986A1', borderColor: '#D986A1' }, selectionMode && selectedTaskIds.includes(task.id) && styles.selectionChecked, selectionMode && selectedTaskIds.includes(task.id) && isDark && styles.selectionCheckedDark]} onPress={() => selectionMode ? onToggleSelection(task.id) : onToggle(task.id)}>
             <Text style={styles.checkMark}>{selectionMode ? (selectedTaskIds.includes(task.id) ? '✓' : '') : (task.done ? completionIcon : '')}</Text>
           </Pressable>
           <Pressable style={styles.taskBody} onPress={() => setActionTask(task)}>

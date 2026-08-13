@@ -14,7 +14,7 @@ export function Header({ designMode, now, compact = false }: { designMode: Theme
     <View style={[styles.header, designMode !== 'chic' && styles.headerMinimal, designMode === 'dark' && styles.headerDark]}>
       <View>
         <Text style={[styles.dateLabel, designMode === 'dark' && styles.dateLabelDark]}>{formatLiveDate(now)} · {formatLiveTime(now)}</Text>
-        <Text style={[styles.brand, designMode !== 'chic' && styles.brandMinimal, designMode === 'dark' && styles.brandDark]}>{false ? 'Rhythm ✦' : 'Rhythm'}</Text>
+        <Text style={[styles.brand, designMode !== 'chic' && styles.brandMinimal, designMode === 'dark' && styles.brandDark]}>Rhythm</Text>
       </View>
     </View>
   );

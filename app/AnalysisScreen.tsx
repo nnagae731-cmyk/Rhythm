@@ -15,7 +15,7 @@ function DataState({ result, dark = false }: { result: AnalysisResult; dark?: bo
       <View style={[styles.dataState, dark && styles.dataStateDark]}>
         <Text style={[styles.dataStateTitle, dark && styles.darkMetricText]}>まだ記録中です</Text>
         <Text style={[styles.dataStateCopy, dark && styles.darkSecondaryText]}>Rhythmを使うと、少しずつ傾向が見えてきます</Text>
-        <Text style={[styles.sample, dark && styles.darkSecondaryText]}>記録 {result.sampleCount}回</Text>
+        <Text style={[styles.sample, dark && styles.darkMutedMetricText]}>記録 {result.sampleCount}回</Text>
       </View>
     );
   }
@@ -24,7 +24,7 @@ function DataState({ result, dark = false }: { result: AnalysisResult; dark?: bo
       <View style={[styles.early, dark && styles.earlyDark]}>
         <Text style={[styles.earlyTitle, dark && styles.darkMetricText]}>少しずつ見えてきました</Text>
         <Text style={[styles.dataStateCopy, dark && styles.darkSecondaryText]}>まだ記録が少ないため、参考として表示しています</Text>
-        <Text style={[styles.sample, dark && styles.darkSecondaryText]}>記録 {result.sampleCount}回</Text>
+        <Text style={[styles.sample, dark && styles.darkMutedMetricText]}>記録 {result.sampleCount}回</Text>
       </View>
     );
   }
@@ -33,16 +33,17 @@ function DataState({ result, dark = false }: { result: AnalysisResult; dark?: bo
 
 function MetricCard({ title, value, result, designMode }: { title: string; value?: string; result: AnalysisResult; designMode: DesignMode }) {
   const theme = getThemeTokens(designMode);
+  const isDark = designMode === 'dark';
   return (
-    <View style={[styles.metricCard, designMode !== 'chic' && styles.metricMinimal, designMode === 'chic' && styles.metricChic, { borderColor: theme.colors.border }]}> 
-      <Text style={[styles.metricLabel, designMode === 'dark' && styles.darkMetricText]}>{title}</Text>
+    <View style={[styles.metricCard, designMode !== 'chic' && styles.metricMinimal, designMode === 'chic' && styles.metricChic, { borderColor: theme.colors.border }, isDark && styles.metricCardDark]}>
+      <Text style={[styles.metricLabel, isDark && styles.darkSecondaryText]}>{title}</Text>
       {result.status === 'insufficient' || result.status === 'early' ? (
-        <DataState result={result} dark={designMode === 'dark'} />
+        <DataState result={result} dark={isDark} />
       ) : (
         <>
-          <Text style={[styles.metricValue, { color: theme.colors.primaryAccent }]}>{value ?? result.summary}</Text>
-          <Text style={[styles.metricSummary, designMode === 'dark' && styles.darkMetricText]}>{result.summary}</Text>
-          <Text style={[styles.sample, designMode === 'dark' && styles.darkSecondaryText]}>記録 {result.sampleCount}回</Text>
+          <Text style={[styles.metricValue, { color: theme.colors.primaryAccent }, isDark && styles.darkMetricValue]}>{value ?? result.summary}</Text>
+          <Text style={[styles.metricSummary, isDark && styles.darkSecondaryText]}>{result.summary}</Text>
+          <Text style={[styles.sample, isDark && styles.darkMutedMetricText]}>記録 {result.sampleCount}回</Text>
         </>
       )}
     </View>
@@ -69,8 +70,8 @@ function RoutineProgressPanel({ events, tasks, designMode, onRemoveRoutine }: { 
   const routineTasks = Array.from(new Map(tasks.filter((task) => task.isRoutine).map((task) => [task.routineId ?? task.id, task])).values());
   const today = new Date();
   const palette = designMode === 'chic' ? ['#E68BA8', '#E7B56A', '#8EC7B3', '#9FA8E8', '#C39BD3'] : designMode === 'dark' ? ['#8EA6FF', '#AFC2FF', '#7ED6C4', '#C5B4FF', '#F0A8BA'] : ['#171717', '#3A3A3A', '#5C5C5C', '#7A7A7A', '#A0A0A0'];
-  if (routineTasks.length === 0) return <View style={[styles.routineCard, designMode === 'dark' && styles.routineCardDark]}><Text style={[styles.sectionTitle, designMode === 'dark' && styles.darkPanelText]}>ルーティンの継続</Text><Text style={[styles.sectionCopy, designMode === 'dark' && styles.darkPanelText]}>タスク登録時に「ルーティンにする」を選ぶと、継続率を確認できます。</Text></View>;
-  return <View style={[styles.routineCard, designMode === 'dark' && styles.routineCardDark]}><Text style={[styles.sectionTitle, designMode === 'dark' && styles.darkPanelText]}>ルーティンの継続</Text><Text style={[styles.sectionCopy, designMode === 'dark' && styles.darkPanelText]}>続けられた日が丸で増えていきます。連続日数と継続率を確認できます。</Text><View style={styles.routineTaskGrid}>{routineTasks.map((task, taskIndex) => {
+  if (routineTasks.length === 0) return <View style={[styles.routineCard, designMode === 'dark' && styles.routineCardDark]}><Text style={[styles.sectionTitle, designMode === 'dark' && styles.darkMetricText]}>ルーティンの継続</Text><Text style={[styles.sectionCopy, designMode === 'dark' && styles.darkSecondaryText]}>タスク登録時に「ルーティンにする」を選ぶと、継続率を確認できます。</Text></View>;
+  return <View style={[styles.routineCard, designMode === 'dark' && styles.routineCardDark]}><Text style={[styles.sectionTitle, designMode === 'dark' && styles.darkMetricText]}>ルーティンの継続</Text><Text style={[styles.sectionCopy, designMode === 'dark' && styles.darkSecondaryText]}>続けられた日が丸で増えていきます。連続日数と継続率を確認できます。</Text><View style={styles.routineTaskGrid}>{routineTasks.map((task, taskIndex) => {
     const routineKey = task.routineId ?? task.id;
     const routineMemberIds = new Set(tasks.filter((candidate) => candidate.isRoutine && (candidate.routineId ?? candidate.id) === routineKey).map((candidate) => candidate.id));
     routineMemberIds.add(task.id);
@@ -148,7 +149,7 @@ export function AnalysisScreen({
           ['routine', 'ルーティン'],
           ['insights', '時間と行動'],
         ] as [AnalysisTab, string][]).map(([id, label]) => (
-          <Pressable key={id} style={[styles.tab, tab === id && { backgroundColor: designMode === 'dark' ? '#26365F' : theme.colors.primaryAccent, borderColor: designMode === 'dark' ? '#6F8DFF' : theme.colors.primaryAccent }]} onPress={() => setTab(id)}>
+          <Pressable key={id} style={[styles.tab, designMode === 'dark' && styles.tabDark, tab === id && (designMode === 'dark' ? styles.tabDarkActive : { backgroundColor: theme.colors.primaryAccent, borderColor: theme.colors.primaryAccent })]} onPress={() => setTab(id)}>
             <Text style={[styles.tabText, designMode === 'dark' && styles.tabTextDark, tab === id && styles.tabTextActive, tab === id && designMode === 'dark' && styles.tabTextActiveDark]}>{label}{id === 'insights' && planTier === 'free' ? ' 🔒' : ''}</Text>
           </Pressable>
         ))}
@@ -167,7 +168,7 @@ export function AnalysisScreen({
                 <Text style={[styles.activityValue, { color: designMode === 'dark' ? '#8EA6FF' : theme.colors.primaryAccent }]}>{departureActivity.departureCount}</Text>
                 <Text style={[styles.activityLabel, designMode === 'dark' && styles.activityLabelDark]}>出発</Text>
               </View>
-              <View style={styles.activityLatest}>
+              <View style={[styles.activityLatest, designMode === 'dark' && styles.activityLatestDark]}>
                 <Text style={[styles.activityLatestLabel, designMode === 'dark' && styles.activityLatestLabelDark]}>最新の記録</Text>
                 <Text style={[styles.activityLatestValue, designMode === 'dark' && styles.darkMetricText]}>
                   {departureActivity.latest ? departureActivity.latest.type === 'departure_started' ? '出発しました' : '準備を始めました' : 'まだ記録はありません'}
@@ -181,15 +182,15 @@ export function AnalysisScreen({
         <PremiumGate dark={designMode === 'dark'} onPremium={() => onPremium('time')} />
       ) : tab === 'insights' ? (
         <>
-          <Text style={[styles.sectionTitle, designMode === 'dark' && styles.darkPanelText]}>時間のズレ</Text>
-          <Text style={[styles.sectionCopy, designMode === 'dark' && styles.darkPanelText]}>準備や出発のズレを見やすく表示します</Text>
+          <Text style={[styles.sectionTitle, designMode === 'dark' && styles.darkMetricText]}>時間のズレ</Text>
+          <Text style={[styles.sectionCopy, designMode === 'dark' && styles.darkSecondaryText]}>準備や出発のズレを見やすく表示します</Text>
           <View style={styles.grid}>
             <MetricCard title="準備開始" value={preparation.averageMinutes === undefined ? undefined : `${Math.abs(preparation.averageMinutes)}分${preparation.averageMinutes > 2 ? '遅め' : preparation.averageMinutes < -2 ? '早め' : 'ほぼ同じ'}`} result={preparation} designMode={designMode} />
             <MetricCard title="出発" value={departure.averageMinutes === undefined ? undefined : `${Math.abs(departure.averageMinutes)}分${departure.averageMinutes > 2 ? '遅め' : departure.averageMinutes < -2 ? '早め' : 'ほぼ同じ'}`} result={departure} designMode={designMode} />
             <MetricCard title="通知反応" value={notification.averageMinutes === undefined ? undefined : `平均 ${Math.max(0, notification.averageMinutes)}分`} result={notification} designMode={designMode} />
             <MetricCard title="集中" value={focus.averageMinutes === undefined ? undefined : `平均 ${focus.averageMinutes}分`} result={focus} designMode={designMode} />
           </View>
-          <Text style={[styles.sectionTitle, { marginTop: 22 }, designMode === 'dark' && styles.darkPanelText]}>最近の行動</Text>
+          <Text style={[styles.sectionTitle, { marginTop: 22 }, designMode === 'dark' && styles.darkMetricText]}>最近の行動</Text>
           <View style={styles.behaviorList}>
             <MetricCard title="動き始め" result={notification} designMode={designMode} />
             <MetricCard title="出発" value={departure.sampleCount ? `${departure.sampleCount}件中${departure.lateCount}件が遅め` : undefined} result={departure} designMode={designMode} />
@@ -218,13 +219,14 @@ const styles = StyleSheet.create({
   heroCopyMinimal: { color: '#68748A' },
   tabs: { flexDirection: 'row', gap: 7, marginBottom: 20 },
   tab: { flex: 1, paddingVertical: 11, backgroundColor: '#EEEAF0', borderRadius: 12, alignItems: 'center' },
+  tabDark: { backgroundColor: '#181F2E', borderColor: '#303B50', borderWidth: 1 },
+  tabDarkActive: { backgroundColor: '#26365F', borderColor: '#8EA6FF', borderWidth: 1 },
   tabText: { color: '#625D68', fontWeight: '800' },
   tabTextDark: { color: '#B4C0D4' },
   tabTextActive: { color: '#FFF' },
   tabTextActiveDark: { color: '#FFFFFF' },
   sectionTitle: { color: '#292530', fontSize: 21, fontWeight: '900' },
   sectionCopy: { color: '#797280', fontSize: 12, lineHeight: 18, marginTop: 5, marginBottom: 14 },
-  darkPanelText: { color: '#F4F7FC', backgroundColor: '#20293A', borderRadius: 12, paddingHorizontal: 10, paddingVertical: 6 },
   grid: { gap: 10 },
   behaviorList: { gap: 10 },
   routineCard: { padding: 18, borderRadius: 18, borderWidth: 1, borderColor: '#E5DFEC', backgroundColor: '#FFF', },
@@ -266,24 +268,28 @@ const styles = StyleSheet.create({
   activityLabel: { color: '#756F7C', fontSize: 11, fontWeight: '800', marginTop: 2 },
   activityLabelDark: { color: '#B4C0D4' },
   activityLatest: { flex: 1, borderLeftWidth: 1, borderLeftColor: '#E5E0E8', paddingLeft: 14 },
+  activityLatestDark: { borderLeftColor: '#303B50' },
   activityLatestLabel: { color: '#938C98', fontSize: 10, fontWeight: '800' },
-  activityLatestLabelDark: { color: '#9CA8BC' },
+  activityLatestLabelDark: { color: '#B4C0D4' },
   activityLatestValue: { color: '#3C3741', fontSize: 12, fontWeight: '800', marginTop: 4 },
   metricCard: { padding: 17, borderRadius: 18, borderWidth: 1, backgroundColor: '#FFF' },
   metricMinimal: { borderRadius: 1, borderColor: '#222', borderLeftWidth: 5 },
+  metricCardDark: { backgroundColor: '#181F2E', borderColor: '#303B50', borderLeftColor: '#8EA6FF' },
   metricChic: { backgroundColor: 'rgba(255,255,255,0.84)' },
   metricLabel: { color: '#756F7C', fontSize: 11, fontWeight: '900' },
   metricValue: { fontSize: 25, fontWeight: '900', marginTop: 8 },
   metricSummary: { color: '#5E5864', fontSize: 12, marginTop: 5 },
   darkMetricText: { color: '#F4F7FC' },
   darkSecondaryText: { color: '#B4C0D4' },
+  darkMutedMetricText: { color: '#8F9BB0' },
+  darkMetricValue: { color: '#F4F7FC' },
   sample: { color: '#938C98', fontSize: 10, fontWeight: '700', marginTop: 9 },
   dataState: { paddingVertical: 8 },
-  dataStateDark: { backgroundColor: '#20293A', borderRadius: 10, paddingHorizontal: 10 },
+  dataStateDark: { backgroundColor: '#20293A', borderColor: '#303B50', borderWidth: 1, borderRadius: 10, paddingHorizontal: 10 },
   dataStateTitle: { color: '#3C3741', fontSize: 16, fontWeight: '900' },
   dataStateCopy: { color: '#7D7684', fontSize: 11, lineHeight: 17, marginTop: 4 },
   early: { marginTop: 8, padding: 10, backgroundColor: '#F8F3E8', borderRadius: 10 },
-  earlyDark: { backgroundColor: '#20293A' },
+  earlyDark: { backgroundColor: '#20293A', borderColor: '#303B50', borderWidth: 1 },
   earlyTitle: { color: '#6E5932', fontSize: 14, fontWeight: '900' },
   premiumGate: { alignItems: 'center', backgroundColor: '#25202C', borderRadius: 22, padding: 25 },
   premiumGateDark: { backgroundColor: '#181F2E', borderWidth: 1, borderColor: '#40506A' },
