@@ -1,10 +1,8 @@
-import * as ImagePicker from 'expo-image-picker';
-import React, { useEffect, useMemo, useRef, useState } from 'react';
-import DateTimePicker from '@react-native-community/datetimepicker';
-import { Alert, Image, Keyboard, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import React, { useEffect, useMemo, useState } from 'react';
+import { Alert, Keyboard, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { ChicPattern, DesignMode, getThemeTokens } from './theme';
-import { MonthlyReview, MonthlyWishState, Wish, WishAction } from './types';
-import { calculateWishProgress, normalizeMonthlyReview, wishDateKey } from './features/wish/wishUtils';
+import { MonthlyWishState, Wish, WishAction } from './types';
+import { calculateWishProgress } from './features/wish/wishUtils';
 import { BThemeRibbonDecoration } from './components/BThemeRibbonDecoration';
 import { CThemeRibbonDecoration } from './components/CThemeRibbonDecoration';
 
@@ -50,14 +48,6 @@ function sectionText(mode: DesignMode, chic: string, minimal: string) {
   return mode === 'minimal' ? minimal : chic;
 }
 
-function createEmptyReviewDraft(): MonthlyReview { return { photo: '', photos: [], date: '', shortNote: '', memo: '', satisfaction: 0 }; }
-function hasReviewContent(review: MonthlyReview) { return Boolean(review.photo || review.photos?.length || review.date || review.shortNote || review.memo || review.satisfaction); }
-function monthDays(month: string) {
-  const parts = month.split('-').map(Number); const year = parts[0] ?? new Date().getFullYear(); const monthNumber = parts[1] ?? new Date().getMonth() + 1;
-  const firstWeekday = new Date(year, monthNumber - 1, 1).getDay(); const totalDays = new Date(year, monthNumber, 0).getDate();
-  return [...Array(firstWeekday).fill(null), ...Array.from({ length: totalDays }, (_, index) => String(index + 1).padStart(2, '0'))];
-}
-
 export function WishScreen({ designMode: rawDesignMode, chicPattern, monthLabel, state, onSaveState, onCreateTaskFromAction, onBack }: WishScreenProps) {
   // Mono DarkはMono Lightと同じレイアウトを使い、色だけを反転する。
   const designMode: 'minimal' | 'chic' = rawDesignMode === 'dark' || rawDesignMode === 'photo' ? 'minimal' : rawDesignMode;
@@ -66,16 +56,11 @@ export function WishScreen({ designMode: rawDesignMode, chicPattern, monthLabel,
   const darkAccent = rawDesignMode === 'dark' ? '#8EA6FF' : theme.colors.primaryAccent;
   const progress = useMemo(() => calculateWishProgress(state), [state]);
   const [themeDraft, setThemeDraft] = useState(state.theme ?? '');
-  const [reviewDraft, setReviewDraft] = useState<MonthlyReview>(normalizeMonthlyReview(state.review));
   const [editor, setEditor] = useState<EditorState>(emptyEditor);
-  const [showReviewDatePicker, setShowReviewDatePicker] = useState(false);
-  const suppressReviewSyncRef = useRef(false);
 
   useEffect(() => {
     setThemeDraft(state.theme ?? '');
-    if (suppressReviewSyncRef.current) { suppressReviewSyncRef.current = false; return; }
-    setReviewDraft(normalizeMonthlyReview(state.review));
-  }, [state.review, state.theme]);
+  }, [state.theme]);
 
   const commit = (updater: (current: MonthlyWishState) => MonthlyWishState) => {
     onSaveState(updater);
@@ -185,49 +170,8 @@ export function WishScreen({ designMode: rawDesignMode, chicPattern, monthLabel,
     commit((current) => ({ ...current, actions: current.actions.filter((action) => action.id !== id) }));
   };
 
-  const choosePhoto = async () => {
-    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!permission.granted) {
-      Alert.alert('写真へのアクセスが必要です');
-      return;
-    }
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: true,
-      aspect: [4, 3],
-      quality: 0.85,
-    });
-    const asset = result.assets?.[0];
-    if (result.canceled || !asset?.uri) return;
-    setReviewDraft((current) => ({ ...current, photo: asset.uri }));
-  };
-
-  const saveReview = () => {
-    const nextReview: MonthlyReview = {
-      id: `${Date.now()}-review`,
-      photo: reviewDraft.photo?.trim() ?? '',
-      date: reviewDraft.date?.trim() || wishDateKey(),
-      shortNote: reviewDraft.shortNote?.trim() ?? '',
-      memo: reviewDraft.memo?.trim() ?? '',
-      satisfaction: reviewDraft.satisfaction ?? 0,
-    };
-    suppressReviewSyncRef.current = true;
-    commit((current) => ({
-      ...current,
-      // 保存済み履歴は reviews に積み、入力欄用の draft は空のまま維持する。
-      // review は旧形式データとの互換用なので、保存直後に最新レビューを戻さない。
-      review: {},
-      reviews: [...(current.reviews?.length ? current.reviews : (hasReviewContent(current.review) ? [normalizeMonthlyReview(current.review)] : [])), nextReview],
-    }));
-    setReviewDraft(createEmptyReviewDraft());
-    Keyboard.dismiss();
-    Alert.alert('保存しました', '今月を残す記録を保存しました。');
-  };
-
   const wishes = state.wishes;
   const actions = state.actions;
-  const savedReviews: Array<{ month: string; review: MonthlyReview }> = [];
-  const reviewMonths: string[] = [];
 
   return (
     <View style={[styles.screen, designMode === 'minimal' ? styles.screenMinimal : styles.screenChic, rawDesignMode === 'dark' && styles.screenDark]}>
@@ -415,98 +359,6 @@ export function WishScreen({ designMode: rawDesignMode, chicPattern, monthLabel,
             )}
           </SectionCard>
 
-          {false && <>
-          <SectionCard
-            designMode={designMode}
-            chicPattern={chicPattern}
-            showBRibbon={designMode === 'chic' && chicPattern === 'checkLavenderSatin'}
-            showCRibbon={designMode === 'chic' && chicPattern === 'checkBeigeNoir'}
-            title="今月を残す"
-            subtitle="今月の記録"
-          >
-            <View style={[styles.reviewPanel, designMode === 'minimal' ? styles.reviewPanelMinimal : styles.reviewPanelChic]}>
-              <Pressable style={[styles.photoBox, designMode === 'minimal' ? styles.photoBoxMinimal : styles.photoBoxChic]} onPress={choosePhoto}>
-                {reviewDraft.photo ? <Image source={{ uri: reviewDraft.photo }} style={styles.photoImage} /> : <Text style={[styles.photoText, { color: theme.colors.secondaryText }]}>写真1枚</Text>}
-              </Pressable>
-
-              <Pressable style={[styles.reviewDateRow, designMode === 'minimal' ? styles.reviewDateRowMinimal : styles.reviewDateRowChic]} onPress={() => setShowReviewDatePicker(true)}>
-                <View>
-                  <Text style={[styles.reviewDateLabel, { color: theme.colors.secondaryText }]}>記録日</Text>
-                  <Text style={[styles.reviewDateValue, { color: theme.colors.primaryText }]}>{reviewDraft.date || wishDateKey()}</Text>
-                  <Text style={[styles.reviewDateHint, { color: theme.colors.secondaryText }]}>カレンダーで見返す日の目印</Text>
-                </View>
-                <Text style={[styles.reviewDateArrow, { color: theme.colors.primaryAccent }]}>›</Text>
-              </Pressable>
-
-              <TextInput
-                value={reviewDraft.shortNote ?? ''}
-                onChangeText={(value) => setReviewDraft((current) => ({ ...current, shortNote: value }))}
-                placeholder="一言"
-                placeholderTextColor={theme.colors.secondaryText}
-                style={[styles.reviewInput, designMode === 'minimal' ? styles.reviewInputMinimal : styles.reviewInputChic]}
-              />
-              <TextInput
-                value={reviewDraft.memo ?? ''}
-                onChangeText={(value) => setReviewDraft((current) => ({ ...current, memo: value }))}
-                placeholder="振り返りメモ"
-                placeholderTextColor={theme.colors.secondaryText}
-                style={[styles.reviewInput, styles.reviewMemo, designMode === 'minimal' ? styles.reviewInputMinimal : styles.reviewInputChic]}
-                multiline
-              />
-
-              <View style={styles.satisfactionRow}>
-                {Array.from({ length: 5 }, (_, index) => index + 1).map((value) => (
-                  <Pressable
-                    key={value}
-                    style={[styles.satisfactionPill, reviewDraft.satisfaction === value && styles.satisfactionPillActive, designMode === 'minimal' ? styles.satisfactionPillMinimal : styles.satisfactionPillChic]}
-                    onPress={() => setReviewDraft((current) => ({ ...current, satisfaction: value }))}
-                  >
-                    <Text style={[styles.satisfactionText, reviewDraft.satisfaction === value && styles.satisfactionTextActive]}>{value}</Text>
-                  </Pressable>
-                ))}
-                <Text style={[styles.satisfactionLabel, { color: theme.colors.secondaryText }]}>満足度</Text>
-              </View>
-
-              <Pressable style={[styles.primaryButton, designMode === 'minimal' ? styles.primaryButtonMinimal : styles.primaryButtonChic, styles.reviewSaveButton]} onPress={saveReview}>
-                <Text style={styles.primaryButtonText}>保存</Text>
-              </Pressable>
-            </View>
-          </SectionCard>
-
-          {savedReviews.length > 0 && (
-            <SectionCard
-              designMode={designMode}
-              chicPattern={chicPattern}
-              title="保存した記録"
-              subtitle={`${savedReviews.length}か月分`}
-            >
-              <View style={styles.reviewHistoryList}>
-                {reviewMonths.map((month) => (
-                  <View key={`calendar-${month}`} style={[styles.reviewCalendar, designMode === 'minimal' ? styles.reviewCalendarMinimal : styles.reviewCalendarChic]}>
-                    <Text style={[styles.reviewCalendarTitle, { color: theme.colors.primaryText }]}>{month.replace('-', '年')}月</Text>
-                    <View style={styles.reviewCalendarGrid}>
-                      {monthDays(month).map((day, index) => {
-                        const marked = Boolean(day && savedReviews.some((entry) => entry.month === month && entry.review.date?.endsWith(`-${day}`)));
-                        return <View key={`${month}-${index}`} style={[styles.reviewCalendarDay, marked && styles.reviewCalendarDayMarked]}><Text style={[styles.reviewCalendarDayText, { color: theme.colors.secondaryText }, marked && { color: theme.colors.primaryAccent }]}>{day ?? ''}</Text>{marked && <View style={[styles.reviewCalendarDot, { backgroundColor: theme.colors.primaryAccent }]} />}</View>;
-                      })}
-                    </View>
-                  </View>
-                ))}
-                {savedReviews.map(({ month, review }, index) => (
-                  <View key={review.id ?? `${month}-${review.date}-${index}`} style={[styles.reviewHistoryItem, designMode === 'minimal' ? styles.reviewHistoryItemMinimal : styles.reviewHistoryItemChic]}>
-                    {review.photo ? <Image source={{ uri: review.photo }} style={styles.reviewHistoryPhoto} /> : <View style={[styles.reviewHistoryPhoto, styles.reviewHistoryPhotoEmpty]}><Text style={styles.reviewHistoryPhotoText}>記録</Text></View>}
-                    <View style={styles.reviewHistoryBody}>
-                      <Text style={[styles.reviewHistoryMonth, { color: theme.colors.primaryText }]}>{month.replace('-', '年')}月</Text>
-                      {review.shortNote ? <Text style={[styles.reviewHistoryNote, { color: theme.colors.primaryText }]}>{review.shortNote}</Text> : null}
-                      {review.memo ? <Text numberOfLines={2} style={[styles.reviewHistoryMemo, { color: theme.colors.secondaryText }]}>{review.memo}</Text> : null}
-                      {review.satisfaction ? <Text style={[styles.reviewHistorySatisfaction, { color: theme.colors.primaryAccent }]}>満足度 {review.satisfaction} / 5</Text> : null}
-                    </View>
-                  </View>
-                ))}
-              </View>
-            </SectionCard>
-          )}
-          </>}
         </ScrollView>
       </KeyboardAvoidingView>
 
@@ -552,43 +404,8 @@ export function WishScreen({ designMode: rawDesignMode, chicPattern, monthLabel,
         </Pressable>
       </Modal>
 
-      <Modal visible={showReviewDatePicker} transparent animationType="fade" onRequestClose={() => setShowReviewDatePicker(false)}>
-        <Pressable style={styles.modalBackdrop} onPress={() => setShowReviewDatePicker(false)}>
-          <Pressable style={[styles.editorSheet, designMode === 'minimal' ? styles.editorSheetMinimal : styles.editorSheetChic]} onPress={(event) => event.stopPropagation()}>
-            <Text style={[styles.editorTitle, { color: theme.colors.primaryText }]}>記録日を選ぶ</Text>
-            <DateTimePicker
-              value={dateFromKey(reviewDraft.date || wishDateKey())}
-              mode="date"
-              display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-              onChange={(_, selected) => {
-                if (!selected) return;
-                setReviewDraft((current) => ({ ...current, date: formatDateKey(selected) }));
-                if (Platform.OS !== 'ios') setShowReviewDatePicker(false);
-              }}
-            />
-            <View style={styles.editorToggleRow}>
-              <Pressable style={[styles.editorCancel, designMode === 'minimal' ? styles.editorCancelMinimal : styles.editorCancelChic]} onPress={() => setShowReviewDatePicker(false)}>
-                <Text style={[styles.editorCancelText, { color: theme.colors.secondaryText }]}>閉じる</Text>
-              </Pressable>
-              <Pressable style={[styles.primaryButton, designMode === 'minimal' ? styles.primaryButtonMinimal : styles.primaryButtonChic]} onPress={() => setShowReviewDatePicker(false)}>
-                <Text style={styles.primaryButtonText}>決定</Text>
-              </Pressable>
-            </View>
-          </Pressable>
-        </Pressable>
-      </Modal>
     </View>
   );
-}
-
-function dateFromKey(value: string) {
-  const [year, month, day] = value.split('-').map(Number);
-  if (!year || !month || !day) return new Date();
-  return new Date(year, month - 1, day, 12, 0, 0, 0);
-}
-
-function formatDateKey(value: Date) {
-  return `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, '0')}-${String(value.getDate()).padStart(2, '0')}`;
 }
 
 function SectionCard({
@@ -652,36 +469,34 @@ const styles = StyleSheet.create({
   screenChic: { backgroundColor: '#FFF9F6' },
   scroll: { paddingHorizontal: 16, paddingTop: 12, paddingBottom: 28, gap: 12 },
   backButton: { alignSelf: 'flex-start', paddingHorizontal: 12, paddingVertical: 10, borderWidth: 1, borderRadius: 12, backgroundColor: '#FFFFFF' },
-  backButtonMinimal: { borderRadius: 2, borderColor: '#111111' },
+  backButtonMinimal: { borderRadius: 12, borderColor: '#111111' },
   backButtonChic: { borderColor: '#E8D9E2', backgroundColor: '#FFF3F5' },
   backButtonDark: { backgroundColor: '#181F2E', borderColor: '#303B50' },
   backButtonText: { fontSize: 12, fontWeight: '900' },
   sectionCard: { borderWidth: 1, borderRadius: 22, padding: 14, overflow: 'hidden', position: 'relative' },
-  wishBowRibbon: { position: 'absolute', right: 4, top: 0, width: 112, height: 88, zIndex: 3 },
-  wishFrameRibbon: { position: 'absolute', left: 5, right: 5, top: 5, bottom: 5, zIndex: 3 },
-  sectionCardMinimal: { backgroundColor: '#FFFFFF', borderColor: '#111111', borderRadius: 4 },
+  sectionCardMinimal: { backgroundColor: '#FFFFFF', borderColor: '#111111', borderRadius: 20 },
   sectionCardChic: { backgroundColor: '#FFF3F5', borderColor: '#F0DFE5', borderRadius: 26, shadowColor: '#D986A1', shadowOpacity: 0.08, shadowRadius: 10, shadowOffset: { width: 0, height: 4 } },
   sectionCardDark: { backgroundColor: '#181F2E', borderColor: '#303B50', shadowColor: '#000000', shadowOpacity: 0.16 },
   sectionHeader: { marginBottom: 10, zIndex: 1 },
   sectionTitle: { fontSize: 16, fontWeight: '900' },
   sectionSubtitle: { fontSize: 10, fontWeight: '800', marginTop: 2 },
   themePanel: { borderWidth: 1, borderRadius: 16, padding: 12, gap: 10, backgroundColor: '#FFFFFF' },
-  themePanelMinimal: { borderColor: '#111111', borderRadius: 2 },
+  themePanelMinimal: { borderColor: '#111111', borderRadius: 16 },
   themePanelChic: { borderColor: '#E8D9E2' },
   themePanelDark: { backgroundColor: '#20293A', borderColor: '#303B50' },
   themeInput: { minHeight: 78, borderWidth: 1, borderRadius: 14, paddingHorizontal: 12, paddingVertical: 12, fontSize: 15, fontWeight: '800', color: '#282538', textAlignVertical: 'top', backgroundColor: '#FFFFFF' },
   sectionTitleDark: { color: '#F4F7FC' },
   sectionSubtitleDark: { color: '#B4C0D4' },
-  themeInputMinimal: { borderColor: '#111111', borderRadius: 2 },
+  themeInputMinimal: { borderColor: '#111111', borderRadius: 14 },
   themeInputChic: { borderColor: '#E7D9E3' },
   themeInputDark: { backgroundColor: '#181F2E', borderColor: '#40506A', color: '#F4F7FC' },
   rowActions: { flexDirection: 'row', gap: 8, justifyContent: 'flex-end' },
   secondaryButton: { minWidth: 82, paddingHorizontal: 14, paddingVertical: 11, borderRadius: 12, alignItems: 'center', backgroundColor: '#F0EDF4' },
-  secondaryButtonMinimal: { borderColor: '#111111', borderWidth: 1, backgroundColor: '#FFFFFF', borderRadius: 2 },
+  secondaryButtonMinimal: { borderColor: '#111111', borderWidth: 1, backgroundColor: '#FFFFFF', borderRadius: 12 },
   secondaryButtonChic: { backgroundColor: '#F7F0F4' },
   secondaryButtonText: { fontSize: 12, fontWeight: '900' },
   primaryButton: { minWidth: 82, paddingHorizontal: 14, paddingVertical: 11, borderRadius: 12, alignItems: 'center', backgroundColor: '#7559E8' },
-  primaryButtonMinimal: { backgroundColor: '#111111', borderRadius: 2 },
+  primaryButtonMinimal: { backgroundColor: '#111111', borderRadius: 12 },
   primaryButtonChic: { backgroundColor: '#7057B3' },
   primaryButtonText: { fontSize: 12, fontWeight: '900', color: '#FFFFFF' },
   listGap: { gap: 8 },
@@ -689,10 +504,10 @@ const styles = StyleSheet.create({
   itemCard: { flexDirection: 'row', alignItems: 'center', gap: 10, borderWidth: 1, borderRadius: 16, padding: 12, backgroundColor: '#FFFFFF' },
   completionCheck: { width: 28, height: 28, borderRadius: 14, borderWidth: 1.5, borderColor: '#D986A1', alignItems: 'center', justifyContent: 'center', backgroundColor: '#FFFFFF' },
   completionCheckActive: { backgroundColor: '#D986A1', borderColor: '#D986A1' },
-  completionCheckMinimal: { borderRadius: 2, borderColor: '#111111' },
+  completionCheckMinimal: { borderColor: '#111111' },
   completionCheckText: { color: '#D986A1', fontSize: 17, lineHeight: 20, fontWeight: '900' },
   completionCheckTextActive: { color: '#FFFFFF' },
-  itemCardMinimal: { borderColor: '#111111', borderRadius: 2 },
+  itemCardMinimal: { borderColor: '#111111', borderRadius: 16 },
   itemCardChic: { borderColor: '#E5DFEA' },
   itemCardDark: { backgroundColor: '#20293A', borderColor: '#303B50' },
   itemCardDone: { opacity: 0.62 },
@@ -705,7 +520,7 @@ const styles = StyleSheet.create({
   itemActionText: { fontSize: 11, fontWeight: '900' },
   deleteText: { color: '#B95B67' },
   addRow: { marginTop: 12, paddingVertical: 12, alignItems: 'center', borderWidth: 1, borderRadius: 14, backgroundColor: '#FFFFFF' },
-  addRowMinimal: { borderColor: '#111111', borderRadius: 2 },
+  addRowMinimal: { borderColor: '#111111', borderRadius: 14 },
   addRowChic: { borderColor: '#E0D5E1', backgroundColor: '#FFF8FA' },
   addRowDark: { borderColor: '#40506A', backgroundColor: '#20293A' },
   addRowDisabled: { opacity: 0.45 },
@@ -720,7 +535,7 @@ const styles = StyleSheet.create({
   progressNumberChic: { color: '#D986A1', fontSize: 28, fontWeight: '900' },
   statColumn: { flex: 1, gap: 10 },
   statCard: { flex: 1, borderRadius: 14, borderWidth: 1, padding: 12, backgroundColor: '#FFFFFF' },
-  statCardMinimal: { borderColor: '#111111', borderRadius: 2 },
+  statCardMinimal: { borderColor: '#111111', borderRadius: 14 },
   statCardChic: { borderColor: '#E5DFEA' },
   statLabel: { fontSize: 10, fontWeight: '900', color: '#777772' },
   statLabelMinimal: { color: '#171715' },
@@ -731,70 +546,21 @@ const styles = StyleSheet.create({
   statCardDark: { backgroundColor: '#20293A', borderColor: '#40506A' },
   statLabelDark: { color: '#B4C0D4' },
   statValueDark: { color: '#F4F7FC' },
-  reviewPanel: { gap: 10, borderWidth: 1, borderRadius: 16, padding: 12, backgroundColor: '#FFFFFF' },
-  reviewPanelMinimal: { borderColor: '#111111', borderRadius: 2 },
-  reviewPanelChic: { borderColor: '#E8D9E2', backgroundColor: '#FFFFFF' },
-  photoBox: { height: 160, borderWidth: 1, borderRadius: 14, alignItems: 'center', justifyContent: 'center', overflow: 'hidden', backgroundColor: '#F9F8FB' },
-  photoBoxMinimal: { borderColor: '#111111', borderRadius: 2 },
-  photoBoxChic: { borderColor: '#E8D9E2', backgroundColor: '#FFF7FA' },
-  photoText: { fontSize: 12, fontWeight: '800' },
-  photoImage: { width: '100%', height: '100%', resizeMode: 'cover' },
-  reviewDateRow: { borderWidth: 1, borderRadius: 14, paddingHorizontal: 12, paddingVertical: 11, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10, backgroundColor: '#FFFDFE' },
-  reviewDateRowMinimal: { borderColor: '#111111', borderRadius: 2 },
-  reviewDateRowChic: { borderColor: '#E8D9E2', backgroundColor: '#FFF8FB' },
-  reviewDateLabel: { fontSize: 10, fontWeight: '800' },
-  reviewDateValue: { fontSize: 13, fontWeight: '900', marginTop: 3 },
-  reviewDateHint: { fontSize: 9, fontWeight: '700', marginTop: 2 },
-  reviewDateArrow: { fontSize: 20, fontWeight: '900' },
-  reviewInput: { borderWidth: 1, borderRadius: 14, paddingHorizontal: 12, paddingVertical: 10, backgroundColor: '#FFFFFF', fontSize: 13, fontWeight: '800', color: '#282538' },
-  reviewInputMinimal: { borderColor: '#111111', borderRadius: 2 },
-  reviewInputChic: { borderColor: '#DDD3DE' },
-  reviewMemo: { minHeight: 92, textAlignVertical: 'top' },
-  satisfactionRow: { flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' },
-  satisfactionPill: { minWidth: 36, paddingHorizontal: 12, paddingVertical: 10, borderWidth: 1, borderRadius: 14, alignItems: 'center', backgroundColor: '#FFFFFF' },
-  satisfactionPillMinimal: { borderColor: '#111111', borderRadius: 2 },
-  satisfactionPillChic: { borderColor: '#DDD7E1' },
-  satisfactionPillActive: { backgroundColor: '#F4D8E2', borderColor: '#D986A1' },
-  satisfactionText: { fontSize: 12, fontWeight: '900', color: '#777772' },
-  satisfactionTextActive: { color: '#392F34' },
-  satisfactionLabel: { fontSize: 10, fontWeight: '800', marginLeft: 2 },
-  reviewSaveButton: { alignSelf: 'flex-end', minWidth: 92 },
-  reviewHistoryList: { gap: 10 },
-  reviewHistoryItem: { flexDirection: 'row', gap: 10, padding: 10, borderWidth: 1, borderRadius: 14, backgroundColor: '#FFFFFF' },
-  reviewHistoryItemMinimal: { borderColor: '#111111', borderRadius: 2 },
-  reviewHistoryItemChic: { borderColor: '#E8D9E2', backgroundColor: '#FFF8FB' },
-  reviewHistoryPhoto: { width: 64, height: 64, borderRadius: 10, resizeMode: 'cover' },
-  reviewHistoryPhotoEmpty: { alignItems: 'center', justifyContent: 'center', backgroundColor: '#F4F1F4' },
-  reviewHistoryPhotoText: { color: '#8F8792', fontSize: 10, fontWeight: '800' },
-  reviewHistoryBody: { flex: 1, minWidth: 0 },
-  reviewHistoryMonth: { fontSize: 12, fontWeight: '900' },
-  reviewHistoryNote: { fontSize: 12, fontWeight: '800', marginTop: 5 },
-  reviewHistoryMemo: { fontSize: 10, lineHeight: 15, marginTop: 4 },
-  reviewHistorySatisfaction: { fontSize: 10, fontWeight: '900', marginTop: 5 },
-  reviewCalendar: { padding: 10, borderWidth: 1, borderRadius: 14, backgroundColor: '#FFFFFF' },
-  reviewCalendarMinimal: { borderColor: '#111111', borderRadius: 2 },
-  reviewCalendarChic: { borderColor: '#E8D9E2', backgroundColor: '#FFF8FB' },
-  reviewCalendarTitle: { fontSize: 12, fontWeight: '900', marginBottom: 8 },
-  reviewCalendarGrid: { flexDirection: 'row', flexWrap: 'wrap' },
-  reviewCalendarDay: { width: '14.2857%', minHeight: 28, alignItems: 'center', justifyContent: 'center', position: 'relative' },
-  reviewCalendarDayMarked: { backgroundColor: '#F7E8EF', borderRadius: 8 },
-  reviewCalendarDayText: { fontSize: 10, fontWeight: '800' },
-  reviewCalendarDot: { width: 4, height: 4, borderRadius: 2, marginTop: 2 },
   modalBackdrop: { flex: 1, backgroundColor: 'rgba(32,25,40,0.45)', justifyContent: 'center', padding: 16 },
   editorSheet: { borderRadius: 18, padding: 16, gap: 10 },
-  editorSheetMinimal: { borderRadius: 4, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#111111' },
+  editorSheetMinimal: { borderRadius: 18, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#111111' },
   editorSheetChic: { backgroundColor: '#FFF3F5', borderWidth: 1, borderColor: '#F0DFE5' },
   editorSheetDark: { backgroundColor: '#181F2E', borderColor: '#303B50' },
   editorTitle: { fontSize: 16, fontWeight: '900' },
   editorInput: { minHeight: 52, borderWidth: 1, borderRadius: 14, paddingHorizontal: 12, paddingVertical: 10, backgroundColor: '#FFFFFF', fontSize: 13, fontWeight: '800', color: '#282538' },
-  editorInputMinimal: { borderColor: '#111111', borderRadius: 2 },
+  editorInputMinimal: { borderColor: '#111111', borderRadius: 14 },
   editorInputChic: { borderColor: '#E7D9E3' },
   editorInputDark: { backgroundColor: '#20293A', borderColor: '#40506A', color: '#F4F7FC' },
   wishSelectWrap: { gap: 6 },
   editorMeta: { fontSize: 10, fontWeight: '800' },
   wishSelectRow: { gap: 8, paddingVertical: 4 },
   wishChip: { borderWidth: 1, borderRadius: 999, paddingHorizontal: 12, paddingVertical: 9, backgroundColor: '#FFFFFF' },
-  wishChipMinimal: { borderColor: '#111111', borderRadius: 2 },
+  wishChipMinimal: { borderColor: '#111111', borderRadius: 999 },
   wishChipChic: { borderColor: '#DDD7E1' },
   wishChipDark: { backgroundColor: '#20293A', borderColor: '#40506A' },
   wishChipActive: { backgroundColor: '#F4D8E2', borderColor: '#D986A1' },
@@ -803,13 +569,13 @@ const styles = StyleSheet.create({
   wishChipTextActive: { color: '#392F34' },
   editorToggleRow: { flexDirection: 'row', gap: 8, alignItems: 'center', justifyContent: 'space-between' },
   toggleChip: { borderWidth: 1, borderRadius: 999, paddingHorizontal: 14, paddingVertical: 9, backgroundColor: '#FFFFFF' },
-  toggleChipMinimal: { borderColor: '#111111', borderRadius: 2 },
+  toggleChipMinimal: { borderColor: '#111111', borderRadius: 999 },
   toggleChipChic: { borderColor: '#DDD7E1' },
   toggleChipActive: { backgroundColor: '#F4D8E2', borderColor: '#D986A1' },
   toggleChipText: { fontSize: 12, fontWeight: '900', color: '#777772' },
   toggleChipTextActive: { color: '#392F34' },
   editorCancel: { flex: 1, borderWidth: 1, borderRadius: 12, paddingVertical: 11, alignItems: 'center', backgroundColor: '#FFFFFF' },
-  editorCancelMinimal: { borderColor: '#111111', borderRadius: 2 },
+  editorCancelMinimal: { borderColor: '#111111', borderRadius: 12 },
   editorCancelChic: { borderColor: '#DDD7E1' },
   editorCancelText: { fontSize: 12, fontWeight: '900' },
   editorSaveButton: { flex: 1 },
