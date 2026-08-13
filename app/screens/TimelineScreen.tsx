@@ -1,7 +1,6 @@
-import DateTimePicker from '@react-native-community/datetimepicker';
 import * as Calendar from 'expo-calendar';
 import React, { useEffect, useState } from 'react';
-import { Alert, Platform, Pressable, Text, TextInput, View } from 'react-native';
+import { Alert, Pressable, Text, View } from 'react-native';
 import { ChicPattern, DesignMode } from '../theme';
 import { CalendarMarks, DeparturePlan, DeparturePreparationStatus, Task, TimeTab } from '../types';
 import { DepartureCheckIn } from '../departureCheckIn';
@@ -10,6 +9,7 @@ import { FocusSession } from '../focusSession';
 import { RecoveryRecord } from '../recovery';
 import { PlanTier } from '../premiumAccess';
 import { PremiumGuideFeatureId } from '../premiumGuide';
+import { DeparturePlanForm } from '../components/DeparturePlanForm';
 export function TimelineScreen({
   plan,
   plans,
@@ -80,17 +80,15 @@ export function TimelineScreen({
   components: any;
 }) {
   const { getThemeTokens, dateKey, planDateKey, hasPremiumAccess, formatLiveDate, formatLiveTime, getDepartureMoments, normalizePlanDate, countdownToDate, dateForReminder, getMapSearchTarget, openMapSearch, colors } = helpers;
-  const { TimeTabButton, FocusMode, TaskScheduleCalendar, DailyScheduleTimeline, PremiumRoutePreview, ScheduleSettingCard, RecoveryModal } = components;
+  const { TimeTabButton, FocusMode, TaskScheduleCalendar, DailyScheduleTimeline, PremiumRoutePreview, RecoveryModal } = components;
   const theme = getThemeTokens(designMode);
   const isDark = designMode === 'dark';
-  const [showPlanDatePicker, setShowPlanDatePicker] = useState(false);
   const [timeTab, setTimeTab] = useState<TimeTab>(initialTab);
   const [calendarEvents, setCalendarEvents] = useState<Calendar.Event[]>([]);
   const [calendarLoading, setCalendarLoading] = useState(false);
   const [calendarFocusDate, setCalendarFocusDate] = useState<string>();
   const [recoveryPlan, setRecoveryPlan] = useState<DeparturePlan>();
   const [statusMessage, setStatusMessage] = useState('');
-  const countdownEnabled = plan.countdownEnabled !== false;
   useEffect(() => setTimeTab(initialTab), [initialTab]);
   useEffect(() => {
     if (!recoveryTargetPlanId) return;
@@ -173,51 +171,23 @@ export function TimelineScreen({
       })}
       {!!statusMessage && <Text style={styles.timelineStatusMessage}>{statusMessage}</Text>}
 
-      <View style={[styles.formCard, { marginTop: 22, padding: 18, borderRadius: designMode === 'minimal' || isDark ? 16 : 22, borderWidth: 1, borderColor: isDark ? '#303B50' : '#ECE5F0', backgroundColor: isDark ? '#181F2E' : undefined }]}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 15 }}><View><Text style={[styles.sectionTitle, isDark && styles.darkBodyText]}>{plan.id ? '予定を編集' : '予定を追加'}</Text><Text style={[styles.sectionSub, isDark && styles.darkMutedText, { marginTop: 3 }]}>{countdownEnabled ? '登録した移動時間から準備と出発を逆算します' : '予定表に日時だけを表示します'}</Text></View><Text style={{ color: isDark ? '#8EA6FF' : colors.violet, fontSize: 12, fontWeight: '900' }}>PLAN</Text></View>
-        <Text style={[styles.fieldLabel, { marginTop: 0 }]}>予定の種類</Text>
-        <View style={{ flexDirection: 'row', gap: 8, marginBottom: 14 }}>
-          <Pressable onPress={() => onChange({ ...plan, countdownEnabled: true })} style={{ flex: 1, padding: 11, borderWidth: 1, borderRadius: 12, borderColor: countdownEnabled ? (isDark ? '#6F8DFF' : colors.violet) : (isDark ? '#3A4A66' : '#E8E1F0'), backgroundColor: countdownEnabled ? (isDark ? '#26365F' : '#F2EDFF') : (isDark ? '#20293A' : '#FCFBFE') }}><Text style={{ color: isDark ? '#F4F7FC' : colors.ink, fontSize: 12, fontWeight: '900' }}>出発を逆算</Text><Text style={{ color: isDark ? '#9CA8BC' : colors.muted, fontSize: 10, marginTop: 3 }}>カウントダウン・通知あり</Text></Pressable>
-          <Pressable onPress={() => onChange({ ...plan, countdownEnabled: false })} style={{ flex: 1, padding: 11, borderWidth: 1, borderRadius: 12, borderColor: !countdownEnabled ? (isDark ? '#6F8DFF' : colors.violet) : (isDark ? '#3A4A66' : '#E8E1F0'), backgroundColor: !countdownEnabled ? (isDark ? '#26365F' : '#F2EDFF') : (isDark ? '#20293A' : '#FCFBFE') }}><Text style={{ color: isDark ? '#F4F7FC' : colors.ink, fontSize: 12, fontWeight: '900' }}>予定表だけ</Text><Text style={{ color: isDark ? '#9CA8BC' : colors.muted, fontSize: 10, marginTop: 3 }}>カウントダウンなし</Text></Pressable>
-        </View>
-        <Text style={[styles.fieldLabel, { marginTop: 0 }]}>1　基本情報</Text>
-        <Text style={styles.fieldLabel}>予定の名前</Text>
-      <TextInput
-        style={[styles.titleInput, { borderWidth: 1, borderColor: isDark ? '#3A4A66' : '#E8E1F0', borderRadius: 12, paddingHorizontal: 12, backgroundColor: isDark ? '#20293A' : '#FCFBFE', color: isDark ? '#F4F7FC' : undefined }]}
-        value={plan.title}
-        onChangeText={(title) => onChange({ ...plan, title })}
-        placeholder="予定を入力"
+      <DeparturePlanForm
+        plan={plan}
+        plans={plans}
+        behaviorEvents={behaviorEvents}
+        designMode={designMode}
+        chicPattern={chicPattern}
+        onChange={onChange}
+        onSubmit={onSchedule}
+        dateKey={dateKey}
+        formatLiveDate={formatLiveDate}
+        formatLiveTime={formatLiveTime}
+        dateForReminder={dateForReminder}
+        getDepartureMoments={getDepartureMoments}
+        getMapSearchTarget={getMapSearchTarget}
+        openMapSearch={openMapSearch}
       />
-      <Text style={styles.fieldLabel}>目的地</Text>
-      <TextInput
-        style={[styles.titleInput, { borderWidth: 1, borderColor: isDark ? '#3A4A66' : '#E8E1F0', borderRadius: 12, paddingHorizontal: 12, backgroundColor: isDark ? '#20293A' : '#FCFBFE', color: isDark ? '#F4F7FC' : undefined }]}
-        value={plan.destination ?? ''}
-        onChangeText={(destination) => onChange({ ...plan, destination })}
-        placeholder="地図で開きたい場所"
-      />
-      <Text style={[styles.sectionSub, isDark && styles.darkMutedText, { marginTop: 5, marginBottom: 5 }]}>目的地を入れると、地図アプリで確認できます</Text>
-      <Pressable style={[styles.departureDateButton, { marginTop: 6 }]} onPress={() => void openMapSearch(getMapSearchTarget(plan))}><Text style={styles.departureDateButtonText}>地図で開く  ›</Text></Pressable>
-      <Text style={styles.fieldLabel}>{countdownEnabled ? '2　到着の設定' : '2　日時'}</Text><Text style={[styles.sectionSub, isDark && styles.darkMutedText, { marginBottom: 5 }]}>{countdownEnabled ? 'この時刻から準備・出発を自動で逆算' : '予定表に表示する日時を設定'}</Text>
-      <Text style={styles.fieldLabel}>{countdownEnabled ? '到着する日' : '予定の日'}</Text>
-      <Pressable style={styles.departureDateButton} onPress={() => setShowPlanDatePicker((value) => !value)}><Text style={styles.departureDateButtonText}>▣ {plan.date}</Text></Pressable>
-        {showPlanDatePicker && <DateTimePicker value={dateForReminder(plan.date, plan.arrival)} mode="date" minimumDate={new Date()} display={Platform.OS === 'ios' ? 'inline' : 'default'} onChange={(event, selected) => {
-          if (Platform.OS !== 'ios') setShowPlanDatePicker(false);
-          if (event.type === 'set' && selected) onChange({ ...plan, date: dateKey(selected) });
-        }} />}
-        <Text style={styles.fieldLabel}>{countdownEnabled ? '到着する時刻' : '予定の時刻'}</Text><TextInput
-          style={[styles.arrivalInput, { fontSize: 24, letterSpacing: 0, borderWidth: 1, borderColor: isDark ? '#3A4A66' : '#E1D8F3', borderRadius: 14, paddingHorizontal: 14, backgroundColor: isDark ? '#20293A' : '#FBF9FF', color: isDark ? '#F4F7FC' : undefined }]}
-          value={plan.arrival}
-          onChangeText={(arrival) => onChange({ ...plan, arrival })}
-          keyboardType="numbers-and-punctuation"
-          maxLength={5}
-          placeholder="例 18:30"
-        />
-        {countdownEnabled && <><Text style={[styles.fieldLabel, { marginTop: 16 }]}>3　逆算に使う時間</Text><View style={{ flexDirection: 'row', gap: 8, marginTop: 4 }}><ScheduleSettingCard label="移動" value={plan.travelMinutes} onChange={(travelMinutes: number) => onChange({ ...plan, travelMinutes })} /><ScheduleSettingCard label="準備" value={plan.preparationMinutes} onChange={(preparationMinutes: number) => onChange({ ...plan, preparationMinutes })} /><ScheduleSettingCard label="余裕" value={plan.bufferMinutes} onChange={(bufferMinutes: number) => onChange({ ...plan, bufferMinutes })} /></View></>}
-      </View>
 
-      <Pressable style={styles.primaryButton} onPress={onSchedule}>
-        <Text style={styles.primaryButtonText}>{plan.id ? (countdownEnabled ? '変更を保存して通知' : '変更を保存') : (countdownEnabled ? '予定を追加して通知' : '予定を追加')}</Text>
-      </Pressable>
       </>}
 
       <RecoveryModal visible={Boolean(recoveryPlan)} plan={recoveryPlan} now={now} designMode={designMode} styles={styles} onPremium={() => onPremium('recovery')} onClose={() => { setRecoveryPlan(undefined); onRecoveryClosed(); }} onApply={(record: RecoveryRecord) => { onRecovery(record); setRecoveryPlan(undefined); }} />

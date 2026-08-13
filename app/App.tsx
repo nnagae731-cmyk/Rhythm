@@ -1593,7 +1593,7 @@ export default function App() {
               onSetCalendarMark={(date, mark) => setCalendarMarks((current) => { const next = { ...current }; if (mark) next[date] = mark; else delete next[date]; return next; })}
               styles={styles}
               helpers={{ getThemeTokens, dateKey, planDateKey, hasPremiumAccess, formatLiveDate, formatLiveTime, getDepartureMoments, normalizePlanDate, countdownToDate, dateForReminder, getMapSearchTarget, openMapSearch, colors }}
-              components={{ TimeTabButton, FocusMode, TaskScheduleCalendar, DailyScheduleTimeline, PremiumRoutePreview, ScheduleSettingCard, RecoveryModal }}
+              components={{ TimeTabButton, FocusMode, TaskScheduleCalendar, DailyScheduleTimeline, PremiumRoutePreview, RecoveryModal }}
             />
           )}
 
@@ -2222,10 +2222,6 @@ function ChicPatternSelector({ designMode, chicPattern, chicCheckColor, planTier
     <View style={styles.patternChoices}>{patterns.map((item) => { const locked = !!item.feature && !hasPremiumAccess(planTier, item.feature); const visual = getChicPatternVisual(item.id); return <Pressable key={item.id} style={[styles.patternChoice, chicPattern === item.id && styles.patternChoiceActive]} onPress={() => { if (locked) return; onPattern(item.id); }}><View style={[styles.patternSwatch, styles.patternSwatchLarge, { backgroundColor: visual.background }]}><ChicPatternDecor pattern={item.id} accent={visual.accent} warm={visual.warm} density="compact" checkColor={chicCheckColor} /></View><Text style={[styles.patternChoiceText, chicPattern === item.id && styles.patternChoiceTextActive]}>{item.label}{locked ? ' 🔒' : ''}</Text></Pressable>; })}</View>
     {isCheckChicPattern(chicPattern) && <><Text style={[styles.fieldLabel, { marginTop: 12 }, designMode === 'dark' && styles.darkAccentText]}>チェックの色</Text><View style={styles.patternChoices}>{chicCheckColorChoices.map((choice) => <Pressable key={choice.id} style={[styles.patternChoice, chicCheckColor === choice.id && styles.patternChoiceActive]} onPress={() => onCheckColor(choice.id)}><View style={[styles.checkColorSwatch, { backgroundColor: choice.background, borderColor: choice.accent }]}><View style={[styles.checkColorSwatchBand, { backgroundColor: choice.accent }]} /><View style={[styles.checkColorSwatchBandHorizontal, { backgroundColor: choice.warm }]} /></View><Text style={[styles.patternChoiceText, chicCheckColor === choice.id && styles.patternChoiceTextActive]}>{choice.label}</Text></Pressable>)}</View></>}
   </View>;
-}
-
-function ScheduleSettingCard({ label, value, onChange }: { label: string; value: number; onChange: (value: number) => void }) {
-  return <View style={{ flex: 1, minWidth: 0, backgroundColor: '#F8F6FC', borderWidth: 1, borderColor: '#E8E1F0', borderRadius: 14, padding: 10 }}><Text style={{ color: colors.muted, fontSize: 10, fontWeight: '800' }}>{label}</Text><View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 8 }}><Pressable style={{ width: 28, height: 28, borderRadius: 9, backgroundColor: '#EEE9FF', alignItems: 'center', justifyContent: 'center' }} onPress={() => onChange(Math.max(0, value - 5))}><Text style={{ color: colors.violet, fontSize: 17, fontWeight: '900' }}>−</Text></Pressable><Text style={{ color: colors.ink, fontSize: 13, fontWeight: '900' }}>{value}分</Text><Pressable style={{ width: 28, height: 28, borderRadius: 9, backgroundColor: '#EEE9FF', alignItems: 'center', justifyContent: 'center' }} onPress={() => onChange(value + 5)}><Text style={{ color: colors.violet, fontSize: 17, fontWeight: '900' }}>＋</Text></Pressable></View></View>;
 }
 
 function SettingsDisclosure({ title, subtitle, expanded, onPress, children, designMode }: { title: string; subtitle: string; expanded: boolean; onPress: () => void; children: React.ReactNode; designMode?: DesignMode }) {
