@@ -42,36 +42,40 @@ function MetricCard({ title, value, result, designMode }: { title: string; value
         <>
           <Text style={[styles.metricValue, { color: theme.colors.primaryAccent }]}>{value ?? result.summary}</Text>
           <Text style={[styles.metricSummary, designMode === 'dark' && styles.darkMetricText]}>{result.summary}</Text>
-          <Text style={styles.sample}>記録 {result.sampleCount}回</Text>
+          <Text style={[styles.sample, designMode === 'dark' && styles.darkSecondaryText]}>記録 {result.sampleCount}回</Text>
         </>
       )}
     </View>
   );
 }
 
-function PremiumGate({ onPremium }: { onPremium: () => void }) {
+function PremiumGate({ onPremium, dark = false }: { onPremium: () => void; dark?: boolean }) {
   return (
-    <Pressable style={styles.premiumGate} onPress={onPremium}>
-      <Text style={styles.premiumLock}>🔒</Text>
-      <Text style={styles.premiumTitle}>Rhythm Premium</Text>
-      <Text style={styles.premiumCopy}>詳細な分析はPremiumで見られます</Text>
-      <Text style={styles.premiumButton}>くわしく見る</Text>
+    <Pressable style={[styles.premiumGate, dark && styles.premiumGateDark]} onPress={onPremium}>
+      <Text style={[styles.premiumLock, dark && styles.premiumLockDark]}>🔒</Text>
+      <Text style={[styles.premiumTitle, dark && styles.premiumTitleDark]}>Rhythm Premium</Text>
+      <Text style={[styles.premiumCopy, dark && styles.premiumCopyDark]}>詳細な分析はPremiumで見られます</Text>
+      <Text style={[styles.premiumButton, dark && styles.premiumButtonDark]}>くわしく見る</Text>
     </Pressable>
   );
 }
 
+function localDateKey(value: Date | string): string {
+  const date = value instanceof Date ? value : new Date(value);
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+}
+
 function RoutineProgressPanel({ events, tasks, designMode, onRemoveRoutine }: { events: BehaviorEvent[]; tasks: Task[]; designMode: DesignMode; onRemoveRoutine: (taskId: string) => void }) {
-  const routineTasks = tasks.filter((task) => task.isRoutine && !task.done);
+  const routineTasks = Array.from(new Map(tasks.filter((task) => task.isRoutine).map((task) => [task.routineId ?? task.id, task])).values());
   const today = new Date();
-  const palette = designMode === 'chic' ? ['#E68BA8', '#E7B56A', '#8EC7B3', '#9FA8E8', '#C39BD3'] : ['#171717', '#3A3A3A', '#5C5C5C', '#7A7A7A', '#A0A0A0'];
+  const palette = designMode === 'chic' ? ['#E68BA8', '#E7B56A', '#8EC7B3', '#9FA8E8', '#C39BD3'] : designMode === 'dark' ? ['#8EA6FF', '#AFC2FF', '#7ED6C4', '#C5B4FF', '#F0A8BA'] : ['#171717', '#3A3A3A', '#5C5C5C', '#7A7A7A', '#A0A0A0'];
   if (routineTasks.length === 0) return <View style={[styles.routineCard, designMode === 'dark' && styles.routineCardDark]}><Text style={[styles.sectionTitle, designMode === 'dark' && styles.darkPanelText]}>ルーティンの継続</Text><Text style={[styles.sectionCopy, designMode === 'dark' && styles.darkPanelText]}>タスク登録時に「ルーティンにする」を選ぶと、継続率を確認できます。</Text></View>;
   return <View style={[styles.routineCard, designMode === 'dark' && styles.routineCardDark]}><Text style={[styles.sectionTitle, designMode === 'dark' && styles.darkPanelText]}>ルーティンの継続</Text><Text style={[styles.sectionCopy, designMode === 'dark' && styles.darkPanelText]}>続けられた日が丸で増えていきます。連続日数と継続率を確認できます。</Text><View style={styles.routineTaskGrid}>{routineTasks.map((task, taskIndex) => {
     const routineKey = task.routineId ?? task.id;
-    const routineMemberIds = new Set(tasks.filter((candidate) => candidate.routineId === routineKey || (!candidate.routineId && candidate.isRoutine && candidate.title === task.title)).map((candidate) => candidate.id));
+    const routineMemberIds = new Set(tasks.filter((candidate) => candidate.isRoutine && (candidate.routineId ?? candidate.id) === routineKey).map((candidate) => candidate.id));
     routineMemberIds.add(task.id);
-    const routineEvents = events.filter((event) => event.type === 'task_completed' && event.taskId && routineMemberIds.has(event.taskId));
-    const completedDays = new Set(routineEvents.map((event) => event.occurredAt.slice(0, 10)));
-    const firstCompletion = routineEvents.map((event) => new Date(event.occurredAt)).sort((a, b) => a.getTime() - b.getTime())[0];
+    const routineEvents = events.filter((event) => (event.type === 'task_completed' || event.type === 'task_completion_reverted') && event.taskId && routineMemberIds.has(event.taskId));
+    const firstCompletion = routineEvents.filter((event) => event.type === 'task_completed').map((event) => new Date(event.occurredAt)).sort((a, b) => a.getTime() - b.getTime())[0];
     const created = task.createdAt ? new Date(task.createdAt) : firstCompletion ?? today;
     const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate());
     const createdStart = new Date(created.getFullYear(), created.getMonth(), created.getDate());
@@ -84,12 +88,23 @@ function RoutineProgressPanel({ events, tasks, designMode, onRemoveRoutine }: { 
       date.setDate(cycleStart.getDate() + index);
       return { key: `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`, label: `${date.getMonth() + 1}/${date.getDate()}` };
     });
+    const todayKey = localDateKey(today);
+    const completionForDay = (dayKey: string) => {
+      const dayEvents = routineEvents.filter((event) => localDateKey(event.type === 'task_completion_reverted' && event.taskCompletionDate ? event.taskCompletionDate : event.occurredAt) === dayKey).sort((a, b) => new Date(a.occurredAt).getTime() - new Date(b.occurredAt).getTime());
+      let active = false;
+      dayEvents.forEach((event) => { active = event.type === 'task_completed'; });
+      const current = tasks.filter((candidate) => routineMemberIds.has(candidate.id)).filter((candidate) => candidate.done && candidate.completedAt && localDateKey(candidate.completedAt) === dayKey).sort((a, b) => new Date(a.completedAt!).getTime() - new Date(b.completedAt!).getTime()).at(-1);
+      if (current && (!dayEvents.at(-1) || new Date(current.completedAt!).getTime() >= new Date(dayEvents.at(-1)!.occurredAt).getTime())) active = true;
+      return active;
+    };
+    const completedDays = new Set(taskDays.filter((day) => day.key <= todayKey && completionForDay(day.key)).map((day) => day.key));
     const activeDays = taskDays.slice(0, cycleDay).filter((day) => completedDays.has(day.key)).length;
-    const totalCompletedDays = completedDays.size;
+    const historicalDays = new Set(routineEvents.map((event) => localDateKey(event.type === 'task_completion_reverted' && event.taskCompletionDate ? event.taskCompletionDate : event.occurredAt)));
+    const totalCompletedDays = [...historicalDays].filter((dayKey) => completionForDay(dayKey)).length;
     let streak = 0;
     for (let index = cycleDay - 1; index >= 0 && completedDays.has(taskDays[index]!.key); index -= 1) streak += 1;
     const color = palette[taskIndex % palette.length]!;
-    return <View key={task.id} style={[styles.routineTaskRow, designMode === 'dark' && styles.routineTaskRowDark]}><View style={styles.routineTaskHeader}><Text numberOfLines={1} style={[styles.routineTaskTitle, designMode === 'dark' && styles.darkMetricText]}>{task.title}</Text><View style={styles.routineTaskActions}><Text style={[styles.routineTaskRate, { color }]}>{Math.round((activeDays / cycleDay) * 100)}%</Text><Pressable accessibilityLabel={`${task.title}をルーティンから外す`} hitSlop={8} onPress={() => onRemoveRoutine(task.id)} style={styles.routineRemoveButton}><Text style={styles.routineRemoveText}>×</Text></Pressable></View></View><View style={styles.routineDots}>{taskDays.map((day, index) => { const active = index < cycleDay && completedDays.has(day.key); return <View key={day.key} style={styles.routineDay}><View style={[styles.routineDot, active && { backgroundColor: color, borderColor: color }]}><Text style={[styles.routineDotText, !active && styles.routineDotTextInactive]}>{active ? '✓' : ''}</Text></View><Text style={[styles.routineDayLabel, designMode === 'dark' && styles.darkMetricText]}>{day.label}</Text></View>; })}</View><Text style={[styles.routineStreak, designMode === 'dark' && styles.routineStreakDark]}>今のサイクル {activeDays} / {cycleDay}日 ・ 連続 {streak}日 ・ 累計 {totalCompletedDays}日</Text></View>;
+    return <View key={task.id} style={[styles.routineTaskRow, designMode === 'dark' && styles.routineTaskRowDark]}><View style={styles.routineTaskHeader}><Text numberOfLines={1} style={[styles.routineTaskTitle, designMode === 'dark' && styles.darkMetricText]}>{task.title}</Text><View style={styles.routineTaskActions}><Text style={[styles.routineTaskRate, { color }]}>{Math.round((activeDays / cycleDay) * 100)}%</Text><Pressable accessibilityLabel={`${task.title}をルーティンから外す`} hitSlop={8} onPress={() => onRemoveRoutine(task.id)} style={[styles.routineRemoveButton, designMode === 'dark' && styles.routineRemoveButtonDark]}><Text style={[styles.routineRemoveText, designMode === 'dark' && styles.routineRemoveTextDark]}>×</Text></Pressable></View></View><View style={styles.routineDots}>{taskDays.map((day, index) => { const achieved = index < cycleDay && completedDays.has(day.key); const future = index >= cycleDay; const isToday = day.key === todayKey; return <View key={day.key} style={styles.routineDay}><View style={[styles.routineDot, designMode === 'dark' && styles.routineDotDark, achieved && { backgroundColor: color, borderColor: color }, future && styles.routineDotFuture, isToday && styles.routineDotToday]} /><Text style={[styles.routineDayLabel, designMode === 'dark' && styles.darkMetricText]}>{day.label}</Text></View>; })}</View><Text style={[styles.routineStreak, designMode === 'dark' && styles.routineStreakDark]}>今のサイクル {activeDays} / {cycleDay}日 ・ 連続 {streak}日 ・ 累計 {totalCompletedDays}日</Text></View>;
   })}</View></View>;
 }
 
@@ -130,11 +145,11 @@ export function AnalysisScreen({
       <View style={styles.tabs}>
         {([
           ['records', '記録'],
-          ['insights', '時間と行動'],
           ['routine', 'ルーティン'],
+          ['insights', '時間と行動'],
         ] as [AnalysisTab, string][]).map(([id, label]) => (
           <Pressable key={id} style={[styles.tab, tab === id && { backgroundColor: designMode === 'dark' ? '#26365F' : theme.colors.primaryAccent, borderColor: designMode === 'dark' ? '#6F8DFF' : theme.colors.primaryAccent }]} onPress={() => setTab(id)}>
-            <Text style={[styles.tabText, tab === id && styles.tabTextActive, tab === id && designMode === 'dark' && styles.tabTextActiveDark]}>{label}{id === 'insights' && planTier === 'free' ? ' 🔒' : ''}</Text>
+            <Text style={[styles.tabText, designMode === 'dark' && styles.tabTextDark, tab === id && styles.tabTextActive, tab === id && designMode === 'dark' && styles.tabTextActiveDark]}>{label}{id === 'insights' && planTier === 'free' ? ' 🔒' : ''}</Text>
           </Pressable>
         ))}
       </View>
@@ -163,7 +178,7 @@ export function AnalysisScreen({
           {recordContent}
         </>
       ) : tab === 'insights' && !premium ? (
-        <PremiumGate onPremium={() => onPremium('time')} />
+        <PremiumGate dark={designMode === 'dark'} onPremium={() => onPremium('time')} />
       ) : tab === 'insights' ? (
         <>
           <Text style={[styles.sectionTitle, designMode === 'dark' && styles.darkPanelText]}>時間のズレ</Text>
@@ -204,6 +219,7 @@ const styles = StyleSheet.create({
   tabs: { flexDirection: 'row', gap: 7, marginBottom: 20 },
   tab: { flex: 1, paddingVertical: 11, backgroundColor: '#EEEAF0', borderRadius: 12, alignItems: 'center' },
   tabText: { color: '#625D68', fontWeight: '800' },
+  tabTextDark: { color: '#B4C0D4' },
   tabTextActive: { color: '#FFF' },
   tabTextActiveDark: { color: '#FFFFFF' },
   sectionTitle: { color: '#292530', fontSize: 21, fontWeight: '900' },
@@ -216,7 +232,10 @@ const styles = StyleSheet.create({
   routineTaskGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   routineDots: { flexDirection: 'row', flexWrap: 'wrap', gap: 3, marginTop: 8 },
   routineDay: { alignItems: 'center', gap: 2, width: 20 },
-  routineDot: { width: 17, height: 17, borderRadius: 4, borderWidth: 1, borderColor: '#DAD4E2', alignItems: 'center', justifyContent: 'center', backgroundColor: '#FAF8FC' },
+  routineDot: { width: 17, height: 17, borderRadius: 999, borderWidth: 1, borderColor: '#DAD4E2', backgroundColor: 'transparent' },
+  routineDotDark: { borderColor: '#65738D' },
+  routineDotFuture: { opacity: 0.35 },
+  routineDotToday: { borderWidth: 2 },
   routineDotActive: { backgroundColor: '#7559E8', borderColor: '#7559E8' },
   routineDotActiveDark: { backgroundColor: '#6F8DFF', borderColor: '#6F8DFF' },
   routineDotText: { color: '#FFF', fontSize: 11, fontWeight: '900' },
@@ -228,7 +247,9 @@ const styles = StyleSheet.create({
   routineTaskTitle: { color: '#292530', fontSize: 12, fontWeight: '900', flex: 1, marginRight: 5 },
   routineTaskRate: { fontSize: 14, fontWeight: '900' },
   routineRemoveButton: { width: 20, height: 20, borderRadius: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: '#F1EDF4' },
+  routineRemoveButtonDark: { backgroundColor: '#303B50' },
   routineRemoveText: { color: '#7D7386', fontSize: 16, fontWeight: '700', lineHeight: 18 },
+  routineRemoveTextDark: { color: '#FF8F9C' },
   routineStreak: { color: '#817A88', fontSize: 9, fontWeight: '800', marginTop: 7 },
   routineStreakDark: { color: '#B4C0D4' },
   routineDotTextInactive: { color: 'transparent' },
@@ -265,8 +286,13 @@ const styles = StyleSheet.create({
   earlyDark: { backgroundColor: '#20293A' },
   earlyTitle: { color: '#6E5932', fontSize: 14, fontWeight: '900' },
   premiumGate: { alignItems: 'center', backgroundColor: '#25202C', borderRadius: 22, padding: 25 },
+  premiumGateDark: { backgroundColor: '#181F2E', borderWidth: 1, borderColor: '#40506A' },
   premiumLock: { color: '#F5D78B', fontSize: 28 },
+  premiumLockDark: { color: '#8EA6FF' },
   premiumTitle: { color: '#FFF', fontSize: 22, fontWeight: '900', marginTop: 8 },
+  premiumTitleDark: { color: '#F4F7FC' },
   premiumCopy: { color: '#D6CFDA', fontSize: 12, lineHeight: 20, textAlign: 'center', marginTop: 9 },
+  premiumCopyDark: { color: '#B4C0D4' },
   premiumButton: { color: '#25202C', backgroundColor: '#F5D78B', paddingHorizontal: 18, paddingVertical: 9, borderRadius: 14, fontWeight: '900', marginTop: 16 },
+  premiumButtonDark: { color: '#F4F7FC', backgroundColor: '#26365F' },
 });

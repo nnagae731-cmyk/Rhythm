@@ -13,7 +13,7 @@ import { getChicPatternFeatureId, getEffectiveChicPattern, getEffectiveNudgeMode
 import { AnalysisScreen } from './AnalysisScreen';
 import { BThemeRibbonDecoration, BThemeRibbonPreload } from './components/BThemeRibbonDecoration';
 import { CThemeRibbonDecoration, CThemeRibbonPreload } from './components/CThemeRibbonDecoration';
-import { appendBehaviorEvent, appendBehaviorEvents, BehaviorEvent, createDeparturePreparationStartedEvent, createDepartureStartedEvent, createFocusCompletedBehaviorEvent, createFocusStartedEvent, createFocusStoppedEvent, createNotificationActionEvent, createNotificationScheduledEvent, createTaskCompletedBehaviorEvent, NotificationAction } from './behaviorEvents';
+import { appendBehaviorEvent, appendBehaviorEvents, BehaviorEvent, createDeparturePreparationStartedEvent, createDepartureStartedEvent, createFocusCompletedBehaviorEvent, createFocusStartedEvent, createFocusStoppedEvent, createNotificationActionEvent, createNotificationScheduledEvent, createTaskCompletedBehaviorEvent, createTaskCompletionRevertedBehaviorEvent, NotificationAction } from './behaviorEvents';
 import { DEFAULT_PREMIUM_GUIDE_FEATURE, PremiumGuideFeatureId } from './premiumGuide';
 import { createPremiumTaskTemplate, hasSameTemplateSettings, PremiumTaskTemplate, summarizePremiumTaskTemplate } from './taskTemplates';
 import { Header } from './components/Header';
@@ -792,6 +792,39 @@ export default function App() {
     recordBehaviorEvent(createDeparturePreparationStartedEvent({ planId: target.id, planTitle: target.title, planDate: target.date, scheduledAt: getDepartureMoments(target).prepare, actualAt: new Date() }));
   }, [recordBehaviorEvent]);
 
+  const restoreTaskById = React.useCallback((taskId: string, source: 'manual' | 'notification' = 'manual') => {
+    const target = tasksRef.current.find((task) => task.id === taskId);
+    if (!target?.done) return;
+    const next = tasksRef.current.map((task) => task.id === taskId ? { ...task, done: false, completedAt: undefined } : task);
+    tasksRef.current = next;
+    setTasks(next);
+    if (target.isRoutine) {
+      recordBehaviorEvent(createTaskCompletionRevertedBehaviorEvent({ taskId: target.id, taskTitle: target.title, occurredAt: new Date(), completedAt: target.completedAt, source }));
+    }
+  }, [recordBehaviorEvent]);
+
+  const deleteTaskById = React.useCallback((taskId: string) => {
+    const target = tasksRef.current.find((task) => task.id === taskId);
+    if (!target) return;
+    const next = tasksRef.current.filter((task) => task.id !== taskId);
+    tasksRef.current = next;
+    setTasks(next);
+    void cancelPendingTaskNotifications(taskId);
+  }, []);
+
+  const deleteSelectedTasks = React.useCallback((ids: string[]) => {
+    const selected = [...new Set(ids)].filter((id) => tasksRef.current.some((task) => task.id === id));
+    if (selected.length === 0) return;
+    Alert.alert(`選択した${selected.length}件を削除しますか？`, '削除したタスクは元に戻せません。', [
+      { text: 'キャンセル', style: 'cancel' },
+      { text: `${selected.length}件を削除`, style: 'destructive', onPress: () => {
+        selected.forEach((id) => deleteTaskById(id));
+        setSelectionMode(false);
+        setSelectedTaskIds([]);
+      } },
+    ]);
+  }, [deleteTaskById]);
+
   useEffect(() => { tasksRef.current = tasks; }, [tasks]);
   useEffect(() => { departurePlansRef.current = departurePlans; }, [departurePlans]);
   useEffect(() => { departureCheckInsRef.current = departureCheckIns; }, [departureCheckIns]);
@@ -1099,7 +1132,7 @@ export default function App() {
       Alert.alert('ルーティン登録数の上限', `現在のプランでは${routineLimit}件まで登録できます。`);
       return;
     }
-    const updated = { ...editingTask, title, category, priority, remindDate, remindAt, deadlineDate, deadlineTime, deadlineNotifyBefore, navigationEnabled, preparationMinutes, travelMinutes, bufferMinutes, repeatRule, isRoutine, routineId: isRoutine ? editingTask.routineId ?? editingTask.id : undefined, nudgeMode, scheduledDate: scheduledDate ?? editingTask.scheduledDate ?? dateKey(now), scheduledTime };
+    const updated = { ...editingTask, title, category, priority, remindDate, remindAt, deadlineDate, deadlineTime, deadlineNotifyBefore, navigationEnabled, preparationMinutes, travelMinutes, bufferMinutes, repeatRule, isRoutine, routineId: isRoutine ? editingTask.routineId ?? editingTask.id : editingTask.routineId, nudgeMode, scheduledDate: scheduledDate ?? editingTask.scheduledDate ?? dateKey(now), scheduledTime };
     setTasks((current) => current.map((task) => task.id === editingTask.id ? updated : task));
     setEditingTask(null);
     void scheduleAllTaskNotifications(updated);
@@ -1347,7 +1380,8 @@ export default function App() {
                 setSelectionMode(false);
                 setSelectedTaskIds([]);
               }}
-              onDelete={(id) => setTasks((current) => current.filter((task) => task.id !== id))}
+              onDelete={deleteTaskById}
+              onDeleteSelected={() => deleteSelectedTasks(selectedTaskIds)}
               onDuplicate={(task) => setTasks((current) => [{ ...task, id: `${Date.now()}-copy`, title: `${task.title}（コピー）`, done: false, completedAt: undefined }, ...current])}
               onSaveTemplate={saveTaskAsTemplate}
               onPostpone={(id) => setTasks((current) => current.map((task) => task.id === id ? { ...task, scheduledDate: todayInputValue(1), bucket: 'later' } : task))}
@@ -1355,7 +1389,7 @@ export default function App() {
               onOpenTime={(tab) => { setTimelineInitialTab(tab); setScreen('timeline'); }}
                onOpenWish={openWish}
               styles={styles}
-              renderTodayWinStrip={(todayTasks) => <TodayWinStrip tasks={todayTasks} designMode={uiDesignMode} chicPattern={effectiveChicPattern} onRestore={(id) => setTasks((current) => current.map((task) => task.id === id ? { ...task, done: false, completedAt: undefined } : task))} />}
+              renderTodayWinStrip={(todayTasks) => <TodayWinStrip tasks={todayTasks} designMode={uiDesignMode} chicPattern={effectiveChicPattern} onRestore={restoreTaskById} />}
               PatternDecor={ChicPatternDecor}
               helpers={{ deadlineLabel, getUrgencyStatus, getLateRiskMessage, dateForReminder, dateKey, formatLiveTime, isCheckChicPattern, todayInputValue }}
             />
@@ -1403,7 +1437,7 @@ export default function App() {
               onSharePlan={shareDeparturePlan}
               onDelete={deleteDeparturePlan}
               onEditTask={(task) => setEditingTask(task)}
-              onDeleteTask={(id) => setTasks((current) => current.filter((task) => task.id !== id))}
+              onDeleteTask={deleteTaskById}
               onPremium={openPremiumFeature}
               onRecovery={applyRecovery}
               onRecoveryClosed={() => setRecoveryTargetPlanId(undefined)}
@@ -1482,8 +1516,8 @@ export default function App() {
               designMode={uiDesignMode}
               planTier={planTier}
               onPremium={openPremiumFeature}
-              onRemoveRoutine={(taskId) => Alert.alert('ルーティンから外しますか？', 'タスク自体と完了履歴は残ります。', [{ text: 'キャンセル', style: 'cancel' }, { text: 'ルーティンから外す', style: 'destructive', onPress: () => setTasks((current) => current.map((task) => task.id === taskId ? { ...task, isRoutine: false, routineId: undefined } : task)) }])}
-              recordContent={<HistoryScreen tasks={tasks} wishMonths={wishMonths} calendarMarks={calendarMarks} onSetCalendarMark={(date, mark) => setCalendarMarks((current) => { const next = { ...current }; if (mark) next[date] = mark; else delete next[date]; return next; })} recoveryHistory={recoveryHistory} focusSessions={focusSessions} departureCheckIns={departureCheckIns} departurePlans={departurePlans} behaviorEvents={behaviorEvents} completionIcon={completionIcon} designMode={uiDesignMode} chicPattern={effectiveChicPattern} planTier={planTier} onPremium={openPremiumFeature} onSaveTemplate={saveTaskAsTemplate} onRestore={(id) => setTasks((current) => current.map((task) => task.id === id ? { ...task, done: false, completedAt: undefined } : task))} onSaveDailyReview={saveDailyReview} onUpdateReview={updateWishReview} onDeleteReview={deleteWishReview} styles={styles} helpers={{ dateKey, formatLiveTime }} components={{ AchievementVessel, CalendarMarkPicker }} />}
+              onRemoveRoutine={(taskId) => Alert.alert('ルーティンから外しますか？', 'タスク自体と完了履歴は残ります。', [{ text: 'キャンセル', style: 'cancel' }, { text: 'ルーティンから外す', style: 'destructive', onPress: () => setTasks((current) => current.map((task) => task.id === taskId ? { ...task, isRoutine: false } : task)) }])}
+              recordContent={<HistoryScreen tasks={tasks} wishMonths={wishMonths} calendarMarks={calendarMarks} onSetCalendarMark={(date, mark) => setCalendarMarks((current) => { const next = { ...current }; if (mark) next[date] = mark; else delete next[date]; return next; })} recoveryHistory={recoveryHistory} focusSessions={focusSessions} departureCheckIns={departureCheckIns} departurePlans={departurePlans} behaviorEvents={behaviorEvents} completionIcon={completionIcon} designMode={uiDesignMode} chicPattern={effectiveChicPattern} planTier={planTier} onPremium={openPremiumFeature} onSaveTemplate={saveTaskAsTemplate} onRestore={restoreTaskById} onSaveDailyReview={saveDailyReview} onUpdateReview={updateWishReview} onDeleteReview={deleteWishReview} styles={styles} helpers={{ dateKey, formatLiveTime }} components={{ AchievementVessel, CalendarMarkPicker }} />}
             />
           )}
         </ScrollView>
@@ -1679,7 +1713,7 @@ function DailyScheduleTimeline({ date, tasks, plans, externalEvents, now, design
   const lastHour = Math.max(22, ...itemHours);
   const timelineHours = Array.from({ length: lastHour - firstHour + 1 }, (_, index) => firstHour + index);
   return <View style={{ marginTop: 12, marginBottom: 8 }}>
-    <View style={{ flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 8 }}><Text style={[styles.sectionTitle, { color: isDark ? '#161421' : theme.colors.primaryText }]}>今日の流れ</Text><Text style={{ color: theme.colors.primaryAccent, fontSize: 11, fontWeight: '800' }}>{date === currentDate ? '現在時刻を表示中' : '1日の予定'}</Text></View>
+    <View style={{ flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 8 }}><Text style={[styles.sectionTitle, { color: isDark ? '#F4F7FC' : theme.colors.primaryText }]}>今日の流れ</Text><Text style={{ color: theme.colors.primaryAccent, fontSize: 11, fontWeight: '800' }}>{date === currentDate ? '現在時刻を表示中' : '1日の予定'}</Text></View>
     <View style={{ backgroundColor: theme.colors.surface, borderColor: theme.colors.border, borderWidth: 1, borderRadius: designMode === 'minimal' || isDark ? 16 : 18, overflow: 'hidden' }}>
       {timelineHours.map((hour) => {
         const isCurrentHour = date === currentDate && now.getHours() === hour;

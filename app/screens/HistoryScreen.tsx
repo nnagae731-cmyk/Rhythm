@@ -151,7 +151,7 @@ export function HistoryScreen({ tasks, wishMonths, calendarMarks, onSetCalendarM
   return (
     <>
       <Text style={[styles.hero, designMode === 'dark' && styles.darkPanel, designMode === 'dark' && styles.darkBodyText]}>{premiumHistory ? (designMode !== 'chic' ? '今月の記録' : '今月の小さな達成') : '1か月を振り返ろう'}</Text>
-      {premiumHistory ? <View style={styles.historySearchBox}><Text style={styles.taskSearchIcon}>⌕</Text><TextInput value={historySearch} onChangeText={setHistorySearch} placeholder="過去に完了したタスクを検索" placeholderTextColor="#A29DAA" style={styles.taskSearchInput} />{historySearch.length > 0 && <Pressable onPress={() => setHistorySearch('')}><Text style={styles.historySearchClear}>×</Text></Pressable>}</View> : <Pressable style={styles.guideCard} onPress={() => onPremium('month')}><View><Text style={styles.guideCardTitle}>全期間の履歴と検索</Text><Text style={styles.guideCardCopy}>Premiumで月表示・詳細検索を利用できます</Text></View><Text style={styles.guideCardArrow}>›</Text></Pressable>}
+      {premiumHistory ? <View style={[styles.historySearchBox, isDark && styles.darkPanel]}><Text style={[styles.taskSearchIcon, isDark && styles.darkAccentText]}>⌕</Text><TextInput value={historySearch} onChangeText={setHistorySearch} placeholder="過去に完了したタスクを検索" placeholderTextColor={isDark ? '#8F9BB0' : '#A29DAA'} style={[styles.taskSearchInput, isDark && styles.darkBodyText]} />{historySearch.length > 0 && <Pressable onPress={() => setHistorySearch('')}><Text style={[styles.historySearchClear, isDark && styles.darkAccentText]}>×</Text></Pressable>}</View> : <Pressable style={[styles.guideCard, isDark && styles.darkSurface]} onPress={() => onPremium('month')}><View><Text style={[styles.guideCardTitle, isDark && styles.darkBodyText]}>全期間の履歴と検索</Text><Text style={[styles.guideCardCopy, isDark && styles.darkMutedText]}>Premiumで月表示・詳細検索を利用できます</Text></View><Text style={[styles.guideCardArrow, isDark && styles.darkAccentText]}>›</Text></Pressable>}
       {premiumHistory && <AchievementVessel tasks={tasks} designMode={designMode} chicPattern={chicPattern} scope="month" />}
       {premiumHistory && <View style={styles.monthStats}>
         <View style={styles.monthStat}><Text style={styles.monthStatNumber}>{monthlyCount}</Text><Text style={styles.monthStatLabel}>今月の完了</Text></View>
@@ -160,8 +160,8 @@ export function HistoryScreen({ tasks, wishMonths, calendarMarks, onSetCalendarM
       </View>}
       <View style={[styles.calendarCard, designMode === 'minimal' && styles.calendarCardMinimal]}>
         <View style={styles.calendarHeader}>
-          <View style={styles.historyMonthSwitcher}><Pressable onPress={() => moveHistoryMonth(-1)} style={styles.historyMonthArrow}><Text style={styles.historyMonthArrowText}>‹</Text></Pressable><Text style={styles.calendarMonth}>{year}年 {month + 1}月</Text><Pressable onPress={() => moveHistoryMonth(1)} style={styles.historyMonthArrow}><Text style={styles.historyMonthArrowText}>›</Text></Pressable></View>
-          <Text style={styles.calendarTotal}>{monthlyCount}件完了</Text>
+          <View style={styles.historyMonthSwitcher}><Pressable onPress={() => moveHistoryMonth(-1)} style={styles.historyMonthArrow}><Text style={[styles.historyMonthArrowText, isDark && styles.darkAccentText]}>‹</Text></Pressable><Text style={[styles.calendarMonth, isDark && styles.darkBodyText]}>{year}年 {month + 1}月</Text><Pressable onPress={() => moveHistoryMonth(1)} style={styles.historyMonthArrow}><Text style={[styles.historyMonthArrowText, isDark && styles.darkAccentText]}>›</Text></Pressable></View>
+          <Text style={[styles.calendarTotal, isDark && styles.darkAccentText]}>{monthlyCount}件完了</Text>
         </View>
         <View style={styles.weekRow}>
           {['日', '月', '火', '水', '木', '金', '土'].map((day) => <Text key={day} style={styles.weekLabel}>{day}</Text>)}
@@ -176,10 +176,10 @@ export function HistoryScreen({ tasks, wishMonths, calendarMarks, onSetCalendarM
             const selected = key === selectedKey;
             return (
               <Pressable key={key} style={[styles.dayCell, selected && styles.daySelected]} onPress={() => { setSelectedKey(key); loadJournalDraft(key); setSelectedReview(null); }}>
-                <Text style={[styles.dayNumber, selected && styles.dayNumberSelected]}>{day}</Text>
-                {dayMark && <Text style={styles.historyCalendarMark}>{dayMark}</Text>}
-                {count > 0 && <View style={styles.dayDone}><Text style={styles.dayDoneText}>{count}</Text></View>}
-                {dayReviews.length > 0 && <Text style={styles.reviewCalendarMarker}>✦</Text>}
+                <Text style={[styles.dayNumber, isDark && styles.darkBodyText, selected && styles.dayNumberSelected]}>{day}</Text>
+                {dayMark && <Text style={[styles.historyCalendarMark, isDark && styles.darkAccentText]}>{dayMark}</Text>}
+                {count > 0 && <View style={styles.dayDone}><Text style={[styles.dayDoneText, isDark && styles.darkBodyText]}>{count}</Text></View>}
+                {dayReviews.length > 0 && <Text style={[styles.reviewCalendarMarker, isDark && styles.darkAccentText]}>✦</Text>}
               </Pressable>
             );
           })}
@@ -215,8 +215,8 @@ export function HistoryScreen({ tasks, wishMonths, calendarMarks, onSetCalendarM
         <View key={task.id} style={styles.historyTask}>
           <View style={styles.historyIcon}><Text style={styles.historyIconText}>{completionIcon}</Text></View>
           <View style={{ flex: 1 }}>
-            <Text style={styles.taskTitle}>{task.title}</Text>
-            <Text style={styles.taskMeta}>{task.category} ・ {task.completedAt ? dateKey(task.completedAt).replaceAll('-', '.') : ''}</Text>
+            <Text style={[styles.taskTitle, isDark && styles.darkBodyText]}>{task.title}</Text>
+            <Text style={[styles.taskMeta, isDark && styles.darkMutedText]}>{task.category} ・ {task.completedAt ? dateKey(task.completedAt).replaceAll('-', '.') : ''}</Text>
           </View>
           <View style={styles.historyTaskActions}><Pressable style={styles.historyTemplateButton} onPress={() => onSaveTemplate(task)}><Text style={styles.historyTemplateButtonText}>ひな型</Text><Text style={styles.historyTemplatePremium}>Premium</Text></Pressable><Pressable style={styles.restoreButton} onPress={() => onRestore(task.id)}><Text style={styles.restoreButtonText}>元に戻す</Text></Pressable></View>
         </View>

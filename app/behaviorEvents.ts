@@ -2,6 +2,7 @@ export type BehaviorEventType =
   | 'notification_scheduled'
   | 'notification_action'
   | 'task_completed'
+  | 'task_completion_reverted'
   | 'focus_started'
   | 'focus_stopped'
   | 'focus_completed'
@@ -27,6 +28,7 @@ export type BehaviorEvent = {
   notificationAction?: NotificationAction;
   scheduledAt?: string;
   actualAt?: string;
+  taskCompletionDate?: string;
   deltaMinutes?: number;
   focusSessionId?: string;
   plannedDurationMinutes?: number;
@@ -52,6 +54,11 @@ export function appendBehaviorEvents(current: BehaviorEvent[], next: BehaviorEve
 
 export function createTaskCompletedBehaviorEvent(args: { taskId: string; taskTitle: string; occurredAt: Date; source?: BehaviorEventSource }): BehaviorEvent {
   return event(`task_completed:${args.taskId}`, 'task_completed', args.source ?? 'manual', args.occurredAt, { taskId: args.taskId, taskTitleSnapshot: args.taskTitle, actualAt: args.occurredAt.toISOString() });
+}
+
+/** Records an explicit undo so daily routine history can use the last valid state. */
+export function createTaskCompletionRevertedBehaviorEvent(args: { taskId: string; taskTitle: string; occurredAt: Date; completedAt?: string; source?: BehaviorEventSource }): BehaviorEvent {
+  return event(`task_completion_reverted:${args.taskId}:${args.occurredAt.getTime()}`, 'task_completion_reverted', args.source ?? 'manual', args.occurredAt, { taskId: args.taskId, taskTitleSnapshot: args.taskTitle, actualAt: args.occurredAt.toISOString(), taskCompletionDate: args.completedAt });
 }
 
 export function createNotificationScheduledEvent(args: { notificationInstanceId: string; taskId: string; taskTitle: string; scheduledAt: Date; occurredAt: Date }): BehaviorEvent {

@@ -30,6 +30,7 @@ export function HomeScreen({
   onToggleSelection,
   onSelectionMode,
   onCompleteSelected,
+  onDeleteSelected,
   onDelete,
   onDuplicate,
   onSaveTemplate,
@@ -59,6 +60,7 @@ export function HomeScreen({
   onToggleSelection: (id: string) => void;
   onSelectionMode: () => void;
   onCompleteSelected: () => void;
+  onDeleteSelected: () => void;
   onDelete: (id: string) => void;
   onDuplicate: (task: Task) => void;
   onSaveTemplate: (task: Task) => void;
@@ -129,11 +131,16 @@ export function HomeScreen({
       </View>
 
       {selectionMode && (
-        <View style={styles.batchBar}>
-          <Text style={styles.batchCount}>{selectedTaskIds.length}件を選択中</Text>
-          <Pressable disabled={selectedTaskIds.length === 0} style={[styles.batchComplete, selectedTaskIds.length === 0 && styles.batchDisabled]} onPress={onCompleteSelected}>
-            <Text style={styles.batchCompleteText}>まとめて完了</Text>
-          </Pressable>
+        <View style={[styles.batchBar, isDark && styles.batchBarDark]}>
+          <Text style={[styles.batchCount, isDark && styles.batchCountDark]}>{selectedTaskIds.length}件を選択中</Text>
+          <View style={styles.batchActions}>
+            <Pressable disabled={selectedTaskIds.length === 0} style={[styles.batchComplete, selectedTaskIds.length === 0 && styles.batchDisabled]} onPress={onCompleteSelected}>
+              <Text style={styles.batchCompleteText}>選択した項目を完了</Text>
+            </Pressable>
+            <Pressable disabled={selectedTaskIds.length === 0} style={[styles.batchDelete, selectedTaskIds.length === 0 && styles.batchDisabled]} onPress={onDeleteSelected}>
+              <Text style={styles.batchDeleteText}>選択した項目を削除</Text>
+            </Pressable>
+          </View>
         </View>
       )}
 

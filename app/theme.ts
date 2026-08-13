@@ -38,7 +38,7 @@ const shared = {
 export function getThemeTokens(mode: DesignMode): ThemeTokens {
   if (mode === 'dark') return {
     ...shared,
-    colors: { screenBackground: '#101522', surface: '#181F2E', secondarySurface: '#20293A', primaryText: '#F4F7FC', secondaryText: '#9CA8BC', primaryAccent: '#6F8DFF', secondaryAccent: '#7ED6C4', softAccent: '#26365F', border: '#303B50', success: '#7ED6C4', warning: '#E8B878', danger: '#EF8E8E' },
+    colors: { screenBackground: '#101522', surface: '#181F2E', secondarySurface: '#20293A', primaryText: '#F4F7FC', secondaryText: '#8F9BB0', primaryAccent: '#8EA6FF', secondaryAccent: '#7ED6C4', softAccent: '#26365F', border: '#303B50', success: '#7ED6C4', warning: '#E8B878', danger: '#FF8F9C' },
     radius: { large: 16, small: 10, button: 12, chip: 10, modal: 18 },
     shadow: { color: '#000000', opacity: 0.26, radius: 14, y: 5 },
   };
