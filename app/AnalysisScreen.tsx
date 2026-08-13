@@ -1,54 +1,14 @@
 import React, { ReactNode, useMemo, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { analyzeDepartureDelay, analyzeFocusDuration, analyzeNotificationResponse, analyzePreparationStartDelay, analyzeSnoozeBehavior, AnalysisResult } from './behaviorAnalysis';
+import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import Svg, { Circle, Line, Path, Text as SvgText } from 'react-native-svg';
 import { BehaviorEvent } from './behaviorEvents';
+import { buildInsightDashboard, formatComparison, formatMetricAverage, formatPointValue, InsightCondition, InsightConditionView, InsightMetric, InsightRange, InsightRate, InsightSuggestion, insightPointDateLabel } from './features/analytics/insightDashboard';
 import { hasPremiumAccess, PlanTier } from './premiumAccess';
 import { PremiumGuideFeatureId } from './premiumGuide';
 import { DesignMode, getThemeTokens } from './theme';
-import { Task } from './types';
+import { DeparturePlan, Task } from './types';
 
 type AnalysisTab = 'records' | 'insights' | 'routine';
-
-function DataState({ result, dark = false }: { result: AnalysisResult; dark?: boolean }) {
-  if (result.status === 'insufficient') {
-    return (
-      <View style={[styles.dataState, dark && styles.dataStateDark]}>
-        <Text style={[styles.dataStateTitle, dark && styles.darkMetricText]}>まだ記録中です</Text>
-        <Text style={[styles.dataStateCopy, dark && styles.darkSecondaryText]}>Rhythmを使うと、少しずつ傾向が見えてきます</Text>
-        <Text style={[styles.sample, dark && styles.darkMutedMetricText]}>記録 {result.sampleCount}回</Text>
-      </View>
-    );
-  }
-  if (result.status === 'early') {
-    return (
-      <View style={[styles.early, dark && styles.earlyDark]}>
-        <Text style={[styles.earlyTitle, dark && styles.darkMetricText]}>少しずつ見えてきました</Text>
-        <Text style={[styles.dataStateCopy, dark && styles.darkSecondaryText]}>まだ記録が少ないため、参考として表示しています</Text>
-        <Text style={[styles.sample, dark && styles.darkMutedMetricText]}>記録 {result.sampleCount}回</Text>
-      </View>
-    );
-  }
-  return null;
-}
-
-function MetricCard({ title, value, result, designMode }: { title: string; value?: string; result: AnalysisResult; designMode: DesignMode }) {
-  const theme = getThemeTokens(designMode);
-  const isDark = designMode === 'dark';
-  return (
-    <View style={[styles.metricCard, designMode !== 'chic' && styles.metricMinimal, designMode === 'chic' && styles.metricChic, { borderColor: theme.colors.border }, isDark && styles.metricCardDark]}>
-      <Text style={[styles.metricLabel, isDark && styles.darkSecondaryText]}>{title}</Text>
-      {result.status === 'insufficient' || result.status === 'early' ? (
-        <DataState result={result} dark={isDark} />
-      ) : (
-        <>
-          <Text style={[styles.metricValue, { color: theme.colors.primaryAccent }, isDark && styles.darkMetricValue]}>{value ?? result.summary}</Text>
-          <Text style={[styles.metricSummary, isDark && styles.darkSecondaryText]}>{result.summary}</Text>
-          <Text style={[styles.sample, isDark && styles.darkMutedMetricText]}>記録 {result.sampleCount}回</Text>
-        </>
-      )}
-    </View>
-  );
-}
 
 function PremiumGate({ onPremium, dark = false }: { onPremium: () => void; dark?: boolean }) {
   return (
@@ -86,19 +46,6 @@ function shortDate(key?: string): string {
   const date = dateFromLocalKey(key);
   return `${date.getMonth() + 1}月${date.getDate()}日`;
 }
-
-type RoutineResumeSummary = {
-  state: 'continuing' | 'interrupted' | 'resumed' | 'before' | 'deactivated';
-  latestInterruptionStart?: string;
-  latestResumeDate?: string;
-  latestResumeFrom?: string;
-  latestGapDays?: number;
-  currentInterruptionDays: number;
-  interruptionsThisMonth: number;
-  resumesThisMonth: number;
-  longestStreak: number;
-  postResumeStreak: number;
-};
 
 type RoutineHistory = { id: string; title: string; memberIds: Set<string>; endedAt?: string; active: boolean };
 
@@ -143,83 +90,6 @@ function routineDayCompleted(events: BehaviorEvent[], tasks: Task[], routine: Ro
     .at(-1);
   if (current && (!dayEvents.at(-1) || new Date(current.completedAt!).getTime() >= new Date(dayEvents.at(-1)!.occurredAt).getTime())) completed = true;
   return completed;
-}
-
-function getRoutineResumeSummary(events: BehaviorEvent[], tasks: Task[], routine: RoutineHistory, today = new Date()): RoutineResumeSummary {
-  const routineEvents = routineEventsFor(events, routine);
-  const relevantDayKeys = [
-    ...routineEvents.map((event) => localDateKey(event.type === 'task_completion_reverted' && event.taskCompletionDate ? event.taskCompletionDate : event.occurredAt)),
-    ...tasks.filter((task) => routine.memberIds.has(task.id) && task.done && task.completedAt).map((task) => localDateKey(task.completedAt!)),
-  ].sort();
-  const empty: RoutineResumeSummary = { state: routine.active ? 'before' : 'deactivated', currentInterruptionDays: 0, interruptionsThisMonth: 0, resumesThisMonth: 0, longestStreak: 0, postResumeStreak: 0 };
-  const firstCompletionKey = relevantDayKeys.find((key) => routineDayCompleted(routineEvents, tasks, routine, key));
-  if (!firstCompletionKey) return empty;
-
-  const todayKey = localDateKey(today);
-  const endKey = routineAnalysisEndKey(events, tasks, routine, today);
-  const currentMonth = todayKey.slice(0, 7);
-  const dayStates: Array<{ key: string; completed: boolean }> = [];
-  for (let key = firstCompletionKey; key <= endKey; key = addLocalDays(key, 1)) {
-    dayStates.push({ key, completed: routineDayCompleted(routineEvents, tasks, routine, key) });
-  }
-
-  let latestInterruptionStart: string | undefined;
-  let latestResumeDate: string | undefined;
-  let latestResumeFrom: string | undefined;
-  let latestGapDays: number | undefined;
-  let interruptionsThisMonth = 0;
-  let resumesThisMonth = 0;
-  let activeInterruptionStart: string | undefined;
-  let longestStreak = 0;
-  let currentRun = 0;
-
-  dayStates.forEach((day, index) => {
-    if (day.completed) {
-      currentRun += 1;
-      longestStreak = Math.max(longestStreak, currentRun);
-      if (index > 0 && !dayStates[index - 1]!.completed && activeInterruptionStart) {
-        latestResumeDate = day.key;
-        latestResumeFrom = activeInterruptionStart;
-        latestGapDays = dayDistance(activeInterruptionStart, day.key);
-        if (day.key.startsWith(currentMonth)) resumesThisMonth += 1;
-        activeInterruptionStart = undefined;
-      }
-      return;
-    }
-
-    currentRun = 0;
-    if (index > 0 && dayStates[index - 1]!.completed) {
-      activeInterruptionStart = day.key;
-      latestInterruptionStart = day.key;
-      if (day.key.startsWith(currentMonth)) interruptionsThisMonth += 1;
-    }
-  });
-
-  const todayCompleted = dayStates.at(-1)?.completed ?? false;
-  const postResumeStreak = todayCompleted
-    ? [...dayStates].reverse().findIndex((day) => !day.completed) === -1
-      ? dayStates.length
-      : [...dayStates].reverse().findIndex((day) => !day.completed)
-    : 0;
-  const state = !routine.active
-    ? 'deactivated'
-    : !todayCompleted
-    ? 'interrupted'
-    : latestResumeDate
-      ? 'resumed'
-      : 'continuing';
-  return {
-    state,
-    latestInterruptionStart,
-    latestResumeDate,
-    latestResumeFrom,
-    latestGapDays,
-    currentInterruptionDays: activeInterruptionStart ? dayDistance(activeInterruptionStart, todayKey) + 1 : 0,
-    interruptionsThisMonth,
-    resumesThisMonth,
-    longestStreak,
-    postResumeStreak,
-  };
 }
 
 function getRoutineHistories(events: BehaviorEvent[], tasks: Task[]): RoutineHistory[] {
@@ -267,42 +137,75 @@ function getRoutineHistories(events: BehaviorEvent[], tasks: Task[]): RoutineHis
   return [...histories.values()];
 }
 
-function RoutineResumePanel({ events, tasks, designMode }: { events: BehaviorEvent[]; tasks: Task[]; designMode: DesignMode }) {
-  const routines = getRoutineHistories(events, tasks);
-  const isDark = designMode === 'dark';
-  if (routines.length === 0) return null;
-  return <>
-    <Text style={[styles.sectionTitle, { marginTop: 22 }, isDark && styles.darkMetricText]}>ルーティンの中断・再開</Text>
-    <Text style={[styles.sectionCopy, isDark && styles.darkSecondaryText]}>お休みの期間も、戻れた日を大切に記録します。</Text>
-    <View style={styles.routineResumeList}>{routines.map((routine) => {
-      const summary = getRoutineResumeSummary(events, tasks, routine);
-      const stateLabel = summary.state === 'continuing' ? '継続中' : summary.state === 'interrupted' ? '中断中' : summary.state === 'resumed' ? '再開済み' : summary.state === 'deactivated' ? '解除済み' : '開始前';
-      const stateCopy = summary.state === 'before'
-        ? '最初の1回を記録すると、ここから流れを振り返れます。'
-        : summary.state === 'deactivated'
-          ? 'ルーティンを外した日までの記録を残しています。'
-          : summary.state === 'interrupted'
-          ? `現在${summary.currentInterruptionDays}日間お休み中です。戻るタイミングはいつでも大丈夫。`
-          : summary.state === 'resumed' && summary.latestResumeDate && summary.latestResumeFrom
-            ? `${shortDate(summary.latestResumeFrom)}に中断し、${shortDate(summary.latestResumeDate)}に再開しました。`
-            : '今の流れを、そのまま続けられています。';
-      const resumeCopy = summary.latestResumeDate && summary.latestGapDays !== undefined
-        ? `${summary.latestGapDays}日ぶりに再開できています。`
-        : '戻れた日が増えるほど、あなたのペースが見えてきます。';
-      return <View key={routine.id} style={[styles.routineResumeCard, isDark && styles.routineResumeCardDark]}>
-        <View style={styles.routineResumeHeader}><Text numberOfLines={1} style={[styles.routineResumeTitle, isDark && styles.darkMetricText]}>{routine.title}</Text><Text style={[styles.routineResumeState, isDark && styles.routineResumeStateDark]}>{stateLabel}</Text></View>
-        <Text style={[styles.routineResumeCopy, isDark && styles.darkSecondaryText]}>{stateCopy}</Text>
-        {summary.state !== 'before' && <Text style={[styles.routineResumeCopy, styles.routineResumeSubcopy, isDark && styles.darkMutedMetricText]}>{resumeCopy}</Text>}
-        <View style={styles.routineResumeFacts}>
-          <View style={[styles.routineResumeFact, isDark && styles.routineResumeFactDark]}><Text style={[styles.routineResumeFactLabel, isDark && styles.darkMutedMetricText]}>直近の中断</Text><Text style={[styles.routineResumeFactValue, isDark && styles.darkMetricText]}>{shortDate(summary.latestInterruptionStart)}</Text></View>
-          <View style={[styles.routineResumeFact, isDark && styles.routineResumeFactDark]}><Text style={[styles.routineResumeFactLabel, isDark && styles.darkMutedMetricText]}>直近の再開</Text><Text style={[styles.routineResumeFactValue, isDark && styles.darkMetricText]}>{shortDate(summary.latestResumeDate)}</Text></View>
-          <View style={[styles.routineResumeFact, isDark && styles.routineResumeFactDark]}><Text style={[styles.routineResumeFactLabel, isDark && styles.darkMutedMetricText]}>中断日数</Text><Text style={[styles.routineResumeFactValue, isDark && styles.darkMetricText]}>{summary.state === 'interrupted' ? `${summary.currentInterruptionDays}日` : summary.latestGapDays === undefined ? '—' : `${summary.latestGapDays}日`}</Text></View>
-        </View>
-        <Text style={[styles.routineResumeStats, isDark && styles.darkSecondaryText]}>今月は中断 {summary.interruptionsThisMonth}回 ・ 再開 {summary.resumesThisMonth}回</Text>
-        <Text style={[styles.routineResumeStats, isDark && styles.darkSecondaryText]}>最長連続 {summary.longestStreak}日 ・ 再開後の連続 {summary.postResumeStreak}日</Text>
-      </View>;
-    })}</View>
-  </>;
+type RoutineResumeSummary = {
+  state: 'continuing' | 'interrupted' | 'resumed' | 'before' | 'deactivated';
+  latestInterruptionStart?: string;
+  latestResumeDate?: string;
+  latestResumeFrom?: string;
+  latestGapDays?: number;
+  currentInterruptionDays: number;
+  interruptionsThisMonth: number;
+  resumesThisMonth: number;
+  longestStreak: number;
+  postResumeStreak: number;
+};
+
+function getRoutineResumeSummary(events: BehaviorEvent[], tasks: Task[], routine: RoutineHistory, today = new Date()): RoutineResumeSummary {
+  const routineEvents = routineEventsFor(events, routine);
+  const relevantDayKeys = [...routineEvents.map(routineEventDay), ...tasks.filter((task) => routine.memberIds.has(task.id) && task.done && task.completedAt).map((task) => localDateKey(task.completedAt!))].sort();
+  const empty: RoutineResumeSummary = { state: routine.active ? 'before' : 'deactivated', currentInterruptionDays: 0, interruptionsThisMonth: 0, resumesThisMonth: 0, longestStreak: 0, postResumeStreak: 0 };
+  const firstCompletionKey = relevantDayKeys.find((key) => routineDayCompleted(routineEvents, tasks, routine, key));
+  if (!firstCompletionKey) return empty;
+
+  const todayKey = localDateKey(today);
+  const endKey = routineAnalysisEndKey(events, tasks, routine, today);
+  const currentMonth = todayKey.slice(0, 7);
+  const days: Array<{ key: string; completed: boolean }> = [];
+  for (let key = firstCompletionKey; key <= endKey; key = addLocalDays(key, 1)) days.push({ key, completed: routineDayCompleted(routineEvents, tasks, routine, key) });
+
+  let latestInterruptionStart: string | undefined;
+  let latestResumeDate: string | undefined;
+  let latestResumeFrom: string | undefined;
+  let latestGapDays: number | undefined;
+  let interruptionsThisMonth = 0;
+  let resumesThisMonth = 0;
+  let activeInterruptionStart: string | undefined;
+  let longestStreak = 0;
+  let currentRun = 0;
+  days.forEach((day, index) => {
+    if (day.completed) {
+      currentRun += 1;
+      longestStreak = Math.max(longestStreak, currentRun);
+      if (index > 0 && !days[index - 1]!.completed && activeInterruptionStart) {
+        latestResumeDate = day.key;
+        latestResumeFrom = activeInterruptionStart;
+        latestGapDays = dayDistance(activeInterruptionStart, day.key);
+        if (day.key.startsWith(currentMonth)) resumesThisMonth += 1;
+        activeInterruptionStart = undefined;
+      }
+    } else {
+      currentRun = 0;
+      if (index > 0 && days[index - 1]!.completed) {
+        activeInterruptionStart = day.key;
+        latestInterruptionStart = day.key;
+        if (day.key.startsWith(currentMonth)) interruptionsThisMonth += 1;
+      }
+    }
+  });
+  const todayCompleted = days.at(-1)?.completed ?? false;
+  const postResumeStreak = todayCompleted ? (() => { let count = 0; for (let index = days.length - 1; index >= 0 && days[index]!.completed; index -= 1) count += 1; return count; })() : 0;
+  return {
+    state: !routine.active ? 'deactivated' : !todayCompleted ? 'interrupted' : latestResumeDate ? 'resumed' : 'continuing',
+    latestInterruptionStart,
+    latestResumeDate,
+    latestResumeFrom,
+    latestGapDays,
+    currentInterruptionDays: activeInterruptionStart ? dayDistance(activeInterruptionStart, todayKey) + 1 : 0,
+    interruptionsThisMonth,
+    resumesThisMonth,
+    longestStreak,
+    postResumeStreak,
+  };
 }
 
 function RoutineProgressPanel({ events, tasks, designMode, onRemoveRoutine }: { events: BehaviorEvent[]; tasks: Task[]; designMode: DesignMode; onRemoveRoutine: (taskId: string) => void }) {
@@ -342,6 +245,201 @@ function RoutineProgressPanel({ events, tasks, designMode, onRemoveRoutine }: { 
   })}</View></View>;
 }
 
+function DashboardCard({ children, designMode, style }: { children: ReactNode; designMode: DesignMode; style?: any }) {
+  const theme = getThemeTokens(designMode);
+  return <View style={[styles.dashboardCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }, designMode === 'dark' && styles.dashboardCardDark, style]}>{children}</View>;
+}
+
+function TrendStatus({ status, designMode }: { status: 'improved' | 'maintain' | 'attention' | 'insufficient'; designMode: DesignMode }) {
+  const theme = getThemeTokens(designMode);
+  const label = status === 'improved' ? '改善' : status === 'attention' ? '要確認' : status === 'maintain' ? '維持' : '記録中';
+  const color = status === 'improved' ? theme.colors.success : status === 'attention' ? theme.colors.danger : theme.colors.primaryAccent;
+  return <View style={[styles.trendStatus, { backgroundColor: designMode === 'dark' ? theme.colors.softAccent : `${color}18` }]}><Text style={[styles.trendStatusText, { color }]}>{label}</Text></View>;
+}
+
+function ProgressRing({ rate, designMode }: { rate: InsightRate; designMode: DesignMode }) {
+  const theme = getThemeTokens(designMode);
+  const radius = 29;
+  const circumference = 2 * Math.PI * radius;
+  const dash = rate.percent === undefined ? 0 : circumference * rate.percent / 100;
+  const isDark = designMode === 'dark';
+  return <View style={styles.rateItem}>
+    <View style={styles.ringWrap}>
+      <Svg width={72} height={72} viewBox="0 0 72 72">
+        <Circle cx="36" cy="36" r={radius} stroke={isDark ? '#303B50' : theme.colors.secondarySurface} strokeWidth="7" fill="none" />
+        {rate.percent !== undefined && <Circle cx="36" cy="36" r={radius} stroke={theme.colors.primaryAccent} strokeWidth="7" strokeLinecap="round" fill="none" strokeDasharray={`${dash} ${circumference}`} rotation="-90" origin="36,36" />}
+      </Svg>
+      <Text style={[styles.ringValue, { color: theme.colors.primaryText }]}>{rate.percent === undefined ? '—' : `${rate.percent}%`}</Text>
+    </View>
+    <Text style={[styles.rateLabel, { color: theme.colors.primaryText }]}>{rate.label}</Text>
+    <Text style={[styles.rateDetail, { color: theme.colors.secondaryText }]}>{rate.percent === undefined ? '記録なし' : `${rate.numerator} / ${rate.denominator}`}</Text>
+  </View>;
+}
+
+function LineChart({ points, metric, selectedDate, onSelect, designMode }: { points: { date: string; value: number; sampleCount: number }[]; metric: InsightMetric; selectedDate?: string; onSelect: (date: string) => void; designMode: DesignMode }) {
+  const theme = getThemeTokens(designMode);
+  const width = 320;
+  const height = 148;
+  const padding = { top: 14, right: 12, bottom: 22, left: 30 };
+  const baseline = metric === 'preparation' || metric === 'departure' ? 0 : undefined;
+  const values = [...points.map((point) => point.value), ...(baseline === undefined ? [] : [baseline])];
+  if (!points.length) return <View style={[styles.chartEmpty, { backgroundColor: theme.colors.secondarySurface, borderColor: theme.colors.border }]}><Text style={[styles.chartEmptyText, { color: theme.colors.secondaryText }]}>この期間の{metric === 'preparation' ? '準備' : metric === 'departure' ? '出発' : metric === 'notification' ? '通知への反応' : '集中'}記録はまだありません</Text></View>;
+  const rawMin = Math.min(...values);
+  const rawMax = Math.max(...values);
+  const range = Math.max(2, rawMax - rawMin);
+  const min = rawMin - range * 0.16;
+  const max = rawMax + range * 0.16;
+  const plotWidth = width - padding.left - padding.right;
+  const plotHeight = height - padding.top - padding.bottom;
+  const xFor = (index: number) => points.length === 1 ? padding.left + plotWidth / 2 : padding.left + index / (points.length - 1) * plotWidth;
+  const yFor = (value: number) => padding.top + (max - value) / (max - min) * plotHeight;
+  const dateGap = (left: string, right: string) => Math.round((new Date(`${right}T12:00:00`).getTime() - new Date(`${left}T12:00:00`).getTime()) / 86_400_000);
+  const path = points.map((point, index) => `${index === 0 || dateGap(points[index - 1]!.date, point.date) > 1 ? 'M' : 'L'}${xFor(index)},${yFor(point.value)}`).join(' ');
+  const selected = points.find((point) => point.date === selectedDate) ?? points.at(-1)!;
+  return <>
+    <View style={[styles.chartArea, { backgroundColor: designMode === 'dark' ? '#20293A' : theme.colors.secondarySurface, borderColor: theme.colors.border }]}>
+      <Svg width="100%" height={height} viewBox={`0 0 ${width} ${height}`}>
+        {[0.2, 0.5, 0.8].map((ratio) => <Line key={ratio} x1={padding.left} x2={width - padding.right} y1={padding.top + plotHeight * ratio} y2={padding.top + plotHeight * ratio} stroke={designMode === 'dark' ? '#303B50' : theme.colors.border} strokeWidth="1" />)}
+        {baseline !== undefined && <Line x1={padding.left} x2={width - padding.right} y1={yFor(baseline)} y2={yFor(baseline)} stroke={theme.colors.primaryAccent} strokeWidth="1" strokeDasharray="4 4" opacity={0.85} />}
+        <Path d={path} fill="none" stroke={theme.colors.primaryAccent} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
+        {points.map((point, index) => <Circle key={point.date} cx={xFor(index)} cy={yFor(point.value)} r={point.date === selected.date ? 5.5 : 3.8} fill={point.date === selected.date ? theme.colors.surface : theme.colors.primaryAccent} stroke={theme.colors.primaryAccent} strokeWidth={point.date === selected.date ? 3 : 1} onPress={() => onSelect(point.date)} />)}
+        <SvgText x="2" y={padding.top + 4} fill={theme.colors.secondaryText} fontSize="9">{Math.round(max)}</SvgText>
+        {baseline !== undefined && <SvgText x="7" y={yFor(baseline) - 4} fill={theme.colors.secondaryText} fontSize="9">0</SvgText>}
+        <SvgText x="2" y={height - padding.bottom + 1} fill={theme.colors.secondaryText} fontSize="9">{Math.round(min)}</SvgText>
+      </Svg>
+      <View style={styles.chartDates}><Text style={[styles.chartDate, { color: theme.colors.secondaryText }]}>{insightPointDateLabel(points[0]!.date)}</Text><Text style={[styles.chartDate, { color: theme.colors.secondaryText }]}>{insightPointDateLabel(points.at(-1)!.date)}</Text></View>
+    </View>
+    <View style={[styles.selectedPoint, { borderColor: theme.colors.border, backgroundColor: theme.colors.surface }]}><Text style={[styles.selectedPointLabel, { color: theme.colors.secondaryText }]}>選択した日</Text><Text style={[styles.selectedPointValue, { color: theme.colors.primaryText }]}>{insightPointDateLabel(selected.date)}　{formatPointValue(metric, selected.value)}</Text></View>
+    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.pointSelector}>
+      {points.map((point) => <Pressable key={point.date} onPress={() => onSelect(point.date)} style={[styles.pointChip, { borderColor: theme.colors.border, backgroundColor: theme.colors.secondarySurface }, point.date === selected.date && { backgroundColor: theme.colors.primaryAccent, borderColor: theme.colors.primaryAccent }]}><Text style={[styles.pointChipText, { color: theme.colors.secondaryText }, point.date === selected.date && styles.pointChipTextActive]}>{insightPointDateLabel(point.date)}</Text></Pressable>)}
+    </ScrollView>
+  </>;
+}
+
+function ConditionChart({ data, designMode }: { data: InsightCondition[]; designMode: DesignMode }) {
+  const theme = getThemeTokens(designMode);
+  return <View style={styles.conditionChart}>{data.map((item) => {
+    const fill = item.onTimePercent === undefined ? 0 : item.onTimePercent;
+    return <View key={item.id} style={styles.conditionItem}>
+      <View style={[styles.conditionRail, { backgroundColor: designMode === 'dark' ? '#20293A' : theme.colors.secondarySurface, borderColor: theme.colors.border }]}><View style={[styles.conditionFill, { height: `${fill}%`, backgroundColor: theme.colors.primaryAccent }]} /></View>
+      <Text style={[styles.conditionLabel, { color: theme.colors.primaryText }]}>{item.label}</Text>
+      <Text style={[styles.conditionMeta, { color: theme.colors.secondaryText }]}>{item.onTimePercent === undefined ? '—' : `${item.onTimePercent}%`}</Text>
+      <Text style={[styles.conditionMeta, { color: theme.colors.secondaryText }]}>{item.averageLateMinutes === undefined ? '記録なし' : item.averageLateMinutes > 0 ? `平均${Math.round(item.averageLateMinutes)}分遅れ` : '予定どおり'}</Text>
+    </View>;
+  })}</View>;
+}
+
+function RoutineResumePanel({ events, tasks, designMode }: { events: BehaviorEvent[]; tasks: Task[]; designMode: DesignMode }) {
+  const routines = getRoutineHistories(events, tasks);
+  const isDark = designMode === 'dark';
+  if (!routines.length) return null;
+  return <>
+    <Text style={[styles.sectionTitle, { marginTop: 4 }, isDark && styles.darkMetricText]}>ルーティンの中断・再開</Text>
+    <Text style={[styles.sectionCopy, isDark && styles.darkSecondaryText]}>お休みの期間も、戻れた日を大切に記録します。</Text>
+    <View style={styles.routineResumeList}>{routines.map((routine) => {
+      const summary = getRoutineResumeSummary(events, tasks, routine);
+      const stateLabel = summary.state === 'continuing' ? '継続中' : summary.state === 'interrupted' ? '中断中' : summary.state === 'resumed' ? '再開済み' : summary.state === 'deactivated' ? '解除済み' : '開始前';
+      const stateCopy = summary.state === 'before'
+        ? '最初の1回を記録すると、ここから流れを振り返れます。'
+        : summary.state === 'deactivated'
+          ? 'ルーティンを外した日までの記録を残しています。'
+          : summary.state === 'interrupted'
+          ? `現在${summary.currentInterruptionDays}日間お休み中です。戻るタイミングはいつでも大丈夫。`
+          : summary.latestResumeDate && summary.latestResumeFrom
+            ? `${shortDate(summary.latestResumeFrom)}に中断し、${shortDate(summary.latestResumeDate)}に再開しました。`
+            : '今の流れを、そのまま続けられています。';
+      const resumeCopy = summary.latestResumeDate && summary.latestGapDays !== undefined ? `${summary.latestGapDays}日ぶりに再開できています。` : '戻れた日が増えるほど、あなたのペースが見えてきます。';
+      return <View key={routine.id} style={[styles.routineResumeCard, isDark && styles.routineResumeCardDark]}>
+        <View style={styles.routineResumeHeader}><Text numberOfLines={1} style={[styles.routineResumeTitle, isDark && styles.darkMetricText]}>{routine.title}</Text><Text style={[styles.routineResumeState, isDark && styles.routineResumeStateDark]}>{stateLabel}</Text></View>
+        <Text style={[styles.routineResumeCopy, isDark && styles.darkSecondaryText]}>{stateCopy}</Text>
+        {summary.state !== 'before' && <Text style={[styles.routineResumeCopy, styles.routineResumeSubcopy, isDark && styles.darkMutedMetricText]}>{resumeCopy}</Text>}
+        <View style={styles.routineResumeFacts}>
+          <View style={[styles.routineResumeFact, isDark && styles.routineResumeFactDark]}><Text style={[styles.routineResumeFactLabel, isDark && styles.darkMutedMetricText]}>直近の中断</Text><Text style={[styles.routineResumeFactValue, isDark && styles.darkMetricText]}>{shortDate(summary.latestInterruptionStart)}</Text></View>
+          <View style={[styles.routineResumeFact, isDark && styles.routineResumeFactDark]}><Text style={[styles.routineResumeFactLabel, isDark && styles.darkMutedMetricText]}>直近の再開</Text><Text style={[styles.routineResumeFactValue, isDark && styles.darkMetricText]}>{shortDate(summary.latestResumeDate)}</Text></View>
+          <View style={[styles.routineResumeFact, isDark && styles.routineResumeFactDark]}><Text style={[styles.routineResumeFactLabel, isDark && styles.darkMutedMetricText]}>中断日数</Text><Text style={[styles.routineResumeFactValue, isDark && styles.darkMetricText]}>{summary.state === 'interrupted' ? `${summary.currentInterruptionDays}日` : summary.latestGapDays === undefined ? '—' : `${summary.latestGapDays}日`}</Text></View>
+        </View>
+        <Text style={[styles.routineResumeStats, isDark && styles.darkSecondaryText]}>今月は中断 {summary.interruptionsThisMonth}回 ・ 再開 {summary.resumesThisMonth}回</Text>
+        <Text style={[styles.routineResumeStats, isDark && styles.darkSecondaryText]}>最長連続 {summary.longestStreak}日 ・ 再開後の連続 {summary.postResumeStreak}日</Text>
+      </View>;
+    })}</View>
+  </>;
+}
+
+function InsightDashboardView({ events, tasks, plans, designMode, onApplySuggestion }: { events: BehaviorEvent[]; tasks: Task[]; plans: DeparturePlan[]; designMode: DesignMode; onApplySuggestion: (suggestion: InsightSuggestion) => void }) {
+  const [range, setRange] = useState<InsightRange>('30d');
+  const [metric, setMetric] = useState<InsightMetric>('preparation');
+  const [conditionView, setConditionView] = useState<InsightConditionView>('weekday');
+  const [selectedPointDate, setSelectedPointDate] = useState<string>();
+  const [suggestionOpen, setSuggestionOpen] = useState(false);
+  const dashboard = useMemo(() => buildInsightDashboard(events, plans, range), [events, plans, range]);
+  const theme = getThemeTokens(designMode);
+  const activeMetric = dashboard.metrics[metric];
+  const conditionData = conditionView === 'weekday' ? dashboard.weekdayConditions : dashboard.timeOfDayConditions;
+  const isDark = designMode === 'dark';
+
+  return <View style={styles.dashboard}>
+    <View style={[styles.rangeControl, { backgroundColor: isDark ? '#20293A' : theme.colors.secondarySurface, borderColor: theme.colors.border }]}>
+      {([['7d', '7日'], ['30d', '30日'], ['all', '全期間']] as [InsightRange, string][]).map(([id, label]) => <Pressable key={id} onPress={() => setRange(id)} style={[styles.rangeButton, range === id && { backgroundColor: theme.colors.primaryAccent }]}><Text style={[styles.rangeButtonText, { color: range === id ? '#FFFFFF' : theme.colors.secondaryText }]}>{label}</Text></Pressable>)}
+    </View>
+    <Text style={[styles.dashboardRangeLabel, { color: theme.colors.secondaryText }]}>{dashboard.rangeLabel}</Text>
+
+    <DashboardCard designMode={designMode}>
+      <View style={styles.cardTitleRow}><Text style={[styles.dashboardKicker, { color: theme.colors.primaryAccent }]}>今の傾向</Text><TrendStatus status={dashboard.trend.status} designMode={designMode} /></View>
+      <Text style={[styles.trendMessage, { color: theme.colors.primaryText }]}>{dashboard.trend.message}</Text>
+      <Text style={[styles.dashboardCaption, { color: theme.colors.secondaryText }]}>{dashboard.trend.comparison}</Text>
+    </DashboardCard>
+
+    <DashboardCard designMode={designMode}>
+      <View style={styles.cardTitleRow}><View><Text style={[styles.dashboardTitle, { color: theme.colors.primaryText }]}>時間の変化</Text><Text style={[styles.dashboardCaption, { color: theme.colors.secondaryText }]}>予定どおりは基準線の0です</Text></View><Text style={[styles.metricAverage, { color: theme.colors.primaryAccent }]}>{formatMetricAverage(metric, activeMetric.average)}</Text></View>
+      <View style={styles.metricSwitcher}>{([['preparation', '準備'], ['departure', '出発'], ['notification', '通知'], ['focus', '集中']] as [InsightMetric, string][]).map(([id, label]) => <Pressable key={id} onPress={() => { setMetric(id); setSelectedPointDate(undefined); }} style={[styles.metricSwitch, { borderColor: theme.colors.border, backgroundColor: isDark ? '#20293A' : theme.colors.secondarySurface }, metric === id && { backgroundColor: theme.colors.primaryAccent, borderColor: theme.colors.primaryAccent }]}><Text style={[styles.metricSwitchText, { color: metric === id ? '#FFFFFF' : theme.colors.secondaryText }]}>{label}</Text></Pressable>)}</View>
+      <LineChart points={activeMetric.points} metric={metric} selectedDate={selectedPointDate} onSelect={setSelectedPointDate} designMode={designMode} />
+      <View style={[styles.chartFooter, { borderTopColor: theme.colors.border }]}><Text style={[styles.chartFooterText, { color: theme.colors.secondaryText }]}>平均 {formatMetricAverage(metric, activeMetric.average)}</Text><Text style={[styles.chartFooterText, { color: theme.colors.secondaryText }]}>{formatComparison(metric, activeMetric.average, activeMetric.previousAverage)}</Text></View>
+    </DashboardCard>
+
+    <DashboardCard designMode={designMode}>
+      <Text style={[styles.dashboardTitle, { color: theme.colors.primaryText }]}>行動率</Text>
+      <View style={styles.rateRow}>{dashboard.rates.map((rate) => <ProgressRing key={rate.id} rate={rate} designMode={designMode} />)}</View>
+    </DashboardCard>
+
+    <DashboardCard designMode={designMode}>
+      <Text style={[styles.dashboardTitle, { color: theme.colors.primaryText }]}>通知後の行動</Text>
+      {dashboard.notificationResponses.total === 0 ? <Text style={[styles.emptyDashboardCopy, { color: theme.colors.secondaryText }]}>この期間の通知記録はまだありません</Text> : <>
+        <View style={styles.stackedBar}>{([['completed', '完了', theme.colors.success], ['later', 'あとで', theme.colors.primaryAccent], ['noResponse', '反応なし', isDark ? '#536077' : '#C6CDD9']] as const).map(([id, label, color]) => {
+          const count = dashboard.notificationResponses[id];
+          if (!count) return null;
+          return <View key={id} style={{ flex: count, backgroundColor: color }} />;
+        })}</View>
+        <View style={styles.legendRow}>{([['completed', '完了', theme.colors.success], ['later', 'あとで', theme.colors.primaryAccent], ['noResponse', '反応なし', isDark ? '#536077' : '#C6CDD9']] as const).map(([id, label, color]) => <View key={id} style={styles.legendItem}><View style={[styles.legendDot, { backgroundColor: color }]} /><Text style={[styles.legendText, { color: theme.colors.secondaryText }]}>{label} {dashboard.notificationResponses[id]}件</Text></View>)}</View>
+        <Text style={[styles.dashboardCaption, { color: theme.colors.secondaryText }]}>同じ通知への複数操作は、最初の操作だけを集計しています</Text>
+      </>}
+    </DashboardCard>
+
+    <DashboardCard designMode={designMode}>
+      <View style={styles.cardTitleRow}><View><Text style={[styles.dashboardTitle, { color: theme.colors.primaryText }]}>曜日・時間帯別の傾向</Text><Text style={[styles.dashboardCaption, { color: theme.colors.secondaryText }]}>出発記録をもとに表示します</Text></View><View style={styles.conditionSwitch}>{([['weekday', '曜日'], ['timeOfDay', '時間帯']] as [InsightConditionView, string][]).map(([id, label]) => <Pressable key={id} onPress={() => setConditionView(id)} style={[styles.conditionSwitchButton, conditionView === id && { backgroundColor: theme.colors.primaryAccent }]}><Text style={[styles.conditionSwitchText, { color: conditionView === id ? '#FFFFFF' : theme.colors.secondaryText }]}>{label}</Text></Pressable>)}</View></View>
+      <ConditionChart data={conditionData} designMode={designMode} />
+      <Text style={[styles.dashboardCaption, { color: theme.colors.secondaryText }]}>記録が少ない曜日・時間帯は、傾向として断定しません</Text>
+    </DashboardCard>
+
+    <RoutineResumePanel events={events} tasks={tasks} designMode={designMode} />
+
+    {dashboard.suggestion && <DashboardCard designMode={designMode} style={[styles.suggestionCard, { borderColor: theme.colors.primaryAccent }]}>
+      <Text style={[styles.dashboardKicker, { color: theme.colors.primaryAccent }]}>Rhythmからの提案</Text>
+      <Text style={[styles.suggestionTitle, { color: theme.colors.primaryText }]}>{dashboard.suggestion.title}</Text>
+      <Text style={[styles.dashboardCaption, { color: theme.colors.secondaryText }]}>{dashboard.suggestion.reason}</Text>
+      <View style={styles.suggestionValues}><View><Text style={[styles.suggestionValueLabel, { color: theme.colors.secondaryText }]}>現在</Text><Text style={[styles.suggestionValue, { color: theme.colors.primaryText }]}>{dashboard.suggestion.currentValue}</Text></View><Text style={[styles.suggestionArrow, { color: theme.colors.primaryAccent }]}>→</Text><View><Text style={[styles.suggestionValueLabel, { color: theme.colors.secondaryText }]}>変更後</Text><Text style={[styles.suggestionValue, { color: theme.colors.primaryAccent }]}>{dashboard.suggestion.nextValue}</Text></View></View>
+      <Pressable onPress={() => setSuggestionOpen(true)} style={[styles.applySuggestionButton, { backgroundColor: theme.colors.primaryAccent }]}><Text style={styles.applySuggestionText}>設定へ反映</Text></Pressable>
+    </DashboardCard>}
+
+    <Modal visible={suggestionOpen} transparent animationType="fade" onRequestClose={() => setSuggestionOpen(false)}>
+      <View style={styles.suggestionModalBackdrop}><View style={[styles.suggestionModal, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
+        <Text style={[styles.suggestionModalTitle, { color: theme.colors.primaryText }]}>変更内容を確認</Text>
+        <Text style={[styles.suggestionModalCopy, { color: theme.colors.secondaryText }]}>{dashboard.suggestion ? `${dashboard.suggestion.currentValue}から${dashboard.suggestion.nextValue}へ変更します。` : ''}</Text>
+        <View style={styles.suggestionModalButtons}><Pressable onPress={() => setSuggestionOpen(false)} style={[styles.suggestionModalButton, { borderColor: theme.colors.border }]}><Text style={[styles.suggestionModalButtonText, { color: theme.colors.secondaryText }]}>キャンセル</Text></Pressable><Pressable onPress={() => { if (dashboard.suggestion) onApplySuggestion(dashboard.suggestion); setSuggestionOpen(false); }} style={[styles.suggestionModalButton, { backgroundColor: theme.colors.primaryAccent, borderColor: theme.colors.primaryAccent }]}><Text style={styles.suggestionModalButtonPrimary}>変更する</Text></Pressable></View>
+      </View></View>
+    </Modal>
+  </View>;
+}
+
 export function AnalysisScreen({
   events,
   tasks,
@@ -350,6 +448,8 @@ export function AnalysisScreen({
   planTier,
   recordContent,
   onPremium,
+  departurePlans,
+  onApplySuggestion,
 }: {
   events: BehaviorEvent[];
   tasks: Task[];
@@ -358,13 +458,10 @@ export function AnalysisScreen({
   planTier: PlanTier;
   recordContent: ReactNode;
   onPremium: (featureId?: PremiumGuideFeatureId) => void;
+  departurePlans: DeparturePlan[];
+  onApplySuggestion: (suggestion: InsightSuggestion) => void;
 }) {
   const [tab, setTab] = useState<AnalysisTab>('records');
-  const preparation = useMemo(() => analyzePreparationStartDelay(events), [events]);
-  const departure = useMemo(() => analyzeDepartureDelay(events), [events]);
-  const notification = useMemo(() => analyzeNotificationResponse(events), [events]);
-  const focus = useMemo(() => analyzeFocusDuration(events), [events]);
-  const snooze = useMemo(() => analyzeSnoozeBehavior(events), [events]);
   const departureActivity = useMemo(() => {
     const preparationEvents = events.filter((item) => item.type === 'departure_preparation_started');
     const departureEvents = events.filter((item) => item.type === 'departure_started');
@@ -414,24 +511,7 @@ export function AnalysisScreen({
       ) : tab === 'insights' && !premium ? (
         <PremiumGate dark={designMode === 'dark'} onPremium={() => onPremium('time')} />
       ) : tab === 'insights' ? (
-        <>
-          <Text style={[styles.sectionTitle, designMode === 'dark' && styles.darkMetricText]}>時間のズレ</Text>
-          <Text style={[styles.sectionCopy, designMode === 'dark' && styles.darkSecondaryText]}>準備や出発のズレを見やすく表示します</Text>
-          <View style={styles.grid}>
-            <MetricCard title="準備開始" value={preparation.averageMinutes === undefined ? undefined : `${Math.abs(preparation.averageMinutes)}分${preparation.averageMinutes > 2 ? '遅め' : preparation.averageMinutes < -2 ? '早め' : 'ほぼ同じ'}`} result={preparation} designMode={designMode} />
-            <MetricCard title="出発" value={departure.averageMinutes === undefined ? undefined : `${Math.abs(departure.averageMinutes)}分${departure.averageMinutes > 2 ? '遅め' : departure.averageMinutes < -2 ? '早め' : 'ほぼ同じ'}`} result={departure} designMode={designMode} />
-            <MetricCard title="通知反応" value={notification.averageMinutes === undefined ? undefined : `平均 ${Math.max(0, notification.averageMinutes)}分`} result={notification} designMode={designMode} />
-            <MetricCard title="集中" value={focus.averageMinutes === undefined ? undefined : `平均 ${focus.averageMinutes}分`} result={focus} designMode={designMode} />
-          </View>
-          <Text style={[styles.sectionTitle, { marginTop: 22 }, designMode === 'dark' && styles.darkMetricText]}>最近の行動</Text>
-          <View style={styles.behaviorList}>
-            <MetricCard title="動き始め" result={notification} designMode={designMode} />
-            <MetricCard title="出発" value={departure.sampleCount ? `${departure.sampleCount}件中${departure.lateCount}件が遅め` : undefined} result={departure} designMode={designMode} />
-            <MetricCard title="集中" result={focus} designMode={designMode} />
-            <MetricCard title="通知の反応" value={snooze.summary} result={snooze} designMode={designMode} />
-          </View>
-          <RoutineResumePanel events={events} tasks={tasks} designMode={designMode} />
-        </>
+        <InsightDashboardView events={events} tasks={tasks} plans={departurePlans} designMode={designMode} onApplySuggestion={onApplySuggestion} />
       ) : tab === 'routine' ? (
         <RoutineProgressPanel events={events} tasks={tasks} designMode={designMode} onRemoveRoutine={onRemoveRoutine} />
       ) : null}
@@ -440,17 +520,6 @@ export function AnalysisScreen({
 }
 
 const styles = StyleSheet.create({
-  hero: { padding: 18, marginBottom: 14, backgroundColor: '#F4F0FF', borderRadius: 22, position: 'relative', overflow: 'hidden' },
-  analysisBowRibbon: { position: 'absolute', right: 6, top: 2, width: 108, height: 86, zIndex: 3 },
-  analysisFrameRibbon: { position: 'absolute', left: 6, right: 6, top: 6, bottom: 6, zIndex: 3 },
-  heroMinimal: { borderRadius: 16, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#DCE2EC' },
-  heroChic: { backgroundColor: '#FCE9EF', borderWidth: 1, borderColor: '#F2CAD7' },
-  kicker: { color: '#80798B', fontSize: 10, fontWeight: '800', letterSpacing: 1 },
-  kickerMinimal: { color: '#4F6FED' },
-  title: { color: '#292530', fontSize: 28, fontWeight: '900', marginTop: 5 },
-  titleMinimal: { color: '#182235' },
-  heroCopy: { color: '#6F6878', fontSize: 12, marginTop: 7, lineHeight: 19 },
-  heroCopyMinimal: { color: '#68748A' },
   tabs: { flexDirection: 'row', gap: 7, marginBottom: 20 },
   tab: { flex: 1, paddingVertical: 11, backgroundColor: '#EEEAF0', borderRadius: 12, alignItems: 'center' },
   tabDark: { backgroundColor: '#181F2E', borderColor: '#303B50', borderWidth: 1 },
@@ -461,8 +530,6 @@ const styles = StyleSheet.create({
   tabTextActiveDark: { color: '#FFFFFF' },
   sectionTitle: { color: '#292530', fontSize: 21, fontWeight: '900' },
   sectionCopy: { color: '#797280', fontSize: 12, lineHeight: 18, marginTop: 5, marginBottom: 14 },
-  grid: { gap: 10 },
-  behaviorList: { gap: 10 },
   routineCard: { padding: 18, borderRadius: 18, borderWidth: 1, borderColor: '#E5DFEC', backgroundColor: '#FFF', },
   routineCardDark: { backgroundColor: '#181F2E', borderColor: '#303B50' },
   routineTaskGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
@@ -472,9 +539,6 @@ const styles = StyleSheet.create({
   routineDotDark: { borderColor: '#65738D' },
   routineDotFuture: { opacity: 0.35 },
   routineDotToday: { borderWidth: 2 },
-  routineDotActive: { backgroundColor: '#7559E8', borderColor: '#7559E8' },
-  routineDotActiveDark: { backgroundColor: '#6F8DFF', borderColor: '#6F8DFF' },
-  routineDotText: { color: '#FFF', fontSize: 11, fontWeight: '900' },
   routineDayLabel: { color: '#817A88', fontSize: 7, fontWeight: '700' },
   routineTaskRow: { width: '48%', borderWidth: 1, borderColor: '#ECE8F0', borderRadius: 10, padding: 9, backgroundColor: '#FFFFFF' },
   routineTaskRowDark: { backgroundColor: '#20293A', borderColor: '#303B50' },
@@ -488,11 +552,75 @@ const styles = StyleSheet.create({
   routineRemoveTextDark: { color: '#FF8F9C' },
   routineStreak: { color: '#817A88', fontSize: 9, fontWeight: '800', marginTop: 7 },
   routineStreakDark: { color: '#B4C0D4' },
-  routineDotTextInactive: { color: 'transparent' },
-  routineSummary: { flexDirection: 'row', justifyContent: 'space-between', borderTopWidth: 1, borderTopColor: '#ECE8F0', marginTop: 16, paddingTop: 14 },
-  routineSummaryValue: { color: '#292530', fontSize: 20, fontWeight: '900' },
-  routineSummaryUnit: { color: '#817A88', fontSize: 11, fontWeight: '700' },
-  routineSummaryLabel: { color: '#817A88', fontSize: 9, fontWeight: '700', marginTop: 2 },
+  activityCard: { padding: 16, marginBottom: 14, borderRadius: 18, borderWidth: 1, backgroundColor: '#FFF' },
+  activityCardDark: { backgroundColor: '#181F2E' },
+  activityTitle: { color: '#292530', fontSize: 15, fontWeight: '900', marginBottom: 12 },
+  activityRow: { flexDirection: 'row', alignItems: 'center', gap: 14 },
+  activityMetric: { minWidth: 62 },
+  activityValue: { fontSize: 25, fontWeight: '900' },
+  activityLabel: { color: '#756F7C', fontSize: 11, fontWeight: '800', marginTop: 2 },
+  activityLabelDark: { color: '#B4C0D4' },
+  activityLatest: { flex: 1, borderLeftWidth: 1, borderLeftColor: '#E5E0E8', paddingLeft: 14 },
+  activityLatestDark: { borderLeftColor: '#303B50' },
+  activityLatestLabel: { color: '#938C98', fontSize: 10, fontWeight: '800' },
+  activityLatestLabelDark: { color: '#B4C0D4' },
+  activityLatestValue: { color: '#3C3741', fontSize: 12, fontWeight: '800', marginTop: 4 },
+  darkMetricText: { color: '#F4F7FC' },
+  darkSecondaryText: { color: '#B4C0D4' },
+  darkMutedMetricText: { color: '#8F9BB0' },
+  dashboard: { gap: 12, paddingBottom: 18 },
+  dashboardCard: { borderWidth: 1, borderRadius: 18, padding: 16, overflow: 'hidden' },
+  dashboardCardDark: { backgroundColor: '#181F2E', borderColor: '#303B50' },
+  rangeControl: { flexDirection: 'row', gap: 4, borderWidth: 1, borderRadius: 14, padding: 4 },
+  rangeButton: { flex: 1, minHeight: 34, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
+  rangeButtonText: { fontSize: 12, fontWeight: '900' },
+  dashboardRangeLabel: { fontSize: 11, fontWeight: '700', marginTop: -5 },
+  cardTitleRow: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10 },
+  dashboardKicker: { fontSize: 11, fontWeight: '900', letterSpacing: 0.8 },
+  dashboardTitle: { fontSize: 17, fontWeight: '900' },
+  dashboardCaption: { fontSize: 11, fontWeight: '700', lineHeight: 17, marginTop: 4 },
+  trendStatus: { paddingHorizontal: 9, paddingVertical: 5, borderRadius: 999 },
+  trendStatusText: { fontSize: 10, fontWeight: '900' },
+  trendMessage: { fontSize: 20, fontWeight: '900', lineHeight: 29, marginTop: 10 },
+  metricAverage: { fontSize: 14, fontWeight: '900', marginTop: 3 },
+  metricSwitcher: { flexDirection: 'row', gap: 6, marginTop: 15, marginBottom: 12 },
+  metricSwitch: { flex: 1, minHeight: 32, borderRadius: 10, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
+  metricSwitchText: { fontSize: 11, fontWeight: '900' },
+  chartArea: { borderWidth: 1, borderRadius: 14, overflow: 'hidden', paddingTop: 3 },
+  chartDates: { flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 13, paddingBottom: 8, marginTop: -11 },
+  chartDate: { fontSize: 10, fontWeight: '700' },
+  chartEmpty: { minHeight: 148, borderWidth: 1, borderRadius: 14, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 24 },
+  chartEmptyText: { fontSize: 12, fontWeight: '700', textAlign: 'center', lineHeight: 19 },
+  selectedPoint: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderWidth: 1, borderRadius: 11, paddingHorizontal: 11, paddingVertical: 9, marginTop: 9 },
+  selectedPointLabel: { fontSize: 10, fontWeight: '800' },
+  selectedPointValue: { fontSize: 12, fontWeight: '900' },
+  pointSelector: { gap: 6, paddingTop: 9 },
+  pointChip: { borderWidth: 1, borderRadius: 9, paddingHorizontal: 9, paddingVertical: 6 },
+  pointChipText: { fontSize: 10, fontWeight: '800' },
+  pointChipTextActive: { color: '#FFFFFF' },
+  chartFooter: { flexDirection: 'row', justifyContent: 'space-between', gap: 8, borderTopWidth: 1, marginTop: 13, paddingTop: 11 },
+  chartFooterText: { flex: 1, fontSize: 10, fontWeight: '800', lineHeight: 15 },
+  rateRow: { flexDirection: 'row', justifyContent: 'space-between', gap: 4, marginTop: 14 },
+  rateItem: { flex: 1, alignItems: 'center', minWidth: 0 },
+  ringWrap: { width: 72, height: 72, alignItems: 'center', justifyContent: 'center' },
+  ringValue: { position: 'absolute', fontSize: 13, fontWeight: '900' },
+  rateLabel: { fontSize: 10, fontWeight: '900', textAlign: 'center', marginTop: 7 },
+  rateDetail: { fontSize: 9, fontWeight: '700', textAlign: 'center', marginTop: 3 },
+  emptyDashboardCopy: { fontSize: 12, fontWeight: '700', lineHeight: 19, marginTop: 13 },
+  stackedBar: { height: 18, flexDirection: 'row', overflow: 'hidden', borderRadius: 9, marginTop: 15 },
+  legendRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 12 },
+  legendItem: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  legendDot: { width: 8, height: 8, borderRadius: 4 },
+  legendText: { fontSize: 10, fontWeight: '800' },
+  conditionSwitch: { flexDirection: 'row', borderRadius: 10, overflow: 'hidden' },
+  conditionSwitchButton: { paddingHorizontal: 8, paddingVertical: 6 },
+  conditionSwitchText: { fontSize: 10, fontWeight: '900' },
+  conditionChart: { flexDirection: 'row', justifyContent: 'space-between', gap: 4, marginTop: 16 },
+  conditionItem: { flex: 1, alignItems: 'center', minWidth: 0 },
+  conditionRail: { height: 78, width: 21, borderRadius: 10, borderWidth: 1, justifyContent: 'flex-end', overflow: 'hidden' },
+  conditionFill: { width: '100%', minHeight: 0, borderRadius: 9 },
+  conditionLabel: { fontSize: 11, fontWeight: '900', marginTop: 7 },
+  conditionMeta: { fontSize: 8, lineHeight: 12, fontWeight: '700', textAlign: 'center', marginTop: 2 },
   routineResumeList: { gap: 10 },
   routineResumeCard: { padding: 15, borderRadius: 16, borderWidth: 1, borderColor: '#E5DFEC', backgroundColor: '#FFFFFF' },
   routineResumeCardDark: { backgroundColor: '#181F2E', borderColor: '#303B50' },
@@ -508,38 +636,22 @@ const styles = StyleSheet.create({
   routineResumeFactLabel: { color: '#817A88', fontSize: 9, fontWeight: '800' },
   routineResumeFactValue: { color: '#38323F', fontSize: 12, fontWeight: '900', marginTop: 4 },
   routineResumeStats: { color: '#756F7C', fontSize: 10, fontWeight: '800', marginTop: 8 },
-  activityCard: { padding: 16, marginBottom: 14, borderRadius: 18, borderWidth: 1, backgroundColor: '#FFF' },
-  activityCardDark: { backgroundColor: '#181F2E' },
-  activityTitle: { color: '#292530', fontSize: 15, fontWeight: '900', marginBottom: 12 },
-  activityRow: { flexDirection: 'row', alignItems: 'center', gap: 14 },
-  activityMetric: { minWidth: 62 },
-  activityValue: { fontSize: 25, fontWeight: '900' },
-  activityLabel: { color: '#756F7C', fontSize: 11, fontWeight: '800', marginTop: 2 },
-  activityLabelDark: { color: '#B4C0D4' },
-  activityLatest: { flex: 1, borderLeftWidth: 1, borderLeftColor: '#E5E0E8', paddingLeft: 14 },
-  activityLatestDark: { borderLeftColor: '#303B50' },
-  activityLatestLabel: { color: '#938C98', fontSize: 10, fontWeight: '800' },
-  activityLatestLabelDark: { color: '#B4C0D4' },
-  activityLatestValue: { color: '#3C3741', fontSize: 12, fontWeight: '800', marginTop: 4 },
-  metricCard: { padding: 17, borderRadius: 18, borderWidth: 1, backgroundColor: '#FFF' },
-  metricMinimal: { borderRadius: 1, borderColor: '#222', borderLeftWidth: 5 },
-  metricCardDark: { backgroundColor: '#181F2E', borderColor: '#303B50', borderLeftColor: '#8EA6FF' },
-  metricChic: { backgroundColor: 'rgba(255,255,255,0.84)' },
-  metricLabel: { color: '#756F7C', fontSize: 11, fontWeight: '900' },
-  metricValue: { fontSize: 25, fontWeight: '900', marginTop: 8 },
-  metricSummary: { color: '#5E5864', fontSize: 12, marginTop: 5 },
-  darkMetricText: { color: '#F4F7FC' },
-  darkSecondaryText: { color: '#B4C0D4' },
-  darkMutedMetricText: { color: '#8F9BB0' },
-  darkMetricValue: { color: '#F4F7FC' },
-  sample: { color: '#938C98', fontSize: 10, fontWeight: '700', marginTop: 9 },
-  dataState: { paddingVertical: 8 },
-  dataStateDark: { backgroundColor: '#20293A', borderColor: '#303B50', borderWidth: 1, borderRadius: 10, paddingHorizontal: 10 },
-  dataStateTitle: { color: '#3C3741', fontSize: 16, fontWeight: '900' },
-  dataStateCopy: { color: '#7D7684', fontSize: 11, lineHeight: 17, marginTop: 4 },
-  early: { marginTop: 8, padding: 10, backgroundColor: '#F8F3E8', borderRadius: 10 },
-  earlyDark: { backgroundColor: '#20293A', borderColor: '#303B50', borderWidth: 1 },
-  earlyTitle: { color: '#6E5932', fontSize: 14, fontWeight: '900' },
+  suggestionCard: { borderWidth: 2 },
+  suggestionTitle: { fontSize: 18, fontWeight: '900', marginTop: 8 },
+  suggestionValues: { flexDirection: 'row', alignItems: 'center', gap: 16, marginTop: 15 },
+  suggestionValueLabel: { fontSize: 10, fontWeight: '800' },
+  suggestionValue: { fontSize: 17, fontWeight: '900', marginTop: 2 },
+  suggestionArrow: { fontSize: 19, fontWeight: '900' },
+  applySuggestionButton: { minHeight: 43, borderRadius: 12, alignItems: 'center', justifyContent: 'center', marginTop: 16 },
+  applySuggestionText: { color: '#FFFFFF', fontWeight: '900', fontSize: 13 },
+  suggestionModalBackdrop: { flex: 1, backgroundColor: 'rgba(8, 13, 25, 0.48)', alignItems: 'center', justifyContent: 'center', padding: 24 },
+  suggestionModal: { width: '100%', maxWidth: 360, borderWidth: 1, borderRadius: 20, padding: 20 },
+  suggestionModalTitle: { fontSize: 19, fontWeight: '900' },
+  suggestionModalCopy: { fontSize: 13, lineHeight: 20, marginTop: 9 },
+  suggestionModalButtons: { flexDirection: 'row', gap: 8, marginTop: 20 },
+  suggestionModalButton: { flex: 1, minHeight: 43, borderWidth: 1, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+  suggestionModalButtonText: { fontSize: 13, fontWeight: '900' },
+  suggestionModalButtonPrimary: { color: '#FFFFFF', fontSize: 13, fontWeight: '900' },
   premiumGate: { alignItems: 'center', backgroundColor: '#25202C', borderRadius: 22, padding: 25 },
   premiumGateDark: { backgroundColor: '#181F2E', borderWidth: 1, borderColor: '#40506A' },
   premiumLock: { color: '#F5D78B', fontSize: 28 },

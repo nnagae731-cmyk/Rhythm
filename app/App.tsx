@@ -1673,6 +1673,20 @@ export default function App() {
               designMode={uiDesignMode}
               planTier={planTier}
               onPremium={openPremiumFeature}
+              departurePlans={departurePlans}
+              onApplySuggestion={(suggestion) => {
+                const nextPlans = departurePlansRef.current.map((item) => item.id === suggestion.planId ? { ...item, preparationMinutes: suggestion.nextPreparationMinutes } : item);
+                const updatedPlan = nextPlans.find((item) => item.id === suggestion.planId);
+                departurePlansRef.current = nextPlans;
+                setDeparturePlans(nextPlans);
+                setPlan((current) => current.id === suggestion.planId ? { ...current, preparationMinutes: suggestion.nextPreparationMinutes } : current);
+                if (updatedPlan?.id) {
+                  void (async () => {
+                    await cancelPendingDepartureNotifications(updatedPlan.id!);
+                    if (updatedPlan.countdownEnabled !== false) await scheduleDeparture(updatedPlan);
+                  })();
+                }
+              }}
               onRemoveRoutine={(taskId) => Alert.alert('ルーティンから外しますか？', 'タスク自体と完了履歴は残ります。', [{ text: 'キャンセル', style: 'cancel' }, { text: 'ルーティンから外す', style: 'destructive', onPress: () => {
                 const target = tasksRef.current.find((task) => task.id === taskId);
                 if (!target) return;
