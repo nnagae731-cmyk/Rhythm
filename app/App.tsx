@@ -2296,13 +2296,13 @@ function ChicPatternDecor({ pattern, accent, warm, density = 'regular', checkCol
   </View>;
 }
 
-function CompactNumberSetting({ label, value, onChange }: { label: string; value: number; onChange: (value: number) => void }) {
-  return <View style={styles.compactSetting}>
-    <Text style={styles.compactLabel}>{label}</Text>
+function CompactNumberSetting({ label, value, onChange, isDark = false }: { label: string; value: number; onChange: (value: number) => void; isDark?: boolean }) {
+  return <View style={[styles.compactSetting, isDark && styles.compactSettingDark]}>
+    <Text style={[styles.compactLabel, isDark && styles.compactLabelDark]}>{label}</Text>
     <View style={styles.compactControls}>
-      <Pressable onPress={() => onChange(Math.max(0, value - 5))}><Text style={styles.compactStep}>−</Text></Pressable>
-      <Text style={styles.compactValue}>{value}分</Text>
-      <Pressable onPress={() => onChange(value + 5)}><Text style={styles.compactStep}>＋</Text></Pressable>
+      <Pressable onPress={() => onChange(Math.max(0, value - 5))}><Text style={[styles.compactStep, isDark && styles.compactStepDark]}>−</Text></Pressable>
+      <Text style={[styles.compactValue, isDark && styles.compactValueDark]}>{value}分</Text>
+      <Pressable onPress={() => onChange(value + 5)}><Text style={[styles.compactStep, isDark && styles.compactStepDark]}>＋</Text></Pressable>
     </View>
   </View>;
 }

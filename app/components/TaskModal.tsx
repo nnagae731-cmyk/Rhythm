@@ -11,6 +11,7 @@ export function TaskModal({ visible, task, templates, savedTemplates, designMode
   const { getThemeTokens, todayInputValue, hasPremiumAccess, dateForReminder, dateKey, formatLiveTime, colors, summarizePremiumTaskTemplate } = helpers;
   const { CompactNumberSetting } = components;
   const theme = getThemeTokens(designMode);
+  const isDark = designMode === 'dark';
   const [title, setTitle] = useState('');
   const [remind, setRemind] = useState(false);
   const [time, setTime] = useState('09:00');
@@ -95,12 +96,49 @@ export function TaskModal({ visible, task, templates, savedTemplates, designMode
     setDeadlineNotify(false);
   };
 
+  const closeForm = () => {
+    setShowScheduledDatePicker(false);
+    setShowScheduledTimePicker(false);
+    setShowDeadlineDatePicker(false);
+    setShowDeadlineTimePicker(false);
+    setHasDeadline(false);
+    onClose();
+  };
+
+  const toggleScheduledDatePicker = () => {
+    setShowScheduledTimePicker(false);
+    setShowDeadlineDatePicker(false);
+    setShowDeadlineTimePicker(false);
+    setShowScheduledDatePicker((value) => !value);
+  };
+
+  const toggleScheduledTimePicker = () => {
+    setShowScheduledDatePicker(false);
+    setShowDeadlineDatePicker(false);
+    setShowDeadlineTimePicker(false);
+    setShowScheduledTimePicker((value) => !value);
+  };
+
+  const toggleDeadlineDatePicker = () => {
+    setShowScheduledDatePicker(false);
+    setShowScheduledTimePicker(false);
+    setShowDeadlineTimePicker(false);
+    setShowDeadlineDatePicker((value) => !value);
+  };
+
+  const toggleDeadlineTimePicker = () => {
+    setShowScheduledDatePicker(false);
+    setShowScheduledTimePicker(false);
+    setShowDeadlineDatePicker(false);
+    setShowDeadlineTimePicker((value) => !value);
+  };
+
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={closeForm}>
       <KeyboardAvoidingView style={styles.keyboardView} behavior={Platform.OS === 'ios' ? 'padding' : 'height'} keyboardVerticalOffset={8}>
-      <Pressable style={styles.modalBackdrop} onPress={onClose}>
+      <Pressable style={styles.modalBackdrop} onPress={closeForm}>
         <Pressable style={[styles.modalSheet, { backgroundColor: theme.colors.screenBackground, borderRadius: theme.radius.modal }]} onPress={(event) => event.stopPropagation()}>
-          <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false} contentContainerStyle={styles.modalScroll}>
+          <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false} contentContainerStyle={[styles.modalScroll, isDark && styles.taskModalScrollDark]}>
           <View style={styles.modalHandle} />
           <Text style={[styles.modalTitle, designMode === 'dark' && styles.modalTitleDark]}>{task ? 'タスクを編集' : '新しいタスク'}</Text>
           {!task && templates.length > 0 && <><Text style={styles.templateGroupLabel}>クイックひな型</Text><ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.taskTemplates}>{templates.map((item) => <Pressable key={item} style={styles.taskTemplateChip} onPress={() => setTitle(item)}><Text style={styles.taskTemplateText}>＋ {item}</Text></Pressable>)}</ScrollView></>}
@@ -137,11 +175,11 @@ export function TaskModal({ visible, task, templates, savedTemplates, designMode
           <View style={styles.taskDateQuickRow}>
             <Pressable style={[styles.taskDateQuick, designMode === 'dark' && styles.quickDateButtonDark]} onPress={() => setScheduledDate(todayInputValue())}><Text style={[styles.taskDateQuickText, designMode === 'dark' && styles.quickDateTextDark]}>今日</Text></Pressable>
             <Pressable style={[styles.taskDateQuick, designMode === 'dark' && styles.quickDateButtonDark]} onPress={() => setScheduledDate(todayInputValue(1))}><Text style={[styles.taskDateQuickText, designMode === 'dark' && styles.quickDateTextDark]}>明日</Text></Pressable>
-            <Pressable style={[styles.taskDatePickerButton, designMode === 'dark' && styles.pickerButtonDark]} onPress={() => setShowScheduledDatePicker((value) => !value)}><Text style={[styles.taskDatePickerText, designMode === 'dark' && styles.pickerButtonTextDark]}>▣ {scheduledDate}</Text></Pressable>
+            <Pressable style={[styles.taskDatePickerButton, isDark && styles.pickerButtonDark]} onPress={toggleScheduledDatePicker}><Text style={[styles.taskDatePickerText, isDark && styles.pickerButtonTextDark]}>▣ {scheduledDate}</Text></Pressable>
           </View>
-          {showScheduledDatePicker && <DateTimePicker value={dateForReminder(scheduledDate, '12:00')} mode="date" minimumDate={new Date()} display={Platform.OS === 'ios' ? 'inline' : 'default'} onChange={(event: DateTimePickerEvent, selected) => { if (Platform.OS !== 'ios') setShowScheduledDatePicker(false); if (event.type === 'set' && selected) setScheduledDate(dateKey(selected)); }} />}
-          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 10 }}><View><Text style={styles.fieldLabel}>実行する時間（任意）</Text><Text style={styles.switchCopy}>指定したタスクだけスケジュールに表示</Text></View><Pressable style={[styles.taskDatePickerButton, { minWidth: 115 }]} onPress={() => setShowScheduledTimePicker((value) => !value)}><Text style={styles.taskDatePickerText}>{scheduledTime || '時間を指定'}</Text></Pressable></View>
-          {showScheduledTimePicker && <DateTimePicker value={dateForReminder(scheduledDate, scheduledTime || '09:00')} mode="time" display={Platform.OS === 'ios' ? 'spinner' : 'default'} onChange={(event: DateTimePickerEvent, selected) => { if (Platform.OS !== 'ios') setShowScheduledTimePicker(false); if (event.type === 'set' && selected) { setScheduledTime(formatLiveTime(selected)); setShowScheduledTimePicker(false); } }} />}
+          {showScheduledDatePicker && <DateTimePicker value={dateForReminder(scheduledDate, '12:00')} mode="date" minimumDate={new Date()} display={Platform.OS === 'ios' ? 'inline' : 'default'} themeVariant={isDark ? 'dark' : undefined} textColor={isDark ? '#F4F7FC' : undefined} accentColor={isDark ? '#8EA6FF' : undefined} onChange={(event: DateTimePickerEvent, selected) => { if (Platform.OS !== 'ios') setShowScheduledDatePicker(false); if (event.type === 'set' && selected) setScheduledDate(dateKey(selected)); }} />}
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 10 }}><View><Text style={[styles.fieldLabel, isDark && styles.fieldLabelDark]}>実行する時間（任意）</Text><Text style={[styles.switchCopy, isDark && styles.switchCopyDark]}>指定したタスクだけスケジュールに表示</Text></View><Pressable style={[styles.taskDatePickerButton, { minWidth: 115 }, isDark && styles.pickerButtonDark]} onPress={toggleScheduledTimePicker}><Text style={[styles.taskDatePickerText, isDark && styles.pickerButtonTextDark]}>{scheduledTime || '時間を指定'}</Text></Pressable></View>
+          {showScheduledTimePicker && <DateTimePicker value={dateForReminder(scheduledDate, scheduledTime || '09:00')} mode="time" display={Platform.OS === 'ios' ? 'spinner' : 'default'} themeVariant={isDark ? 'dark' : undefined} textColor={isDark ? '#F4F7FC' : undefined} accentColor={isDark ? '#8EA6FF' : undefined} onChange={(event: DateTimePickerEvent, selected) => { if (Platform.OS !== 'ios') setShowScheduledTimePicker(false); if (event.type === 'set' && selected) { setScheduledTime(formatLiveTime(selected)); setShowScheduledTimePicker(false); } }} />}
           <Text style={[styles.fieldLabel, { marginTop: 17 }, designMode === 'dark' && styles.fieldLabelDark]}>繰り返し・ルーティン</Text>
           <View style={styles.repeatChoices}>
             {repeatOptions.map((option) => <Pressable key={option.id} style={[styles.repeatChoice, designMode === 'dark' && styles.repeatChoiceDark, { backgroundColor: designMode === 'dark' ? undefined : theme.colors.secondarySurface }, repeatRule === option.id && styles.repeatChoiceActive, repeatRule === option.id && designMode === 'dark' && styles.repeatChoiceActiveDark, repeatRule === option.id && designMode !== 'dark' && { backgroundColor: theme.colors.softAccent, borderColor: theme.colors.primaryAccent }]} onPress={() => setRepeatRule(option.id)}><Text style={[styles.repeatChoiceText, designMode === 'dark' && styles.repeatChoiceTextDark, repeatRule === option.id && styles.repeatChoiceTextActive, repeatRule === option.id && designMode === 'dark' && styles.repeatChoiceTextActiveDark]}>{option.label}</Text></Pressable>)}
@@ -150,59 +188,59 @@ export function TaskModal({ visible, task, templates, savedTemplates, designMode
           <View style={styles.switchRow}>
             <View>
               <Text style={[styles.switchTitle, designMode === 'dark' && styles.switchTitleDark]}>追加リマインド</Text>
-              <Text style={styles.switchCopy}>期限とは別の日時にも通知します</Text>
+              <Text style={[styles.switchCopy, isDark && styles.switchCopyDark]}>期限とは別の日時にも通知します</Text>
             </View>
             <Switch value={remind} onValueChange={setRemind} trackColor={{ true: colors.violet }} />
           </View>
           <View style={styles.switchRow}>
             <View>
               <Text style={[styles.switchTitle, designMode === 'dark' && styles.switchTitleDark]}>期限を設定</Text>
-              <Text style={styles.switchCopy}>残り時間と期限超過を表示します</Text>
+              <Text style={[styles.switchCopy, isDark && styles.switchCopyDark]}>残り時間と期限超過を表示します</Text>
             </View>
-            <Switch value={hasDeadline} onValueChange={setHasDeadline} trackColor={{ true: colors.coral }} />
+            <Switch value={hasDeadline} onValueChange={setHasDeadline} trackColor={{ true: isDark ? '#8EA6FF' : colors.coral }} />
           </View>
           {hasDeadline && (
-            <View style={styles.deadlinePanel}>
+            <View style={[styles.deadlinePanel, isDark && styles.deadlinePanelDark]}>
               <View style={styles.quickDates}>
-                <Pressable style={styles.quickDeadlineButton} onPress={() => setDeadlineDate(todayInputValue())}><Text style={styles.quickDeadlineText}>今日まで</Text></Pressable>
-                <Pressable style={styles.quickDeadlineButton} onPress={() => setDeadlineDate(todayInputValue(1))}><Text style={styles.quickDeadlineText}>明日まで</Text></Pressable>
-                <Pressable style={styles.quickDeadlineButton} onPress={() => setDeadlineDate(todayInputValue(7))}><Text style={styles.quickDeadlineText}>1週間後</Text></Pressable>
+                <Pressable style={[styles.quickDeadlineButton, isDark && styles.quickDeadlineButtonDark]} onPress={() => setDeadlineDate(todayInputValue())}><Text style={[styles.quickDeadlineText, isDark && styles.quickDeadlineTextDark]}>今日まで</Text></Pressable>
+                <Pressable style={[styles.quickDeadlineButton, isDark && styles.quickDeadlineButtonDark]} onPress={() => setDeadlineDate(todayInputValue(1))}><Text style={[styles.quickDeadlineText, isDark && styles.quickDeadlineTextDark]}>明日まで</Text></Pressable>
+                <Pressable style={[styles.quickDeadlineButton, isDark && styles.quickDeadlineButtonDark]} onPress={() => setDeadlineDate(todayInputValue(7))}><Text style={[styles.quickDeadlineText, isDark && styles.quickDeadlineTextDark]}>1週間後</Text></Pressable>
               </View>
-              <View style={styles.remindTimeRow}>
-                <Text style={[styles.numberLabel, designMode === 'dark' && styles.numberLabelDark]}>期限日</Text>
-                <Pressable style={[styles.pickerButton, designMode === 'dark' && styles.pickerButtonDark]} onPress={() => setShowDeadlineDatePicker((value) => !value)}><Text style={[styles.pickerButtonText, designMode === 'dark' && styles.pickerButtonTextDark]}>▣ {deadlineDate}</Text></Pressable>
+              <View style={[styles.remindTimeRow, isDark && styles.taskDateTimeRowDark]}>
+                <Text style={[styles.numberLabel, isDark && styles.numberLabelDark]}>期限日</Text>
+                <Pressable style={[styles.pickerButton, isDark && styles.pickerButtonDark]} onPress={toggleDeadlineDatePicker}><Text style={[styles.pickerButtonText, isDark && styles.pickerButtonTextDark]}>▣ {deadlineDate}</Text></Pressable>
               </View>
-              {showDeadlineDatePicker && <DateTimePicker value={dateForReminder(deadlineDate, deadlineTime)} mode="date" minimumDate={new Date()} display={Platform.OS === 'ios' ? 'inline' : 'default'} onChange={(event: DateTimePickerEvent, selected) => {
+              {showDeadlineDatePicker && <DateTimePicker value={dateForReminder(deadlineDate, deadlineTime)} mode="date" minimumDate={new Date()} display={Platform.OS === 'ios' ? 'inline' : 'default'} themeVariant={isDark ? 'dark' : undefined} textColor={isDark ? '#F4F7FC' : undefined} accentColor={isDark ? '#8EA6FF' : undefined} onChange={(event: DateTimePickerEvent, selected) => {
                 if (Platform.OS !== 'ios') setShowDeadlineDatePicker(false);
                 if (event.type === 'set' && selected) setDeadlineDate(dateKey(selected));
               }} />}
-              <View style={styles.remindTimeRow}>
-                <Text style={[styles.numberLabel, designMode === 'dark' && styles.numberLabelDark]}>リミット時刻</Text>
-                <Pressable style={[styles.pickerButton, designMode === 'dark' && styles.pickerButtonDark]} onPress={() => setShowDeadlineTimePicker((value) => !value)}><Text style={[styles.pickerButtonText, { color: designMode === 'dark' ? '#8EA6FF' : colors.coral }]}>◷ {deadlineTime}</Text></Pressable>
+              <View style={[styles.remindTimeRow, isDark && styles.taskDateTimeRowDark]}>
+                <Text style={[styles.numberLabel, isDark && styles.numberLabelDark]}>リミット時刻</Text>
+                <Pressable style={[styles.pickerButton, isDark && styles.pickerButtonDark]} onPress={toggleDeadlineTimePicker}><Text style={[styles.pickerButtonText, isDark ? styles.pickerButtonTextDark : { color: colors.coral }]}>◷ {deadlineTime}</Text></Pressable>
               </View>
-              {showDeadlineTimePicker && <DateTimePicker value={dateForReminder(deadlineDate, deadlineTime)} mode="time" display={Platform.OS === 'ios' ? 'spinner' : 'default'} onChange={(event: DateTimePickerEvent, selected) => {
+              {showDeadlineTimePicker && <DateTimePicker value={dateForReminder(deadlineDate, deadlineTime)} mode="time" display={Platform.OS === 'ios' ? 'spinner' : 'default'} themeVariant={isDark ? 'dark' : undefined} textColor={isDark ? '#F4F7FC' : undefined} accentColor={isDark ? '#8EA6FF' : undefined} onChange={(event: DateTimePickerEvent, selected) => {
                 if (Platform.OS !== 'ios') setShowDeadlineTimePicker(false);
                 if (event.type === 'set' && selected) setDeadlineTime(`${String(selected.getHours()).padStart(2, '0')}:${String(selected.getMinutes()).padStart(2, '0')}`);
               }} />}
-              <View style={styles.deadlineNotifyRow}>
-                <View><Text style={[styles.numberLabel, designMode === 'dark' && styles.numberLabelDark]}>期限前に通知</Text><Text style={[styles.switchCopy, designMode === 'dark' && styles.switchCopyDark]}>期限の設定と連動します</Text></View>
-                <Switch value={deadlineNotify} onValueChange={setDeadlineNotify} trackColor={{ true: colors.coral }} />
+              <View style={[styles.deadlineNotifyRow, isDark && styles.deadlineNotifyRowDark]}>
+                <View><Text style={[styles.numberLabel, isDark && styles.numberLabelDark]}>期限前に通知</Text><Text style={[styles.switchCopy, isDark && styles.switchCopyDark]}>期限の設定と連動します</Text></View>
+                <Switch value={deadlineNotify} onValueChange={setDeadlineNotify} trackColor={{ true: isDark ? '#8EA6FF' : colors.coral }} />
               </View>
               {deadlineNotify && <View style={styles.notifyChoices}>
                 {[0, 10, 30, 60, 1440].map((minutes) => (
-                  <Pressable key={minutes} style={[styles.notifyChoice, deadlineNotifyBefore === minutes && styles.notifyChoiceActive]} onPress={() => setDeadlineNotifyBefore(minutes)}>
-                    <Text style={[styles.notifyChoiceText, deadlineNotifyBefore === minutes && styles.notifyChoiceTextActive]}>{minutes === 0 ? '時刻通り' : minutes === 1440 ? '1日前' : minutes >= 60 ? `${minutes / 60}時間前` : `${minutes}分前`}</Text>
+                  <Pressable key={minutes} style={[styles.notifyChoice, isDark && styles.notifyChoiceDark, deadlineNotifyBefore === minutes && styles.notifyChoiceActive, deadlineNotifyBefore === minutes && isDark && styles.notifyChoiceActiveDark]} onPress={() => setDeadlineNotifyBefore(minutes)}>
+                    <Text style={[styles.notifyChoiceText, isDark && styles.notifyChoiceTextDark, deadlineNotifyBefore === minutes && styles.notifyChoiceTextActive, deadlineNotifyBefore === minutes && isDark && styles.notifyChoiceTextActiveDark]}>{minutes === 0 ? '時刻通り' : minutes === 1440 ? '1日前' : minutes >= 60 ? `${minutes / 60}時間前` : `${minutes}分前`}</Text>
                   </Pressable>
                 ))}
               </View>}
-              <View style={styles.deadlineNotifyRow}>
-                <View><Text style={[styles.numberLabel, designMode === 'dark' && styles.darkAccentText]}>間に合うナビ</Text><Text style={[styles.switchCopy, designMode === 'dark' && styles.darkAccentText]}>準備・移動時間から危険度を判定</Text></View>
+              <View style={[styles.deadlineNotifyRow, isDark && styles.deadlineNotifyRowDark]}>
+                <View><Text style={[styles.numberLabel, isDark && styles.darkAccentText]}>間に合うナビ</Text><Text style={[styles.switchCopy, isDark && styles.switchCopyDark]}>準備・移動時間から危険度を判定</Text></View>
                 <Switch value={navigationEnabled} onValueChange={setNavigationEnabled} trackColor={{ true: colors.violet }} />
               </View>
-              {navigationEnabled && <View style={styles.navigationDurations}>
-                <CompactNumberSetting label="準備" value={preparationMinutes} onChange={setPreparationMinutes} />
-                <CompactNumberSetting label="移動" value={travelMinutes} onChange={setTravelMinutes} />
-                <CompactNumberSetting label="余裕" value={bufferMinutes} onChange={setBufferMinutes} />
+              {navigationEnabled && <View style={[styles.navigationDurations, isDark && styles.navigationDurationsDark]}>
+                <CompactNumberSetting label="準備" value={preparationMinutes} onChange={setPreparationMinutes} isDark={isDark} />
+                <CompactNumberSetting label="移動" value={travelMinutes} onChange={setTravelMinutes} isDark={isDark} />
+                <CompactNumberSetting label="余裕" value={bufferMinutes} onChange={setBufferMinutes} isDark={isDark} />
               </View>}
             </View>
           )}
@@ -217,7 +255,7 @@ export function TaskModal({ visible, task, templates, savedTemplates, designMode
                 <TextInput style={styles.remindDateInput} value={remindDate} onChangeText={setRemindDate} maxLength={10} keyboardType="numbers-and-punctuation" selectionColor={colors.violet} />
               </View>
               <View style={styles.remindTimeRow}>
-                <Text style={styles.numberLabel}>時刻</Text>
+                <Text style={[styles.numberLabel, isDark && styles.numberLabelDark]}>時刻</Text>
                 <TextInput style={styles.remindTimeInput} value={time} onChangeText={setTime} maxLength={5} keyboardType="numbers-and-punctuation" selectionColor={colors.violet} />
               </View>
               <Text style={[styles.numberLabel, { marginTop: 13, marginBottom: 8 }, designMode === 'dark' && styles.numberLabelDark]}>通知スルー防止</Text>
@@ -227,7 +265,7 @@ export function TaskModal({ visible, task, templates, savedTemplates, designMode
             </View>
           )}
           <Pressable style={[styles.primaryButton, { backgroundColor: theme.colors.primaryAccent, borderRadius: theme.radius.button }]} onPress={save}><Text style={styles.primaryButtonText}>{task ? '変更を保存' : '登録する'}</Text></Pressable>
-          <Pressable onPress={onClose}><Text style={styles.cancelText}>キャンセル</Text></Pressable>
+          <Pressable onPress={closeForm}><Text style={styles.cancelText}>キャンセル</Text></Pressable>
           </ScrollView>
         </Pressable>
       </Pressable>

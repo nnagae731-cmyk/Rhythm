@@ -4,6 +4,7 @@ import { Modal, Platform, Pressable, ScrollView, Text, TextInput, View } from 'r
 import { ChicPattern, DesignMode } from '../theme';
 import { Category, Priority, Task, TaskBucket, TimeTab } from '../types';
 import { categories, categoryColors, getChicTaskPatternPalette, priorities, repeatOptions, chicUtilityPalettes } from '../features/tasks/taskUtils';
+import { TaskDateTimePickerSheet } from '../components/TaskDateTimePickerSheet';
 
 const HomeRuntimeContext = React.createContext<any>(null);
 
@@ -218,25 +219,26 @@ function HomeToolCard({ designMode, chicPattern, kind, icon, title, meta, onPres
 function VoiceQuickAddCard({ designMode, chicPattern, onQuickAdd }: { designMode: DesignMode; chicPattern: ChicPattern; onQuickAdd: (title: string, category: Category, priority: Priority, scheduledDate?: string, scheduledTime?: string, isRoutine?: boolean) => void }) {
   const { styles, PatternDecor, helpers } = useHomeRuntime();
   const { dateForReminder, dateKey, formatLiveTime, isCheckChicPattern, todayInputValue } = helpers;
+  const isDark = designMode === 'dark';
   const [title, setTitle] = useState('');
   const [category, setCategory] = useState<Category>('その他');
   const [priority, setPriority] = useState<Priority>('中');
-  const [scheduledDate, setScheduledDate] = useState(todayInputValue());
+  const [scheduledDate, setScheduledDate] = useState(() => isDark ? '' : todayInputValue());
   const [scheduledTime, setScheduledTime] = useState('');
   const [isRoutine, setIsRoutine] = useState(false);
   const [fieldOpen, setFieldOpen] = useState<null | 'category' | 'priority'>(null);
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showTimePicker, setShowTimePicker] = useState(false);
-  const isDark = designMode === 'dark';
+  const [activeDarkPicker, setActiveDarkPicker] = useState<null | 'date' | 'time'>(null);
 
   const submit = () => {
     const clean = title.trim();
     if (!clean) return;
-    onQuickAdd(clean, category, priority, scheduledDate, scheduledTime || undefined, isRoutine);
+    onQuickAdd(clean, category, priority, scheduledDate || undefined, scheduledTime || undefined, isRoutine);
     setTitle('');
     setCategory('その他');
     setPriority('中');
-    setScheduledDate(todayInputValue());
+    setScheduledDate(isDark ? '' : todayInputValue());
     setScheduledTime('');
     setIsRoutine(false);
   };
@@ -267,11 +269,11 @@ function VoiceQuickAddCard({ designMode, chicPattern, onQuickAdd }: { designMode
             <Text style={[styles.voiceAddChoiceLabel, isDark && styles.voiceAddChoiceLabelDark]}>優先度</Text>
             <Text numberOfLines={1} style={[styles.voiceAddChoiceValue, isDark && styles.voiceAddChoiceValueDark]}>{priority}</Text>
           </Pressable>
-          <Pressable style={[styles.voiceAddChoice, designMode === 'minimal' && styles.voiceAddChoiceMinimal, isDark && styles.voiceAddChoiceDark, designMode === 'chic' && styles.voiceAddChoiceChic]} onPress={() => setShowDatePicker(true)}>
+          <Pressable accessibilityRole="button" style={[styles.voiceAddChoice, designMode === 'minimal' && styles.voiceAddChoiceMinimal, isDark && styles.voiceAddChoiceDark, designMode === 'chic' && styles.voiceAddChoiceChic]} onPress={() => isDark ? setActiveDarkPicker('date') : setShowDatePicker(true)}>
             <Text style={[styles.voiceAddChoiceLabel, isDark && styles.voiceAddChoiceLabelDark]}>実行日</Text>
-            <Text numberOfLines={1} style={[styles.voiceAddChoiceValue, isDark && styles.voiceAddChoiceValueDark]}>{scheduledDate}</Text>
+            <Text numberOfLines={1} style={[styles.voiceAddChoiceValue, isDark && styles.voiceAddChoiceValueDark]}>{scheduledDate || '指定なし'}</Text>
           </Pressable>
-          <Pressable style={[styles.voiceAddChoice, designMode === 'minimal' && styles.voiceAddChoiceMinimal, isDark && styles.voiceAddChoiceDark, designMode === 'chic' && styles.voiceAddChoiceChic]} onPress={() => setShowTimePicker(true)}><Text style={[styles.voiceAddChoiceLabel, isDark && styles.voiceAddChoiceLabelDark]}>実行時間</Text><Text numberOfLines={1} style={[styles.voiceAddChoiceValue, isDark && styles.voiceAddChoiceValueDark]}>{scheduledTime || '指定なし'}</Text></Pressable>
+          <Pressable accessibilityRole="button" style={[styles.voiceAddChoice, designMode === 'minimal' && styles.voiceAddChoiceMinimal, isDark && styles.voiceAddChoiceDark, designMode === 'chic' && styles.voiceAddChoiceChic]} onPress={() => isDark ? setActiveDarkPicker('time') : setShowTimePicker(true)}><Text style={[styles.voiceAddChoiceLabel, isDark && styles.voiceAddChoiceLabelDark]}>実行時間</Text><Text numberOfLines={1} style={[styles.voiceAddChoiceValue, isDark && styles.voiceAddChoiceValueDark]}>{scheduledTime || '指定なし'}</Text></Pressable>
         </View>
         <Pressable style={styles.routineToggleRow} onPress={() => setIsRoutine((value) => !value)}><View style={[styles.routineToggleBox, isRoutine && styles.routineToggleBoxActive, isRoutine && designMode === 'minimal' && styles.routineToggleBoxActiveMinimal, isRoutine && isDark && styles.routineToggleBoxActiveDark]}><Text style={styles.routineToggleCheck}>{isRoutine ? '✓' : ''}</Text></View><View><Text style={[styles.routineToggleTitle, isDark && styles.routineToggleTitleDark]}>ルーティンにする</Text><Text style={[styles.routineToggleCopy, isDark && styles.routineToggleCopyDark]}>毎日の継続状況を分析に表示</Text></View></Pressable>
         <Pressable style={[styles.voiceAddRegister, designMode === 'minimal' && styles.voiceAddRegisterMinimal, isDark && styles.voiceAddRegisterDark, designMode === 'chic' && styles.voiceAddRegisterChic]} onPress={submit}>
@@ -302,9 +304,9 @@ function VoiceQuickAddCard({ designMode, chicPattern, onQuickAdd }: { designMode
         </Modal>
       )}
 
-      {showDatePicker && (
+      {!isDark && showDatePicker && (
         <DateTimePicker
-          value={dateForReminder(scheduledDate, '12:00')}
+          value={dateForReminder(scheduledDate || todayInputValue(), '12:00')}
           mode="date"
           minimumDate={new Date()}
           display={Platform.OS === 'ios' ? 'inline' : 'default'}
@@ -314,7 +316,9 @@ function VoiceQuickAddCard({ designMode, chicPattern, onQuickAdd }: { designMode
           }}
         />
       )}
-      {showTimePicker && <DateTimePicker value={dateForReminder(scheduledDate, scheduledTime || '09:00')} mode="time" display={Platform.OS === 'ios' ? 'spinner' : 'default'} onChange={(event: DateTimePickerEvent, selected) => { if (Platform.OS !== 'ios') setShowTimePicker(false); if (event.type === 'set' && selected) { setScheduledTime(formatLiveTime(selected)); setShowTimePicker(false); } }} />}
+      {!isDark && showTimePicker && <DateTimePicker value={dateForReminder(scheduledDate || todayInputValue(), scheduledTime || '09:00')} mode="time" display={Platform.OS === 'ios' ? 'spinner' : 'default'} onChange={(event: DateTimePickerEvent, selected) => { if (Platform.OS !== 'ios') setShowTimePicker(false); if (event.type === 'set' && selected) { setScheduledTime(formatLiveTime(selected)); setShowTimePicker(false); } }} />}
+      {isDark && activeDarkPicker === 'date' && <TaskDateTimePickerSheet visible mode="date" title="実行日を選択" value={dateForReminder(scheduledDate || todayInputValue(), '12:00')} minimumDate={new Date()} designMode={designMode} onClose={() => setActiveDarkPicker(null)} onConfirm={(selected) => setScheduledDate(dateKey(selected))} />}
+      {isDark && activeDarkPicker === 'time' && <TaskDateTimePickerSheet visible mode="time" title="実行時間を選択" value={dateForReminder(scheduledDate || todayInputValue(), scheduledTime || '09:00')} designMode={designMode} onClose={() => setActiveDarkPicker(null)} onConfirm={(selected) => setScheduledTime(formatLiveTime(selected))} />}
     </View>
   );
 }
