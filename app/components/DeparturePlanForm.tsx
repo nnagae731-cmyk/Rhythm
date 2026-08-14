@@ -195,7 +195,7 @@ export function DeparturePlanForm({
 
   return <View style={styles.root}>
     <View style={[styles.editorHeader, { borderColor: theme.colors.border }]}>
-      <View style={styles.editorTitleRow}><View style={{ flex: 1 }}><Text style={[styles.editorTitle, fieldText]}>{plan.id ? '予定を編集' : '予定を追加'}</Text><Text style={[styles.editorCopy, secondaryText]}>予定の形に合わせて、必要な項目だけ登録できます</Text></View><Pressable accessibilityRole="button" style={[styles.closeButton, { borderColor: theme.colors.border }]} onPress={onClose}><Text style={[styles.closeButtonText, fieldText]}>閉じる</Text></Pressable></View>
+      <View style={styles.editorTitleRow}><View style={{ flex: 1 }}><Text style={[styles.editorTitle, fieldText]}>{plan.id ? '予定を編集' : '予定を追加'}</Text><Text style={[styles.editorCopy, secondaryText]}>予定の形に合わせて、必要な項目だけ登録できます</Text></View></View>
     </View>
 
     <View style={[styles.segmented, styles.segmentedThree, { borderColor: theme.colors.border, backgroundColor: isDark ? theme.colors.secondarySurface : '#F6F7FB' }, isDesign && styles.segmentedDesign]}>
@@ -325,6 +325,9 @@ export function DeparturePlanForm({
       <Pressable accessibilityRole="button" style={[styles.submitButton, { backgroundColor: theme.colors.primaryAccent }]} onPress={() => void handleSubmit()}>
         <Text style={styles.submitButtonText}>{plan.id ? '変更を保存' : canUseReverse ? 'この予定を登録' : isDirectDeparture ? '出発時刻を登録' : '予定表に追加'}</Text>
       </Pressable>
+      <Pressable accessibilityRole="button" accessibilityLabel="予定の追加を閉じる" style={[styles.bottomCloseButton, { borderColor: theme.colors.border, backgroundColor: isDark ? theme.colors.secondarySurface : theme.colors.surface }]} onPress={onClose}>
+        <Text style={[styles.bottomCloseButtonText, fieldText]}>閉じる</Text>
+      </Pressable>
     </View>
 
     <Modal visible={Boolean(durationEditor)} transparent animationType="slide" onRequestClose={() => setDurationEditor(undefined)}>
@@ -353,8 +356,6 @@ const styles = StyleSheet.create({
   root: { gap: 16, paddingBottom: 12 },
   editorHeader: { paddingBottom: 10, borderBottomWidth: StyleSheet.hairlineWidth },
   editorTitleRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
-  closeButton: { minHeight: 44, paddingHorizontal: 12, borderWidth: 1, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
-  closeButtonText: { fontSize: 12, fontWeight: '900' },
   editorTitle: { fontSize: 24, fontWeight: '900', letterSpacing: -0.6 },
   editorCopy: { marginTop: 5, fontSize: 12, lineHeight: 18, fontWeight: '600' },
   segmented: { flexDirection: 'row', padding: 3, borderWidth: 1, borderRadius: 14, overflow: 'hidden' },
@@ -401,6 +402,8 @@ const styles = StyleSheet.create({
   finalTimeline: { marginBottom: 10, textAlign: 'center', fontSize: 13, fontWeight: '800' },
   submitButton: { minHeight: 54, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
   submitButtonText: { color: '#FFFFFF', fontSize: 17, fontWeight: '900' },
+  bottomCloseButton: { minHeight: 52, marginTop: 10, borderWidth: 1, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
+  bottomCloseButtonText: { fontSize: 15, fontWeight: '900' },
   modalBackdrop: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(8, 14, 28, 0.42)' },
   durationSheet: { borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingHorizontal: 20, paddingTop: 10, paddingBottom: 34 },
   sheetHandle: { alignSelf: 'center', width: 38, height: 4, borderRadius: 3, marginBottom: 18 },
