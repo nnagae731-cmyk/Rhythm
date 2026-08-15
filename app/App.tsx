@@ -1526,7 +1526,6 @@ export default function App() {
               tasks={visibleTasks}
               allTasks={tasks}
               remaining={remaining}
-              timeline={displayTimeline}
               now={now}
               designMode={uiDesignMode}
               chicPattern={effectiveChicPattern}
@@ -1534,7 +1533,7 @@ export default function App() {
               selectionMode={selectionMode}
               selectedTaskIds={selectedTaskIds}
               onAdd={() => setAddOpen(true)}
-                onQuickAdd={(title, category, priority, scheduledDate, scheduledTime, isRoutine) => addTask(title, category, priority, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, 'none', 'once', scheduledDate, scheduledTime, isRoutine)}
+                onQuickAdd={(title, category, priority, scheduledDate, scheduledTime, isRoutine, deadlineDate, deadlineTime, deadlineNotifyBefore) => addTask(title, category, priority, undefined, undefined, deadlineDate, deadlineTime, deadlineNotifyBefore, undefined, undefined, undefined, undefined, 'none', 'once', scheduledDate, scheduledTime, isRoutine)}
               onToggle={(id) => completeTaskIds([id])}
               onEdit={(task) => setEditingTask(task)}
               onToggleSelection={(id) => setSelectedTaskIds((current) => current.includes(id) ? current.filter((item) => item !== id) : [...current, id])}
@@ -1574,8 +1573,6 @@ export default function App() {
                 setTasks(tasksRef.current);
                 void scheduleAllTaskNotifications(updated);
               }}
-              onOpenTime={(tab) => { setTimelineInitialTab(tab); setScreen('timeline'); }}
-               onOpenWish={openWish}
               styles={styles}
               renderTodayWinStrip={(todayTasks) => <TodayWinStrip tasks={todayTasks} designMode={uiDesignMode} chicPattern={effectiveChicPattern} onRestore={restoreTaskById} />}
               PatternDecor={ChicPatternDecor}
@@ -2421,18 +2418,15 @@ function TodayWinStrip({ tasks, designMode, chicPattern, onRestore }: { tasks: T
           <View style={styles.todayHeroMinimalLayout}>
             <View style={styles.todayHeroMinimalLeft}>
               <Text style={styles.todayHeroMinimalKicker}>TODAY</Text>
-              <Text style={styles.todayHeroMinimalNumber}>{String(count).padStart(2, '0')}</Text>
               <Text style={styles.todayHeroMinimalNowLabel}>今はこれ</Text>
               <Text numberOfLines={2} style={styles.todayHeroMinimalTask}>{nextNowTask ? nextNowTask.title : remainingNow === 0 ? '今日の分は完了。いい感じ' : '次にやる1つをここで決めます'}</Text>
               <Text style={styles.todayHeroMinimalStats}>完了 {count} / 残り {remainingNow}</Text>
             </View>
-            <View style={styles.todayHeroMinimalRight}>
-              <View style={styles.todayHeroMinimalMeter}>
-                {Array.from({ length: 8 }, (_, index) => <View key={index} style={[styles.todayHeroMinimalTick, index < Math.min(8, count) && styles.todayHeroMinimalTickFilled]} />)}
-              </View>
-              <Text style={styles.todayHeroMinimalHint}>今日できたことを確認</Text>
-            </View>
           </View>
+        </Pressable>
+        <Pressable style={[styles.minimalAchievement, styles.todayAchievementCard, designMode === 'dark' && styles.minimalAchievementDark]} onPress={() => setDetailsOpen(true)}>
+          <View><Text style={[styles.minimalAchievementLabel, designMode === 'dark' && styles.minimalAchievementLabelDark]}>今日の進み</Text><Text style={[styles.minimalAchievementNumber, designMode === 'dark' && styles.minimalAchievementNumberDark]}>{String(count).padStart(2, '0')}</Text><Text style={[styles.taskMeta, designMode === 'dark' && styles.minimalAchievementLabelDark]}>今日できたことを確認</Text></View>
+          <View style={styles.minimalAchievementBars}>{Array.from({ length: 8 }, (_, index) => <View key={index} style={[styles.minimalAchievementBar, index < Math.min(8, count) && styles.minimalAchievementBarFilled, designMode === 'dark' && styles.minimalAchievementBarDark, index < Math.min(8, count) && designMode === 'dark' && styles.minimalAchievementBarFilledDark]} />)}</View>
         </Pressable>
         {details}
       </>
@@ -2451,17 +2445,10 @@ function TodayWinStrip({ tasks, designMode, chicPattern, onRestore }: { tasks: T
             <Text numberOfLines={2} style={styles.todayHeroCopy}>{nextNowTask ? nextNowTask.title : remainingNow === 0 ? '今日の分は完了。いい感じ' : '次にやる1つをここで決めます'}</Text>
             <Text style={styles.todayHeroStats}>完了 {count}　残り {remainingNow}</Text>
           </View>
-          <View style={styles.todayHeroJarWrap}>
-            <View style={styles.miniJarWrap}>
-              <View style={styles.miniJarLid} />
-              <View style={[styles.miniJar, styles.miniJarChicGlass]}>
-                {Array.from({ length: Math.min(12, count) }, (_, index) => <Text key={index} style={[styles.miniJarItem, { left: 8 + (index % 3) * 22, bottom: 4 + Math.floor(index / 3) * 14, color: index % 3 === 0 ? '#F3C7D5' : index % 3 === 1 ? '#DCCBF0' : '#F5E1A4' }]}>{index % 2 ? '✦' : '●'}</Text>)}
-              </View>
-              {dropVisible && <Animated.Text style={[styles.fallingTreasure, fallingStyle]}>{item}</Animated.Text>}
-            </View>
-            <Text style={styles.todayHeroJarHint}>タップして今日できたことを見る</Text>
-          </View>
         </View>
+      </Pressable>
+      <Pressable style={[styles.todayHeroCard, styles.todayAchievementCard, styles.todayHeroCardChic]} onPress={() => setDetailsOpen(true)}>
+        <View style={styles.todayHeroChicLayout}><View style={styles.todayHeroChicPlate}><Text style={styles.todayHeroKicker}>今日の進み</Text><Text style={styles.todayHeroStats}>完了 {count}　残り {remainingNow}</Text><Text style={styles.todayHeroJarHint}>タップして今日できたことを見る</Text></View><View style={styles.todayHeroJarWrap}><View style={styles.miniJarWrap}><View style={styles.miniJarLid} /><View style={[styles.miniJar, styles.miniJarChicGlass]}>{Array.from({ length: Math.min(12, count) }, (_, index) => <Text key={index} style={[styles.miniJarItem, { left: 8 + (index % 3) * 22, bottom: 4 + Math.floor(index / 3) * 14, color: index % 3 === 0 ? '#F3C7D5' : index % 3 === 1 ? '#DCCBF0' : '#F5E1A4' }]}>{index % 2 ? '✦' : '●'}</Text>)}</View>{dropVisible && <Animated.Text style={[styles.fallingTreasure, fallingStyle]}>{item}</Animated.Text>}</View></View></View>
       </Pressable>
       {details}
     </>
