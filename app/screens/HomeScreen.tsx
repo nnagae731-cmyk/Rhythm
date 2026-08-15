@@ -88,7 +88,6 @@ export function HomeScreen({
       <View style={[styles.sectionHeader, designMode === 'minimal' && styles.sectionHeaderMinimal, isDark && styles.darkPanel]}>
         <View>
           <Text style={[styles.sectionTitle, isDark && styles.darkBodyText]}>今日のタスク</Text>
-          <Text style={[styles.sectionSub, isDark && styles.darkMutedText]}>{remaining === 0 ? 'きれいに片づきました' : `あと${remaining}件です`}</Text>
         </View>
         <View style={styles.taskHeaderButtons}>
         <Pressable style={[styles.selectButton, isDark && styles.selectButtonDark]} onPress={onSelectionMode}><Text style={[styles.selectButtonText, isDark && styles.darkBodyText]}>{selectionMode ? '取消' : '選択'}</Text></Pressable>

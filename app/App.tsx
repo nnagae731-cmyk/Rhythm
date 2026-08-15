@@ -2414,19 +2414,21 @@ function TodayWinStrip({ tasks, designMode, chicPattern, onRestore }: { tasks: T
   if (designMode !== 'chic') {
     return (
       <>
-        <Pressable style={[styles.todayHeroCard, styles.todayHeroCardMinimal]} onPress={() => setDetailsOpen(true)}>
+        <Pressable style={[styles.todayHeroCard, styles.todayHeroCardMinimal, designMode === 'dark' && styles.todayHeroCardMinimalDark]} onPress={() => setDetailsOpen(true)}>
           <View style={styles.todayHeroMinimalLayout}>
             <View style={styles.todayHeroMinimalLeft}>
-              <Text style={styles.todayHeroMinimalKicker}>TODAY</Text>
-              <Text style={styles.todayHeroMinimalNowLabel}>今はこれ</Text>
-              <Text numberOfLines={2} style={styles.todayHeroMinimalTask}>{nextNowTask ? nextNowTask.title : remainingNow === 0 ? '今日の分は完了。いい感じ' : '次にやる1つをここで決めます'}</Text>
-              <Text style={styles.todayHeroMinimalStats}>完了 {count} / 残り {remainingNow}</Text>
+              <Text style={[styles.todayHeroMinimalKicker, designMode === 'dark' && styles.todayHeroMinimalKickerDark]}>TODAY</Text>
+              <Text style={[styles.todayHeroMinimalNowLabel, designMode === 'dark' && styles.todayHeroMinimalTextDark]}>今はこれ</Text>
+              <Text numberOfLines={2} style={[styles.todayHeroMinimalTask, designMode === 'dark' && styles.todayHeroMinimalTextDark]}>{nextNowTask ? nextNowTask.title : remainingNow === 0 ? '今日の分は完了。いい感じ' : '次にやる1つをここで決めます'}</Text>
+              <Text style={[styles.todayHeroMinimalStats, designMode === 'dark' && styles.todayHeroMinimalStatsDark]}>完了 {count} / 残り {remainingNow}</Text>
+            </View>
+            <View style={styles.todayUnifiedAchievementMinimal}>
+              <Text style={[styles.todayHeroMinimalKicker, designMode === 'dark' && styles.todayHeroMinimalKickerDark]}>今日の進み</Text>
+              <Text style={[styles.todayHeroMinimalNumber, designMode === 'dark' && styles.todayHeroMinimalNumberDark]}>{String(count).padStart(2, '0')}</Text>
+              <View style={styles.minimalAchievementBars}>{Array.from({ length: 8 }, (_, index) => <View key={index} style={[styles.minimalAchievementBar, index < Math.min(8, count) && styles.minimalAchievementBarFilled, designMode === 'dark' && styles.minimalAchievementBarDark, index < Math.min(8, count) && designMode === 'dark' && styles.minimalAchievementBarFilledDark]} />)}</View>
+              <Text style={[styles.todayHeroMinimalStats, designMode === 'dark' && styles.todayHeroMinimalStatsDark]}>今日できたことを確認</Text>
             </View>
           </View>
-        </Pressable>
-        <Pressable style={[styles.minimalAchievement, styles.todayAchievementCard, designMode === 'dark' && styles.minimalAchievementDark]} onPress={() => setDetailsOpen(true)}>
-          <View><Text style={[styles.minimalAchievementLabel, designMode === 'dark' && styles.minimalAchievementLabelDark]}>今日の進み</Text><Text style={[styles.minimalAchievementNumber, designMode === 'dark' && styles.minimalAchievementNumberDark]}>{String(count).padStart(2, '0')}</Text><Text style={[styles.taskMeta, designMode === 'dark' && styles.minimalAchievementLabelDark]}>今日できたことを確認</Text></View>
-          <View style={styles.minimalAchievementBars}>{Array.from({ length: 8 }, (_, index) => <View key={index} style={[styles.minimalAchievementBar, index < Math.min(8, count) && styles.minimalAchievementBarFilled, designMode === 'dark' && styles.minimalAchievementBarDark, index < Math.min(8, count) && designMode === 'dark' && styles.minimalAchievementBarFilledDark]} />)}</View>
         </Pressable>
         {details}
       </>
@@ -2445,10 +2447,16 @@ function TodayWinStrip({ tasks, designMode, chicPattern, onRestore }: { tasks: T
             <Text numberOfLines={2} style={styles.todayHeroCopy}>{nextNowTask ? nextNowTask.title : remainingNow === 0 ? '今日の分は完了。いい感じ' : '次にやる1つをここで決めます'}</Text>
             <Text style={styles.todayHeroStats}>完了 {count}　残り {remainingNow}</Text>
           </View>
+          <View style={styles.todayHeroJarWrap}>
+            <Text style={styles.todayHeroKicker}>今日の進み</Text>
+            <View style={styles.miniJarWrap}>
+              <View style={styles.miniJarLid} />
+              <View style={[styles.miniJar, styles.miniJarChicGlass]}>{Array.from({ length: Math.min(12, count) }, (_, index) => <Text key={index} style={[styles.miniJarItem, { left: 8 + (index % 3) * 22, bottom: 4 + Math.floor(index / 3) * 14, color: index % 3 === 0 ? '#F3C7D5' : index % 3 === 1 ? '#DCCBF0' : '#F5E1A4' }]}>{index % 2 ? '✦' : '●'}</Text>)}</View>
+              {dropVisible && <Animated.Text style={[styles.fallingTreasure, fallingStyle]}>{item}</Animated.Text>}
+            </View>
+            <Text style={styles.todayHeroJarHint}>完了 {count}　残り {remainingNow}{'\n'}タップして今日できたことを見る</Text>
+          </View>
         </View>
-      </Pressable>
-      <Pressable style={[styles.todayHeroCard, styles.todayAchievementCard, styles.todayHeroCardChic]} onPress={() => setDetailsOpen(true)}>
-        <View style={styles.todayHeroChicLayout}><View style={styles.todayHeroChicPlate}><Text style={styles.todayHeroKicker}>今日の進み</Text><Text style={styles.todayHeroStats}>完了 {count}　残り {remainingNow}</Text><Text style={styles.todayHeroJarHint}>タップして今日できたことを見る</Text></View><View style={styles.todayHeroJarWrap}><View style={styles.miniJarWrap}><View style={styles.miniJarLid} /><View style={[styles.miniJar, styles.miniJarChicGlass]}>{Array.from({ length: Math.min(12, count) }, (_, index) => <Text key={index} style={[styles.miniJarItem, { left: 8 + (index % 3) * 22, bottom: 4 + Math.floor(index / 3) * 14, color: index % 3 === 0 ? '#F3C7D5' : index % 3 === 1 ? '#DCCBF0' : '#F5E1A4' }]}>{index % 2 ? '✦' : '●'}</Text>)}</View>{dropVisible && <Animated.Text style={[styles.fallingTreasure, fallingStyle]}>{item}</Animated.Text>}</View></View></View>
       </Pressable>
       {details}
     </>
