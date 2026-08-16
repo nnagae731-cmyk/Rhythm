@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { Image, Modal, Pressable, Switch, Text, TextInput, View } from 'react-native';
-import { ChicCheckColor, ChicPattern, DesignMode } from '../theme';
+import { Image, Pressable, Switch, Text, TextInput, View } from 'react-native';
+import { ChicCheckColor, ChicPattern, ChicThemePalette, DesignMode } from '../theme';
 import { Affirmation, PhotoThemePhotoTarget, PhotoThemeSettings, Task, WidgetSize } from '../types';
 import { PlanTier } from '../premiumAccess';
 import { PremiumGuideFeatureId } from '../premiumGuide';
@@ -16,6 +16,7 @@ export function SettingsScreen({
   showCompleted,
   completionIcon,
   designMode,
+  chicPalette,
   chicPattern,
   chicCheckColor,
   affirmations,
@@ -51,6 +52,7 @@ export function SettingsScreen({
   showCompleted: boolean;
   completionIcon: string;
   designMode: DesignMode;
+  chicPalette?: ChicThemePalette;
   chicPattern: ChicPattern;
   chicCheckColor: ChicCheckColor;
   affirmations: Affirmation[];
@@ -83,7 +85,6 @@ export function SettingsScreen({
   const [newTemplate, setNewTemplate] = useState('');
   const isDark = designMode === 'dark';
   const [expandedSetting, setExpandedSetting] = useState<'design' | 'notifications' | 'affirmations' | 'quick' | 'templates' | 'widget' | null>('design');
-  const [monoPreviewOpen, setMonoPreviewOpen] = useState(false);
   const previewTasks = tasks.filter((task) => showCompleted || !task.done).slice(0, size === 'small' ? 2 : 3);
   const isCheckPattern = chicPattern === 'checkLavenderSatin' || chicPattern === 'checkBeigeNoir' || chicPattern === 'checkMauveFrame';
   const patternVisual = isCheckPattern ? getChicCheckColor(chicCheckColor) : getChicPatternVisual(chicPattern);
@@ -91,9 +92,7 @@ export function SettingsScreen({
     <>
       {__DEV__ && <View style={[styles.settingsCard, isDark && styles.darkSurface]}><Text style={[styles.settingsTitle, isDark && styles.darkBodyText]}>Expo Go 確認環境</Text><Text style={[styles.switchCopy, isDark && styles.darkAccentText]}>このQRコードは、利用プランが固定された確認用環境です。</Text><Text style={[styles.devPlanCurrent, isDark && styles.darkAccentText]}>現在：{planTier === 'premium' ? 'Premium版' : '無料版'}</Text></View>}
       <SettingsDisclosure designMode={designMode} title="デザインモード" subtitle="Mono / Design / 写真を選ぶ" expanded={expandedSetting === 'design'} onPress={() => setExpandedSetting((current) => current === 'design' ? null : 'design')}>
-      <View style={[styles.modeCard, isDark && styles.darkSurface]}>
-        {designMode === 'chic' && chicPattern === 'checkLavenderSatin' && <BThemeRibbonDecoration compact />}
-        {designMode === 'chic' && chicPattern === 'checkBeigeNoir' && <CThemeRibbonDecoration compact />}
+      <View style={[styles.modeCard, isDark && styles.darkSurface, designMode === 'chic' && chicPalette && { backgroundColor: chicPalette.surface, borderColor: chicPalette.border }]}>
         {designMode === 'chic' && chicPattern === 'checkLavenderSatin' && <BThemeRibbonDecoration compact />}
         {designMode === 'chic' && chicPattern === 'checkBeigeNoir' && <CThemeRibbonDecoration compact />}
         {designMode === 'chic' && <ChicPatternSelector designMode={designMode} chicPattern={chicPattern} chicCheckColor={chicCheckColor} planTier={planTier} onPattern={onChicPattern} onCheckColor={onChicCheckColor} />}
@@ -145,9 +144,9 @@ export function SettingsScreen({
       <Text style={[styles.settingsSectionLabel, isDark && styles.darkBodyText]}>ウィジェット設定</Text>
       <Text style={[styles.previewLabel, isDark && styles.darkAccentText]}>WIDGET PREVIEW</Text>
 
-      <View style={[styles.phonePreview, designMode === 'minimal' && styles.phonePreviewMinimal, designMode === 'chic' && { backgroundColor: patternVisual.accent }, ]}>
+      <View style={[styles.phonePreview, designMode === 'minimal' && styles.phonePreviewMinimal, designMode === 'chic' && { backgroundColor: chicPalette?.accent ?? patternVisual.accent }, ]}>
         <Text style={styles.phoneClock}>9:41</Text>
-        <View style={[styles.widget, size === 'small' && styles.widgetSmall, designMode === 'minimal' && styles.widgetMinimal, designMode === 'chic' && { backgroundColor: patternVisual.background }, ]}>
+        <View style={[styles.widget, size === 'small' && styles.widgetSmall, designMode === 'minimal' && styles.widgetMinimal, designMode === 'chic' && { backgroundColor: chicPalette?.surface ?? patternVisual.background }, ]}>
           {designMode === 'chic' && <ChicPatternDecor pattern={chicPattern} accent={patternVisual.accent} warm={patternVisual.warm} checkColor={chicCheckColor} />}
           {designMode === 'chic' && <View pointerEvents="none" style={styles.widgetChicWash} />}
           <View style={styles.widgetTop}>
@@ -213,24 +212,6 @@ export function SettingsScreen({
         </Pressable>
       </View>
       </SettingsDisclosure>
-      <Modal visible={monoPreviewOpen} transparent animationType="slide" onRequestClose={() => setMonoPreviewOpen(false)}>
-        <Pressable style={styles.monoPreviewBackdrop} onPress={() => setMonoPreviewOpen(false)}>
-          <Pressable style={[styles.monoPreviewSheet, isDark && styles.darkSurface]} onPress={(event) => event.stopPropagation()}>
-            <View style={styles.modalHandle} />
-            <Text style={[styles.monoPreviewTitle, isDark && styles.darkBodyText]}>Monoの表示を選ぶ</Text>
-            <Text style={[styles.monoPreviewCopy, isDark && styles.darkAccentText]}>同じ情報設計で、明るさだけを切り替えられます。</Text>
-            <View style={styles.monoPreviewCards}>
-              <Pressable style={[styles.monoPreviewCard, styles.monoPreviewLight]} onPress={() => { onDesignMode('minimal'); setMonoPreviewOpen(false); }}>
-                <View style={styles.monoPreviewPhoneLight}><Text style={styles.monoPreviewEyebrow}>MONO LIGHT</Text><Text style={styles.monoPreviewBrand}>Rhythm</Text><View style={styles.monoPreviewLine} /><View style={styles.monoPreviewHeroLight}><Text style={styles.monoPreviewCardTitle}>今はこれ</Text><Text style={styles.monoPreviewCardMeta}>今日のタスクを整える</Text><View style={styles.monoPreviewProgressLight} /></View><View style={styles.monoPreviewTaskLight}><Text style={styles.monoPreviewTaskDotLight}>□</Text><Text style={styles.monoPreviewTaskTextLight}>次のタスク</Text></View></View><Text style={styles.monoPreviewSelect}>このLightを選ぶ</Text>
-              </Pressable>
-              <Pressable style={[styles.monoPreviewCard, styles.monoPreviewDark]} onPress={() => { onDesignMode('dark'); setMonoPreviewOpen(false); }}>
-                <View style={styles.monoPreviewPhoneDark}><Text style={styles.monoPreviewEyebrowDark}>MONO DARK</Text><Text style={styles.monoPreviewBrandDark}>Rhythm</Text><View style={styles.monoPreviewLineDark} /><View style={styles.monoPreviewHeroDark}><Text style={styles.monoPreviewCardTitleDark}>今はこれ</Text><Text style={styles.monoPreviewCardMetaDark}>今日のタスクを整える</Text><View style={styles.monoPreviewProgressDark} /></View><View style={styles.monoPreviewTaskDark}><Text style={styles.monoPreviewTaskDotDark}>□</Text><Text style={styles.monoPreviewTaskTextDark}>次のタスク</Text></View></View><Text style={styles.monoPreviewSelectDark}>このDarkを選ぶ</Text>
-              </Pressable>
-            </View>
-            <Pressable onPress={() => setMonoPreviewOpen(false)}><Text style={[styles.monoPreviewClose, isDark && styles.darkAccentText]}>閉じる</Text></Pressable>
-          </Pressable>
-        </Pressable>
-      </Modal>
     </>
   );
 }

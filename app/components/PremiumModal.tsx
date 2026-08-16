@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Modal, Pressable, ScrollView, Text, View } from 'react-native';
-import { ChicPattern, DesignMode } from '../theme';
+import { ChicPattern, ChicThemePalette, DesignMode } from '../theme';
 import { PremiumGuideFeatureId } from '../premiumGuide';
 
 type PremiumPreviewKind = PremiumGuideFeatureId;
@@ -33,7 +33,7 @@ function PremiumMiniPreview({ kind, designMode, styles }: { kind: PremiumPreview
   return <View style={styles.premiumPreview}><Text style={styles.previewImageLabel}>立て直しの表示イメージ</Text><View style={styles.previewDanger}><Text style={styles.previewDangerText}>予定どおりは厳しい</Text></View><View style={styles.previewRecoveryGrid}>{['今から出発', '到着予定を変更', '遅れる連絡', '予定を組み直す'].map((label) => <View key={label} style={styles.previewRecoveryOption}><Text style={styles.previewRecoveryText}>{label}</Text></View>)}</View></View>;
 }
 
-function PremiumFeatureEntryCard({ number, title, active, designMode, chicPattern, onPress, components, styles }: { number: string; title: string; active: boolean; designMode: DesignMode; chicPattern: ChicPattern; onPress: () => void; components: any; styles: any }) {
+function PremiumFeatureEntryCard({ number, title, active, designMode, chicPattern, chicPalette, onPress, components, styles }: { number: string; title: string; active: boolean; designMode: DesignMode; chicPattern: ChicPattern; chicPalette?: ChicThemePalette; onPress: () => void; components: any; styles: any }) {
   const { ChicPatternDecor, isCheckChicPattern } = components;
   const isMono = designMode !== 'chic';
   return <Pressable onPress={onPress} style={[styles.premiumEntryCard, active && styles.premiumEntryCardActive, isMono && styles.premiumEntryCardMinimal, designMode === 'dark' && styles.premiumEntryCardDark, designMode === 'chic' && styles.premiumEntryCardChic]}>
@@ -43,7 +43,7 @@ function PremiumFeatureEntryCard({ number, title, active, designMode, chicPatter
   </Pressable>;
 }
 
-function PremiumFeatureDetail({ number, kind, title, description, designMode, chicPattern, components, styles }: { number: string; kind: PremiumPreviewKind; title: string; description: string; designMode: DesignMode; chicPattern: ChicPattern; components: any; styles: any }) {
+function PremiumFeatureDetail({ number, kind, title, description, designMode, chicPattern, chicPalette, components, styles }: { number: string; kind: PremiumPreviewKind; title: string; description: string; designMode: DesignMode; chicPattern: ChicPattern; chicPalette?: ChicThemePalette; components: any; styles: any }) {
   const { ChicPatternDecor, isCheckChicPattern } = components;
   const isMono = designMode !== 'chic';
   return <View style={[styles.premiumFeatureBlock, isMono && styles.premiumFeatureMinimal, designMode === 'dark' && styles.premiumFeatureDark, designMode === 'chic' && styles.premiumFeatureChic, ]}>
@@ -56,9 +56,10 @@ function PremiumFeatureDetail({ number, kind, title, description, designMode, ch
   </View>;
 }
 
-export function PremiumModal({ visible, initialFeatureId, designMode, chicPattern, onClose, styles, helpers, components }: { visible: boolean; initialFeatureId: PremiumGuideFeatureId; designMode: DesignMode; chicPattern: ChicPattern; onClose: () => void; styles: any; helpers: any; components: any }) {
+export function PremiumModal({ visible, initialFeatureId, designMode, chicPattern, chicPalette, onClose, styles, helpers, components }: { visible: boolean; initialFeatureId: PremiumGuideFeatureId; designMode: DesignMode; chicPattern: ChicPattern; chicPalette?: ChicThemePalette; onClose: () => void; styles: any; helpers: any; components: any }) {
   const { getThemeTokens } = helpers;
   const theme = getThemeTokens(designMode);
+  const designSurface = designMode === 'chic' && chicPalette ? { backgroundColor: chicPalette.surface, borderColor: chicPalette.border } : undefined;
   const initialIndex = Math.max(0, PREMIUM_GUIDE_FEATURES.findIndex((feature) => feature.id === initialFeatureId));
   const [selectedFeatureId, setSelectedFeatureId] = useState<PremiumGuideFeatureId>(initialFeatureId);
   useEffect(() => {
@@ -69,7 +70,7 @@ export function PremiumModal({ visible, initialFeatureId, designMode, chicPatter
   const selectedIndex = Math.max(0, PREMIUM_GUIDE_FEATURES.findIndex((feature) => feature.id === selectedFeature.id));
   return <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
     <Pressable style={styles.modalBackdrop} onPress={onClose}>
-      <Pressable style={[styles.modalSheet, styles.premiumModalSheet, { backgroundColor: theme.colors.screenBackground }]} onPress={(event) => event.stopPropagation()}>
+      <Pressable style={[styles.modalSheet, styles.premiumModalSheet, { backgroundColor: theme.colors.screenBackground }, designSurface]} onPress={(event) => event.stopPropagation()}>
         <View style={styles.modalHandle} />
         <View style={styles.premiumCarouselHeader}>
           <View style={{ flex: 1 }}>
@@ -81,10 +82,10 @@ export function PremiumModal({ visible, initialFeatureId, designMode, chicPatter
         </View>
         <ScrollView style={styles.premiumCarouselArea} contentContainerStyle={styles.premiumModalScroll} showsVerticalScrollIndicator={false}>
         <View style={styles.premiumFeaturePicker}>
-          {PREMIUM_GUIDE_FEATURES.map((feature, index) => <PremiumFeatureEntryCard key={feature.id} number={String(index + 1).padStart(2, '0')} title={feature.title} active={feature.id === selectedFeature.id} designMode={designMode} chicPattern={chicPattern} onPress={() => setSelectedFeatureId(feature.id)} components={components} styles={styles} />)}
+          {PREMIUM_GUIDE_FEATURES.map((feature, index) => <PremiumFeatureEntryCard key={feature.id} number={String(index + 1).padStart(2, '0')} title={feature.title} active={feature.id === selectedFeature.id} designMode={designMode} chicPattern={chicPattern} chicPalette={chicPalette} onPress={() => setSelectedFeatureId(feature.id)} components={components} styles={styles} />)}
         </View>
         <View style={styles.premiumFeatureStage}>
-          <PremiumFeatureDetail number={String(selectedIndex + 1).padStart(2, '0')} kind={selectedFeature.kind} title={selectedFeature.title} description={selectedFeature.description} designMode={designMode} chicPattern={chicPattern} components={components} styles={styles} />
+          <PremiumFeatureDetail number={String(selectedIndex + 1).padStart(2, '0')} kind={selectedFeature.kind} title={selectedFeature.title} description={selectedFeature.description} designMode={designMode} chicPattern={chicPattern} chicPalette={chicPalette} components={components} styles={styles} />
           {selectedFeature.id === 'month' && <View style={styles.premiumHistoryNote}><Text style={styles.premiumHistoryTitle}>過去の記録も、あとから振り返れる</Text><Text style={styles.premiumHistoryCopy}>7日を超えた完了記録や、集中・出発の記録も確認できます。</Text></View>}
         </View>
         <Pressable style={[styles.premiumCloseButton, { borderColor: theme.colors.primaryAccent }]} onPress={onClose}><Text style={[styles.premiumCloseButtonText, { color: theme.colors.primaryAccent }]}>Rhythmに戻る</Text></Pressable>

@@ -5,7 +5,7 @@ import * as Notifications from 'expo-notifications';
 import { Audio } from 'expo-av';
 import { StatusBar } from 'expo-status-bar';
 import React, { useEffect, useMemo, useState } from 'react';
-import { ChicCheckColor, ChicPattern, DesignMode, chicCheckColorChoices, getChicCheckColor, getThemeTokens, normalizeChicCheckColor, normalizeChicPattern } from './theme';
+import { ChicCheckColor, ChicPattern, ChicThemePalette, DesignMode, chicCheckColorChoices, getChicCheckColor, getChicThemePalette, getThemeTokens, normalizeChicCheckColor, normalizeChicPattern } from './theme';
 import { RecoveryRecord } from './recovery';
 import { createCompletedFocusSession, createFocusSessionId, FocusSession } from './focusSession';
 import { createDepartureCheckIn, DepartureCheckIn } from './departureCheckIn';
@@ -428,7 +428,7 @@ export default function App() {
   const [taskTemplates, setTaskTemplates] = useState<string[]>(['朝の支度', '持ち物を確認', '連絡を返す', '薬を飲む']);
   const [savedTaskTemplates, setSavedTaskTemplates] = useState<PremiumTaskTemplate[]>([]);
   const [guideOpen, setGuideOpen] = useState(false);
-  const theme = useMemo(() => getThemeTokens(designMode), [designMode]);
+  const theme = useMemo(() => getThemeTokens(designMode, chicCheckColor), [designMode, chicCheckColor]);
   const [addOpen, setAddOpen] = useState(false);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [selectionMode, setSelectionMode] = useState(false);
@@ -445,6 +445,23 @@ export default function App() {
   const photoTopImageUri = photoThemeEnabled ? photoTheme.topImageUris?.[screen] ?? photoTheme.topImageOriginalUris?.[screen] ?? (photoTheme.placement === 'top' ? photoTheme.imageUri : undefined) : undefined;
   const focusBackgroundUri = photoThemeEnabled ? photoTheme.focusBackgroundUri : undefined;
   const effectiveChicPattern = getEffectiveChicPattern(planTier, chicPattern) as ChicPattern;
+  const chicPalette = getChicThemePalette(chicCheckColor);
+  const getThemedThemeTokens = React.useCallback((mode: DesignMode) => getThemeTokens(mode, chicCheckColor), [chicCheckColor]);
+  // Design uses one palette for every surface. Keep the legacy color shape for
+  // components that still consume the shared app colors object.
+  const themedColors = useMemo(() => designMode === 'chic' ? {
+    ...colors,
+    background: chicPalette.background,
+    surface: chicPalette.surface,
+    ink: chicPalette.textPrimary,
+    muted: chicPalette.textSecondary,
+    violet: chicPalette.accent,
+    violetSoft: chicPalette.accentSoft,
+    coral: chicPalette.accent,
+    coralSoft: chicPalette.surfaceSubtle,
+    mint: chicPalette.accentSoft,
+    line: chicPalette.border,
+  } : colors, [designMode, chicPalette]);
   const currentWishMonthKey = wishMonthKey(now);
   const currentWishState = getMonthlyWishState(wishMonths, currentWishMonthKey);
   const saveCurrentWishState = React.useCallback((updater: (current: MonthlyWishState) => MonthlyWishState) => {
@@ -1511,14 +1528,14 @@ export default function App() {
   };
 
   return (
-        <SafeAreaView style={[styles.safe, { backgroundColor: uiDesignMode === 'chic' ? (isCheckChicPattern(effectiveChicPattern) ? getChicCheckColor(chicCheckColor).background : getChicPatternVisual(effectiveChicPattern).background) : theme.colors.screenBackground }, uiDesignMode === 'minimal' && styles.safeMinimal, uiDesignMode === 'dark' && styles.safeDark, uiDesignMode === 'chic' && styles.safeChic, designMode === 'photo' && styles.safePhoto]}>
+        <SafeAreaView style={[styles.safe, { backgroundColor: uiDesignMode === 'chic' ? (isCheckChicPattern(effectiveChicPattern) ? chicPalette.background : getChicPatternVisual(effectiveChicPattern).background) : theme.colors.screenBackground }, uiDesignMode === 'minimal' && styles.safeMinimal, uiDesignMode === 'dark' && styles.safeDark, uiDesignMode === 'chic' && styles.safeChic, designMode === 'photo' && styles.safePhoto]}>
       <StatusBar style={uiDesignMode === 'dark' ? 'light' : 'dark'} />
       {photoBackgroundUri && <View pointerEvents="none" style={styles.photoThemeBackgroundWrap}><Image source={{ uri: photoBackgroundUri }} resizeMode="cover" style={styles.photoThemeBackground} /></View>}
       <View style={styles.app}>
         <BThemeRibbonPreload />
         <CThemeRibbonPreload />
-        {uiDesignMode === 'chic' && !photoThemeEnabled && <View pointerEvents="none" style={StyleSheet.absoluteFillObject}><ChicPatternDecor pattern={effectiveChicPattern} accent={isCheckChicPattern(effectiveChicPattern) ? getChicCheckColor(chicCheckColor).accent : getChicPatternVisual(effectiveChicPattern).accent} warm={isCheckChicPattern(effectiveChicPattern) ? getChicCheckColor(chicCheckColor).warm : getChicPatternVisual(effectiveChicPattern).warm} checkColor={chicCheckColor} /></View>}
-        {photoTopImageUri ? <><Header designMode={uiDesignMode} now={now} compact /><View style={styles.photoThemeTopImage}><Image source={{ uri: photoTopImageUri }} resizeMode="contain" style={styles.photoThemeTopImageContent} /></View></> : <Header designMode={uiDesignMode} now={now} />}
+        {uiDesignMode === 'chic' && !photoThemeEnabled && <View pointerEvents="none" style={StyleSheet.absoluteFillObject}><ChicPatternDecor pattern={effectiveChicPattern} accent={isCheckChicPattern(effectiveChicPattern) ? chicPalette.accent : getChicPatternVisual(effectiveChicPattern).accent} warm={isCheckChicPattern(effectiveChicPattern) ? chicPalette.patternStripe : getChicPatternVisual(effectiveChicPattern).warm} checkColor={chicCheckColor} /></View>}
+        {photoTopImageUri ? <><Header designMode={uiDesignMode} now={now} compact chicPalette={chicPalette} /><View style={styles.photoThemeTopImage}><Image source={{ uri: photoTopImageUri }} resizeMode="contain" style={styles.photoThemeTopImageContent} /></View></> : <Header designMode={uiDesignMode} now={now} chicPalette={chicPalette} />}
 
         <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
           {screen === 'home' && (
@@ -1529,6 +1546,7 @@ export default function App() {
               now={now}
               designMode={uiDesignMode}
               chicPattern={effectiveChicPattern}
+              chicPalette={chicPalette}
               completionIcon={completionIcon}
               selectionMode={selectionMode}
               selectedTaskIds={selectedTaskIds}
@@ -1574,7 +1592,7 @@ export default function App() {
                 void scheduleAllTaskNotifications(updated);
               }}
               styles={styles}
-              renderTodayWinStrip={(todayTasks) => <TodayWinStrip tasks={todayTasks} designMode={uiDesignMode} chicPattern={effectiveChicPattern} onRestore={restoreTaskById} />}
+              renderTodayWinStrip={(todayTasks) => <TodayWinStrip tasks={todayTasks} designMode={uiDesignMode} chicPattern={effectiveChicPattern} chicPalette={chicPalette} onRestore={restoreTaskById} />}
               PatternDecor={ChicPatternDecor}
               helpers={{ deadlineLabel, getUrgencyStatus, getLateRiskMessage, dateForReminder, dateKey, formatLiveTime, isCheckChicPattern, todayInputValue }}
             />
@@ -1585,6 +1603,7 @@ export default function App() {
             <WishScreen
               designMode={uiDesignMode}
               chicPattern={effectiveChicPattern}
+              chicPalette={chicPalette}
               monthLabel={`${now.getFullYear()}年${now.getMonth() + 1}月`}
               state={currentWishState}
               onSaveState={saveCurrentWishState}
@@ -1612,6 +1631,7 @@ export default function App() {
               designMode={uiDesignMode}
               focusBackgroundUri={focusBackgroundUri}
               chicPattern={effectiveChicPattern}
+              chicPalette={chicPalette}
               planTier={planTier}
               initialTab={timelineInitialTab}
               recoveryTargetPlanId={recoveryTargetPlanId}
@@ -1640,7 +1660,7 @@ export default function App() {
               calendarMarks={calendarMarks}
               onSetCalendarMark={(date: string, mark?: string) => setCalendarMarks((current) => { const next = { ...current }; if (mark) next[date] = mark; else delete next[date]; return next; })}
               styles={styles}
-              helpers={{ getThemeTokens, dateKey, planDateKey, hasPremiumAccess, formatLiveDate, formatLiveTime, getDepartureMoments, normalizePlanDate, countdownToDate, dateForReminder, getMapSearchTarget, openMapSearch, getPlanCountdownAt, colors }}
+              helpers={{ getThemeTokens: getThemedThemeTokens, dateKey, planDateKey, hasPremiumAccess, formatLiveDate, formatLiveTime, getDepartureMoments, normalizePlanDate, countdownToDate, dateForReminder, getMapSearchTarget, openMapSearch, getPlanCountdownAt, colors: themedColors }}
               components={{ TimeTabButton, FocusMode, TaskScheduleCalendar, DailyScheduleTimeline, RecoveryModal }}
             />
           )}
@@ -1657,6 +1677,7 @@ export default function App() {
                designMode={designMode}
                chicPattern={effectiveChicPattern}
                chicCheckColor={chicCheckColor}
+               chicPalette={chicPalette}
                affirmations={affirmations}
                photoTheme={photoTheme}
               planTier={planTier}
@@ -1745,12 +1766,12 @@ export default function App() {
                 setTasks(next);
                 recordBehaviorEvent(createRoutineDeactivatedBehaviorEvent({ routineId, routineTitle: target.title, taskId: target.id, occurredAt: new Date(endedAt), targetDate: dateKey(endedAt) }));
               } }])}
-              recordContent={<HistoryScreen tasks={tasks} wishMonths={wishMonths} calendarMarks={calendarMarks} onSetCalendarMark={(date, mark) => setCalendarMarks((current) => { const next = { ...current }; if (mark) next[date] = mark; else delete next[date]; return next; })} recoveryHistory={recoveryHistory} focusSessions={focusSessions} departureCheckIns={departureCheckIns} departurePlans={departurePlans} behaviorEvents={behaviorEvents} completionIcon={completionIcon} designMode={uiDesignMode} chicPattern={effectiveChicPattern} planTier={planTier} onPremium={openPremiumFeature} onSaveTemplate={saveTaskAsTemplate} onRestore={restoreTaskById} onSaveDailyReview={saveDailyReview} onUpdateReview={updateWishReview} onDeleteReview={deleteWishReview} styles={styles} helpers={{ dateKey, formatLiveTime }} components={{ AchievementVessel, CalendarMarkPicker }} />}
+              recordContent={<HistoryScreen tasks={tasks} wishMonths={wishMonths} calendarMarks={calendarMarks} onSetCalendarMark={(date, mark) => setCalendarMarks((current) => { const next = { ...current }; if (mark) next[date] = mark; else delete next[date]; return next; })} recoveryHistory={recoveryHistory} focusSessions={focusSessions} departureCheckIns={departureCheckIns} departurePlans={departurePlans} behaviorEvents={behaviorEvents} completionIcon={completionIcon} designMode={uiDesignMode} chicPattern={effectiveChicPattern} chicPalette={chicPalette} planTier={planTier} onPremium={openPremiumFeature} onSaveTemplate={saveTaskAsTemplate} onRestore={restoreTaskById} onSaveDailyReview={saveDailyReview} onUpdateReview={updateWishReview} onDeleteReview={deleteWishReview} styles={styles} helpers={{ dateKey, formatLiveTime, getThemeTokens: getThemedThemeTokens }} components={{ AchievementVessel, CalendarMarkPicker }} />}
             />
           )}
         </ScrollView>
 
-        <BottomNav screen={screen} designMode={uiDesignMode} onChange={(nextScreen) => nextScreen === 'wish' ? openWish() : setScreen(nextScreen)} />
+        <BottomNav screen={screen} designMode={uiDesignMode} chicPalette={chicPalette} onChange={(nextScreen) => nextScreen === 'wish' ? openWish() : setScreen(nextScreen)} />
       </View>
 
       <SharedEventScreen
@@ -1768,37 +1789,38 @@ export default function App() {
         onShareCurrentEvent={shareCurrentSharedEvent}
       />
 
-      <TaskModal visible={addOpen} templates={taskTemplates} savedTemplates={savedTaskTemplates} designMode={uiDesignMode} planTier={planTier} onPremium={openPremiumFeature} onClose={() => setAddOpen(false)} onSave={addTask} styles={styles} helpers={{ getThemeTokens, todayInputValue, hasPremiumAccess, dateForReminder, dateKey, formatLiveTime, colors, summarizePremiumTaskTemplate }} components={{ CompactNumberSetting }} />
+      <TaskModal visible={addOpen} templates={taskTemplates} savedTemplates={savedTaskTemplates} designMode={uiDesignMode} chicPalette={chicPalette} planTier={planTier} onPremium={openPremiumFeature} onClose={() => setAddOpen(false)} onSave={addTask} styles={styles} helpers={{ getThemeTokens: getThemedThemeTokens, todayInputValue, hasPremiumAccess, dateForReminder, dateKey, formatLiveTime, colors: themedColors, summarizePremiumTaskTemplate }} components={{ CompactNumberSetting }} />
       <TaskModal
         visible={editingTask !== null}
         task={editingTask ?? undefined}
         templates={taskTemplates}
         savedTemplates={savedTaskTemplates}
         designMode={uiDesignMode}
+        chicPalette={chicPalette}
         planTier={planTier}
         onPremium={openPremiumFeature}
         onClose={() => setEditingTask(null)}
         onSave={updateTask}
         styles={styles}
-        helpers={{ getThemeTokens, todayInputValue, hasPremiumAccess, dateForReminder, dateKey, formatLiveTime, colors, summarizePremiumTaskTemplate }}
+        helpers={{ getThemeTokens: getThemedThemeTokens, todayInputValue, hasPremiumAccess, dateForReminder, dateKey, formatLiveTime, colors: themedColors, summarizePremiumTaskTemplate }}
         components={{ CompactNumberSetting }}
       />
-      <PremiumModal visible={premiumOpen} initialFeatureId={premiumTargetFeature} designMode={uiDesignMode} chicPattern={effectiveChicPattern} onClose={() => setPremiumOpen(false)} styles={styles} helpers={{ getThemeTokens }} components={{ ChicPatternDecor, isCheckChicPattern }} />
+      <PremiumModal visible={premiumOpen} initialFeatureId={premiumTargetFeature} designMode={uiDesignMode} chicPattern={effectiveChicPattern} chicPalette={chicPalette} onClose={() => setPremiumOpen(false)} styles={styles} helpers={{ getThemeTokens: getThemedThemeTokens }} components={{ ChicPatternDecor, isCheckChicPattern }} />
       <TopImageCropModal visible={Boolean(pendingTopPhoto)} uri={pendingTopPhoto?.originalUri} sourceWidth={pendingTopPhoto?.sourceWidth ?? 1} sourceHeight={pendingTopPhoto?.sourceHeight ?? 1} initialRect={pendingTopPhoto?.cropRect} styles={styles} onCancel={() => setPendingTopPhoto(undefined)} onReselect={() => { if (pendingTopPhoto) void pickPhotoTheme(pendingTopPhoto.target); }} onUse={(cropRect) => { void applyPendingTopPhoto(cropRect); }} />
       <GuideModal visible={guideOpen} styles={styles} onClose={() => setGuideOpen(false)} />
     </SafeAreaView>
   );
 }
 
-function TimeTabButton({ tab, active, designMode, chicPattern, themeAccent, secondaryText, onPress }: { tab: TimeTab; active: boolean; designMode: DesignMode; chicPattern: ChicPattern; themeAccent: string; secondaryText: string; onPress: () => void }) {
-  const palette = chicUtilityPalettes[tab];
+function TimeTabButton({ tab, active, designMode, chicPattern, chicPalette, themeAccent, secondaryText, onPress }: { tab: TimeTab; active: boolean; designMode: DesignMode; chicPattern: ChicPattern; chicPalette?: ChicThemePalette; themeAccent: string; secondaryText: string; onPress: () => void }) {
+  const palette = chicPalette ?? chicUtilityPalettes[tab];
   const label = tab === 'departure' ? '出発' : tab === 'deadline' ? 'スケジュール' : tab === 'calendar' ? '予定表' : '集中';
   const isDark = designMode === 'dark';
   if (designMode === 'chic') return <Pressable style={[styles.timeTab, styles.timeTabChicPattern, { backgroundColor: palette.background }, active && { borderColor: palette.accent, borderWidth: 2 }]} onPress={onPress}>{!isCheckChicPattern(chicPattern) && <ChicPatternDecor pattern={chicPattern} accent={palette.accent} warm={palette.warm} density="compact" />}<View style={[styles.timeTabGlassLabel, active && styles.timeTabGlassLabelActive]}><Text style={[styles.timeTabText, { color: active ? palette.accent : '#8B7B82' }]}>{label}</Text>{active && <Text style={[styles.timeTabMarker, { color: palette.accent }]}>●</Text>}</View></Pressable>;
     return <Pressable style={[styles.timeTab, styles.timeTabMinimal, isDark && styles.darkSurface, active && styles.timeTabActive, active && { backgroundColor: isDark ? '#26365F' : themeAccent, borderColor: isDark ? '#6F8DFF' : themeAccent }]} onPress={onPress}><Text style={[styles.timeTabText, { color: isDark ? '#F4F7FC' : secondaryText }, active && styles.timeTabTextActive, active && styles.timeTabTextActiveMinimal]}>{label}</Text></Pressable>;
 }
 
-function FocusMode({ tasks, designMode, backgroundImageUri, onFocusCompleted, onBehaviorEvent }: { tasks: Task[]; designMode: DesignMode; backgroundImageUri?: string; onFocusCompleted: (session: FocusSession) => void; onBehaviorEvent: (event: BehaviorEvent) => void }) {
+function FocusMode({ tasks, designMode, chicPalette, backgroundImageUri, onFocusCompleted, onBehaviorEvent }: { tasks: Task[]; designMode: DesignMode; chicPalette?: ChicThemePalette; backgroundImageUri?: string; onFocusCompleted: (session: FocusSession) => void; onBehaviorEvent: (event: BehaviorEvent) => void }) {
   const availableTasks = React.useMemo(() => {
     const today = dateKey();
     const seenTitles = new Set<string>();
@@ -1935,8 +1957,8 @@ function FocusMode({ tasks, designMode, backgroundImageUri, onFocusCompleted, on
   </>;
 }
 
-function DailyScheduleTimeline({ date, tasks, plans, externalEvents, now, designMode, planTier, onEditTask, onEditPlan }: { date: string; tasks: Task[]; plans: DeparturePlan[]; externalEvents: Calendar.Event[]; now: Date; designMode: DesignMode; planTier: PlanTier; onEditTask: (task: Task) => void; onEditPlan: (plan: DeparturePlan) => void }) {
-  const theme = getThemeTokens(designMode);
+function DailyScheduleTimeline({ date, tasks, plans, externalEvents, now, designMode, chicPalette, planTier, onEditTask, onEditPlan }: { date: string; tasks: Task[]; plans: DeparturePlan[]; externalEvents: Calendar.Event[]; now: Date; designMode: DesignMode; chicPalette?: ChicThemePalette; planTier: PlanTier; onEditTask: (task: Task) => void; onEditPlan: (plan: DeparturePlan) => void }) {
+  const theme = getThemeTokens(designMode, chicPalette?.id ?? 'cool');
   const isDark = designMode === 'dark';
   type ScheduleItem = { id: string; time?: string; title: string; meta: string; kind: 'task' | 'plan' | 'external' | 'done'; onPress?: () => void };
   const items: ScheduleItem[] = [];
@@ -1999,8 +2021,8 @@ function CalendarPlanActions({ plan, isDark, onEdit, onDelete, onOpenMap }: { pl
   </View>;
 }
 
-function TaskScheduleCalendar({ tasks, plans, externalEvents, now, designMode, chicPattern, planTier, focusDate, calendarMarks, onSetCalendarMark, onPremium, onEditTask, onDeleteTask, onEditPlan, onDeletePlan, onOpenMap, behaviorEvents, departureCheckIns, departurePreparationStatuses }: { tasks: Task[]; plans: DeparturePlan[]; externalEvents: Calendar.Event[]; now: Date; designMode: DesignMode; chicPattern: ChicPattern; planTier: PlanTier; focusDate?: string; calendarMarks: CalendarMarks; onSetCalendarMark: (date: string, mark?: string) => void; onPremium: (featureId?: PremiumGuideFeatureId) => void; onEditTask: (task: Task) => void; onDeleteTask: (id: string) => void; onEditPlan: (plan: DeparturePlan) => void; onDeletePlan: (id: string) => void; onOpenMap: (plan: DeparturePlan) => void; behaviorEvents: BehaviorEvent[]; departureCheckIns: DepartureCheckIn[]; departurePreparationStatuses: Record<string, DeparturePreparationStatus> }) {
-  const theme = getThemeTokens(designMode);
+function TaskScheduleCalendar({ tasks, plans, externalEvents, now, designMode, chicPattern, chicPalette, planTier, focusDate, calendarMarks, onSetCalendarMark, onPremium, onEditTask, onDeleteTask, onEditPlan, onDeletePlan, onOpenMap, behaviorEvents, departureCheckIns, departurePreparationStatuses }: { tasks: Task[]; plans: DeparturePlan[]; externalEvents: Calendar.Event[]; now: Date; designMode: DesignMode; chicPattern: ChicPattern; chicPalette?: ChicThemePalette; planTier: PlanTier; focusDate?: string; calendarMarks: CalendarMarks; onSetCalendarMark: (date: string, mark?: string) => void; onPremium: (featureId?: PremiumGuideFeatureId) => void; onEditTask: (task: Task) => void; onDeleteTask: (id: string) => void; onEditPlan: (plan: DeparturePlan) => void; onDeletePlan: (id: string) => void; onOpenMap: (plan: DeparturePlan) => void; behaviorEvents: BehaviorEvent[]; departureCheckIns: DepartureCheckIn[]; departurePreparationStatuses: Record<string, DeparturePreparationStatus> }) {
+  const theme = getThemeTokens(designMode, chicPalette?.id ?? 'cool');
   const isDark = designMode === 'dark';
   const [monthDate, setMonthDate] = useState(() => new Date(now.getFullYear(), now.getMonth(), 1));
   const [selectedDate, setSelectedDate] = useState(dateKey(now));
@@ -2132,7 +2154,7 @@ function TaskScheduleCalendar({ tasks, plans, externalEvents, now, designMode, c
 
   return <>
       <View style={[styles.scheduleCalendarCard, designMode !== 'chic' && styles.scheduleCalendarCardMinimal, isDark && styles.darkSurface, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border, borderRadius: designMode !== 'chic' ? 16 : theme.radius.large }]}>
-      {designMode === 'chic' && !isCheckChicPattern(chicPattern) && <View pointerEvents="none" style={styles.calendarPatternCorner}><ChicPatternDecor pattern={chicPattern} accent="#D986A1" warm="#A997C8" /></View>}
+      {designMode === 'chic' && !isCheckChicPattern(chicPattern) && <View pointerEvents="none" style={styles.calendarPatternCorner}><ChicPatternDecor pattern={chicPattern} accent={chicPalette?.accent ?? '#D986A1'} warm={chicPalette?.patternStripe ?? '#A997C8'} /></View>}
         <View style={styles.scheduleCalendarHeader}>
           <Pressable style={[styles.scheduleMonthArrow, isDark && styles.scheduleMonthArrowDark]} onPress={() => moveMonth(-1)}><Text style={[styles.scheduleMonthArrowText, isDark && styles.scheduleMonthArrowTextDark]}>‹</Text></Pressable>
         <View><Text style={[styles.scheduleMonthTitle, isDark && styles.darkCalendarText]}>{year}年 {month + 1}月</Text><Text style={[styles.scheduleMonthCopy, isDark && styles.darkCalendarAccent]}>予定をまとめて見渡す</Text></View>
@@ -2265,13 +2287,13 @@ function ChicPatternDecor({ pattern, accent, warm, density = 'regular', checkCol
   if (pattern === 'plain') return null;
   if (pattern === 'checkLavenderSatin' || pattern === 'checkBeigeNoir' || pattern === 'checkMauveFrame') {
     const selectedCheckColor = checkColor ? getChicCheckColor(checkColor) : undefined;
-    const backgroundColor = selectedCheckColor?.background ?? (pattern === 'checkBeigeNoir' ? '#FBF4EA' : pattern === 'checkMauveFrame' ? '#FFF1F6' : '#F6F1FB');
+    const backgroundColor = selectedCheckColor?.patternBase ?? (pattern === 'checkBeigeNoir' ? '#FBF4EA' : pattern === 'checkMauveFrame' ? '#FFF1F6' : '#F6F1FB');
     const cell = pattern === 'checkLavenderSatin' ? (compact ? 30 : 32) : pattern === 'checkBeigeNoir' ? (compact ? 12 : 14) : (compact ? 20 : 22);
-    const verticalColor = selectedCheckColor ? `${selectedCheckColor.accent}30` : pattern === 'checkBeigeNoir' ? 'rgba(116,96,79,0.08)' : pattern === 'checkMauveFrame' ? 'rgba(185,119,143,0.12)' : 'rgba(185,173,216,0.17)';
-    const horizontalColor = selectedCheckColor ? `${selectedCheckColor.warm}28` : pattern === 'checkBeigeNoir' ? 'rgba(201,180,154,0.14)' : pattern === 'checkMauveFrame' ? 'rgba(226,182,194,0.18)' : 'rgba(227,216,241,0.26)';
+    const verticalColor = selectedCheckColor ? `${selectedCheckColor.patternStripe}30` : pattern === 'checkBeigeNoir' ? 'rgba(116,96,79,0.08)' : pattern === 'checkMauveFrame' ? 'rgba(185,119,143,0.12)' : 'rgba(185,173,216,0.17)';
+    const horizontalColor = selectedCheckColor ? `${selectedCheckColor.patternStripe}28` : pattern === 'checkBeigeNoir' ? 'rgba(201,180,154,0.14)' : pattern === 'checkMauveFrame' ? 'rgba(226,182,194,0.18)' : 'rgba(227,216,241,0.26)';
     const columns = Math.min(28, Math.ceil((compact ? 260 : 520) / cell) + 2);
     const rows = Math.min(48, Math.ceil((compact ? 420 : 1400) / cell) + 2);
-    const overlapColor = selectedCheckColor ? `${selectedCheckColor.accent}42` : pattern === 'checkBeigeNoir' ? 'rgba(116,96,79,0.14)' : pattern === 'checkMauveFrame' ? 'rgba(185,119,143,0.19)' : 'rgba(185,173,216,0.25)';
+    const overlapColor = selectedCheckColor ? `${selectedCheckColor.patternStripe}42` : pattern === 'checkBeigeNoir' ? 'rgba(116,96,79,0.14)' : pattern === 'checkMauveFrame' ? 'rgba(185,119,143,0.19)' : 'rgba(185,173,216,0.25)';
     const bandSize = cell * 0.36;
     const bandOffset = (cell - bandSize) / 2;
     return <View pointerEvents="none" style={[styles.patternLayer, { backgroundColor }]}>
@@ -2352,8 +2374,8 @@ function NotificationManagerCard({ designMode }: { designMode?: DesignMode }) {
   </View>;
 }
 
-function TodayWinStrip({ tasks, designMode, chicPattern, onRestore }: { tasks: Task[]; designMode: ThemeMode; chicPattern: ChicPattern; onRestore: (id: string) => void }) {
-  const theme = getThemeTokens(designMode);
+function TodayWinStrip({ tasks, designMode, chicPattern, chicPalette, onRestore }: { tasks: Task[]; designMode: ThemeMode; chicPattern: ChicPattern; chicPalette: ChicThemePalette; onRestore: (id: string) => void }) {
+  const theme = getThemeTokens(designMode, chicPalette.id);
   const now = new Date();
   const todayKey = dateKey(now);
   const scheduledToday = tasks.filter((task) => !task.scheduledDate || normalizeTaskDateKey(task.scheduledDate)! <= todayKey);
@@ -2387,7 +2409,7 @@ function TodayWinStrip({ tasks, designMode, chicPattern, onRestore }: { tasks: T
     <Modal visible={detailsOpen} transparent animationType="slide" onRequestClose={() => setDetailsOpen(false)}>
       <Pressable style={styles.modalBackdrop} onPress={() => setDetailsOpen(false)}>
         <Pressable style={[styles.modalSheet, { backgroundColor: theme.colors.screenBackground, borderRadius: theme.radius.modal }]} onPress={(event) => event.stopPropagation()}>
-          {designMode === 'chic' && !isCheckChicPattern(chicPattern) && <View pointerEvents="none" style={styles.completedModalPattern}><ChicPatternDecor pattern={chicPattern} accent="#D986A1" warm="#A997C8" /></View>}
+          {designMode === 'chic' && !isCheckChicPattern(chicPattern) && <View pointerEvents="none" style={styles.completedModalPattern}><ChicPatternDecor pattern={chicPattern} accent={chicPalette.accent} warm={chicPalette.patternStripe} /></View>}
           <View style={styles.modalHandle} />
           <Text style={styles.modalTitle}>今日できたこと</Text>
           {completedToday.length === 0 ? (
@@ -2463,7 +2485,7 @@ function TodayWinStrip({ tasks, designMode, chicPattern, onRestore }: { tasks: T
   );
 }
 
-function AchievementVessel({ tasks, designMode, chicPattern = 'plain', scope = 'month', compact = false }: { tasks: Task[]; designMode: ThemeMode; chicPattern?: ChicPattern; scope?: 'today' | 'month'; compact?: boolean }) {
+function AchievementVessel({ tasks, designMode, chicPattern = 'plain', chicPalette, scope = 'month', compact = false }: { tasks: Task[]; designMode: ThemeMode; chicPattern?: ChicPattern; chicPalette?: ChicThemePalette; scope?: 'today' | 'month'; compact?: boolean }) {
   const now = new Date();
   const completed = tasks.filter((task) => {
     if (!task.completedAt) return false;
@@ -2475,7 +2497,7 @@ function AchievementVessel({ tasks, designMode, chicPattern = 'plain', scope = '
     return <View style={[styles.minimalAchievement, compact && styles.minimalAchievementCompact, designMode === 'dark' && styles.minimalAchievementDark]}><View><Text style={[styles.minimalAchievementLabel, designMode === 'dark' && styles.minimalAchievementLabelDark]}>{scope === 'today' ? '今日できたこと' : '今月の記録'}</Text><Text style={[styles.minimalAchievementNumber, compact && styles.minimalAchievementNumberCompact, designMode === 'dark' && styles.minimalAchievementNumberDark]}>{String(completed.length).padStart(2, '0')}</Text><Text style={[styles.taskMeta, designMode === 'dark' && styles.minimalAchievementLabelDark]}>{completed.length}件完了</Text></View><View style={styles.minimalAchievementBars}>{Array.from({ length: 10 }, (_, item) => <View key={item} style={[styles.minimalAchievementBar, item < Math.min(10, completed.length) && styles.minimalAchievementBarFilled, designMode === 'dark' && styles.minimalAchievementBarDark, item < Math.min(10, completed.length) && designMode === 'dark' && styles.minimalAchievementBarFilledDark]} />)}</View></View>;
   }
   return <View style={[styles.vesselScene, compact && styles.vesselSceneCompact, designMode === 'chic' && styles.vesselSceneChic, ]}>
-    {designMode === 'chic' && !isCheckChicPattern(chicPattern) && <ChicPatternDecor pattern={chicPattern} accent="#D986A1" warm="#A997C8" />}
+    {designMode === 'chic' && !isCheckChicPattern(chicPattern) && <ChicPatternDecor pattern={chicPattern} accent={chicPalette?.accent ?? '#D986A1'} warm={chicPalette?.patternStripe ?? '#A997C8'} />}
     <View style={[styles.vesselLabel, designMode === 'chic' && styles.vesselLabelChic]}><Text style={styles.vesselLabelTop}>{scope === 'today' ? '今日の小さな達成' : designMode === 'chic' ? '今月の小さな達成' : '今月のできたこと'}</Text><Text style={[styles.vesselLabelTitle, compact && styles.vesselLabelTitleCompact]}>{completed.length}個のできた！</Text></View>
     <View style={styles.jarLid} />
     <View style={[styles.jarBody, compact && styles.jarBodyCompact, ]}>

@@ -1,10 +1,11 @@
 import React from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { getThemeTokens } from '../theme';
+import { ChicThemePalette, getThemeTokens } from '../theme';
 import { Screen, ThemeMode } from '../types';
 
-export function BottomNav({ screen, designMode, onChange }: { screen: Screen; designMode: ThemeMode; onChange: (screen: Screen) => void }) {
+export function BottomNav({ screen, designMode, chicPalette, onChange }: { screen: Screen; designMode: ThemeMode; chicPalette?: ChicThemePalette; onChange: (screen: Screen) => void }) {
   const theme = getThemeTokens(designMode);
+  const designColors = designMode === 'chic' ? chicPalette : undefined;
   const items: { id: Screen; icon: string; label: string }[] = [
     { id: 'home', icon: '✓', label: '今日' },
     { id: 'timeline', icon: '↗', label: '予定' },
@@ -14,13 +15,13 @@ export function BottomNav({ screen, designMode, onChange }: { screen: Screen; de
   ];
 
   return (
-    <View style={[styles.bottomNav, designMode !== 'chic' && styles.bottomNavMinimal, designMode === 'dark' && styles.bottomNavDark, designMode === 'chic' && styles.bottomNavChic]}>
+    <View style={[styles.bottomNav, designMode !== 'chic' && styles.bottomNavMinimal, designMode === 'dark' && styles.bottomNavDark, designMode === 'chic' && styles.bottomNavChic, designColors && { backgroundColor: designColors.surface, borderColor: designColors.border, shadowColor: designColors.accent }]}>
       {items.map((item) => {
         const active = item.id === screen;
         return (
           <Pressable key={item.id} style={styles.navItem} onPress={() => onChange(item.id)}>
-            <Text style={[styles.navIcon, { color: active ? theme.colors.primaryAccent : theme.colors.secondaryText }]}>{item.icon}</Text>
-            <Text style={[styles.navLabel, { color: active ? theme.colors.primaryAccent : theme.colors.secondaryText }]}>{item.label}</Text>
+            <Text style={[styles.navIcon, { color: active ? (designColors?.accent ?? theme.colors.primaryAccent) : (designColors?.textSecondary ?? theme.colors.secondaryText) }]}>{item.icon}</Text>
+            <Text style={[styles.navLabel, { color: active ? (designColors?.accent ?? theme.colors.primaryAccent) : (designColors?.textSecondary ?? theme.colors.secondaryText) }]}>{item.label}</Text>
           </Pressable>
         );
       })}

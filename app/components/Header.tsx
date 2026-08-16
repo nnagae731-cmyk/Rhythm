@@ -2,19 +2,20 @@ import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { formatLiveDate, formatLiveTime } from '../features/tasks/taskUtils';
 import { ThemeMode } from '../types';
+import { ChicThemePalette } from '../theme';
 
-export function Header({ designMode, now, compact = false }: { designMode: ThemeMode; now: Date; compact?: boolean }) {
+export function Header({ designMode, now, compact = false, chicPalette }: { designMode: ThemeMode; now: Date; compact?: boolean; chicPalette?: ChicThemePalette }) {
   if (compact) return (
     <View style={styles.photoHeader}>
-      <Text style={styles.photoBrand}>Rhythm</Text>
+      <Text style={[styles.photoBrand, chicPalette && { color: chicPalette.textPrimary }]}>Rhythm</Text>
       <Text style={styles.photoDate}>{formatLiveDate(now)} ・ {formatLiveTime(now)}</Text>
     </View>
   );
   return (
-    <View style={[styles.header, designMode !== 'chic' && styles.headerMinimal, designMode === 'dark' && styles.headerDark]}>
+    <View style={[styles.header, designMode !== 'chic' && styles.headerMinimal, designMode === 'dark' && styles.headerDark, designMode === 'chic' && chicPalette && { borderBottomColor: chicPalette.border }]}>
       <View>
         <Text style={[styles.dateLabel, designMode === 'dark' && styles.dateLabelDark]}>{formatLiveDate(now)} · {formatLiveTime(now)}</Text>
-        <Text style={[styles.brand, designMode !== 'chic' && styles.brandMinimal, designMode === 'dark' && styles.brandDark]}>Rhythm</Text>
+        <Text style={[styles.brand, designMode !== 'chic' && styles.brandMinimal, designMode === 'dark' && styles.brandDark, designMode === 'chic' && chicPalette && { color: chicPalette.textPrimary }]}>Rhythm</Text>
       </View>
     </View>
   );

@@ -1,7 +1,7 @@
 import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import React, { useState } from 'react';
 import { Modal, Platform, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
-import { ChicPattern, DesignMode } from '../theme';
+import { ChicPattern, ChicThemePalette, DesignMode } from '../theme';
 import { Category, Priority, Task, TaskBucket } from '../types';
 import { categories, categoryColors, getChicTaskPatternPalette, priorities, repeatOptions } from '../features/tasks/taskUtils';
 import { TaskDateTimePickerSheet } from '../components/TaskDateTimePickerSheet';
@@ -21,6 +21,7 @@ export function HomeScreen({
   completionIcon,
   designMode,
   chicPattern,
+  chicPalette,
   selectionMode,
   selectedTaskIds,
   onAdd,
@@ -47,6 +48,7 @@ export function HomeScreen({
   now: Date;
   designMode: DesignMode;
   chicPattern: ChicPattern;
+  chicPalette: ChicThemePalette;
   completionIcon: string;
   selectionMode: boolean;
   selectedTaskIds: string[];
@@ -79,11 +81,11 @@ export function HomeScreen({
   const categoryTasks = categoryFilter === 'すべて' ? bucketTasks : bucketTasks.filter((task) => task.category === categoryFilter);
   const displayTasks = [...categoryTasks].sort((a, b) => priorityOrder[a.priority] - priorityOrder[b.priority]);
   return (
-    <HomeRuntimeContext.Provider value={{ styles, PatternDecor, helpers }}>
+    <HomeRuntimeContext.Provider value={{ styles, PatternDecor, helpers, chicPalette }}>
     <>
       {renderTodayWinStrip(allTasks)}
 
-      <VoiceQuickAddCard designMode={designMode} chicPattern={chicPattern} onQuickAdd={onQuickAdd} />
+      <VoiceQuickAddCard designMode={designMode} chicPattern={chicPattern} chicPalette={chicPalette} onQuickAdd={onQuickAdd} />
 
       <View style={[styles.sectionHeader, designMode === 'minimal' && styles.sectionHeaderMinimal, isDark && styles.darkPanel]}>
         <View>
@@ -119,10 +121,10 @@ export function HomeScreen({
 
       {displayTasks.length === 0 ? (
         <Pressable style={[styles.emptyCard, designMode === 'minimal' && styles.emptyCardMinimal, designMode === 'chic' && styles.emptyCardChic, isDark && styles.darkEmptyCard]} onPress={onAdd}>
-          {designMode === 'chic' && !isCheckChicPattern(chicPattern) && <PatternDecor pattern={chicPattern} accent="#D986A1" warm="#A997C8" />}
+          {designMode === 'chic' && !isCheckChicPattern(chicPattern) && <PatternDecor pattern={chicPattern} accent={chicPalette.accent} warm={chicPalette.patternStripe} />}
           <View style={designMode === 'chic' ? styles.emptyChicGlass : styles.emptyPlainContent}><Text style={[styles.emptyIcon, isDark && styles.darkAccentText]}>○</Text><Text style={[styles.emptyTitle, isDark && styles.darkBodyText]}>最初のタスクを追加しよう</Text><Text style={[styles.emptyCopy, isDark && styles.darkMutedText]}>忘れたくないことを、ここに置いておけます。</Text></View>
         </Pressable>
-      ) : displayTasks.map((task) => { const chicPalette = getChicTaskPatternPalette(task.category); return (
+      ) : displayTasks.map((task) => { return (
         <Pressable key={task.id} style={[styles.taskCard, designMode === 'minimal' && styles.taskCardMinimal, designMode === 'dark' && styles.darkSurface, designMode === 'chic' && styles.taskCardChic, designMode === 'chic' && { backgroundColor: chicPalette.background }, task.done && designMode !== 'chic' && styles.taskCardDone, task.done && isDark && styles.taskCardDoneDark, task.done && designMode === 'chic' && styles.taskCardChicDone]} onPress={() => setActionTask(task)}>
           {designMode === 'chic' && !isCheckChicPattern(chicPattern) && <PatternDecor pattern={chicPattern} accent={chicPalette.accent} warm={chicPalette.warm} density="compact" />}
           <View style={[styles.taskCardInner, designMode === 'chic' && styles.taskCardInnerChic, task.done && designMode === 'chic' && styles.taskCardInnerChicDone]}>
@@ -191,7 +193,7 @@ function parseVoiceSchedule(value: string, today: Date, dateKey: (date: Date) =>
   return result;
 }
 
-function VoiceQuickAddCard({ designMode, chicPattern, onQuickAdd }: { designMode: DesignMode; chicPattern: ChicPattern; onQuickAdd: (title: string, category: Category, priority: Priority, scheduledDate?: string, scheduledTime?: string, isRoutine?: boolean, deadlineDate?: string, deadlineTime?: string, deadlineNotifyBefore?: number) => void }) {
+function VoiceQuickAddCard({ designMode, chicPattern, chicPalette, onQuickAdd }: { designMode: DesignMode; chicPattern: ChicPattern; chicPalette: ChicThemePalette; onQuickAdd: (title: string, category: Category, priority: Priority, scheduledDate?: string, scheduledTime?: string, isRoutine?: boolean, deadlineDate?: string, deadlineTime?: string, deadlineNotifyBefore?: number) => void }) {
   const { styles, PatternDecor, helpers } = useHomeRuntime();
   const { dateForReminder, dateKey, formatLiveTime, isCheckChicPattern, todayInputValue } = helpers;
   const isDark = designMode === 'dark';
@@ -248,7 +250,7 @@ function VoiceQuickAddCard({ designMode, chicPattern, onQuickAdd }: { designMode
   };
 
   return <View style={[styles.voiceAddCard, designMode === 'minimal' && styles.voiceAddCardMinimal, isDark && styles.voiceAddCardDark, designMode === 'chic' && styles.voiceAddCardChic]}>
-    {designMode === 'chic' && !isCheckChicPattern(chicPattern) && <PatternDecor pattern={chicPattern} accent="#D986A1" warm="#A997C8" />}
+    {designMode === 'chic' && !isCheckChicPattern(chicPattern) && <PatternDecor pattern={chicPattern} accent={chicPalette.accent} warm={chicPalette.patternStripe} />}
     <View style={designMode === 'chic' ? styles.voiceAddPaperChic : styles.voiceAddPaperMinimal}>
       <View style={styles.voiceAddHeading}><Text style={[styles.quickAddTitle, isDark && styles.darkBodyText]}>やることを追加</Text><Text style={[styles.voiceAddHint, isDark && styles.darkMutedText]}>キーボードのマイクで音声入力できます</Text></View>
       {!detailsOpen && !title && <Pressable style={[styles.voiceAddCompact, isDark && styles.voiceAddCompactDark]} onPress={() => setDetailsOpen(true)}><Text style={[styles.voiceAddCompactTitle, isDark && styles.darkBodyText]}>タップして入力</Text><Text style={[styles.voiceAddCompactCopy, isDark && styles.darkMutedText]}>内容を確認してから追加できます</Text><Text style={[styles.voiceAddMicText, isDark && styles.darkAccentText]}>🎙</Text></Pressable>}
