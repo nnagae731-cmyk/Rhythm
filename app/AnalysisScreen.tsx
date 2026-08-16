@@ -6,7 +6,7 @@ import { buildInsightDashboard, formatComparison, formatMetricAverage, formatPoi
 import { buildRoutineInterruptionSummary, formatRoutineDate, getRoutineHistories as getRoutineHistoryList, RoutineInterruptionSummary } from './features/analytics/routineInterruptionAnalysis';
 import { hasPremiumAccess, PlanTier } from './premiumAccess';
 import { PremiumGuideFeatureId } from './premiumGuide';
-import { ChicThemePalette, DesignMode, getChicThemePalette, getThemeTokens } from './theme';
+import { ChicThemePalette, DesignMode, getDesignCheckThemeTokens, getThemeTokens } from './theme';
 import { DeparturePlan, Task } from './types';
 
 type AnalysisTab = 'records' | 'insights' | 'routine';
@@ -47,12 +47,12 @@ function RoutineHistoryModal({ summary, title, designMode, chicPalette, onClose 
 function RoutineProgressPanel({ events, tasks, designMode, chicPalette, onRemoveRoutine }: { events: BehaviorEvent[]; tasks: Task[]; designMode: DesignMode; chicPalette?: ChicThemePalette; onRemoveRoutine: (taskId: string) => void }) {
   const routineTasks = useMemo(() => getRoutineHistoryList(events, tasks), [events, tasks]);
   const [historyTarget, setHistoryTarget] = useState<{ title: string; summary: RoutineInterruptionSummary }>();
-  const resolvedChicPalette = chicPalette ?? getChicThemePalette('cool');
+  const resolvedChicPalette = chicPalette ?? getDesignCheckThemeTokens('cool');
   const palette = designMode === 'chic' ? [resolvedChicPalette.accent, resolvedChicPalette.statusAccent, resolvedChicPalette.patternStripe, resolvedChicPalette.accentSoft, resolvedChicPalette.border] : designMode === 'dark' ? ['#8EA6FF', '#AFC2FF', '#7ED6C4', '#C5B4FF', '#8EA6FF'] : ['#171717', '#3A3A3A', '#5C5C5C', '#7A7A7A', '#A0A0A0'];
   const isDark = designMode === 'dark';
-  if (routineTasks.length === 0) return <View style={[styles.routineCard, isDark && styles.routineCardDark, designMode === 'chic' && chicPalette && { backgroundColor: chicPalette.surface, borderColor: chicPalette.border }]}><Text style={[styles.sectionTitle, isDark && styles.darkMetricText, designMode === 'chic' && chicPalette && { color: chicPalette.textPrimary }]}>ルーティンの継続</Text><Text style={[styles.sectionCopy, isDark && styles.darkSecondaryText, designMode === 'chic' && chicPalette && { color: chicPalette.textSecondary }]}>タスク登録時に「ルーティンにする」を選ぶと、継続率を確認できます。</Text></View>;
+  if (routineTasks.length === 0) return <View style={[styles.routineCard, isDark && styles.routineCardDark, designMode === 'chic' && chicPalette && { backgroundColor: chicPalette.cardSurface, borderColor: chicPalette.border }]}><Text style={[styles.sectionTitle, isDark && styles.darkMetricText, designMode === 'chic' && chicPalette && { color: chicPalette.textPrimary }]}>ルーティンの継続</Text><Text style={[styles.sectionCopy, isDark && styles.darkSecondaryText, designMode === 'chic' && chicPalette && { color: chicPalette.textSecondary }]}>タスク登録時に「ルーティンにする」を選ぶと、継続率を確認できます。</Text></View>;
   return <>
-    <View style={[styles.routineCard, isDark && styles.routineCardDark, designMode === 'chic' && chicPalette && { backgroundColor: chicPalette.surface, borderColor: chicPalette.border }]}>
+    <View style={[styles.routineCard, isDark && styles.routineCardDark, designMode === 'chic' && chicPalette && { backgroundColor: chicPalette.cardSurface, borderColor: chicPalette.border }]}>
       <Text style={[styles.sectionTitle, isDark && styles.darkMetricText, designMode === 'chic' && chicPalette && { color: chicPalette.textPrimary }]}>ルーティンの継続</Text>
       <Text style={[styles.sectionCopy, isDark && styles.darkSecondaryText, designMode === 'chic' && chicPalette && { color: chicPalette.textSecondary }]}>続けられた日が丸で増えていきます。連続日数と継続率を確認できます。</Text>
       <View style={styles.routineTaskGrid}>{routineTasks.map((routine, taskIndex) => {
@@ -284,7 +284,7 @@ export function AnalysisScreen({
           ['insights', '時間と行動'],
         ] as [AnalysisTab, string][]).map(([id, label]) => (
           <Pressable key={id} style={[styles.tab, designMode === 'dark' && styles.tabDark, isChic && chicPalette && { backgroundColor: chicPalette.surfaceSubtle, borderColor: chicPalette.border }, tab === id && (designMode === 'dark' ? styles.tabDarkActive : { backgroundColor: theme.colors.primaryAccent, borderColor: theme.colors.primaryAccent }), tab === id && isChic && chicPalette && { backgroundColor: chicPalette.accent, borderColor: chicPalette.accent }]} onPress={() => setTab(id)}>
-            <Text style={[styles.tabText, designMode === 'dark' && styles.tabTextDark, isChic && chicPalette && { color: chicPalette.textSecondary }, tab === id && styles.tabTextActive, tab === id && designMode === 'dark' && styles.tabTextActiveDark, tab === id && isChic && { color: '#FFFFFF' }]}>{label}{id === 'insights' && planTier === 'free' ? ' 🔒' : ''}</Text>
+            <Text style={[styles.tabText, designMode === 'dark' && styles.tabTextDark, isChic && chicPalette && { color: chicPalette.textSecondary }, tab === id && styles.tabTextActive, tab === id && designMode === 'dark' && styles.tabTextActiveDark, tab === id && isChic && chicPalette && { color: chicPalette.onAccent }]}>{label}{id === 'insights' && planTier === 'free' ? ' 🔒' : ''}</Text>
           </Pressable>
         ))}
       </View>
@@ -315,9 +315,9 @@ export function AnalysisScreen({
       ) : tab === 'insights' && !premium ? (
         <PremiumGate dark={designMode === 'dark'} chicPalette={chicPalette} onPremium={() => onPremium('time')} />
       ) : tab === 'insights' ? (
-        <InsightDashboardView events={events} tasks={tasks} plans={departurePlans} designMode={designMode} onApplySuggestion={onApplySuggestion} />
+        <InsightDashboardView events={events} tasks={tasks} plans={departurePlans} designMode={designMode} chicPalette={chicPalette} onApplySuggestion={onApplySuggestion} />
       ) : tab === 'routine' ? (
-        <RoutineProgressPanel events={events} tasks={tasks} designMode={designMode} onRemoveRoutine={onRemoveRoutine} />
+        <RoutineProgressPanel events={events} tasks={tasks} designMode={designMode} chicPalette={chicPalette} onRemoveRoutine={onRemoveRoutine} />
       ) : null}
     </>
   );

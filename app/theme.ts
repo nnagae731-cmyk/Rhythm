@@ -1,40 +1,96 @@
 export type DesignMode = 'minimal' | 'dark' | 'chic' | 'photo';
-// floralSoft/floralSeasonal/floralDark remain accepted for old saved settings;
-// they are no longer offered as new choices and normalize to the supported
-// plain Design background.
+
+// Legacy floral/check ids remain accepted for saved settings. New Design choices
+// continue to use the persisted `chic` key for backwards compatibility.
 export type ChicPattern = 'plain' | 'floral' | 'floralSoft' | 'floralSeasonal' | 'floralDark' | 'dot' | 'checkLavenderSatin' | 'checkBeigeNoir' | 'checkMauveFrame';
 export type ChicCheckColor = 'monochrome' | 'cool' | 'warm' | 'green';
+
 export type ChicThemePalette = {
   id: ChicCheckColor;
   background: string;
   patternBase: string;
   patternStripe: string;
   surface: string;
+  cardSurface: string;
+  cardTint: string;
+  // Existing callers use this alias for secondary card surfaces.
   surfaceSubtle: string;
   border: string;
   accent: string;
+  accentStrong: string;
   accentSoft: string;
   textPrimary: string;
   textSecondary: string;
   textMuted: string;
+  onAccent: string;
+  success: string;
+  warning: string;
+  danger: string;
   focusBackground: string;
   focusSurface: string;
   calendarBackground: string;
   taskBackground: string;
   taskMeta: string;
   statusAccent: string;
-  // Legacy aliases used by the existing check renderer and saved previews.
+  // Legacy aliases used by the existing pattern renderer.
   warm: string;
 };
 
+const designPalettes: Record<ChicCheckColor, ChicThemePalette> = {
+  monochrome: {
+    id: 'monochrome', background: '#F4F1EE', patternBase: '#F4F1EE', patternStripe: '#D8D3D6',
+    surface: '#FFFFFF', cardSurface: '#FFFDFC', cardTint: '#F0ECEF', surfaceSubtle: '#F0ECEF',
+    accent: '#343237', accentStrong: '#242126', accentSoft: '#E7E2E4', border: '#D7D1D5',
+    textPrimary: '#2A272B', textSecondary: '#6F6A70', textMuted: '#9A949B', onAccent: '#FFFFFF',
+    success: '#52685B', warning: '#8C7047', danger: '#A55E66', focusBackground: '#F4F1EE',
+    focusSurface: '#FFFDFC', calendarBackground: '#F4F1EE', taskBackground: '#FFFDFC', taskMeta: '#9A949B',
+    statusAccent: '#52685B', warm: '#D8D3D6',
+  },
+  cool: {
+    id: 'cool', background: '#F4F3FA', patternBase: '#F4F3FA', patternStripe: '#D8D6EA',
+    surface: '#FFFFFF', cardSurface: '#FCFBFF', cardTint: '#EEEBF7', surfaceSubtle: '#EEEBF7',
+    accent: '#9C91C4', accentStrong: '#6D619C', accentSoft: '#E4E0F2', border: '#D5D1E6',
+    textPrimary: '#2D2A35', textSecondary: '#6D6878', textMuted: '#9691A1', onAccent: '#FFFFFF',
+    success: '#5E7D77', warning: '#8C744A', danger: '#A96874', focusBackground: '#F4F3FA',
+    focusSurface: '#FCFBFF', calendarBackground: '#F4F3FA', taskBackground: '#FCFBFF', taskMeta: '#9691A1',
+    statusAccent: '#5E7D77', warm: '#D8D6EA',
+  },
+  warm: {
+    id: 'warm', background: '#FBF1F3', patternBase: '#FBF1F3', patternStripe: '#EBCFD7',
+    surface: '#FFFFFF', cardSurface: '#FFF9FA', cardTint: '#F7E7EC', surfaceSubtle: '#F7E7EC',
+    accent: '#B66E86', accentStrong: '#8E4F65', accentSoft: '#F3DDE3', border: '#E5C7D0',
+    textPrimary: '#342A2E', textSecondary: '#765E66', textMuted: '#A38C94', onAccent: '#FFFFFF',
+    success: '#5E7A67', warning: '#9B7246', danger: '#9E5367', focusBackground: '#FBF1F3',
+    focusSurface: '#FFF9FA', calendarBackground: '#FBF1F3', taskBackground: '#FFF9FA', taskMeta: '#A38C94',
+    statusAccent: '#5E7A67', warm: '#EBCFD7',
+  },
+  green: {
+    id: 'green', background: '#F2F6F0', patternBase: '#F2F6F0', patternStripe: '#D3E0D4',
+    surface: '#FFFFFF', cardSurface: '#FAFCF9', cardTint: '#E8F0E8', surfaceSubtle: '#E8F0E8',
+    accent: '#758D7B', accentStrong: '#526A59', accentSoft: '#DDE9DE', border: '#CBD9CB',
+    textPrimary: '#2C332E', textSecondary: '#667267', textMuted: '#929D94', onAccent: '#FFFFFF',
+    success: '#56735E', warning: '#8C744A', danger: '#9D5E66', focusBackground: '#F2F6F0',
+    focusSurface: '#FAFCF9', calendarBackground: '#F2F6F0', taskBackground: '#FAFCF9', taskMeta: '#929D94',
+    statusAccent: '#56735E', warm: '#D3E0D4',
+  },
+};
+
 export const chicCheckColorChoices: (ChicThemePalette & { id: ChicCheckColor; label: string })[] = [
-  // Keep the persisted ids for backwards compatibility; the labels now describe
-  // the four shared Design check palettes used on every screen.
-  { id: 'monochrome', label: 'A  淡いピンク × ラベンダー', background: '#F4F1EE', patternBase: '#F4F1EE', patternStripe: '#D8D3D5', surface: '#FFFCFA', surfaceSubtle: '#F7F3F1', border: '#D8D3D5', accent: '#343237', accentSoft: '#E8E4E4', textPrimary: '#343237', textSecondary: '#6F6A70', textMuted: '#A6A1A8', focusBackground: '#F4F1EE', focusSurface: '#FFFCFA', calendarBackground: '#F4F1EE', taskBackground: '#FFFCFA', taskMeta: '#A6A1A8', statusAccent: '#343237', warm: '#D8D3D5' },
-  { id: 'cool', label: 'B  淡いブルー × ブルーラベンダー', background: '#F4F3FA', patternBase: '#F4F3FA', patternStripe: '#DDE4F5', surface: '#FCFBFF', surfaceSubtle: '#EEF1FB', border: '#DDE4F5', accent: '#8C7CBD', accentSoft: '#C4D0DD', textPrimary: '#283149', textSecondary: '#68728B', textMuted: '#929BB0', focusBackground: '#F4F3FA', focusSurface: '#FCFBFF', calendarBackground: '#F4F3FA', taskBackground: '#FCFBFF', taskMeta: '#929BB0', statusAccent: '#8C7CBD', warm: '#DDE4F5' },
-  { id: 'warm', label: 'C  淡いピーチ × コーラル', background: '#FBF1F3', patternBase: '#FBF1F3', patternStripe: '#EED6DE', surface: '#FFFDFD', surfaceSubtle: '#FFF0E8', border: '#EED6DE', accent: '#B66E86', accentSoft: '#D9AAB5', textPrimary: '#3B2B29', textSecondary: '#806B67', textMuted: '#A79590', focusBackground: '#FBF1F3', focusSurface: '#FFFDFD', calendarBackground: '#FBF1F3', taskBackground: '#FFFDFD', taskMeta: '#A79590', statusAccent: '#B66E86', warm: '#EED6DE' },
-  { id: 'green', label: 'D  淡いミント × セージグリーン', background: '#F2F6F0', patternBase: '#F2F6F0', patternStripe: '#D9E7D9', surface: '#FCFFFC', surfaceSubtle: '#EAF6F1', border: '#D9E7D9', accent: '#758D7B', accentSoft: '#B9C8B8', textPrimary: '#263431', textSecondary: '#657B74', textMuted: '#92A59E', focusBackground: '#F2F6F0', focusSurface: '#FCFFFC', calendarBackground: '#F2F6F0', taskBackground: '#FCFFFC', taskMeta: '#92A59E', statusAccent: '#758D7B', warm: '#D9E7D9' },
+  { ...designPalettes.monochrome, label: 'モノトーン' },
+  { ...designPalettes.cool, label: '寒色系' },
+  { ...designPalettes.warm, label: '暖色系' },
+  { ...designPalettes.green, label: '緑系' },
 ];
+
+// Keep the persisted choice ids stable while presenting readable Japanese labels.
+export function getDesignCheckColorLabel(color: ChicCheckColor): string {
+  switch (color) {
+    case 'monochrome': return '\u30e2\u30ce\u30c8\u30fc\u30f3';
+    case 'cool': return '\u5bd2\u8272\u7cfb';
+    case 'warm': return '\u6696\u8272\u7cfb';
+    case 'green': return '\u7dd1\u7cfb';
+  }
+}
 
 export function normalizeChicCheckColor(color: unknown): ChicCheckColor {
   return color === 'monochrome' || color === 'cool' || color === 'warm' || color === 'green' ? color : 'cool';
@@ -44,8 +100,13 @@ export function getChicCheckColor(color: ChicCheckColor) {
   return chicCheckColorChoices.find((item) => item.id === color) ?? chicCheckColorChoices[1]!;
 }
 
+/** Shared Design tokens. The legacy function name remains for saved-data compatibility. */
+export function getDesignCheckThemeTokens(checkColor: ChicCheckColor): ChicThemePalette {
+  return designPalettes[normalizeChicCheckColor(checkColor)];
+}
+
 export function getChicThemePalette(color: ChicCheckColor): ChicThemePalette {
-  return getChicCheckColor(color);
+  return getDesignCheckThemeTokens(color);
 }
 
 export type ThemeTokens = {
@@ -85,10 +146,10 @@ export function getThemeTokens(mode: DesignMode, checkColor: ChicCheckColor = 'c
     radius: { large: 18, small: 10, button: 12, chip: 999, modal: 22 },
     shadow: { color: '#76505E', opacity: 0.12, radius: 16, y: 6 },
   };
-  const palette = getChicThemePalette(checkColor);
+  const palette = getDesignCheckThemeTokens(checkColor);
   return {
     ...shared,
-    colors: { screenBackground: palette.background, surface: palette.surface, secondarySurface: palette.surfaceSubtle, primaryText: palette.textPrimary, secondaryText: palette.textSecondary, primaryAccent: palette.accent, secondaryAccent: palette.patternStripe, softAccent: palette.accentSoft, border: palette.border, success: palette.accent, warning: palette.textSecondary, danger: palette.accent },
+    colors: { screenBackground: palette.background, surface: palette.cardSurface, secondarySurface: palette.cardTint, primaryText: palette.textPrimary, secondaryText: palette.textSecondary, primaryAccent: palette.accent, secondaryAccent: palette.patternStripe, softAccent: palette.accentSoft, border: palette.border, success: palette.success, warning: palette.warning, danger: palette.danger },
     radius: { large: 26, small: 18, button: 18, chip: 999, modal: 28 },
     shadow: { color: palette.accent, opacity: 0.12, radius: 18, y: 7 },
   };

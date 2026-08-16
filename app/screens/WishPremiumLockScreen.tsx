@@ -1,25 +1,27 @@
 import React from 'react';
 import { Pressable, Text, View } from 'react-native';
-import { DesignMode, getThemeTokens } from '../theme';
+import { ChicThemePalette, DesignMode, getThemeTokens } from '../theme';
 
 type Props = {
   designMode: DesignMode;
+  chicPalette?: ChicThemePalette;
   onOpenPremium: () => void;
   styles: any;
 };
 
 // Free users keep an independent Wish tab and deliberately choose whether to
 // open the full Premium guide. This avoids a guide modal covering the route.
-export function WishPremiumLockScreen({ designMode, onOpenPremium, styles }: Props) {
-  const theme = getThemeTokens(designMode);
+export function WishPremiumLockScreen({ designMode, chicPalette, onOpenPremium, styles }: Props) {
+  const theme = getThemeTokens(designMode, chicPalette?.id ?? 'cool');
   const isMono = designMode !== 'chic';
   const isDark = designMode === 'dark';
+  const designSurface = designMode === 'chic' && chicPalette ? { backgroundColor: chicPalette.cardSurface, borderColor: chicPalette.border } : undefined;
 
   return (
-    <View style={[styles.premiumFeatureBlock, isMono && styles.premiumFeatureMinimal, isDark && styles.premiumFeatureDark, designMode === 'chic' && styles.premiumFeatureChic]}>
+    <View style={[styles.premiumFeatureBlock, isMono && styles.premiumFeatureMinimal, isDark && styles.premiumFeatureDark, designMode === 'chic' && styles.premiumFeatureChic, designSurface]}>
       <View style={styles.premiumFeatureInner}>
         <View style={styles.premiumFeatureTop}>
-          <Text style={[styles.premiumFeatureNumber, designMode === 'minimal' && styles.premiumFeatureNumberMinimal]}>WISH</Text>
+          <Text style={[styles.premiumFeatureNumber, designMode === 'minimal' && styles.premiumFeatureNumberMinimal, designMode === 'chic' && chicPalette && { color: chicPalette.textPrimary }]}>WISH</Text>
           <Text style={styles.premiumFeatureLabel}>Premium機能</Text>
         </View>
         <View style={styles.premiumPreview}>

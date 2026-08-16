@@ -36,22 +36,22 @@ function PremiumMiniPreview({ kind, designMode, styles }: { kind: PremiumPreview
 function PremiumFeatureEntryCard({ number, title, active, designMode, chicPattern, chicPalette, onPress, components, styles }: { number: string; title: string; active: boolean; designMode: DesignMode; chicPattern: ChicPattern; chicPalette?: ChicThemePalette; onPress: () => void; components: any; styles: any }) {
   const { ChicPatternDecor, isCheckChicPattern } = components;
   const isMono = designMode !== 'chic';
-  return <Pressable onPress={onPress} style={[styles.premiumEntryCard, active && styles.premiumEntryCardActive, isMono && styles.premiumEntryCardMinimal, designMode === 'dark' && styles.premiumEntryCardDark, designMode === 'chic' && styles.premiumEntryCardChic]}>
-    {designMode === 'chic' && !isCheckChicPattern(chicPattern) && <View pointerEvents="none" style={styles.premiumEntryPattern}><ChicPatternDecor pattern={chicPattern} accent="#D986A1" warm="#A997C8" density="compact" /></View>}
-    <Text style={[styles.premiumEntryNumber, active && styles.premiumEntryNumberActive, designMode === 'dark' && styles.premiumEntryNumberDark]}>{number}</Text>
-    <Text numberOfLines={2} style={[styles.premiumEntryTitle, active && styles.premiumEntryTitleActive, designMode === 'dark' && styles.premiumEntryTitleDark]}>{title}</Text>
+  return <Pressable onPress={onPress} style={[styles.premiumEntryCard, active && styles.premiumEntryCardActive, isMono && styles.premiumEntryCardMinimal, designMode === 'dark' && styles.premiumEntryCardDark, designMode === 'chic' && styles.premiumEntryCardChic, designMode === 'chic' && chicPalette && { backgroundColor: active ? chicPalette.accentSoft : chicPalette.cardSurface, borderColor: active ? chicPalette.accent : chicPalette.border }]}>
+    {designMode === 'chic' && !isCheckChicPattern(chicPattern) && chicPalette && <View pointerEvents="none" style={styles.premiumEntryPattern}><ChicPatternDecor pattern={chicPattern} accent={chicPalette.accent} warm={chicPalette.patternStripe} density="compact" /></View>}
+    <Text style={[styles.premiumEntryNumber, active && styles.premiumEntryNumberActive, designMode === 'dark' && styles.premiumEntryNumberDark, designMode === 'chic' && chicPalette && { color: active ? chicPalette.accentStrong : chicPalette.textMuted }]}>{number}</Text>
+    <Text numberOfLines={2} style={[styles.premiumEntryTitle, active && styles.premiumEntryTitleActive, designMode === 'dark' && styles.premiumEntryTitleDark, designMode === 'chic' && chicPalette && { color: chicPalette.textPrimary }]}>{title}</Text>
   </Pressable>;
 }
 
 function PremiumFeatureDetail({ number, kind, title, description, designMode, chicPattern, chicPalette, components, styles }: { number: string; kind: PremiumPreviewKind; title: string; description: string; designMode: DesignMode; chicPattern: ChicPattern; chicPalette?: ChicThemePalette; components: any; styles: any }) {
   const { ChicPatternDecor, isCheckChicPattern } = components;
   const isMono = designMode !== 'chic';
-  return <View style={[styles.premiumFeatureBlock, isMono && styles.premiumFeatureMinimal, designMode === 'dark' && styles.premiumFeatureDark, designMode === 'chic' && styles.premiumFeatureChic, ]}>
-    {designMode === 'chic' && !isCheckChicPattern(chicPattern) && <ChicPatternDecor pattern={chicPattern} accent="#D986A1" warm="#A997C8" />}
+  return <View style={[styles.premiumFeatureBlock, isMono && styles.premiumFeatureMinimal, designMode === 'dark' && styles.premiumFeatureDark, designMode === 'chic' && styles.premiumFeatureChic, designMode === 'chic' && chicPalette && { backgroundColor: chicPalette.cardSurface, borderColor: chicPalette.border }]}>
+    {designMode === 'chic' && !isCheckChicPattern(chicPattern) && chicPalette && <ChicPatternDecor pattern={chicPattern} accent={chicPalette.accent} warm={chicPalette.patternStripe} />}
     <View style={styles.premiumFeatureInner}>
-      <View style={styles.premiumFeatureTop}><Text style={[styles.premiumFeatureNumber, designMode === 'minimal' && styles.premiumFeatureNumberMinimal, designMode === 'dark' && styles.premiumFeatureNumberDark]}>{number}</Text><Text style={styles.premiumFeatureLabel}>Premium機能</Text></View>
+      <View style={styles.premiumFeatureTop}><Text style={[styles.premiumFeatureNumber, designMode === 'minimal' && styles.premiumFeatureNumberMinimal, designMode === 'dark' && styles.premiumFeatureNumberDark, designMode === 'chic' && chicPalette && { color: chicPalette.accentStrong }]}>{number}</Text><Text style={[styles.premiumFeatureLabel, designMode === 'chic' && chicPalette && { color: chicPalette.accent }]}>Premium機能</Text></View>
       <PremiumMiniPreview kind={kind} designMode={designMode} styles={styles} />
-      <View style={[styles.premiumFeatureTextPlate, isMono && styles.premiumFeatureTextMinimal, designMode === 'dark' && styles.premiumFeatureTextDark, designMode === 'chic' && styles.premiumFeatureTextChic]}><Text style={[styles.premiumFeatureTitle, isMono && styles.premiumFeatureTitleMinimal, designMode === 'dark' && styles.premiumFeatureTitleDark]}>{title}</Text><Text style={[styles.premiumFeatureDescription, isMono && styles.premiumFeatureDescriptionMinimal, designMode === 'dark' && styles.premiumFeatureDescriptionDark]}>{description}</Text></View>
+      <View style={[styles.premiumFeatureTextPlate, isMono && styles.premiumFeatureTextMinimal, designMode === 'dark' && styles.premiumFeatureTextDark, designMode === 'chic' && styles.premiumFeatureTextChic, designMode === 'chic' && chicPalette && { backgroundColor: chicPalette.surfaceSubtle, borderColor: chicPalette.border }]}><Text style={[styles.premiumFeatureTitle, isMono && styles.premiumFeatureTitleMinimal, designMode === 'dark' && styles.premiumFeatureTitleDark, designMode === 'chic' && chicPalette && { color: chicPalette.textPrimary }]}>{title}</Text><Text style={[styles.premiumFeatureDescription, isMono && styles.premiumFeatureDescriptionMinimal, designMode === 'dark' && styles.premiumFeatureDescriptionDark, designMode === 'chic' && chicPalette && { color: chicPalette.textSecondary }]}>{description}</Text></View>
     </View>
   </View>;
 }
@@ -59,7 +59,7 @@ function PremiumFeatureDetail({ number, kind, title, description, designMode, ch
 export function PremiumModal({ visible, initialFeatureId, designMode, chicPattern, chicPalette, onClose, styles, helpers, components }: { visible: boolean; initialFeatureId: PremiumGuideFeatureId; designMode: DesignMode; chicPattern: ChicPattern; chicPalette?: ChicThemePalette; onClose: () => void; styles: any; helpers: any; components: any }) {
   const { getThemeTokens } = helpers;
   const theme = getThemeTokens(designMode);
-  const designSurface = designMode === 'chic' && chicPalette ? { backgroundColor: chicPalette.surface, borderColor: chicPalette.border } : undefined;
+  const designSurface = designMode === 'chic' && chicPalette ? { backgroundColor: chicPalette.cardSurface, borderColor: chicPalette.border } : undefined;
   const initialIndex = Math.max(0, PREMIUM_GUIDE_FEATURES.findIndex((feature) => feature.id === initialFeatureId));
   const [selectedFeatureId, setSelectedFeatureId] = useState<PremiumGuideFeatureId>(initialFeatureId);
   useEffect(() => {
@@ -74,11 +74,11 @@ export function PremiumModal({ visible, initialFeatureId, designMode, chicPatter
         <View style={styles.modalHandle} />
         <View style={styles.premiumCarouselHeader}>
           <View style={{ flex: 1 }}>
-            <Text style={[styles.premiumCarouselBrand, designMode === 'dark' && styles.darkText]}>Rhythm Premium</Text>
-            <Text style={[styles.premiumCarouselCopy, designMode === 'dark' && styles.darkSubText]}>Rhythmが、あなたより少し先に動く。</Text>
-            <Text style={[styles.premiumCarouselCopy, designMode === 'dark' && styles.darkSubText, { marginTop: 5, fontSize: 10 }]}>無料版は地図を開く。Premiumは、登録した時間をもとに間に合う行動時間まで整える。</Text>
+            <Text style={[styles.premiumCarouselBrand, designMode === 'dark' && styles.darkText, designMode === 'chic' && chicPalette && { color: chicPalette.textPrimary }]}>Rhythm Premium</Text>
+            <Text style={[styles.premiumCarouselCopy, designMode === 'dark' && styles.darkSubText, designMode === 'chic' && chicPalette && { color: chicPalette.textSecondary }]}>Rhythmが、あなたより少し先に動く。</Text>
+            <Text style={[styles.premiumCarouselCopy, designMode === 'dark' && styles.darkSubText, designMode === 'chic' && chicPalette && { color: chicPalette.textSecondary }, { marginTop: 5, fontSize: 10 }]}>無料版は地図を開く。Premiumは、登録した時間をもとに間に合う行動時間まで整える。</Text>
           </View>
-          <Pressable style={[styles.premiumHeaderClose, { borderColor: theme.colors.primaryAccent }]} onPress={onClose}><Text style={[styles.premiumCloseButtonText, { color: theme.colors.primaryAccent }]}>閉じる</Text></Pressable>
+          <Pressable style={[styles.premiumHeaderClose, { borderColor: theme.colors.primaryAccent }]} onPress={onClose}><Text style={[styles.premiumCloseButtonText, { color: designMode === 'chic' && chicPalette ? chicPalette.accentStrong : theme.colors.primaryAccent }]}>閉じる</Text></Pressable>
         </View>
         <ScrollView style={styles.premiumCarouselArea} contentContainerStyle={styles.premiumModalScroll} showsVerticalScrollIndicator={false}>
         <View style={styles.premiumFeaturePicker}>
@@ -88,7 +88,7 @@ export function PremiumModal({ visible, initialFeatureId, designMode, chicPatter
           <PremiumFeatureDetail number={String(selectedIndex + 1).padStart(2, '0')} kind={selectedFeature.kind} title={selectedFeature.title} description={selectedFeature.description} designMode={designMode} chicPattern={chicPattern} chicPalette={chicPalette} components={components} styles={styles} />
           {selectedFeature.id === 'month' && <View style={styles.premiumHistoryNote}><Text style={styles.premiumHistoryTitle}>過去の記録も、あとから振り返れる</Text><Text style={styles.premiumHistoryCopy}>7日を超えた完了記録や、集中・出発の記録も確認できます。</Text></View>}
         </View>
-        <Pressable style={[styles.premiumCloseButton, { borderColor: theme.colors.primaryAccent }]} onPress={onClose}><Text style={[styles.premiumCloseButtonText, { color: theme.colors.primaryAccent }]}>Rhythmに戻る</Text></Pressable>
+        <Pressable style={[styles.premiumCloseButton, { borderColor: designMode === 'chic' && chicPalette ? chicPalette.accent : theme.colors.primaryAccent, backgroundColor: designMode === 'chic' && chicPalette ? chicPalette.cardSurface : undefined }]} onPress={onClose}><Text style={[styles.premiumCloseButtonText, { color: designMode === 'chic' && chicPalette ? chicPalette.accentStrong : theme.colors.primaryAccent }]}>Rhythmに戻る</Text></Pressable>
         </ScrollView>
       </Pressable>
     </Pressable>

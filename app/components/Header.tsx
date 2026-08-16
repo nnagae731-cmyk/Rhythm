@@ -8,13 +8,13 @@ export function Header({ designMode, now, compact = false, chicPalette }: { desi
   if (compact) return (
     <View style={styles.photoHeader}>
       <Text style={[styles.photoBrand, chicPalette && { color: chicPalette.textPrimary }]}>Rhythm</Text>
-      <Text style={styles.photoDate}>{formatLiveDate(now)} ・ {formatLiveTime(now)}</Text>
+      <Text style={[styles.photoDate, chicPalette && { color: chicPalette.textSecondary }]}>{formatLiveDate(now)} ・ {formatLiveTime(now)}</Text>
     </View>
   );
   return (
     <View style={[styles.header, designMode !== 'chic' && styles.headerMinimal, designMode === 'dark' && styles.headerDark, designMode === 'chic' && chicPalette && { borderBottomColor: chicPalette.border }]}>
       <View>
-        <Text style={[styles.dateLabel, designMode === 'dark' && styles.dateLabelDark]}>{formatLiveDate(now)} · {formatLiveTime(now)}</Text>
+        <Text style={[styles.dateLabel, designMode === 'dark' && styles.dateLabelDark, designMode === 'chic' && chicPalette && { color: chicPalette.textSecondary }]}>{formatLiveDate(now)} · {formatLiveTime(now)}</Text>
         <Text style={[styles.brand, designMode !== 'chic' && styles.brandMinimal, designMode === 'dark' && styles.brandDark, designMode === 'chic' && chicPalette && { color: chicPalette.textPrimary }]}>Rhythm</Text>
       </View>
     </View>

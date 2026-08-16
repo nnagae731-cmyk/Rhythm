@@ -55,7 +55,7 @@ export function WishScreen({ designMode: rawDesignMode, chicPattern, chicPalette
   const isDark = rawDesignMode === 'dark';
   const theme = getThemeTokens(rawDesignMode, chicPalette?.id ?? 'cool');
   const palette = chicPalette;
-  const designSurface = rawDesignMode === 'chic' && palette ? { backgroundColor: palette.surface, borderColor: palette.border } : undefined;
+  const designSurface = rawDesignMode === 'chic' && palette ? { backgroundColor: palette.cardSurface, borderColor: palette.border } : undefined;
   const designSubtle = rawDesignMode === 'chic' && palette ? { backgroundColor: palette.surfaceSubtle, borderColor: palette.border } : undefined;
   const designAccent = rawDesignMode === 'chic' && palette ? { backgroundColor: palette.accent, borderColor: palette.accent } : undefined;
   const designText = rawDesignMode === 'chic' && palette ? { color: palette.textPrimary } : undefined;
@@ -250,13 +250,13 @@ export function WishScreen({ designMode: rawDesignMode, chicPattern, chicPalette
                   <Pressable
                     accessibilityRole="checkbox"
                     accessibilityState={{ checked: wish.completed }}
-                    style={[styles.completionCheck, designMode === 'minimal' && styles.completionCheckMinimal, isDark && styles.completionCheckDark, wish.completed && styles.completionCheckActive, wish.completed && isDark && styles.completionCheckActiveDark]}
+                    style={[styles.completionCheck, designMode === 'minimal' && styles.completionCheckMinimal, isDark && styles.completionCheckDark, wish.completed && styles.completionCheckActive, wish.completed && isDark && styles.completionCheckActiveDark, designMode === 'chic' && palette && { borderColor: palette.accent, backgroundColor: wish.completed ? palette.accent : palette.cardSurface }]}
                     onPress={() => toggleWish(wish.id)}
                   >
                     <Text style={[styles.completionCheckText, isDark && styles.completionCheckTextDark, wish.completed && styles.completionCheckTextActive]}>✓</Text>
                   </Pressable>
                   <View style={styles.itemBody}>
-                    <Text style={[styles.itemTitle, isDark && styles.itemTitleDark, wish.completed && styles.itemTitleDone]}>{wish.title}</Text>
+                    <Text style={[styles.itemTitle, isDark && styles.itemTitleDark, wish.completed && styles.itemTitleDone, designText]}>{wish.title}</Text>
                       <Text style={[styles.itemMeta, { color: theme.colors.secondaryText }]}>{wish.completed ? `完了${wish.completedAt ? ` ・ ${new Date(wish.completedAt).getMonth() + 1}/${new Date(wish.completedAt).getDate()}` : ''}` : '進行中'}</Text>
                   </View>
                   <View style={styles.itemActions}>
@@ -307,13 +307,13 @@ export function WishScreen({ designMode: rawDesignMode, chicPattern, chicPalette
                     <Pressable
                       accessibilityRole="checkbox"
                       accessibilityState={{ checked: action.completed }}
-                      style={[styles.completionCheck, designMode === 'minimal' && styles.completionCheckMinimal, isDark && styles.completionCheckDark, action.completed && styles.completionCheckActive, action.completed && isDark && styles.completionCheckActiveDark]}
+                      style={[styles.completionCheck, designMode === 'minimal' && styles.completionCheckMinimal, isDark && styles.completionCheckDark, action.completed && styles.completionCheckActive, action.completed && isDark && styles.completionCheckActiveDark, designMode === 'chic' && palette && { borderColor: palette.accent, backgroundColor: action.completed ? palette.accent : palette.cardSurface }]}
                       onPress={() => toggleAction(action.id)}
                     >
                     <Text style={[styles.completionCheckText, isDark && styles.completionCheckTextDark, action.completed && styles.completionCheckTextActive]}>✓</Text>
                     </Pressable>
                     <View style={styles.itemBody}>
-                      <Text style={[styles.itemTitle, isDark && styles.itemTitleDark, action.completed && styles.itemTitleDone]}>{action.title}</Text>
+                      <Text style={[styles.itemTitle, isDark && styles.itemTitleDark, action.completed && styles.itemTitleDone, designText]}>{action.title}</Text>
                       <Text style={[styles.itemMeta, { color: theme.colors.secondaryText }]}>{wish ? `願い: ${wish.title}` : '願い未選択'}</Text>
                     </View>
                     <View style={styles.itemActions}>
@@ -358,14 +358,14 @@ export function WishScreen({ designMode: rawDesignMode, chicPattern, chicPalette
               </View>
             ) : (
               <View style={styles.progressChic}>
-                <View style={[styles.ring, designMode === 'chic' && palette && { borderColor: palette.accentSoft, backgroundColor: palette.surface }]}>
+                <View style={[styles.ring, designMode === 'chic' && palette && { borderColor: palette.accentSoft, backgroundColor: palette.cardSurface }]}>
                   <View style={[styles.ringInner, designMode === 'chic' && palette && { backgroundColor: palette.surfaceSubtle }]}>
                     <Text style={[styles.progressNumberChic, designMode === 'chic' && palette && { color: palette.accent }]}>{progress.progress}%</Text>
                   </View>
                 </View>
                 <View style={styles.statColumn}>
-                  <StatCard label="叶えたいこと" value={`${progress.wishCompleted} / ${progress.wishTotal}`} />
-                  <StatCard label="行動" value={`${progress.actionCompleted} / ${progress.actionTotal}`} />
+                  <StatCard label="叶えたいこと" value={`${progress.wishCompleted} / ${progress.wishTotal}`} chicPalette={palette} />
+                  <StatCard label="行動" value={`${progress.actionCompleted} / ${progress.actionTotal}`} chicPalette={palette} />
                 </View>
               </View>
             )}
@@ -392,23 +392,23 @@ export function WishScreen({ designMode: rawDesignMode, chicPattern, chicPalette
                   {state.wishes.map((wish) => (
                     <Pressable
                       key={wish.id}
-                      style={[styles.wishChip, designMode === 'minimal' ? styles.wishChipMinimal : styles.wishChipChic, isDark && styles.wishChipDark, editor.wishId === wish.id && styles.wishChipActive, editor.wishId === wish.id && isDark && styles.wishChipActiveDark]}
+                      style={[styles.wishChip, designMode === 'minimal' ? styles.wishChipMinimal : styles.wishChipChic, isDark && styles.wishChipDark, editor.wishId === wish.id && styles.wishChipActive, editor.wishId === wish.id && isDark && styles.wishChipActiveDark, designMode === 'chic' && palette && { backgroundColor: editor.wishId === wish.id ? palette.accentSoft : palette.cardSurface, borderColor: editor.wishId === wish.id ? palette.accent : palette.border }]}
                       onPress={() => setEditor((current) => ({ ...current, wishId: wish.id }))}
                     >
-                      <Text style={[styles.wishChipText, isDark && styles.wishChipTextDark, editor.wishId === wish.id && styles.wishChipTextActive, editor.wishId === wish.id && isDark && styles.wishChipTextActiveDark]}>{wish.title}</Text>
+                      <Text style={[styles.wishChipText, isDark && styles.wishChipTextDark, editor.wishId === wish.id && styles.wishChipTextActive, editor.wishId === wish.id && isDark && styles.wishChipTextActiveDark, designMode === 'chic' && palette && { color: editor.wishId === wish.id ? palette.accentStrong : palette.textSecondary }]}>{wish.title}</Text>
                     </Pressable>
                   ))}
                 </ScrollView>
               </View>
             )}
             <View style={styles.editorToggleRow}>
-              <Pressable style={[styles.toggleChip, designMode === 'minimal' ? styles.toggleChipMinimal : styles.toggleChipChic, isDark && styles.toggleChipDark, editor.completed && styles.toggleChipActive, editor.completed && isDark && styles.toggleChipActiveDark]} onPress={() => setEditor((current) => ({ ...current, completed: !current.completed }))}>
-                <Text style={[styles.toggleChipText, isDark && styles.toggleChipTextDark, editor.completed && styles.toggleChipTextActive, editor.completed && isDark && styles.toggleChipTextActiveDark]}>完了</Text>
+              <Pressable style={[styles.toggleChip, designMode === 'minimal' ? styles.toggleChipMinimal : styles.toggleChipChic, isDark && styles.toggleChipDark, editor.completed && styles.toggleChipActive, editor.completed && isDark && styles.toggleChipActiveDark, designMode === 'chic' && palette && { backgroundColor: editor.completed ? palette.accentSoft : palette.cardSurface, borderColor: editor.completed ? palette.accent : palette.border }]} onPress={() => setEditor((current) => ({ ...current, completed: !current.completed }))}>
+                <Text style={[styles.toggleChipText, isDark && styles.toggleChipTextDark, editor.completed && styles.toggleChipTextActive, editor.completed && isDark && styles.toggleChipTextActiveDark, designMode === 'chic' && palette && { color: editor.completed ? palette.accentStrong : palette.textSecondary }]}>完了</Text>
               </Pressable>
               <Pressable style={[styles.editorCancel, designMode === 'minimal' ? styles.editorCancelMinimal : styles.editorCancelChic, isDark && styles.editorCancelDark]} onPress={() => setEditor(emptyEditor)}>
                 <Text style={[styles.editorCancelText, { color: theme.colors.secondaryText }]}>閉じる</Text>
               </Pressable>
-              <Pressable style={[styles.primaryButton, designMode === 'minimal' ? styles.primaryButtonMinimal : styles.primaryButtonChic, isDark && styles.primaryButtonDark, styles.editorSaveButton]} onPress={saveEditor}>
+              <Pressable style={[styles.primaryButton, designMode === 'minimal' ? styles.primaryButtonMinimal : styles.primaryButtonChic, isDark && styles.primaryButtonDark, styles.editorSaveButton, designMode === 'chic' && palette && { backgroundColor: palette.accent, borderColor: palette.accent }]} onPress={saveEditor}>
                 <Text style={styles.primaryButtonText}>保存</Text>
               </Pressable>
             </View>
@@ -442,7 +442,7 @@ function SectionCard({
   children: React.ReactNode;
 }) {
   return (
-    <View style={[styles.sectionCard, designMode === 'minimal' ? styles.sectionCardMinimal : styles.sectionCardChic, dark && styles.sectionCardDark, designMode === 'chic' && chicPalette && { backgroundColor: chicPalette.surface, borderColor: chicPalette.border, shadowColor: chicPalette.accent }]}>
+    <View style={[styles.sectionCard, designMode === 'minimal' ? styles.sectionCardMinimal : styles.sectionCardChic, dark && styles.sectionCardDark, designMode === 'chic' && chicPalette && { backgroundColor: chicPalette.cardSurface, borderColor: chicPalette.border, shadowColor: chicPalette.accent }]}>
       {showBRibbon && <BThemeRibbonDecoration journal={title.includes('九☆')} />}
       {showCRibbon && <CThemeRibbonDecoration journal={title.includes('九☆')} />}
       {designMode === 'chic' && <WishBackdrop pattern={chicPattern} color={chicPalette?.accent} />}
@@ -455,11 +455,11 @@ function SectionCard({
   );
 }
 
-function StatCard({ label, value, minimal = false, dark = false }: { label: string; value: string; minimal?: boolean; dark?: boolean }) {
+function StatCard({ label, value, minimal = false, dark = false, chicPalette }: { label: string; value: string; minimal?: boolean; dark?: boolean; chicPalette?: ChicThemePalette }) {
   return (
-    <View style={[styles.statCard, minimal ? styles.statCardMinimal : styles.statCardChic, dark && styles.statCardDark]}>
-      <Text style={[styles.statLabel, minimal ? styles.statLabelMinimal : styles.statLabelChic, dark && styles.statLabelDark]}>{label}</Text>
-      <Text style={[styles.statValue, minimal ? styles.statValueMinimal : styles.statValueChic, dark && styles.statValueDark]}>{value}</Text>
+    <View style={[styles.statCard, minimal ? styles.statCardMinimal : styles.statCardChic, dark && styles.statCardDark, chicPalette && { backgroundColor: chicPalette.cardSurface, borderColor: chicPalette.border }]}>
+      <Text style={[styles.statLabel, minimal ? styles.statLabelMinimal : styles.statLabelChic, dark && styles.statLabelDark, chicPalette && { color: chicPalette.textSecondary }]}>{label}</Text>
+      <Text style={[styles.statValue, minimal ? styles.statValueMinimal : styles.statValueChic, dark && styles.statValueDark, chicPalette && { color: chicPalette.accentStrong }]}>{value}</Text>
     </View>
   );
 }

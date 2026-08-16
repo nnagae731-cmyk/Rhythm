@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Image, Pressable, Switch, Text, TextInput, View } from 'react-native';
-import { ChicCheckColor, ChicPattern, ChicThemePalette, DesignMode } from '../theme';
+import { ChicCheckColor, ChicPattern, ChicThemePalette, DesignMode, getDesignCheckColorLabel } from '../theme';
 import { Affirmation, PhotoThemePhotoTarget, PhotoThemeSettings, Task, WidgetSize } from '../types';
 import { PlanTier } from '../premiumAccess';
 import { PremiumGuideFeatureId } from '../premiumGuide';
@@ -88,11 +88,12 @@ export function SettingsScreen({
   const previewTasks = tasks.filter((task) => showCompleted || !task.done).slice(0, size === 'small' ? 2 : 3);
   const isCheckPattern = chicPattern === 'checkLavenderSatin' || chicPattern === 'checkBeigeNoir' || chicPattern === 'checkMauveFrame';
   const patternVisual = isCheckPattern ? getChicCheckColor(chicCheckColor) : getChicPatternVisual(chicPattern);
+  const checkColorLabel = getDesignCheckColorLabel(chicCheckColor);
   return (
     <>
       {__DEV__ && <View style={[styles.settingsCard, isDark && styles.darkSurface]}><Text style={[styles.settingsTitle, isDark && styles.darkBodyText]}>Expo Go 確認環境</Text><Text style={[styles.switchCopy, isDark && styles.darkAccentText]}>このQRコードは、利用プランが固定された確認用環境です。</Text><Text style={[styles.devPlanCurrent, isDark && styles.darkAccentText]}>現在：{planTier === 'premium' ? 'Premium版' : '無料版'}</Text></View>}
       <SettingsDisclosure designMode={designMode} title="デザインモード" subtitle="Mono / Design / 写真を選ぶ" expanded={expandedSetting === 'design'} onPress={() => setExpandedSetting((current) => current === 'design' ? null : 'design')}>
-      <View style={[styles.modeCard, isDark && styles.darkSurface, designMode === 'chic' && chicPalette && { backgroundColor: chicPalette.surface, borderColor: chicPalette.border }]}>
+      <View accessibilityLabel={designMode === 'chic' ? `Design ${checkColorLabel}` : 'Mono'} style={[styles.modeCard, isDark && styles.darkSurface, designMode === 'chic' && chicPalette && { backgroundColor: chicPalette.cardSurface, borderColor: chicPalette.border }]}>
         {designMode === 'chic' && chicPattern === 'checkLavenderSatin' && <BThemeRibbonDecoration compact />}
         {designMode === 'chic' && chicPattern === 'checkBeigeNoir' && <CThemeRibbonDecoration compact />}
         {designMode === 'chic' && <ChicPatternSelector designMode={designMode} chicPattern={chicPattern} chicCheckColor={chicCheckColor} planTier={planTier} onPattern={onChicPattern} onCheckColor={onChicCheckColor} />}
@@ -126,7 +127,7 @@ export function SettingsScreen({
         <NotificationManagerCard designMode={designMode} />
       </SettingsDisclosure>
       <SettingsDisclosure designMode={designMode} title="今日のアファメーション" subtitle="好きな言葉を、選んだ時間に届ける" expanded={expandedSetting === 'affirmations'} onPress={() => setExpandedSetting((current) => current === 'affirmations' ? null : 'affirmations')}>
-        <AffirmationSettingsCard affirmations={affirmations} designMode={designMode} planTier={planTier} onPremium={onPremium} onSave={onSaveAffirmation} onDelete={onDeleteAffirmation} styles={styles} />
+        <AffirmationSettingsCard affirmations={affirmations} designMode={designMode} chicPalette={chicPalette} planTier={planTier} onPremium={onPremium} onSave={onSaveAffirmation} onDelete={onDeleteAffirmation} styles={styles} />
       </SettingsDisclosure>
       <SettingsDisclosure designMode={designMode} title="クイック雛形" subtitle="よく使うタスクを保存" expanded={expandedSetting === 'quick'} onPress={() => setExpandedSetting((current) => current === 'quick' ? null : 'quick')}>
       <View style={[styles.settingsCard, isDark && styles.darkSurface]}>
@@ -146,7 +147,7 @@ export function SettingsScreen({
 
       <View style={[styles.phonePreview, designMode === 'minimal' && styles.phonePreviewMinimal, designMode === 'chic' && { backgroundColor: chicPalette?.accent ?? patternVisual.accent }, ]}>
         <Text style={styles.phoneClock}>9:41</Text>
-        <View style={[styles.widget, size === 'small' && styles.widgetSmall, designMode === 'minimal' && styles.widgetMinimal, designMode === 'chic' && { backgroundColor: chicPalette?.surface ?? patternVisual.background }, ]}>
+        <View style={[styles.widget, size === 'small' && styles.widgetSmall, designMode === 'minimal' && styles.widgetMinimal, designMode === 'chic' && { backgroundColor: chicPalette?.cardSurface ?? patternVisual.background }, ]}>
           {designMode === 'chic' && <ChicPatternDecor pattern={chicPattern} accent={patternVisual.accent} warm={patternVisual.warm} checkColor={chicCheckColor} />}
           {designMode === 'chic' && <View pointerEvents="none" style={styles.widgetChicWash} />}
           <View style={styles.widgetTop}>
@@ -193,7 +194,7 @@ export function SettingsScreen({
             <Text style={[styles.switchTitle, isDark && styles.darkBodyText]}>完了したタスクも表示</Text>
             <Text style={[styles.switchCopy, isDark && styles.darkAccentText]}>チェック済みの項目を残します</Text>
           </View>
-          <Switch value={showCompleted} onValueChange={onShowCompleted} trackColor={{ true: colors.violet }} />
+          <Switch value={showCompleted} onValueChange={onShowCompleted} trackColor={{ true: designMode === 'chic' && chicPalette ? chicPalette.accent : colors.violet }} />
         </View>
         <Text style={[styles.fieldLabel, { marginTop: 20 }, isDark && styles.darkAccentText]}>完了アイコン</Text>
         <View style={styles.iconChoices}>

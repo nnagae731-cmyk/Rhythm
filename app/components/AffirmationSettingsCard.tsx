@@ -5,10 +5,12 @@ import { PlanTier } from '../premiumAccess';
 import { PremiumGuideFeatureId } from '../premiumGuide';
 import { Affirmation, ThemeMode } from '../types';
 import { formatLiveTime } from '../features/tasks/taskUtils';
+import { ChicThemePalette } from '../theme';
 
 type Props = {
   affirmations: Affirmation[];
   designMode: ThemeMode;
+  chicPalette?: ChicThemePalette;
   planTier: PlanTier;
   onPremium: (featureId?: PremiumGuideFeatureId) => void;
   onSave: (affirmation: Affirmation) => Promise<void> | void;
@@ -23,13 +25,14 @@ function clockToDate(time: string) {
   return value;
 }
 
-export function AffirmationSettingsCard({ affirmations, designMode, planTier, onPremium, onSave, onDelete, styles }: Props) {
+export function AffirmationSettingsCard({ affirmations, designMode, chicPalette, planTier, onPremium, onSave, onDelete, styles }: Props) {
   const [text, setText] = useState('');
   const [time, setTime] = useState('09:00');
   const [enabled, setEnabled] = useState(true);
   const [editingId, setEditingId] = useState<string>();
   const [showTimePicker, setShowTimePicker] = useState(false);
   const isDark = designMode === 'dark';
+  const isChic = designMode === 'chic' && !!chicPalette;
   const canUse = planTier === 'premium';
   const editing = affirmations.find((item) => item.id === editingId);
 
@@ -66,7 +69,7 @@ export function AffirmationSettingsCard({ affirmations, designMode, planTier, on
     </Pressable>;
   }
 
-  return <View style={[styles.settingsCard, isDark && styles.darkSurface]}>
+  return <View style={[styles.settingsCard, isDark && styles.darkSurface, isChic && chicPalette && { backgroundColor: chicPalette.cardSurface, borderColor: chicPalette.border }]}>
     <View style={styles.historyHeader}>
       <View><Text style={[styles.settingsTitle, isDark && styles.darkBodyText]}>今日のアファメーション</Text><Text style={[styles.switchCopy, isDark && styles.darkAccentText]}>毎日、選んだ時間に自分の言葉を届けます</Text></View>
       <Text style={styles.taskTemplateSavePremium}>Premium</Text>

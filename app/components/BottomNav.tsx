@@ -15,7 +15,7 @@ export function BottomNav({ screen, designMode, chicPalette, onChange }: { scree
   ];
 
   return (
-    <View style={[styles.bottomNav, designMode !== 'chic' && styles.bottomNavMinimal, designMode === 'dark' && styles.bottomNavDark, designMode === 'chic' && styles.bottomNavChic, designColors && { backgroundColor: designColors.surface, borderColor: designColors.border, shadowColor: designColors.accent }]}>
+    <View style={[styles.bottomNav, designMode !== 'chic' && styles.bottomNavMinimal, designMode === 'dark' && styles.bottomNavDark, designMode === 'chic' && styles.bottomNavChic, designColors && { backgroundColor: designColors.cardSurface, borderColor: designColors.border, shadowColor: designColors.accent }]}>
       {items.map((item) => {
         const active = item.id === screen;
         return (
