@@ -85,7 +85,8 @@ export function SettingsScreen({
   const [expandedSetting, setExpandedSetting] = useState<'design' | 'notifications' | 'affirmations' | 'quick' | 'templates' | 'widget' | null>('design');
   const [monoPreviewOpen, setMonoPreviewOpen] = useState(false);
   const previewTasks = tasks.filter((task) => showCompleted || !task.done).slice(0, size === 'small' ? 2 : 3);
-  const patternVisual = getChicPatternVisual(chicPattern);
+  const isCheckPattern = chicPattern === 'checkLavenderSatin' || chicPattern === 'checkBeigeNoir' || chicPattern === 'checkMauveFrame';
+  const patternVisual = isCheckPattern ? getChicCheckColor(chicCheckColor) : getChicPatternVisual(chicPattern);
   return (
     <>
       {__DEV__ && <View style={[styles.settingsCard, isDark && styles.darkSurface]}><Text style={[styles.settingsTitle, isDark && styles.darkBodyText]}>Expo Go 確認環境</Text><Text style={[styles.switchCopy, isDark && styles.darkAccentText]}>このQRコードは、利用プランが固定された確認用環境です。</Text><Text style={[styles.devPlanCurrent, isDark && styles.darkAccentText]}>現在：{planTier === 'premium' ? 'Premium版' : '無料版'}</Text></View>}
@@ -100,7 +101,7 @@ export function SettingsScreen({
           {designModes.map((mode: { id: 'minimal' | 'chic'; description: string }) => (
             <Pressable key={mode.id} style={[styles.modeChoice, (designMode === mode.id || (mode.id === 'minimal' && designMode === 'dark')) && styles.modeChoiceActive, mode.id === 'minimal' && designMode === 'dark' && styles.modeChoiceActiveDark]} onPress={() => onDesignMode(mode.id === 'minimal' && designMode === 'dark' ? 'dark' : mode.id)}>
               <View style={[styles.modeMiniPreview, mode.id === 'minimal' && styles.modeMiniMinimal, designMode === 'dark' && mode.id === 'minimal' && styles.modeMiniMinimalDark, mode.id === 'chic' && styles.modeMiniChic, ]}>
-                {mode.id === 'minimal' ? <><View style={[styles.modeMiniBlackBlock, designMode === 'dark' && styles.modeMiniDarkBlock]} /><Text style={[styles.modeMiniNumber, designMode === 'dark' && styles.modeMiniDarkNumber]}>03</Text><View style={[styles.modeMiniLine, designMode === 'dark' && styles.modeMiniDarkLine]} /></> : <>{designMode === 'chic' && <ChicPatternDecor pattern={chicPattern} accent="#D986A1" warm="#A997C8" />}<View style={styles.modeMiniGlass} /><Text style={styles.modeMiniSparkle}>✦</Text></>}
+                {mode.id === 'minimal' ? <><View style={[styles.modeMiniBlackBlock, designMode === 'dark' && styles.modeMiniDarkBlock]} /><Text style={[styles.modeMiniNumber, designMode === 'dark' && styles.modeMiniDarkNumber]}>03</Text><View style={[styles.modeMiniLine, designMode === 'dark' && styles.modeMiniDarkLine]} /></> : <>{designMode === 'chic' && <ChicPatternDecor pattern={chicPattern} accent={patternVisual.accent} warm={patternVisual.warm} checkColor={chicCheckColor} />}<View style={styles.modeMiniGlass} /><Text style={styles.modeMiniSparkle}>✦</Text></>}
               </View>
               <Text style={[styles.modeName, (designMode === mode.id || (mode.id === 'minimal' && designMode === 'dark')) && styles.modeNameActive, mode.id === 'minimal' && designMode === 'dark' && styles.modeNameDark]}>{mode.id === 'minimal' ? 'Mono' : 'Design'}</Text>
               <Text style={[styles.modeDescription, isDark && styles.darkAccentText]}>{mode.description}</Text>
@@ -147,7 +148,7 @@ export function SettingsScreen({
       <View style={[styles.phonePreview, designMode === 'minimal' && styles.phonePreviewMinimal, designMode === 'chic' && { backgroundColor: patternVisual.accent }, ]}>
         <Text style={styles.phoneClock}>9:41</Text>
         <View style={[styles.widget, size === 'small' && styles.widgetSmall, designMode === 'minimal' && styles.widgetMinimal, designMode === 'chic' && { backgroundColor: patternVisual.background }, ]}>
-          {designMode === 'chic' && <ChicPatternDecor pattern={chicPattern} accent={patternVisual.accent} warm={patternVisual.warm} />}
+          {designMode === 'chic' && <ChicPatternDecor pattern={chicPattern} accent={patternVisual.accent} warm={patternVisual.warm} checkColor={chicCheckColor} />}
           {designMode === 'chic' && <View pointerEvents="none" style={styles.widgetChicWash} />}
           <View style={styles.widgetTop}>
             <View>

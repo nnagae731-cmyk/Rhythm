@@ -3,10 +3,12 @@ export type ChicPattern = 'plain' | 'floral' | 'floralSoft' | 'floralSeasonal' |
 export type ChicCheckColor = 'monochrome' | 'cool' | 'warm' | 'green';
 
 export const chicCheckColorChoices: { id: ChicCheckColor; label: string; accent: string; warm: string; background: string }[] = [
-  { id: 'monochrome', label: 'モノトーン', accent: '#343237', warm: '#A6A1A8', background: '#F4F1EE' },
-  { id: 'cool', label: '寒色系', accent: '#9C91C4', warm: '#C4D0DD', background: '#F4F3FA' },
-  { id: 'warm', label: '暖色系', accent: '#B66E86', warm: '#D9AAB5', background: '#FBF1F3' },
-  { id: 'green', label: '緑系', accent: '#758D7B', warm: '#B9C8B8', background: '#F2F6F0' },
+  // Keep the persisted ids for backwards compatibility; the labels now describe
+  // the four shared Design check palettes used on every screen.
+  { id: 'monochrome', label: 'A  淡いピンク × ラベンダー', accent: '#B8A8CF', warm: '#E8C5D4', background: '#FFF7FA' },
+  { id: 'cool', label: 'B  淡いブルー × ブルーラベンダー', accent: '#A8B9E1', warm: '#D0DBF0', background: '#F5F8FE' },
+  { id: 'warm', label: 'C  淡いピーチ × コーラル', accent: '#D99A8A', warm: '#F1C9B5', background: '#FFF8F3' },
+  { id: 'green', label: 'D  淡いミント × セージグリーン', accent: '#9CB8A4', warm: '#D2E5D6', background: '#F5FBF6' },
 ];
 
 export function normalizeChicCheckColor(color: unknown): ChicCheckColor {
