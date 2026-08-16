@@ -6,24 +6,25 @@ import { buildInsightDashboard, formatComparison, formatMetricAverage, formatPoi
 import { buildRoutineInterruptionSummary, formatRoutineDate, getRoutineHistories as getRoutineHistoryList, RoutineInterruptionSummary } from './features/analytics/routineInterruptionAnalysis';
 import { hasPremiumAccess, PlanTier } from './premiumAccess';
 import { PremiumGuideFeatureId } from './premiumGuide';
-import { DesignMode, getThemeTokens } from './theme';
+import { ChicThemePalette, DesignMode, getChicThemePalette, getThemeTokens } from './theme';
 import { DeparturePlan, Task } from './types';
 
 type AnalysisTab = 'records' | 'insights' | 'routine';
 
-function PremiumGate({ onPremium, dark = false }: { onPremium: () => void; dark?: boolean }) {
+function PremiumGate({ onPremium, dark = false, chicPalette }: { onPremium: () => void; dark?: boolean; chicPalette?: ChicThemePalette }) {
+  const theme = getThemeTokens(chicPalette ? 'chic' : dark ? 'dark' : 'minimal', chicPalette?.id ?? 'cool');
   return (
-    <Pressable style={[styles.premiumGate, dark && styles.premiumGateDark]} onPress={onPremium}>
-      <Text style={[styles.premiumLock, dark && styles.premiumLockDark]}>🔒</Text>
-      <Text style={[styles.premiumTitle, dark && styles.premiumTitleDark]}>Rhythm Premium</Text>
-      <Text style={[styles.premiumCopy, dark && styles.premiumCopyDark]}>詳細な分析はPremiumで見られます</Text>
-      <Text style={[styles.premiumButton, dark && styles.premiumButtonDark]}>くわしく見る</Text>
+    <Pressable style={[styles.premiumGate, dark && styles.premiumGateDark, chicPalette && { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]} onPress={onPremium}>
+      <Text style={[styles.premiumLock, dark && styles.premiumLockDark, chicPalette && { color: theme.colors.primaryAccent }]}>🔒</Text>
+      <Text style={[styles.premiumTitle, dark && styles.premiumTitleDark, chicPalette && { color: theme.colors.primaryText }]}>Rhythm Premium</Text>
+      <Text style={[styles.premiumCopy, dark && styles.premiumCopyDark, chicPalette && { color: theme.colors.secondaryText }]}>詳細な分析はPremiumで見られます</Text>
+      <Text style={[styles.premiumButton, dark && styles.premiumButtonDark, chicPalette && { color: theme.colors.primaryAccent }]}>くわしく見る</Text>
     </Pressable>
   );
 }
 
-function RoutineHistoryModal({ summary, title, designMode, onClose }: { summary?: RoutineInterruptionSummary; title?: string; designMode: DesignMode; onClose: () => void }) {
-  const theme = getThemeTokens(designMode);
+function RoutineHistoryModal({ summary, title, designMode, chicPalette, onClose }: { summary?: RoutineInterruptionSummary; title?: string; designMode: DesignMode; chicPalette?: ChicThemePalette; onClose: () => void }) {
+  const theme = getThemeTokens(designMode, chicPalette?.id ?? 'cool');
   const isDark = designMode === 'dark';
   if (!summary) return null;
   return <Modal transparent animationType="slide" visible onRequestClose={onClose}>
@@ -43,16 +44,17 @@ function RoutineHistoryModal({ summary, title, designMode, onClose }: { summary?
   </Modal>;
 }
 
-function RoutineProgressPanel({ events, tasks, designMode, onRemoveRoutine }: { events: BehaviorEvent[]; tasks: Task[]; designMode: DesignMode; onRemoveRoutine: (taskId: string) => void }) {
+function RoutineProgressPanel({ events, tasks, designMode, chicPalette, onRemoveRoutine }: { events: BehaviorEvent[]; tasks: Task[]; designMode: DesignMode; chicPalette?: ChicThemePalette; onRemoveRoutine: (taskId: string) => void }) {
   const routineTasks = useMemo(() => getRoutineHistoryList(events, tasks), [events, tasks]);
   const [historyTarget, setHistoryTarget] = useState<{ title: string; summary: RoutineInterruptionSummary }>();
-  const palette = designMode === 'chic' ? ['#E68BA8', '#E7B56A', '#8EC7B3', '#9FA8E8', '#C39BD3'] : designMode === 'dark' ? ['#8EA6FF', '#AFC2FF', '#7ED6C4', '#C5B4FF', '#8EA6FF'] : ['#171717', '#3A3A3A', '#5C5C5C', '#7A7A7A', '#A0A0A0'];
+  const resolvedChicPalette = chicPalette ?? getChicThemePalette('cool');
+  const palette = designMode === 'chic' ? [resolvedChicPalette.accent, resolvedChicPalette.statusAccent, resolvedChicPalette.patternStripe, resolvedChicPalette.accentSoft, resolvedChicPalette.border] : designMode === 'dark' ? ['#8EA6FF', '#AFC2FF', '#7ED6C4', '#C5B4FF', '#8EA6FF'] : ['#171717', '#3A3A3A', '#5C5C5C', '#7A7A7A', '#A0A0A0'];
   const isDark = designMode === 'dark';
-  if (routineTasks.length === 0) return <View style={[styles.routineCard, isDark && styles.routineCardDark]}><Text style={[styles.sectionTitle, isDark && styles.darkMetricText]}>ルーティンの継続</Text><Text style={[styles.sectionCopy, isDark && styles.darkSecondaryText]}>タスク登録時に「ルーティンにする」を選ぶと、継続率を確認できます。</Text></View>;
+  if (routineTasks.length === 0) return <View style={[styles.routineCard, isDark && styles.routineCardDark, designMode === 'chic' && chicPalette && { backgroundColor: chicPalette.surface, borderColor: chicPalette.border }]}><Text style={[styles.sectionTitle, isDark && styles.darkMetricText, designMode === 'chic' && chicPalette && { color: chicPalette.textPrimary }]}>ルーティンの継続</Text><Text style={[styles.sectionCopy, isDark && styles.darkSecondaryText, designMode === 'chic' && chicPalette && { color: chicPalette.textSecondary }]}>タスク登録時に「ルーティンにする」を選ぶと、継続率を確認できます。</Text></View>;
   return <>
-    <View style={[styles.routineCard, isDark && styles.routineCardDark]}>
-      <Text style={[styles.sectionTitle, isDark && styles.darkMetricText]}>ルーティンの継続</Text>
-      <Text style={[styles.sectionCopy, isDark && styles.darkSecondaryText]}>続けられた日が丸で増えていきます。連続日数と継続率を確認できます。</Text>
+    <View style={[styles.routineCard, isDark && styles.routineCardDark, designMode === 'chic' && chicPalette && { backgroundColor: chicPalette.surface, borderColor: chicPalette.border }]}>
+      <Text style={[styles.sectionTitle, isDark && styles.darkMetricText, designMode === 'chic' && chicPalette && { color: chicPalette.textPrimary }]}>ルーティンの継続</Text>
+      <Text style={[styles.sectionCopy, isDark && styles.darkSecondaryText, designMode === 'chic' && chicPalette && { color: chicPalette.textSecondary }]}>続けられた日が丸で増えていきます。連続日数と継続率を確認できます。</Text>
       <View style={styles.routineTaskGrid}>{routineTasks.map((routine, taskIndex) => {
         const summary = buildRoutineInterruptionSummary(events, tasks, routine);
         const representativeTask = tasks.find((task) => routine.memberIds.has(task.id) && task.isRoutine);
@@ -62,40 +64,40 @@ function RoutineProgressPanel({ events, tasks, designMode, onRemoveRoutine }: { 
           ? `${formatRoutineDate(latest.interruptionStart)}に中断・${formatRoutineDate(latest.resumedAt)}に再開`
           : `${formatRoutineDate(latest.interruptionStart)}からお休み中`
           : '中断・再開の記録はまだありません';
-        const statusColor = summary.status === 'interrupted' ? (isDark ? '#F4C983' : '#B16C76') : summary.status === 'deactivated' ? (isDark ? '#8F9BB0' : '#777772') : summary.status === 'waiting' ? (isDark ? '#B4C0D4' : '#68636D') : color;
-        return <View key={routine.id} style={[styles.routineTaskRow, isDark && styles.routineTaskRowDark]}>
+        const statusColor = summary.status === 'interrupted' ? (designMode === 'chic' && chicPalette ? chicPalette.statusAccent : isDark ? '#F4C983' : '#B16C76') : summary.status === 'deactivated' ? (designMode === 'chic' && chicPalette ? chicPalette.textMuted : isDark ? '#8F9BB0' : '#777772') : summary.status === 'waiting' ? (designMode === 'chic' && chicPalette ? chicPalette.textSecondary : isDark ? '#B4C0D4' : '#68636D') : color;
+        return <View key={routine.id} style={[styles.routineTaskRow, isDark && styles.routineTaskRowDark, designMode === 'chic' && chicPalette && { backgroundColor: chicPalette.taskBackground, borderColor: chicPalette.border }]}>
           <View style={styles.routineTaskHeader}>
-            <Text numberOfLines={1} style={[styles.routineTaskTitle, isDark && styles.darkMetricText]}>{routine.title}</Text>
+            <Text numberOfLines={1} style={[styles.routineTaskTitle, isDark && styles.darkMetricText, designMode === 'chic' && chicPalette && { color: chicPalette.textPrimary }]}>{routine.title}</Text>
             <View style={styles.routineTaskActions}><Text style={[styles.routineTaskRate, { color }]}>{summary.completionRate}%</Text>{routine.active && representativeTask && <Pressable accessibilityLabel={`${routine.title}をルーティンから外す`} hitSlop={8} onPress={() => onRemoveRoutine(representativeTask.id)} style={[styles.routineRemoveButton, isDark && styles.routineRemoveButtonDark]}><Text style={[styles.routineRemoveText, isDark && styles.routineRemoveTextDark]}>×</Text></Pressable>}</View>
           </View>
-          <Text style={[styles.routineRateCaption, isDark && styles.darkSecondaryText]}>継続率　{summary.completedCycleDays} / {summary.cycleDays}日</Text>
-          <View style={styles.routineDots}>{summary.displayDays.map((day) => <View key={day.key} style={styles.routineDay}><View style={[styles.routineDot, isDark && styles.routineDotDark, day.completed && { backgroundColor: color, borderColor: color }, day.future && styles.routineDotFuture, day.today && styles.routineDotToday]} /><Text style={[styles.routineDayLabel, isDark && styles.darkMetricText]}>{day.label}</Text></View>)}</View>
-          <Text style={[styles.routineStreak, isDark && styles.routineStreakDark]}>連続 {summary.currentStreak}日 ・ 累計 {summary.totalCompletedDays}日</Text>
-          <View style={[styles.routineStatusRow, isDark && styles.routineStatusRowDark]}><Text style={[styles.routineStatusLabel, { color: statusColor }]}>{summary.statusLabel}</Text><Text style={[styles.routineStatusCopy, isDark && styles.darkSecondaryText]}>{summary.statusCopy}</Text></View>
-          {summary.status !== 'before' && <Text style={[styles.routineLatest, isDark && styles.darkMutedMetricText]}>{latestCopy}</Text>}
-          <Text style={[styles.routineResumeCount, isDark && styles.darkSecondaryText]}>今月：中断 {summary.interruptionsThisMonth}回・再開 {summary.resumesThisMonth}回</Text>
+          <Text style={[styles.routineRateCaption, isDark && styles.darkSecondaryText, designMode === 'chic' && chicPalette && { color: chicPalette.textSecondary }]}>継続率　{summary.completedCycleDays} / {summary.cycleDays}日</Text>
+          <View style={styles.routineDots}>{summary.displayDays.map((day) => <View key={day.key} style={styles.routineDay}><View style={[styles.routineDot, isDark && styles.routineDotDark, day.completed && { backgroundColor: color, borderColor: color }, day.future && styles.routineDotFuture, day.today && styles.routineDotToday]} /><Text style={[styles.routineDayLabel, isDark && styles.darkMetricText, designMode === 'chic' && chicPalette && { color: chicPalette.textMuted }]}>{day.label}</Text></View>)}</View>
+          <Text style={[styles.routineStreak, isDark && styles.routineStreakDark, designMode === 'chic' && chicPalette && { color: chicPalette.textSecondary }]}>連続 {summary.currentStreak}日 ・ 累計 {summary.totalCompletedDays}日</Text>
+          <View style={[styles.routineStatusRow, isDark && styles.routineStatusRowDark, designMode === 'chic' && chicPalette && { borderTopColor: chicPalette.border }]}><Text style={[styles.routineStatusLabel, { color: statusColor }]}>{summary.statusLabel}</Text><Text style={[styles.routineStatusCopy, isDark && styles.darkSecondaryText, designMode === 'chic' && chicPalette && { color: chicPalette.textSecondary }]}>{summary.statusCopy}</Text></View>
+          {summary.status !== 'before' && <Text style={[styles.routineLatest, isDark && styles.darkMutedMetricText, designMode === 'chic' && chicPalette && { color: chicPalette.textMuted }]}>{latestCopy}</Text>}
+          <Text style={[styles.routineResumeCount, isDark && styles.darkSecondaryText, designMode === 'chic' && chicPalette && { color: chicPalette.textSecondary }]}>今月：中断 {summary.interruptionsThisMonth}回・再開 {summary.resumesThisMonth}回</Text>
           {summary.history.length > 1 && <Pressable onPress={() => setHistoryTarget({ title: routine.title, summary })} style={styles.routineHistoryLink}><Text style={[styles.routineHistoryLinkText, { color }]}>中断・再開の履歴を見る 〉</Text></Pressable>}
         </View>;
       })}</View>
     </View>
-    <RoutineHistoryModal summary={historyTarget?.summary} title={historyTarget?.title} designMode={designMode} onClose={() => setHistoryTarget(undefined)} />
+    <RoutineHistoryModal summary={historyTarget?.summary} title={historyTarget?.title} designMode={designMode} chicPalette={chicPalette} onClose={() => setHistoryTarget(undefined)} />
   </>;
 }
 
-function DashboardCard({ children, designMode, style }: { children: ReactNode; designMode: DesignMode; style?: any }) {
-  const theme = getThemeTokens(designMode);
+function DashboardCard({ children, designMode, chicPalette, style }: { children: ReactNode; designMode: DesignMode; chicPalette?: ChicThemePalette; style?: any }) {
+  const theme = getThemeTokens(designMode, chicPalette?.id ?? 'cool');
   return <View style={[styles.dashboardCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }, designMode === 'dark' && styles.dashboardCardDark, style]}>{children}</View>;
 }
 
-function TrendStatus({ status, designMode }: { status: 'improved' | 'maintain' | 'attention' | 'insufficient'; designMode: DesignMode }) {
-  const theme = getThemeTokens(designMode);
+function TrendStatus({ status, designMode, chicPalette }: { status: 'improved' | 'maintain' | 'attention' | 'insufficient'; designMode: DesignMode; chicPalette?: ChicThemePalette }) {
+  const theme = getThemeTokens(designMode, chicPalette?.id ?? 'cool');
   const label = status === 'improved' ? '改善' : status === 'attention' ? '要確認' : status === 'maintain' ? '維持' : '記録中';
   const color = status === 'improved' ? theme.colors.success : status === 'attention' ? theme.colors.danger : theme.colors.primaryAccent;
   return <View style={[styles.trendStatus, { backgroundColor: designMode === 'dark' ? theme.colors.softAccent : `${color}18` }]}><Text style={[styles.trendStatusText, { color }]}>{label}</Text></View>;
 }
 
-function ProgressRing({ rate, designMode }: { rate: InsightRate; designMode: DesignMode }) {
-  const theme = getThemeTokens(designMode);
+function ProgressRing({ rate, designMode, chicPalette }: { rate: InsightRate; designMode: DesignMode; chicPalette?: ChicThemePalette }) {
+  const theme = getThemeTokens(designMode, chicPalette?.id ?? 'cool');
   const radius = 29;
   const circumference = 2 * Math.PI * radius;
   const dash = rate.percent === undefined ? 0 : circumference * rate.percent / 100;
@@ -113,8 +115,8 @@ function ProgressRing({ rate, designMode }: { rate: InsightRate; designMode: Des
   </View>;
 }
 
-function LineChart({ points, metric, selectedDate, onSelect, designMode }: { points: { date: string; value: number; sampleCount: number }[]; metric: InsightMetric; selectedDate?: string; onSelect: (date: string) => void; designMode: DesignMode }) {
-  const theme = getThemeTokens(designMode);
+function LineChart({ points, metric, selectedDate, onSelect, designMode, chicPalette }: { points: { date: string; value: number; sampleCount: number }[]; metric: InsightMetric; selectedDate?: string; onSelect: (date: string) => void; designMode: DesignMode; chicPalette?: ChicThemePalette }) {
+  const theme = getThemeTokens(designMode, chicPalette?.id ?? 'cool');
   const width = 320;
   const height = 148;
   const padding = { top: 14, right: 12, bottom: 22, left: 30 };
@@ -153,8 +155,8 @@ function LineChart({ points, metric, selectedDate, onSelect, designMode }: { poi
   </>;
 }
 
-function ConditionChart({ data, designMode }: { data: InsightCondition[]; designMode: DesignMode }) {
-  const theme = getThemeTokens(designMode);
+function ConditionChart({ data, designMode, chicPalette }: { data: InsightCondition[]; designMode: DesignMode; chicPalette?: ChicThemePalette }) {
+  const theme = getThemeTokens(designMode, chicPalette?.id ?? 'cool');
   return <View style={styles.conditionChart}>{data.map((item) => {
     const fill = item.onTimePercent === undefined ? 0 : item.onTimePercent;
     return <View key={item.id} style={styles.conditionItem}>
@@ -166,14 +168,14 @@ function ConditionChart({ data, designMode }: { data: InsightCondition[]; design
   })}</View>;
 }
 
-function InsightDashboardView({ events, tasks, plans, designMode, onApplySuggestion }: { events: BehaviorEvent[]; tasks: Task[]; plans: DeparturePlan[]; designMode: DesignMode; onApplySuggestion: (suggestion: InsightSuggestion) => void }) {
+function InsightDashboardView({ events, tasks, plans, designMode, chicPalette, onApplySuggestion }: { events: BehaviorEvent[]; tasks: Task[]; plans: DeparturePlan[]; designMode: DesignMode; chicPalette?: ChicThemePalette; onApplySuggestion: (suggestion: InsightSuggestion) => void }) {
   const [range, setRange] = useState<InsightRange>('30d');
   const [metric, setMetric] = useState<InsightMetric>('preparation');
   const [conditionView, setConditionView] = useState<InsightConditionView>('weekday');
   const [selectedPointDate, setSelectedPointDate] = useState<string>();
   const [suggestionOpen, setSuggestionOpen] = useState(false);
   const dashboard = useMemo(() => buildInsightDashboard(events, plans, range), [events, plans, range]);
-  const theme = getThemeTokens(designMode);
+  const theme = getThemeTokens(designMode, chicPalette?.id ?? 'cool');
   const activeMetric = dashboard.metrics[metric];
   const conditionData = conditionView === 'weekday' ? dashboard.weekdayConditions : dashboard.timeOfDayConditions;
   const isDark = designMode === 'dark';
@@ -184,25 +186,25 @@ function InsightDashboardView({ events, tasks, plans, designMode, onApplySuggest
     </View>
     <Text style={[styles.dashboardRangeLabel, { color: theme.colors.secondaryText }]}>{dashboard.rangeLabel}</Text>
 
-    <DashboardCard designMode={designMode}>
-      <View style={styles.cardTitleRow}><Text style={[styles.dashboardKicker, { color: theme.colors.primaryAccent }]}>今の傾向</Text><TrendStatus status={dashboard.trend.status} designMode={designMode} /></View>
+    <DashboardCard designMode={designMode} chicPalette={chicPalette}>
+      <View style={styles.cardTitleRow}><Text style={[styles.dashboardKicker, { color: theme.colors.primaryAccent }]}>今の傾向</Text><TrendStatus status={dashboard.trend.status} designMode={designMode} chicPalette={chicPalette} /></View>
       <Text style={[styles.trendMessage, { color: theme.colors.primaryText }]}>{dashboard.trend.message}</Text>
       <Text style={[styles.dashboardCaption, { color: theme.colors.secondaryText }]}>{dashboard.trend.comparison}</Text>
     </DashboardCard>
 
-    <DashboardCard designMode={designMode}>
+    <DashboardCard designMode={designMode} chicPalette={chicPalette}>
       <View style={styles.cardTitleRow}><View><Text style={[styles.dashboardTitle, { color: theme.colors.primaryText }]}>時間の変化</Text><Text style={[styles.dashboardCaption, { color: theme.colors.secondaryText }]}>予定どおりは基準線の0です</Text></View><Text style={[styles.metricAverage, { color: theme.colors.primaryAccent }]}>{formatMetricAverage(metric, activeMetric.average)}</Text></View>
       <View style={styles.metricSwitcher}>{([['preparation', '準備'], ['departure', '出発'], ['notification', '通知'], ['focus', '集中']] as [InsightMetric, string][]).map(([id, label]) => <Pressable key={id} onPress={() => { setMetric(id); setSelectedPointDate(undefined); }} style={[styles.metricSwitch, { borderColor: theme.colors.border, backgroundColor: isDark ? '#20293A' : theme.colors.secondarySurface }, metric === id && { backgroundColor: theme.colors.primaryAccent, borderColor: theme.colors.primaryAccent }]}><Text style={[styles.metricSwitchText, { color: metric === id ? '#FFFFFF' : theme.colors.secondaryText }]}>{label}</Text></Pressable>)}</View>
-      <LineChart points={activeMetric.points} metric={metric} selectedDate={selectedPointDate} onSelect={setSelectedPointDate} designMode={designMode} />
+      <LineChart points={activeMetric.points} metric={metric} selectedDate={selectedPointDate} onSelect={setSelectedPointDate} designMode={designMode} chicPalette={chicPalette} />
       <View style={[styles.chartFooter, { borderTopColor: theme.colors.border }]}><Text style={[styles.chartFooterText, { color: theme.colors.secondaryText }]}>平均 {formatMetricAverage(metric, activeMetric.average)}</Text><Text style={[styles.chartFooterText, { color: theme.colors.secondaryText }]}>{formatComparison(metric, activeMetric.average, activeMetric.previousAverage)}</Text></View>
     </DashboardCard>
 
-    <DashboardCard designMode={designMode}>
+    <DashboardCard designMode={designMode} chicPalette={chicPalette}>
       <Text style={[styles.dashboardTitle, { color: theme.colors.primaryText }]}>行動率</Text>
-      <View style={styles.rateRow}>{dashboard.rates.map((rate) => <ProgressRing key={rate.id} rate={rate} designMode={designMode} />)}</View>
+      <View style={styles.rateRow}>{dashboard.rates.map((rate) => <ProgressRing key={rate.id} rate={rate} designMode={designMode} chicPalette={chicPalette} />)}</View>
     </DashboardCard>
 
-    <DashboardCard designMode={designMode}>
+    <DashboardCard designMode={designMode} chicPalette={chicPalette}>
       <Text style={[styles.dashboardTitle, { color: theme.colors.primaryText }]}>通知後の行動</Text>
       {dashboard.notificationResponses.total === 0 ? <Text style={[styles.emptyDashboardCopy, { color: theme.colors.secondaryText }]}>この期間の通知記録はまだありません</Text> : <>
         <View style={styles.stackedBar}>{([['completed', '完了', theme.colors.success], ['later', 'あとで', theme.colors.primaryAccent], ['noResponse', '反応なし', isDark ? '#536077' : '#C6CDD9']] as const).map(([id, label, color]) => {
@@ -215,13 +217,13 @@ function InsightDashboardView({ events, tasks, plans, designMode, onApplySuggest
       </>}
     </DashboardCard>
 
-    <DashboardCard designMode={designMode}>
+    <DashboardCard designMode={designMode} chicPalette={chicPalette}>
       <View style={styles.cardTitleRow}><View><Text style={[styles.dashboardTitle, { color: theme.colors.primaryText }]}>曜日・時間帯別の傾向</Text><Text style={[styles.dashboardCaption, { color: theme.colors.secondaryText }]}>出発記録をもとに表示します</Text></View><View style={styles.conditionSwitch}>{([['weekday', '曜日'], ['timeOfDay', '時間帯']] as [InsightConditionView, string][]).map(([id, label]) => <Pressable key={id} onPress={() => setConditionView(id)} style={[styles.conditionSwitchButton, conditionView === id && { backgroundColor: theme.colors.primaryAccent }]}><Text style={[styles.conditionSwitchText, { color: conditionView === id ? '#FFFFFF' : theme.colors.secondaryText }]}>{label}</Text></Pressable>)}</View></View>
-      <ConditionChart data={conditionData} designMode={designMode} />
+      <ConditionChart data={conditionData} designMode={designMode} chicPalette={chicPalette} />
       <Text style={[styles.dashboardCaption, { color: theme.colors.secondaryText }]}>記録が少ない曜日・時間帯は、傾向として断定しません</Text>
     </DashboardCard>
 
-    {dashboard.suggestion && <DashboardCard designMode={designMode} style={[styles.suggestionCard, { borderColor: theme.colors.primaryAccent }]}>
+    {dashboard.suggestion && <DashboardCard designMode={designMode} chicPalette={chicPalette} style={[styles.suggestionCard, { borderColor: theme.colors.primaryAccent }]}>
       <Text style={[styles.dashboardKicker, { color: theme.colors.primaryAccent }]}>Rhythmからの提案</Text>
       <Text style={[styles.suggestionTitle, { color: theme.colors.primaryText }]}>{dashboard.suggestion.title}</Text>
       <Text style={[styles.dashboardCaption, { color: theme.colors.secondaryText }]}>{dashboard.suggestion.reason}</Text>
@@ -248,6 +250,7 @@ export function AnalysisScreen({
   recordContent,
   onPremium,
   departurePlans,
+  chicPalette,
   onApplySuggestion,
 }: {
   events: BehaviorEvent[];
@@ -258,6 +261,7 @@ export function AnalysisScreen({
   recordContent: ReactNode;
   onPremium: (featureId?: PremiumGuideFeatureId) => void;
   departurePlans: DeparturePlan[];
+  chicPalette?: ChicThemePalette;
   onApplySuggestion: (suggestion: InsightSuggestion) => void;
 }) {
   const [tab, setTab] = useState<AnalysisTab>('records');
@@ -268,7 +272,8 @@ export function AnalysisScreen({
     return { preparationCount: preparationEvents.length, departureCount: departureEvents.length, latest };
   }, [events]);
   const premium = hasPremiumAccess(planTier, 'time_analysis');
-  const theme = getThemeTokens(designMode);
+  const theme = getThemeTokens(designMode, chicPalette?.id ?? 'cool');
+  const isChic = designMode === 'chic' && !!chicPalette;
 
   return (
     <>
@@ -278,28 +283,28 @@ export function AnalysisScreen({
           ['routine', 'ルーティン'],
           ['insights', '時間と行動'],
         ] as [AnalysisTab, string][]).map(([id, label]) => (
-          <Pressable key={id} style={[styles.tab, designMode === 'dark' && styles.tabDark, tab === id && (designMode === 'dark' ? styles.tabDarkActive : { backgroundColor: theme.colors.primaryAccent, borderColor: theme.colors.primaryAccent })]} onPress={() => setTab(id)}>
-            <Text style={[styles.tabText, designMode === 'dark' && styles.tabTextDark, tab === id && styles.tabTextActive, tab === id && designMode === 'dark' && styles.tabTextActiveDark]}>{label}{id === 'insights' && planTier === 'free' ? ' 🔒' : ''}</Text>
+          <Pressable key={id} style={[styles.tab, designMode === 'dark' && styles.tabDark, isChic && chicPalette && { backgroundColor: chicPalette.surfaceSubtle, borderColor: chicPalette.border }, tab === id && (designMode === 'dark' ? styles.tabDarkActive : { backgroundColor: theme.colors.primaryAccent, borderColor: theme.colors.primaryAccent }), tab === id && isChic && chicPalette && { backgroundColor: chicPalette.accent, borderColor: chicPalette.accent }]} onPress={() => setTab(id)}>
+            <Text style={[styles.tabText, designMode === 'dark' && styles.tabTextDark, isChic && chicPalette && { color: chicPalette.textSecondary }, tab === id && styles.tabTextActive, tab === id && designMode === 'dark' && styles.tabTextActiveDark, tab === id && isChic && { color: '#FFFFFF' }]}>{label}{id === 'insights' && planTier === 'free' ? ' 🔒' : ''}</Text>
           </Pressable>
         ))}
       </View>
 
       {tab === 'records' ? (
         <>
-          <View style={[styles.activityCard, designMode === 'dark' && styles.activityCardDark, { borderColor: theme.colors.border }]}> 
-            <Text style={[styles.activityTitle, designMode === 'dark' && styles.darkMetricText]}>出発・準備の実績</Text>
+          <View style={[styles.activityCard, designMode === 'dark' && styles.activityCardDark, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
+            <Text style={[styles.activityTitle, { color: theme.colors.primaryText }]}>出発・準備の実績</Text>
             <View style={styles.activityRow}>
               <View style={styles.activityMetric}>
                 <Text style={[styles.activityValue, { color: designMode === 'dark' ? '#8EA6FF' : theme.colors.primaryAccent }]}>{departureActivity.preparationCount}</Text>
-                <Text style={[styles.activityLabel, designMode === 'dark' && styles.activityLabelDark]}>準備開始</Text>
+                <Text style={[styles.activityLabel, { color: theme.colors.secondaryText }]}>準備開始</Text>
               </View>
               <View style={styles.activityMetric}>
                 <Text style={[styles.activityValue, { color: designMode === 'dark' ? '#8EA6FF' : theme.colors.primaryAccent }]}>{departureActivity.departureCount}</Text>
-                <Text style={[styles.activityLabel, designMode === 'dark' && styles.activityLabelDark]}>出発</Text>
+                <Text style={[styles.activityLabel, { color: theme.colors.secondaryText }]}>出発</Text>
               </View>
-              <View style={[styles.activityLatest, designMode === 'dark' && styles.activityLatestDark]}>
-                <Text style={[styles.activityLatestLabel, designMode === 'dark' && styles.activityLatestLabelDark]}>最新の記録</Text>
-                <Text style={[styles.activityLatestValue, designMode === 'dark' && styles.darkMetricText]}>
+              <View style={[styles.activityLatest, designMode === 'dark' && styles.activityLatestDark, { borderLeftColor: theme.colors.border }]}>
+                <Text style={[styles.activityLatestLabel, { color: designMode === 'chic' && chicPalette ? chicPalette.textMuted : theme.colors.secondaryText }]}>最新の記録</Text>
+                <Text style={[styles.activityLatestValue, { color: theme.colors.primaryText }]}>
                   {departureActivity.latest ? departureActivity.latest.type === 'departure_started' ? '出発しました' : '準備を始めました' : 'まだ記録はありません'}
                 </Text>
               </View>
@@ -308,7 +313,7 @@ export function AnalysisScreen({
           {recordContent}
         </>
       ) : tab === 'insights' && !premium ? (
-        <PremiumGate dark={designMode === 'dark'} onPremium={() => onPremium('time')} />
+        <PremiumGate dark={designMode === 'dark'} chicPalette={chicPalette} onPremium={() => onPremium('time')} />
       ) : tab === 'insights' ? (
         <InsightDashboardView events={events} tasks={tasks} plans={departurePlans} designMode={designMode} onApplySuggestion={onApplySuggestion} />
       ) : tab === 'routine' ? (

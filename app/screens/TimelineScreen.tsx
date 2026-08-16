@@ -17,6 +17,7 @@ type PlanCardProps = {
   now: Date;
   planTier: PlanTier;
   designMode: DesignMode;
+  chicPalette?: ChicThemePalette;
   status?: DeparturePreparationStatus;
   prepared: boolean;
   departed: boolean;
@@ -33,9 +34,9 @@ type PlanCardProps = {
   onDelete: (id: string) => void;
 };
 
-const DepartureCountdownCard = React.memo(function DepartureCountdownCard({ plan, now, planTier, designMode, status, prepared, departed, checkIn, styles, helpers, onPrepare, onDepart, onStill, onRecover, onShare, onPremium, onEdit, onDelete }: PlanCardProps) {
+const DepartureCountdownCard = React.memo(function DepartureCountdownCard({ plan, now, planTier, designMode, chicPalette, status, prepared, departed, checkIn, styles, helpers, onPrepare, onDepart, onStill, onRecover, onShare, onPremium, onEdit, onDelete }: PlanCardProps) {
   const { getThemeTokens, planDateKey, formatLiveTime, getDepartureMoments, countdownToDate, getMapSearchTarget, openMapSearch, getPlanCountdownAt } = helpers;
-  const theme = getThemeTokens(designMode);
+  const theme = getThemeTokens(designMode, chicPalette?.id ?? 'cool');
   const isDark = designMode === 'dark';
   const isPremium = planTier === 'premium';
   const mode = getDeparturePlanMode(plan);
@@ -58,7 +59,7 @@ const DepartureCountdownCard = React.memo(function DepartureCountdownCard({ plan
   const statusLabel = reverse && !isPremium ? 'Premium' : checkIn ? '出発済み' : departed ? '移動中' : status === 'prepared' ? '準備中' : prepared ? '準備中' : passed ? '確認が必要' : direct ? '出発予定' : '準備前';
   const showRecovery = reverse && isPremium && !checkIn && moments && moments.leave.getTime() <= now.getTime();
 
-  return <View style={[styles.departureCountdownCard, styles.planCountdownCardNew, isDark && styles.departureCountdownCardDark, { borderColor: isDark ? '#40506A' : theme.colors.border }, passed && !checkIn && styles.departurePassed]}>
+  return <View style={[styles.departureCountdownCard, styles.planCountdownCardNew, isDark && styles.departureCountdownCardDark, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }, designMode === 'chic' && chicPalette && { backgroundColor: chicPalette.surface, borderColor: chicPalette.border, shadowColor: chicPalette.accent }, passed && !checkIn && styles.departurePassed]}>
     <View style={styles.planCardTopRow}>
       <View style={{ flex: 1 }}>
         <Text style={[styles.departureCountdownTitle, textPrimary]}>{plan.title}</Text>
@@ -180,7 +181,7 @@ export function TimelineScreen({
       <View style={[styles.departureListHeader, isDark && styles.darkPanel]}><Text style={[styles.sectionTitle, isDark && styles.darkBodyText]}>カウントダウン</Text><Text style={[styles.sectionSub, isDark && styles.darkMutedText]}>{countdownPlans.length}件の予定</Text></View>
       {countdownPlans.length === 0 ? <View style={[styles.departureEmpty, isDark && styles.departureEmptyDark]}><Text style={[styles.emptyCopy, isDark && styles.darkMutedText]}>出発時刻を登録した予定が、ここに表示されます。</Text></View> : countdownPlans.map((item: DeparturePlan) => {
         const key = `${item.id}:${planDateKey(item)}`;
-        return <DepartureCountdownCard key={item.id} plan={item} now={now} planTier={planTier} designMode={designMode} status={item.id && planDateKey(item) === todayKey ? departurePreparationStatuses[item.id] : undefined} prepared={preparedByPlanDay.has(key)} departed={departedByPlanDay.has(key)} checkIn={checkInsByPlanDay.get(key)} styles={styles} helpers={{ getThemeTokens, planDateKey, formatLiveTime, getDepartureMoments, countdownToDate, getMapSearchTarget, openMapSearch, getPlanCountdownAt }} onPrepare={onPreparationStarted} onDepart={onDeparted} onStill={onStill} onRecover={setRecoveryPlan} onShare={onSharePlan} onPremium={() => onPremium('route')} onEdit={openPlanEditor} onDelete={onDelete} />;
+        return <DepartureCountdownCard key={item.id} plan={item} now={now} planTier={planTier} designMode={designMode} chicPalette={chicPalette} status={item.id && planDateKey(item) === todayKey ? departurePreparationStatuses[item.id] : undefined} prepared={preparedByPlanDay.has(key)} departed={departedByPlanDay.has(key)} checkIn={checkInsByPlanDay.get(key)} styles={styles} helpers={{ getThemeTokens, planDateKey, formatLiveTime, getDepartureMoments, countdownToDate, getMapSearchTarget, openMapSearch, getPlanCountdownAt }} onPrepare={onPreparationStarted} onDepart={onDeparted} onStill={onStill} onRecover={setRecoveryPlan} onShare={onSharePlan} onPremium={() => onPremium('route')} onEdit={openPlanEditor} onDelete={onDelete} />;
       })}
     </>}
 
