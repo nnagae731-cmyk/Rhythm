@@ -2438,8 +2438,8 @@ function TodayWinStrip({ tasks, designMode, chicPattern, onRestore }: { tasks: T
   return (
     <>
       <Pressable style={[styles.todayHeroCard, styles.todayHeroCardChic]} onPress={() => setDetailsOpen(true)}>
-        {designMode === 'chic' && chicPattern === 'checkLavenderSatin' && <BThemeRibbonDecoration />}
-        {designMode === 'chic' && chicPattern === 'checkBeigeNoir' && <CThemeRibbonDecoration />}
+        {designMode === 'chic' && chicPattern === 'checkLavenderSatin' && <BThemeRibbonDecoration today />}
+        {designMode === 'chic' && chicPattern === 'checkBeigeNoir' && <CThemeRibbonDecoration today />}
         <View style={styles.todayHeroChicLayout}>
           <View style={styles.todayHeroChicPlate}>
             <View style={styles.todayChicMark}><Text style={styles.todayChicMarkText}>✿</Text></View>
@@ -2448,13 +2448,13 @@ function TodayWinStrip({ tasks, designMode, chicPattern, onRestore }: { tasks: T
             <Text style={styles.todayHeroStats}>完了 {count}　残り {remainingNow}</Text>
           </View>
           <View style={styles.todayHeroJarWrap}>
-            <Text style={styles.todayHeroKicker}>今日の進み</Text>
             <View style={styles.miniJarWrap}>
               <View style={styles.miniJarLid} />
               <View style={[styles.miniJar, styles.miniJarChicGlass]}>{Array.from({ length: Math.min(12, count) }, (_, index) => <Text key={index} style={[styles.miniJarItem, { left: 8 + (index % 3) * 22, bottom: 4 + Math.floor(index / 3) * 14, color: index % 3 === 0 ? '#F3C7D5' : index % 3 === 1 ? '#DCCBF0' : '#F5E1A4' }]}>{index % 2 ? '✦' : '●'}</Text>)}</View>
               {dropVisible && <Animated.Text style={[styles.fallingTreasure, fallingStyle]}>{item}</Animated.Text>}
             </View>
-            <Text style={styles.todayHeroJarHint}>完了 {count}　残り {remainingNow}{'\n'}タップして今日できたことを見る</Text>
+            <Text style={styles.todayHeroProgressLabel}>今日の進み</Text>
+            <Text style={styles.todayHeroJarHint}>タップして今日できたことを見る</Text>
           </View>
         </View>
       </Pressable>
