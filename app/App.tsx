@@ -5,7 +5,7 @@ import * as Notifications from 'expo-notifications';
 import { Audio } from 'expo-av';
 import { StatusBar } from 'expo-status-bar';
 import React, { useEffect, useMemo, useState } from 'react';
-import { ChicCheckColor, ChicPattern, ChicThemePalette, DesignMode, chicCheckColorChoices, getChicCheckColor, getDesignCheckColorLabel, getDesignCheckThemeTokens, getThemeTokens, normalizeChicCheckColor, normalizeChicPattern } from './theme';
+import { ChicCheckColor, ChicPattern, ChicThemePalette, DesignMode, chicCheckColorChoices, getChicCheckColor, getDesignCheckColorLabel, getDesignCheckThemeTokens, getDesignPatternThemeTokens, getThemeTokens, normalizeChicCheckColor, normalizeChicPattern } from './theme';
 import { RecoveryRecord } from './recovery';
 import { createCompletedFocusSession, createFocusSessionId, FocusSession } from './focusSession';
 import { createDepartureCheckIn, DepartureCheckIn } from './departureCheckIn';
@@ -72,6 +72,15 @@ const colors = {
   line: '#ECE8F0',
 };
 const categoryColors = baseCategoryColors;
+
+// One static image per floral pattern. The same cached asset is reused by the
+// app background and pattern previews; no flowers are generated at runtime.
+const designFloralBackgroundAssets: Record<'floral' | 'floralSoft' | 'floralSeasonal' | 'floralDark', number> = {
+  floral: require('./assets/themes/floral/vintage-bloom.jpg'),
+  floralSoft: require('./assets/themes/floral/botanical-line.jpg'),
+  floralSeasonal: require('./assets/themes/floral/sheer-floral.jpg'),
+  floralDark: require('./assets/themes/floral/sheer-floral.jpg'),
+};
 
 // PREPARED is retained only to safely receive actions from notifications that
 // were scheduled by earlier app versions.
@@ -312,6 +321,10 @@ function getChicPatternVisual(pattern: ChicPattern) {
   if (pattern === 'checkBeigeNoir') return { background: '#FBF4EA', accent: '#C9B49A', warm: '#191614' };
   if (pattern === 'checkMauveFrame') return { background: '#FFF2F6', accent: '#B9778F', warm: '#E2B6C2' };
   if (pattern === 'checkLavenderSatin') return { background: '#F7F2FC', accent: '#B9ADD8', warm: '#DDD4EE' };
+  if (pattern === 'floral' || pattern === 'floralSoft' || pattern === 'floralSeasonal' || pattern === 'floralDark') {
+    const palette = getDesignPatternThemeTokens(pattern, 'cool');
+    return { background: palette.background, accent: palette.accent, warm: palette.patternStripe };
+  }
   return { background: '#FFF4F7', accent: '#D986A1', warm: '#A997C8' };
 }
 
@@ -429,7 +442,8 @@ export default function App() {
   const [taskTemplates, setTaskTemplates] = useState<string[]>(['朝の支度', '持ち物を確認', '連絡を返す', '薬を飲む']);
   const [savedTaskTemplates, setSavedTaskTemplates] = useState<PremiumTaskTemplate[]>([]);
   const [guideOpen, setGuideOpen] = useState(false);
-  const theme = useMemo(() => getThemeTokens(designMode, chicCheckColor), [designMode, chicCheckColor]);
+  const appDesignPaletteId = chicPattern === 'floral' || chicPattern === 'floralSoft' || chicPattern === 'floralSeasonal' || chicPattern === 'floralDark' ? chicPattern : chicCheckColor;
+  const theme = useMemo(() => getThemeTokens(designMode, appDesignPaletteId), [designMode, appDesignPaletteId]);
   const [addOpen, setAddOpen] = useState(false);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [selectionMode, setSelectionMode] = useState(false);
@@ -446,8 +460,8 @@ export default function App() {
   const photoTopImageUri = photoThemeEnabled ? photoTheme.topImageUris?.[screen] ?? photoTheme.topImageOriginalUris?.[screen] ?? (photoTheme.placement === 'top' ? photoTheme.imageUri : undefined) : undefined;
   const focusBackgroundUri = photoThemeEnabled ? photoTheme.focusBackgroundUri : undefined;
   const effectiveChicPattern = getEffectiveChicPattern(planTier, chicPattern) as ChicPattern;
-  const chicPalette = getDesignCheckThemeTokens(chicCheckColor);
-  const getThemedThemeTokens = React.useCallback((mode: DesignMode) => getThemeTokens(mode, chicCheckColor), [chicCheckColor]);
+  const chicPalette = getDesignPatternThemeTokens(effectiveChicPattern, chicCheckColor);
+  const getThemedThemeTokens = React.useCallback((mode: DesignMode) => getThemeTokens(mode, mode === 'chic' ? chicPalette.id : chicCheckColor), [chicCheckColor, chicPalette]);
   // Design uses one palette for every surface. Keep the legacy color shape for
   // components that still consume the shared app colors object.
   const themedColors = useMemo(() => designMode === 'chic' ? {
@@ -2249,62 +2263,12 @@ function isCheckChicPattern(pattern: ChicPattern): boolean {
   return pattern === 'checkLavenderSatin' || pattern === 'checkBeigeNoir' || pattern === 'checkMauveFrame';
 }
 
-function FloralSprig({
-  index,
-  variant,
-  compact,
-  accent,
-  warm,
-  season = 'spring',
-}: {
-  index: number;
-  variant: 'soft' | 'seasonal' | 'dark';
-  compact: boolean;
-  accent: string;
-  warm: string;
-  season?: 'spring' | 'summer' | 'autumn' | 'winter';
-}) {
-  const left = (index * (compact ? 71 : 113)) % (compact ? 260 : 520) - 22;
-  const top = (index * (compact ? 53 : 91)) % (compact ? 430 : 1450) - 28;
-  const rotation = ((index % 5) - 2) * (variant === 'seasonal' ? 8 : 11);
-  const scale = (variant === 'seasonal' ? (index % 4 === 0 ? 1.18 : 0.96) : index % 5 === 0 ? 1.12 : 0.86) * (compact ? 0.72 : 1);
-  const seasonalPalette = {
-    spring: { stem: '#C88B92', primary: '#E59AAA', secondary: '#F6C9D0', center: '#D39A74', bloom: 23, petal: 9, petals: 5 },
-    summer: { stem: '#8A9B72', primary: '#E7B84B', secondary: '#F4D98B', center: '#A96E37', bloom: 21, petal: 8, petals: 8 },
-    autumn: { stem: '#9B6B54', primary: '#C97855', secondary: '#E1A16C', center: '#8D5D3C', bloom: 20, petal: 8, petals: 6 },
-    winter: { stem: '#7E829D', primary: '#A9A6D0', secondary: '#D7D3EA', center: '#B7A9B8', bloom: 19, petal: 8, petals: 5 },
-  }[season];
-  const stemColor = variant === 'dark' ? '#775A6A' : variant === 'seasonal' ? seasonalPalette.stem : '#AA8C9B';
-  const petalA = variant === 'dark' ? '#6F5365' : variant === 'seasonal' ? seasonalPalette.primary : accent;
-  const petalB = variant === 'dark' ? '#A78699' : variant === 'seasonal' ? seasonalPalette.secondary : warm;
-  const center = variant === 'seasonal' ? seasonalPalette.center : variant === 'dark' ? '#D1A7B0' : '#C5A172';
-  const bloomSize = variant === 'seasonal' ? seasonalPalette.bloom : 16;
-  const petalSize = variant === 'seasonal' ? seasonalPalette.petal : 7;
-  const petalCount = variant === 'seasonal' ? seasonalPalette.petals : 5;
-  const bloom = (key: string, x: number, y: number, size = bloomSize) => (
-    <View key={key} style={[styles.floralBloom, { left: x, top: y, width: size, height: size }]}> 
-      {Array.from({ length: petalCount }, (_, petalIndex) => (petalIndex * 360) / petalCount).map((angle, petalIndex) => (
-        <View key={petalIndex} style={[styles.floralPetal, { width: petalSize, height: petalSize * 1.35, left: size / 2 - petalSize / 2, top: size / 2 - petalSize * 0.7, backgroundColor: petalIndex % 2 ? petalB : petalA, transform: [{ rotate: `${angle}deg` }, { translateY: -size * 0.27 }] }]} />
-      ))}
-      <View style={[styles.floralBloomCenter, { left: size / 2 - 3, top: size / 2 - 3, backgroundColor: center }]} />
-    </View>
-  );
-  return (
-    <View pointerEvents="none" style={[styles.floralSprig, { left, top, opacity: variant === 'dark' ? 0.52 : variant === 'seasonal' ? 0.5 : 0.38, transform: [{ rotate: `${rotation}deg` }, { scale }] }]}>
-      <View style={[styles.floralStem, { backgroundColor: stemColor, transform: [{ rotate: `${index % 2 ? -10 : 8}deg` }] }]} />
-      <View style={[styles.floralLeaf, { backgroundColor: stemColor, left: 25, top: 28, transform: [{ rotate: '-28deg' }] }]} />
-      <View style={[styles.floralLeaf, { backgroundColor: stemColor, left: 40, top: 43, transform: [{ rotate: '32deg' }] }]} />
-      <View style={[styles.floralLeaf, { backgroundColor: stemColor, left: 22, top: 58, transform: [{ rotate: '-42deg' }] }]} />
-      {bloom('a', variant === 'seasonal' ? 12 : 22, variant === 'seasonal' ? 5 : 15, variant === 'seasonal' ? 23 : 16)}
-      {bloom('b', variant === 'seasonal' ? 45 : 43, variant === 'seasonal' ? 29 : 34, variant === 'seasonal' ? 17 : 12)}
-      {variant !== 'soft' && bloom('c', variant === 'seasonal' ? 5 : 18, 61, variant === 'seasonal' ? 14 : 11)}
-    </View>
-  );
-}
-
 function ChicPatternDecor({ pattern, accent, warm, density = 'regular', checkColor }: { pattern: ChicPattern | 'flower' | 'stripe'; accent: string; warm: string; density?: 'regular' | 'compact'; checkColor?: ChicCheckColor }) {
   const compact = density === 'compact';
   if (pattern === 'plain') return null;
+  if (pattern === 'floral' || pattern === 'floralSoft' || pattern === 'floralSeasonal' || pattern === 'floralDark') {
+    return <View pointerEvents="none" style={styles.patternLayer}><Image source={designFloralBackgroundAssets[pattern]} resizeMode="cover" style={[styles.patternImageLayer, compact && styles.patternImageLayerCompact]} /></View>;
+  }
   if (pattern === 'checkLavenderSatin' || pattern === 'checkBeigeNoir' || pattern === 'checkMauveFrame') {
     const selectedCheckColor = checkColor ? getChicCheckColor(checkColor) : undefined;
     const fallbackCheck = getDesignCheckThemeTokens('cool');
@@ -2326,14 +2290,7 @@ function ChicPatternDecor({ pattern, accent, warm, density = 'regular', checkCol
   if (pattern === 'dot') return <View pointerEvents="none" style={styles.patternLayer}>
     {Array.from({ length: compact ? 160 : 144 }, (_, index) => { const columns = compact ? 22 : 18; const spacingX = compact ? 20 : 25; const spacingY = compact ? 18 : 22; const row = Math.floor(index / columns); const column = index % columns; const size = index % 3 === 0 ? (compact ? 5 : 6) : index % 2 === 0 ? 4 : 3; return <View key={index} style={[styles.patternDotSmall, { width: size, height: size, borderRadius: size / 2, backgroundColor: index % 2 ? warm : accent, left: 4 + column * spacingX + (row % 2 ? spacingX / 2 : 0), top: 5 + row * spacingY }]} />; })}
   </View>;
-  const flowerPattern = pattern === 'floralSeasonal' ? 'seasonal' : pattern === 'floralDark' ? 'dark' : 'soft';
-  const flowerAccent = flowerPattern === 'seasonal' ? '#E59AAA' : flowerPattern === 'dark' ? '#8E6678' : accent;
-  const flowerWarm = flowerPattern === 'seasonal' ? '#F4C6CD' : flowerPattern === 'dark' ? '#B18B9A' : warm;
-  const seasonalQuarter = Math.floor(new Date().getMonth() / 3);
-  const seasonalName: 'spring' | 'summer' | 'autumn' | 'winter' = ['spring', 'summer', 'autumn', 'winter'][seasonalQuarter] as 'spring' | 'summer' | 'autumn' | 'winter';
-  return <View pointerEvents="none" style={styles.patternLayer}>
-    {Array.from({ length: compact ? (flowerPattern === 'seasonal' ? 18 : 24) : (flowerPattern === 'seasonal' ? 15 : 21) }, (_, index) => <FloralSprig key={index} index={index} variant={flowerPattern as 'soft' | 'seasonal' | 'dark'} season={seasonalName} compact={compact} accent={flowerAccent} warm={flowerWarm} />)}
-  </View>;
+  return null;
 }
 
 function CompactNumberSetting({ label, value, onChange, isDark = false }: { label: string; value: number; onChange: (value: number) => void; isDark?: boolean }) {
@@ -2349,6 +2306,9 @@ function CompactNumberSetting({ label, value, onChange, isDark = false }: { labe
 
 function ChicPatternSelector({ designMode, chicPattern, chicCheckColor, planTier, onPattern, onCheckColor }: { designMode: DesignMode; chicPattern: ChicPattern; chicCheckColor: ChicCheckColor; planTier: PlanTier; onPattern: (pattern: ChicPattern) => void; onCheckColor: (color: ChicCheckColor) => void }) {
   const patterns: { id: ChicPattern; label: string; feature?: 'chic_dot' | 'chic_check_lavender_satin' | 'chic_check_beige_noir' | 'chic_check_mauve_frame' }[] = [
+    { id: 'floral', label: 'Vintage Bloom' },
+    { id: 'floralSoft', label: 'Botanical Line' },
+    { id: 'floralSeasonal', label: 'Sheer Floral' },
     { id: 'plain', label: 'プレーン' },
     { id: 'dot', label: 'ドット', feature: 'chic_dot' },
     { id: 'checkLavenderSatin', label: 'くすみラベンダーチェック', feature: 'chic_check_lavender_satin' },

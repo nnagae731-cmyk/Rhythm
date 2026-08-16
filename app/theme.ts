@@ -4,9 +4,12 @@ export type DesignMode = 'minimal' | 'dark' | 'chic' | 'photo';
 // continue to use the persisted `chic` key for backwards compatibility.
 export type ChicPattern = 'plain' | 'floral' | 'floralSoft' | 'floralSeasonal' | 'floralDark' | 'dot' | 'checkLavenderSatin' | 'checkBeigeNoir' | 'checkMauveFrame';
 export type ChicCheckColor = 'monochrome' | 'cool' | 'warm' | 'green';
+/** Design palette ids include the legacy floral pattern ids so shared theme
+ * helpers can resolve a single palette for every Design screen. */
+export type DesignPaletteId = ChicCheckColor | 'floral' | 'floralSoft' | 'floralSeasonal' | 'floralDark';
 
 export type ChicThemePalette = {
-  id: ChicCheckColor;
+  id: DesignPaletteId;
   background: string;
   patternBase: string;
   patternStripe: string;
@@ -75,12 +78,53 @@ const designPalettes: Record<ChicCheckColor, ChicThemePalette> = {
   },
 };
 
-export const chicCheckColorChoices: (ChicThemePalette & { id: ChicCheckColor; label: string })[] = [
+const floralPalettes: Record<'floral' | 'floralSoft' | 'floralSeasonal' | 'floralDark', ChicThemePalette> = {
+  floral: {
+    id: 'floral', background: '#F8F1EC', patternBase: '#F8F1EC', patternStripe: '#E4D1CB',
+    surface: '#FFFDFB', cardSurface: 'rgba(255, 252, 249, 0.92)', cardTint: '#F8EDEF', surfaceSubtle: '#F8EDEF',
+    border: '#E4D1CB', accent: '#B78382', accentStrong: '#8F6266', accentSoft: '#EAD6D8',
+    textPrimary: '#4A3F3D', textSecondary: '#806F6B', textMuted: '#A0918D', onAccent: '#FFFFFF',
+    success: '#607D6D', warning: '#92734F', danger: '#A86370', focusBackground: '#F8F1EC',
+    focusSurface: '#FFFDFB', calendarBackground: '#F8F1EC', taskBackground: '#FFFDFB', taskMeta: '#806F6B',
+    statusAccent: '#B78382', warm: '#E4D1CB',
+  },
+  floralSoft: {
+    id: 'floralSoft', background: '#FBFAF7', patternBase: '#FBFAF7', patternStripe: '#DED7CE',
+    surface: '#FFFFFF', cardSurface: 'rgba(255, 255, 255, 0.94)', cardTint: '#F3F0EB', surfaceSubtle: '#F3F0EB',
+    border: '#DED7CE', accent: '#9A8877', accentStrong: '#756556', accentSoft: '#E9E2D9',
+    textPrimary: '#443E39', textSecondary: '#79716A', textMuted: '#9B9289', onAccent: '#FFFFFF',
+    success: '#607A67', warning: '#92744E', danger: '#A86468', focusBackground: '#FBFAF7',
+    focusSurface: '#FFFFFF', calendarBackground: '#FBFAF7', taskBackground: '#FFFFFF', taskMeta: '#79716A',
+    statusAccent: '#9A8877', warm: '#DED7CE',
+  },
+  floralSeasonal: {
+    id: 'floralSeasonal', background: '#FCF3F5', patternBase: '#FCF3F5', patternStripe: '#E8CBD6',
+    surface: '#FFFDFD', cardSurface: 'rgba(255, 253, 253, 0.90)', cardTint: '#F9E9EF', surfaceSubtle: '#F9E9EF',
+    border: '#E8CBD6', accent: '#C17E99', accentStrong: '#9C5E79', accentSoft: '#F0D5DF',
+    textPrimary: '#493A42', textSecondary: '#866E7B', textMuted: '#A88F9A', onAccent: '#FFFFFF',
+    success: '#637C70', warning: '#96734E', danger: '#A75E73', focusBackground: '#FCF3F5',
+    focusSurface: '#FFFDFD', calendarBackground: '#FCF3F5', taskBackground: '#FFFDFD', taskMeta: '#866E7B',
+    statusAccent: '#C17E99', warm: '#E8CBD6',
+  },
+  // Keep the legacy id readable for saved settings; it shares the Sheer Floral
+  // palette rather than introducing a fourth floral design.
+  floralDark: {
+    id: 'floralDark', background: '#FCF3F5', patternBase: '#FCF3F5', patternStripe: '#E8CBD6',
+    surface: '#FFFDFD', cardSurface: 'rgba(255, 253, 253, 0.90)', cardTint: '#F9E9EF', surfaceSubtle: '#F9E9EF',
+    border: '#E8CBD6', accent: '#C17E99', accentStrong: '#9C5E79', accentSoft: '#F0D5DF',
+    textPrimary: '#493A42', textSecondary: '#866E7B', textMuted: '#A88F9A', onAccent: '#FFFFFF',
+    success: '#637C70', warning: '#96734E', danger: '#A75E73', focusBackground: '#FCF3F5',
+    focusSurface: '#FFFDFD', calendarBackground: '#FCF3F5', taskBackground: '#FFFDFD', taskMeta: '#866E7B',
+    statusAccent: '#C17E99', warm: '#E8CBD6',
+  },
+};
+
+export const chicCheckColorChoices = [
   { ...designPalettes.monochrome, label: 'モノトーン' },
   { ...designPalettes.cool, label: '寒色系' },
   { ...designPalettes.warm, label: '暖色系' },
   { ...designPalettes.green, label: '緑系' },
-];
+] as (Omit<ChicThemePalette, 'id'> & { id: ChicCheckColor; label: string })[];
 
 // Keep the persisted choice ids stable while presenting readable Japanese labels.
 export function getDesignCheckColorLabel(color: ChicCheckColor): string {
@@ -105,6 +149,15 @@ export function getDesignCheckThemeTokens(checkColor: ChicCheckColor): ChicTheme
   return designPalettes[normalizeChicCheckColor(checkColor)];
 }
 
+/** Resolve the Design palette for either a check color or one of the three
+ * floral backgrounds. The persisted pattern ids are intentionally preserved. */
+export function getDesignPatternThemeTokens(pattern: ChicPattern, checkColor: ChicCheckColor): ChicThemePalette {
+  if (pattern === 'floral' || pattern === 'floralSoft' || pattern === 'floralSeasonal' || pattern === 'floralDark') {
+    return floralPalettes[pattern];
+  }
+  return getDesignCheckThemeTokens(checkColor);
+}
+
 export function getChicThemePalette(color: ChicCheckColor): ChicThemePalette {
   return getDesignCheckThemeTokens(color);
 }
@@ -127,7 +180,7 @@ const shared = {
   typography: { hero: 28, section: 22, card: 17, body: 14, button: 15, meta: 11, decorative: 9 },
 };
 
-export function getThemeTokens(mode: DesignMode, checkColor: ChicCheckColor = 'cool'): ThemeTokens {
+export function getThemeTokens(mode: DesignMode, checkColor: DesignPaletteId = 'cool'): ThemeTokens {
   if (mode === 'dark') return {
     ...shared,
     colors: { screenBackground: '#101522', surface: '#181F2E', secondarySurface: '#20293A', primaryText: '#F4F7FC', secondaryText: '#8F9BB0', primaryAccent: '#8EA6FF', secondaryAccent: '#7ED6C4', softAccent: '#26365F', border: '#303B50', success: '#7ED6C4', warning: '#E8B878', danger: '#FF8F9C' },
@@ -146,7 +199,9 @@ export function getThemeTokens(mode: DesignMode, checkColor: ChicCheckColor = 'c
     radius: { large: 18, small: 10, button: 12, chip: 999, modal: 22 },
     shadow: { color: '#76505E', opacity: 0.12, radius: 16, y: 6 },
   };
-  const palette = getDesignCheckThemeTokens(checkColor);
+  const palette = checkColor === 'floral' || checkColor === 'floralSoft' || checkColor === 'floralSeasonal' || checkColor === 'floralDark'
+    ? floralPalettes[checkColor]
+    : getDesignCheckThemeTokens(checkColor);
   return {
     ...shared,
     colors: { screenBackground: palette.background, surface: palette.cardSurface, secondarySurface: palette.cardTint, primaryText: palette.textPrimary, secondaryText: palette.textSecondary, primaryAccent: palette.accent, secondaryAccent: palette.patternStripe, softAccent: palette.accentSoft, border: palette.border, success: palette.success, warning: palette.warning, danger: palette.danger },
@@ -157,7 +212,7 @@ export function getThemeTokens(mode: DesignMode, checkColor: ChicCheckColor = 'c
 
 export function normalizeChicPattern(pattern: unknown): ChicPattern {
   if (pattern === 'plain' || pattern === 'dot' || pattern === 'checkLavenderSatin' || pattern === 'checkBeigeNoir' || pattern === 'checkMauveFrame') return pattern;
-  if (pattern === 'floral' || pattern === 'floralSoft' || pattern === 'floralSeasonal' || pattern === 'floralDark') return 'plain';
+  if (pattern === 'floral' || pattern === 'floralSoft' || pattern === 'floralSeasonal' || pattern === 'floralDark') return pattern;
   if (pattern === 'check') return 'checkLavenderSatin';
   return 'plain';
 }

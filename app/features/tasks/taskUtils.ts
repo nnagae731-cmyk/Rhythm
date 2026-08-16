@@ -1,10 +1,10 @@
-import { ChicPattern } from '../../theme';
+import { ChicPattern, getDesignPatternThemeTokens } from '../../theme';
 import { Category, Priority, RepeatRule, Task, UrgencyStatus } from '../../types';
 
 export const STORAGE_KEY = 'rhythm-mvp-state-v1';
 export const designModes: { id: 'minimal' | 'chic'; name: string; description: string }[] = [
   { id: 'minimal', name: 'Mono', description: '白と黒で整える' },
-  { id: 'chic', name: 'Chic', description: '淡くおしゃれ' },
+  { id: 'chic', name: 'Design', description: '淡くおしゃれ' },
 ];
 export const categories: Category[] = ['仕事', '家事', '健康', '予定', 'その他'];
 export const priorities: Priority[] = ['高', '中', '低'];
@@ -208,8 +208,10 @@ export function countdownToClock(clock: string, now: Date) {
 }
 
 export function getChicPatternVisual(pattern: ChicPattern) {
-  if (pattern === 'floralSeasonal') return { background: '#FFF2F4', accent: '#E5A1B1', warm: '#F2C6CC' };
-  if (pattern === 'floralDark') return { background: '#F4ECEF', accent: '#8E6678', warm: '#C3A0AF' };
+  if (pattern === 'floral' || pattern === 'floralSoft' || pattern === 'floralSeasonal' || pattern === 'floralDark') {
+    const palette = getDesignPatternThemeTokens(pattern, 'cool');
+    return { background: palette.background, accent: palette.accent, warm: palette.patternStripe };
+  }
   if (pattern === 'dot') return { background: '#FFF4F7', accent: '#D986A1', warm: '#A997C8' };
   if (pattern === 'checkLavenderSatin') return { background: '#F7F2FC', accent: '#B9ADD8', warm: '#DDD4EE' };
   if (pattern === 'checkBeigeNoir') return { background: '#FBF4EA', accent: '#C9B49A', warm: '#191614' };

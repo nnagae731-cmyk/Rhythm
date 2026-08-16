@@ -34,7 +34,8 @@ export function getEffectiveNudgeMode<T extends 'once' | 'repeat' | 'strong'>(ti
 
 export function getEffectiveChicPattern<T extends 'plain' | 'floral' | 'floralSoft' | 'floralSeasonal' | 'floralDark' | 'dot' | 'checkLavenderSatin' | 'checkBeigeNoir' | 'checkMauveFrame'>(tier: PlanTier, pattern: T): T | 'plain' {
   // 花柄3種は無料版でも選択できる基本テーマ。Premium限定なのはドット／チェック系。
-  if (pattern === 'floral' || pattern === 'floralSoft' || pattern === 'floralSeasonal' || pattern === 'floralDark') return 'plain';
+  // Floral backgrounds are Design's built-in choices and remain available on every tier.
+  if (pattern === 'floral' || pattern === 'floralSoft' || pattern === 'floralSeasonal' || pattern === 'floralDark') return pattern;
   if (pattern === 'plain') return pattern;
   return tier === 'premium' ? pattern : 'plain';
 }

@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Alert, Keyboard, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Alert, Image, Keyboard, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { ChicPattern, ChicThemePalette, DesignMode, getThemeTokens } from './theme';
 import { MonthlyWishState, Wish, WishAction } from './types';
 import { calculateWishProgress } from './features/wish/wishUtils';
@@ -35,6 +35,13 @@ const emptyEditor: EditorState = {
   title: '',
   wishId: undefined,
   completed: false,
+};
+
+const designFloralAssets: Partial<Record<ChicPattern, number>> = {
+  floral: require('./assets/themes/floral/vintage-bloom.jpg'),
+  floralSoft: require('./assets/themes/floral/botanical-line.jpg'),
+  floralSeasonal: require('./assets/themes/floral/sheer-floral.jpg'),
+  floralDark: require('./assets/themes/floral/sheer-floral.jpg'),
 };
 
 function patternSymbol(pattern: ChicPattern) {
@@ -181,6 +188,7 @@ export function WishScreen({ designMode: rawDesignMode, chicPattern, chicPalette
 
   return (
     <View style={[styles.screen, designMode === 'minimal' ? styles.screenMinimal : styles.screenChic, rawDesignMode === 'dark' && styles.screenDark, designMode === 'chic' && palette && { backgroundColor: palette.background }]}>
+      {rawDesignMode === 'chic' && designFloralAssets[chicPattern] && <Image source={designFloralAssets[chicPattern]} resizeMode="cover" style={styles.designPatternBackground} />}
       <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
           <Pressable style={[styles.backButton, designMode === 'minimal' ? styles.backButtonMinimal : styles.backButtonChic, isDark && styles.backButtonDark]} onPress={onBack}>
@@ -478,6 +486,7 @@ function WishBackdrop({ pattern, color }: { pattern: ChicPattern; color?: string
 const styles = StyleSheet.create({
   flex: { flex: 1 },
   screen: { flex: 1 },
+  designPatternBackground: { ...StyleSheet.absoluteFillObject },
   screenMinimal: { backgroundColor: '#F4F4F2' },
   screenDark: { backgroundColor: '#0E1117' },
   screenChic: { backgroundColor: '#FFF9F6' },
