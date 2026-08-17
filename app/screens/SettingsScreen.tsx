@@ -84,19 +84,36 @@ export function SettingsScreen({
   const { BThemeRibbonDecoration, CThemeRibbonDecoration, ChicPatternDecor, ChicPatternSelector, SettingsDisclosure, NotificationManagerCard } = components;
   const [newTemplate, setNewTemplate] = useState('');
   const isDark = designMode === 'dark';
+  const isDesign = designMode === 'chic' || designMode === 'photo';
   const [expandedSetting, setExpandedSetting] = useState<'design' | 'notifications' | 'affirmations' | 'quick' | 'templates' | 'widget' | null>('design');
   const previewTasks = tasks.filter((task) => showCompleted || !task.done).slice(0, size === 'small' ? 2 : 3);
   const isCheckPattern = chicPattern === 'checkLavenderSatin' || chicPattern === 'checkBeigeNoir' || chicPattern === 'checkMauveFrame';
-  const patternVisual = isCheckPattern ? getChicCheckColor(chicCheckColor) : getChicPatternVisual(chicPattern);
+  const patternVisual = isCheckPattern ? getChicCheckColor(chicCheckColor) : getChicPatternVisual(chicPattern, chicPalette);
   const checkColorLabel = getDesignCheckColorLabel(chicCheckColor);
+  const baseTheme = helpers.getThemeTokens(designMode).colors;
+  const guideColors = isDesign && chicPalette ? {
+    surface: chicPalette.cardSurface,
+    border: chicPalette.border,
+    textPrimary: chicPalette.textPrimary,
+    textSecondary: chicPalette.textSecondary,
+    accent: chicPalette.accent,
+    onAccent: chicPalette.onAccent,
+  } : {
+    surface: baseTheme.surface,
+    border: baseTheme.border,
+    textPrimary: baseTheme.primaryText,
+    textSecondary: baseTheme.secondaryText,
+    accent: baseTheme.primaryAccent,
+    onAccent: '#FFFFFF',
+  };
   return (
     <>
       {__DEV__ && <View style={[styles.settingsCard, isDark && styles.darkSurface]}><Text style={[styles.settingsTitle, isDark && styles.darkBodyText]}>Expo Go 確認環境</Text><Text style={[styles.switchCopy, isDark && styles.darkAccentText]}>このQRコードは、利用プランが固定された確認用環境です。</Text><Text style={[styles.devPlanCurrent, isDark && styles.darkAccentText]}>現在：{planTier === 'premium' ? 'Premium版' : '無料版'}</Text></View>}
       <SettingsDisclosure designMode={designMode} title="デザインモード" subtitle="Mono / Design / 写真を選ぶ" expanded={expandedSetting === 'design'} onPress={() => setExpandedSetting((current) => current === 'design' ? null : 'design')}>
-      <View accessibilityLabel={designMode === 'chic' ? `Design ${checkColorLabel}` : 'Mono'} style={[styles.modeCard, isDark && styles.darkSurface, designMode === 'chic' && chicPalette && { backgroundColor: chicPalette.cardSurface, borderColor: chicPalette.border }]}>
+      <View accessibilityLabel={isDesign ? `Design ${checkColorLabel}` : 'Mono'} style={[styles.modeCard, isDark && styles.darkSurface, isDesign && chicPalette && { backgroundColor: chicPalette.cardSurface, borderColor: chicPalette.border }]}>
         {designMode === 'chic' && chicPattern === 'checkLavenderSatin' && <BThemeRibbonDecoration compact />}
         {designMode === 'chic' && chicPattern === 'checkBeigeNoir' && <CThemeRibbonDecoration compact />}
-        {designMode === 'chic' && <ChicPatternSelector designMode={designMode} chicPattern={chicPattern} chicCheckColor={chicCheckColor} planTier={planTier} onPattern={onChicPattern} onCheckColor={onChicCheckColor} />}
+        {isDesign && <ChicPatternSelector designMode={designMode} chicPattern={chicPattern} chicCheckColor={chicCheckColor} planTier={planTier} onPattern={onChicPattern} onCheckColor={onChicCheckColor} />}
         <View style={styles.modeChoices}>
           {designModes.map((mode: { id: 'minimal' | 'chic'; description: string }) => (
             <Pressable key={mode.id} style={[styles.modeChoice, (designMode === mode.id || (mode.id === 'minimal' && designMode === 'dark')) && styles.modeChoiceActive, mode.id === 'minimal' && designMode === 'dark' && styles.modeChoiceActiveDark]} onPress={() => onDesignMode(mode.id === 'minimal' && designMode === 'dark' ? 'dark' : mode.id)}>
@@ -122,7 +139,7 @@ export function SettingsScreen({
       {designMode === 'chic' && <View style={styles.patternSelector}><Text style={[styles.fieldLabel, isDark && styles.darkAccentText]}>Chicの柄</Text><View style={styles.patternChoices}>{(['floral', 'dot', 'checkLavenderSatin', 'checkBeigeNoir', 'checkMauveFrame'] as ChicPattern[]).map((pattern) => { const feature = pattern === 'floral' ? undefined : pattern === 'dot' ? 'chic_dot' : pattern === 'checkLavenderSatin' ? 'chic_check_lavender_satin' : pattern === 'checkBeigeNoir' ? 'chic_check_beige_noir' : 'chic_check_mauve_frame'; const locked = !!feature && !hasPremiumAccess(planTier, feature); const label = pattern === 'floral' ? '花柄' : pattern === 'dot' ? `ドット${locked ? ' 🔒' : ''}` : pattern === 'checkLavenderSatin' ? `くすみラベンダーチェック${locked ? ' 🔒' : ''}` : pattern === 'checkBeigeNoir' ? `ベージュ×ブラックチェック${locked ? ' 🔒' : ''}` : `モーブフレームチェック${locked ? ' 🔒' : ''}`; return <Pressable key={pattern} style={[styles.patternChoice, chicPattern === pattern && styles.patternChoiceActive]} onPress={() => onChicPattern(pattern)}><View style={styles.patternSwatch}><ChicPatternDecor pattern={pattern} accent={getChicCheckColor(chicCheckColor).accent} warm={getChicCheckColor(chicCheckColor).warm} checkColor={chicCheckColor} /></View><Text style={[styles.patternChoiceText, chicPattern === pattern && styles.patternChoiceTextActive]}>{label}</Text></Pressable>; })}</View><Text style={[styles.fieldLabel, { marginTop: 12 }, isDark && styles.darkAccentText]}>チェックの色</Text><View style={styles.patternChoices}>{chicCheckColorChoices.map((choice: any) => <Pressable key={choice.id} style={[styles.patternChoice, chicCheckColor === choice.id && styles.patternChoiceActive]} onPress={() => onChicCheckColor(choice.id)}><View style={[styles.checkColorSwatch, { backgroundColor: choice.background, borderColor: choice.accent }]}><View style={[styles.checkColorSwatchBand, { backgroundColor: choice.accent }]} /><View style={[styles.checkColorSwatchBandHorizontal, { backgroundColor: choice.warm }]} /></View><Text style={[styles.patternChoiceText, chicCheckColor === choice.id && styles.patternChoiceTextActive]}>{choice.label}</Text></Pressable>)}</View></View>}
       </View>
       </SettingsDisclosure>
-      <Pressable style={[styles.guideCard, isDark && styles.darkSurface]} onPress={onGuide}><View><Text style={[styles.guideCardTitle, isDark && styles.darkBodyText]}>Rhythmの使い方</Text><Text style={[styles.guideCardCopy, isDark && styles.darkAccentText]}>登録・振り分け・出発・集中の流れを見る</Text></View><Text style={styles.guideCardArrow}>›</Text></Pressable>
+      <Pressable style={[styles.guideCard, { backgroundColor: guideColors.surface, borderColor: guideColors.border, borderWidth: 1 }]} onPress={onGuide}><View><Text style={[styles.guideCardTitle, { color: guideColors.textPrimary }]}>Rhythmの使い方</Text><Text style={[styles.guideCardCopy, { color: guideColors.textSecondary }]}>登録・振り分け・出発・集中の流れを見る</Text></View><Text style={[styles.guideCardArrow, { color: guideColors.accent }]}>›</Text></Pressable>
       <SettingsDisclosure designMode={designMode} title="通知管理" subtitle="予約中の通知を確認・停止" expanded={expandedSetting === 'notifications'} onPress={() => setExpandedSetting((current) => current === 'notifications' ? null : 'notifications')}>
         <NotificationManagerCard designMode={designMode} />
       </SettingsDisclosure>
@@ -148,7 +165,6 @@ export function SettingsScreen({
       <View style={[styles.phonePreview, designMode === 'minimal' && styles.phonePreviewMinimal, designMode === 'chic' && { backgroundColor: chicPalette?.accent ?? patternVisual.accent }, ]}>
         <Text style={styles.phoneClock}>9:41</Text>
         <View style={[styles.widget, size === 'small' && styles.widgetSmall, designMode === 'minimal' && styles.widgetMinimal, designMode === 'chic' && { backgroundColor: chicPalette?.cardSurface ?? patternVisual.background }, ]}>
-          {designMode === 'chic' && <ChicPatternDecor pattern={chicPattern} accent={patternVisual.accent} warm={patternVisual.warm} checkColor={chicCheckColor} />}
           {designMode === 'chic' && <View pointerEvents="none" style={styles.widgetChicWash} />}
           <View style={styles.widgetTop}>
             <View>

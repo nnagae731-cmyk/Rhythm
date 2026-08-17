@@ -37,13 +37,6 @@ const emptyEditor: EditorState = {
   completed: false,
 };
 
-const designFloralAssets: Partial<Record<ChicPattern, number>> = {
-  floral: require('./assets/themes/floral/vintage-bloom.jpg'),
-  floralSoft: require('./assets/themes/floral/botanical-line.jpg'),
-  floralSeasonal: require('./assets/themes/floral/sheer-floral.jpg'),
-  floralDark: require('./assets/themes/floral/sheer-floral.jpg'),
-};
-
 function patternSymbol(pattern: ChicPattern) {
   if (pattern === 'dot') return '✦';
   if (pattern === 'checkLavenderSatin') return '▦';
@@ -187,8 +180,7 @@ export function WishScreen({ designMode: rawDesignMode, chicPattern, chicPalette
   const actions = state.actions;
 
   return (
-    <View style={[styles.screen, designMode === 'minimal' ? styles.screenMinimal : styles.screenChic, rawDesignMode === 'dark' && styles.screenDark, designMode === 'chic' && palette && { backgroundColor: palette.background }]}>
-      {rawDesignMode === 'chic' && designFloralAssets[chicPattern] && <Image source={designFloralAssets[chicPattern]} resizeMode="cover" style={styles.designPatternBackground} />}
+    <View style={[styles.screen, designMode === 'minimal' ? styles.screenMinimal : styles.screenChic, rawDesignMode === 'dark' && styles.screenDark, rawDesignMode === 'chic' && { backgroundColor: 'transparent' }]}>
       <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
           <Pressable style={[styles.backButton, designMode === 'minimal' ? styles.backButtonMinimal : styles.backButtonChic, isDark && styles.backButtonDark]} onPress={onBack}>
@@ -453,7 +445,6 @@ function SectionCard({
     <View style={[styles.sectionCard, designMode === 'minimal' ? styles.sectionCardMinimal : styles.sectionCardChic, dark && styles.sectionCardDark, designMode === 'chic' && chicPalette && { backgroundColor: chicPalette.cardSurface, borderColor: chicPalette.border, shadowColor: chicPalette.accent }]}>
       {showBRibbon && <BThemeRibbonDecoration journal={title.includes('九☆')} />}
       {showCRibbon && <CThemeRibbonDecoration journal={title.includes('九☆')} />}
-      {designMode === 'chic' && <WishBackdrop pattern={chicPattern} color={chicPalette?.accent} />}
       <View style={styles.sectionHeader}>
         <Text style={[styles.sectionTitle, { color: sectionText(designMode, '#392F34', '#171715') }, dark && styles.sectionTitleDark, designMode === 'chic' && chicPalette && { color: chicPalette.textPrimary }]}>{title}</Text>
         {subtitle ? <Text style={[styles.sectionSubtitle, { color: sectionText(designMode, '#8B7B82', '#777772') }, dark && styles.sectionSubtitleDark, designMode === 'chic' && chicPalette && { color: chicPalette.textSecondary }]}>{subtitle}</Text> : null}
@@ -472,21 +463,9 @@ function StatCard({ label, value, minimal = false, dark = false, chicPalette }: 
   );
 }
 
-function WishBackdrop({ pattern, color }: { pattern: ChicPattern; color?: string }) {
-  const symbol = patternSymbol(pattern);
-  return (
-    <View pointerEvents="none" style={styles.patternBackdrop}>
-      {Array.from({ length: 12 }, (_, index) => (
-        <Text key={index} style={[styles.patternGlyph, { left: 14 + (index % 4) * 56, top: 12 + Math.floor(index / 4) * 30, color: color ?? '#D986A1' }]}>{symbol}</Text>
-      ))}
-    </View>
-  );
-}
-
 const styles = StyleSheet.create({
   flex: { flex: 1 },
   screen: { flex: 1 },
-  designPatternBackground: { ...StyleSheet.absoluteFillObject },
   screenMinimal: { backgroundColor: '#F4F4F2' },
   screenDark: { backgroundColor: '#0E1117' },
   screenChic: { backgroundColor: '#FFF9F6' },
@@ -615,6 +594,4 @@ const styles = StyleSheet.create({
   editorCancelDark: { backgroundColor: '#20293A', borderColor: '#40506A' },
   editorCancelText: { fontSize: 12, fontWeight: '900' },
   editorSaveButton: { flex: 1 },
-  patternBackdrop: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, opacity: 0.16, overflow: 'hidden' },
-  patternGlyph: { position: 'absolute', fontSize: 16, color: '#D986A1' },
 });

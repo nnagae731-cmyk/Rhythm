@@ -316,16 +316,16 @@ function countdownToDate(target: Date, now: Date) {
   return `あと${Math.floor(minutes / 1440)}日${Math.floor((minutes % 1440) / 60)}時間`;
 }
 
-function getChicPatternVisual(pattern: ChicPattern) {
-  if (pattern === 'dot') return { background: '#FFF4F7', accent: '#D986A1', warm: '#A997C8' };
-  if (pattern === 'checkBeigeNoir') return { background: '#FBF4EA', accent: '#C9B49A', warm: '#191614' };
-  if (pattern === 'checkMauveFrame') return { background: '#FFF2F6', accent: '#B9778F', warm: '#E2B6C2' };
-  if (pattern === 'checkLavenderSatin') return { background: '#F7F2FC', accent: '#B9ADD8', warm: '#DDD4EE' };
+function getChicPatternVisual(pattern: ChicPattern, palette: ChicThemePalette = getDesignCheckThemeTokens('cool')) {
+  // Pattern controls the decoration only. UI accents always come from the
+  // selected Design color so dots and cards do not fall back to pink/purple.
+  if (pattern === 'dot') return { background: palette.background, accent: palette.accent, warm: palette.accentSoft };
+  if (pattern === 'checkBeigeNoir' || pattern === 'checkMauveFrame' || pattern === 'checkLavenderSatin') return { background: palette.background, accent: palette.accent, warm: palette.patternStripe };
   if (pattern === 'floral' || pattern === 'floralSoft' || pattern === 'floralSeasonal' || pattern === 'floralDark') {
-    const palette = getDesignPatternThemeTokens(pattern, 'cool');
-    return { background: palette.background, accent: palette.accent, warm: palette.patternStripe };
+    const floralPalette = getDesignPatternThemeTokens(pattern, 'cool');
+    return { background: floralPalette.background, accent: palette.accent, warm: palette.accentSoft };
   }
-  return { background: '#FFF4F7', accent: '#D986A1', warm: '#A997C8' };
+  return { background: palette.background, accent: palette.accent, warm: palette.accentSoft };
 }
 
 function getInitialNormalizedCrop(sourceWidth: number, sourceHeight: number): NormalizedCropRect {
@@ -442,7 +442,9 @@ export default function App() {
   const [taskTemplates, setTaskTemplates] = useState<string[]>(['朝の支度', '持ち物を確認', '連絡を返す', '薬を飲む']);
   const [savedTaskTemplates, setSavedTaskTemplates] = useState<PremiumTaskTemplate[]>([]);
   const [guideOpen, setGuideOpen] = useState(false);
-  const appDesignPaletteId = chicPattern === 'floral' || chicPattern === 'floralSoft' || chicPattern === 'floralSeasonal' || chicPattern === 'floralDark' ? chicPattern : chicCheckColor;
+  // The pattern is decorative only; the selected Design color owns the UI
+  // palette across every screen.
+  const appDesignPaletteId = chicCheckColor;
   const theme = useMemo(() => getThemeTokens(designMode, appDesignPaletteId), [designMode, appDesignPaletteId]);
   const [addOpen, setAddOpen] = useState(false);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
@@ -460,11 +462,14 @@ export default function App() {
   const photoTopImageUri = photoThemeEnabled ? photoTheme.topImageUris?.[screen] ?? photoTheme.topImageOriginalUris?.[screen] ?? (photoTheme.placement === 'top' ? photoTheme.imageUri : undefined) : undefined;
   const focusBackgroundUri = photoThemeEnabled ? photoTheme.focusBackgroundUri : undefined;
   const effectiveChicPattern = getEffectiveChicPattern(planTier, chicPattern) as ChicPattern;
-  const chicPalette = getDesignPatternThemeTokens(effectiveChicPattern, chicCheckColor);
+  // Keep decorative pattern and UI color independent. Floral/check/dot
+  // backgrounds are selected by `chicPattern`; all Design UI surfaces use the
+  // chosen `chicCheckColor` tokens.
+  const chicPalette = getDesignCheckThemeTokens(chicCheckColor);
   const getThemedThemeTokens = React.useCallback((mode: DesignMode) => getThemeTokens(mode, mode === 'chic' ? chicPalette.id : chicCheckColor), [chicCheckColor, chicPalette]);
   // Design uses one palette for every surface. Keep the legacy color shape for
   // components that still consume the shared app colors object.
-  const themedColors = useMemo(() => designMode === 'chic' ? {
+  const themedColors = useMemo(() => uiDesignMode === 'chic' ? {
     ...colors,
     background: chicPalette.background,
     surface: chicPalette.cardSurface,
@@ -476,7 +481,7 @@ export default function App() {
     coralSoft: chicPalette.cardTint,
     mint: chicPalette.accentSoft,
     line: chicPalette.border,
-  } : colors, [designMode, chicPalette]);
+  } : colors, [uiDesignMode, chicPalette]);
   const currentWishMonthKey = wishMonthKey(now);
   const currentWishState = getMonthlyWishState(wishMonths, currentWishMonthKey);
   const saveCurrentWishState = React.useCallback((updater: (current: MonthlyWishState) => MonthlyWishState) => {
@@ -1543,13 +1548,13 @@ export default function App() {
   };
 
   return (
-        <SafeAreaView style={[styles.safe, { backgroundColor: uiDesignMode === 'chic' ? (isCheckChicPattern(effectiveChicPattern) ? chicPalette.background : getChicPatternVisual(effectiveChicPattern).background) : theme.colors.screenBackground }, uiDesignMode === 'minimal' && styles.safeMinimal, uiDesignMode === 'dark' && styles.safeDark, uiDesignMode === 'chic' && styles.safeChic, designMode === 'photo' && styles.safePhoto]}>
+        <SafeAreaView style={[styles.safe, uiDesignMode === 'minimal' && styles.safeMinimal, uiDesignMode === 'dark' && styles.safeDark, designMode === 'photo' && styles.safePhoto, { backgroundColor: uiDesignMode === 'chic' ? getChicPatternVisual(effectiveChicPattern, chicPalette).background : theme.colors.screenBackground }]}>
       <StatusBar style={uiDesignMode === 'dark' ? 'light' : 'dark'} />
       {photoBackgroundUri && <View pointerEvents="none" style={styles.photoThemeBackgroundWrap}><Image source={{ uri: photoBackgroundUri }} resizeMode="cover" style={styles.photoThemeBackground} /></View>}
       <View style={styles.app}>
         <BThemeRibbonPreload />
         <CThemeRibbonPreload />
-        {uiDesignMode === 'chic' && !photoThemeEnabled && <View pointerEvents="none" style={StyleSheet.absoluteFillObject}><ChicPatternDecor pattern={effectiveChicPattern} accent={isCheckChicPattern(effectiveChicPattern) ? chicPalette.accent : getChicPatternVisual(effectiveChicPattern).accent} warm={isCheckChicPattern(effectiveChicPattern) ? chicPalette.patternStripe : getChicPatternVisual(effectiveChicPattern).warm} checkColor={chicCheckColor} /></View>}
+        {uiDesignMode === 'chic' && !photoThemeEnabled && <View pointerEvents="none" style={StyleSheet.absoluteFillObject}><ChicPatternDecor pattern={effectiveChicPattern} accent={chicPalette.accent} warm={chicPalette.accentSoft} checkColor={chicCheckColor} /></View>}
         {photoTopImageUri ? <><Header designMode={uiDesignMode} now={now} compact chicPalette={chicPalette} /><View style={styles.photoThemeTopImage}><Image source={{ uri: photoTopImageUri }} resizeMode="contain" style={styles.photoThemeTopImageContent} /></View></> : <Header designMode={uiDesignMode} now={now} chicPalette={chicPalette} />}
 
         <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
@@ -1560,7 +1565,6 @@ export default function App() {
               remaining={remaining}
               now={now}
               designMode={uiDesignMode}
-              chicPattern={effectiveChicPattern}
               chicPalette={chicPalette}
               completionIcon={completionIcon}
               selectionMode={selectionMode}
@@ -1608,7 +1612,6 @@ export default function App() {
               }}
               styles={styles}
               renderTodayWinStrip={(todayTasks) => <TodayWinStrip tasks={todayTasks} designMode={uiDesignMode} chicPattern={effectiveChicPattern} chicPalette={chicPalette} onRestore={restoreTaskById} />}
-              PatternDecor={ChicPatternDecor}
               helpers={{ deadlineLabel, getUrgencyStatus, getLateRiskMessage, dateForReminder, dateKey, formatLiveTime, isCheckChicPattern, todayInputValue }}
             />
           )}
@@ -1746,7 +1749,7 @@ export default function App() {
               onPremium={openPremiumFeature}
               onDeleteSavedTemplate={deleteSavedTaskTemplate}
                           styles={styles}
-              helpers={{ colors, getChicPatternVisual, hasPremiumAccess, getChicCheckColor, chicCheckColorChoices, countdownToClock, getUrgencyStatus, getNextBestAction, designModes, completionIcons, summarizePremiumTaskTemplate }}
+              helpers={{ colors, getThemeTokens: getThemedThemeTokens, getChicPatternVisual, hasPremiumAccess, getChicCheckColor, chicCheckColorChoices, countdownToClock, getUrgencyStatus, getNextBestAction, designModes, completionIcons, summarizePremiumTaskTemplate }}
               components={{ BThemeRibbonDecoration, CThemeRibbonDecoration, ChicPatternDecor, ChicPatternSelector, SettingsDisclosure, NotificationManagerCard }}
             />
           )}
@@ -1822,9 +1825,9 @@ export default function App() {
         helpers={{ getThemeTokens: getThemedThemeTokens, todayInputValue, hasPremiumAccess, dateForReminder, dateKey, formatLiveTime, colors: themedColors, summarizePremiumTaskTemplate }}
         components={{ CompactNumberSetting }}
       />
-      <PremiumModal visible={premiumOpen} initialFeatureId={premiumTargetFeature} designMode={uiDesignMode} chicPattern={effectiveChicPattern} chicPalette={chicPalette} onClose={() => setPremiumOpen(false)} styles={styles} helpers={{ getThemeTokens: getThemedThemeTokens }} components={{ ChicPatternDecor, isCheckChicPattern }} />
+      <PremiumModal visible={premiumOpen} initialFeatureId={premiumTargetFeature} designMode={uiDesignMode} chicPalette={chicPalette} onClose={() => setPremiumOpen(false)} styles={styles} helpers={{ getThemeTokens: getThemedThemeTokens }} />
       <TopImageCropModal visible={Boolean(pendingTopPhoto)} uri={pendingTopPhoto?.originalUri} sourceWidth={pendingTopPhoto?.sourceWidth ?? 1} sourceHeight={pendingTopPhoto?.sourceHeight ?? 1} initialRect={pendingTopPhoto?.cropRect} styles={styles} onCancel={() => setPendingTopPhoto(undefined)} onReselect={() => { if (pendingTopPhoto) void pickPhotoTheme(pendingTopPhoto.target); }} onUse={(cropRect) => { void applyPendingTopPhoto(cropRect); }} />
-      <GuideModal visible={guideOpen} styles={styles} onClose={() => setGuideOpen(false)} />
+      <GuideModal visible={guideOpen} styles={styles} designMode={uiDesignMode} chicPalette={chicPalette} onClose={() => setGuideOpen(false)} />
     </SafeAreaView>
   );
 }
@@ -1833,7 +1836,7 @@ function TimeTabButton({ tab, active, designMode, chicPattern, chicPalette, them
   const palette: ChicThemePalette = chicPalette ?? getDesignCheckThemeTokens('cool');
   const label = tab === 'departure' ? '出発' : tab === 'deadline' ? 'スケジュール' : tab === 'calendar' ? '予定表' : '集中';
   const isDark = designMode === 'dark';
-  if (designMode === 'chic') return <Pressable style={[styles.timeTab, styles.timeTabChicPattern, { backgroundColor: palette.background, borderColor: active ? palette.accent : palette.border }, active && { borderWidth: 2 }]} onPress={onPress}>{!isCheckChicPattern(chicPattern) && <ChicPatternDecor pattern={chicPattern} accent={palette.accent} warm={palette.patternStripe} density="compact" />}<View style={[styles.timeTabGlassLabel, { backgroundColor: active ? palette.accentSoft : palette.cardSurface, borderColor: palette.border }]}><Text style={[styles.timeTabText, { color: active ? palette.accentStrong : palette.textSecondary }]}>{label}</Text>{active && <Text style={[styles.timeTabMarker, { color: palette.accent }]}>●</Text>}</View></Pressable>;
+  if (designMode === 'chic') return <Pressable style={[styles.timeTab, styles.timeTabChicPattern, { backgroundColor: palette.background, borderColor: active ? palette.accent : palette.border }, active && { borderWidth: 2 }]} onPress={onPress}><View style={[styles.timeTabGlassLabel, { backgroundColor: active ? palette.accentSoft : palette.cardSurface, borderColor: palette.border }]}><Text style={[styles.timeTabText, { color: active ? palette.accentStrong : palette.textSecondary }]}>{label}</Text>{active && <Text style={[styles.timeTabMarker, { color: palette.accent }]}>●</Text>}</View></Pressable>;
     return <Pressable style={[styles.timeTab, styles.timeTabMinimal, isDark && styles.darkSurface, active && styles.timeTabActive, active && { backgroundColor: isDark ? '#26365F' : themeAccent, borderColor: isDark ? '#6F8DFF' : themeAccent }]} onPress={onPress}><Text style={[styles.timeTabText, { color: isDark ? '#F4F7FC' : secondaryText }, active && styles.timeTabTextActive, active && styles.timeTabTextActiveMinimal]}>{label}</Text></Pressable>;
 }
 
@@ -2188,7 +2191,6 @@ function TaskScheduleCalendar({ tasks, plans, externalEvents, now, designMode, c
 
   return <>
       <View style={[styles.scheduleCalendarCard, designMode !== 'chic' && styles.scheduleCalendarCardMinimal, isDark && styles.darkSurface, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border, borderRadius: designMode !== 'chic' ? 16 : theme.radius.large }]}>
-      {designMode === 'chic' && !isCheckChicPattern(chicPattern) && <View pointerEvents="none" style={styles.calendarPatternCorner}><ChicPatternDecor pattern={chicPattern} accent={chicPalette?.accent ?? getDesignCheckThemeTokens('cool').accent} warm={chicPalette?.patternStripe ?? getDesignCheckThemeTokens('cool').patternStripe} /></View>}
         <View style={styles.scheduleCalendarHeader}>
           <Pressable style={[styles.scheduleMonthArrow, isDark && styles.scheduleMonthArrowDark]} onPress={() => moveMonth(-1)}><Text style={[styles.scheduleMonthArrowText, isDark && styles.scheduleMonthArrowTextDark]}>‹</Text></Pressable>
         <View><Text style={[styles.scheduleMonthTitle, isDark && styles.darkCalendarText]}>{year}年 {month + 1}月</Text><Text style={[styles.scheduleMonthCopy, isDark && styles.darkCalendarAccent]}>予定をまとめて見渡す</Text></View>
@@ -2306,39 +2308,47 @@ function CompactNumberSetting({ label, value, onChange, isDark = false }: { labe
 
 function ChicPatternSelector({ designMode, chicPattern, chicCheckColor, planTier, onPattern, onCheckColor }: { designMode: DesignMode; chicPattern: ChicPattern; chicCheckColor: ChicCheckColor; planTier: PlanTier; onPattern: (pattern: ChicPattern) => void; onCheckColor: (color: ChicCheckColor) => void }) {
   const patterns: { id: ChicPattern; label: string; feature?: 'chic_dot' | 'chic_check_lavender_satin' | 'chic_check_beige_noir' | 'chic_check_mauve_frame' }[] = [
-    { id: 'floral', label: 'Vintage Bloom' },
-    { id: 'floralSoft', label: 'Botanical Line' },
-    { id: 'floralSeasonal', label: 'Sheer Floral' },
+    { id: 'floral', label: '花柄1' },
+    { id: 'floralSoft', label: '花柄2' },
+    { id: 'floralSeasonal', label: '花柄3' },
     { id: 'plain', label: 'プレーン' },
     { id: 'dot', label: 'ドット', feature: 'chic_dot' },
     { id: 'checkLavenderSatin', label: 'くすみラベンダーチェック', feature: 'chic_check_lavender_satin' },
     { id: 'checkBeigeNoir', label: 'ベージュ×ブラックチェック', feature: 'chic_check_beige_noir' },
     { id: 'checkMauveFrame', label: 'モーブフレームチェック', feature: 'chic_check_mauve_frame' },
   ];
-  return <View style={[styles.patternSelectorNew, designMode === 'dark' && styles.darkSurface]}>
-    <Text style={[styles.fieldLabel, designMode === 'dark' && styles.darkAccentText]}>背景の柄</Text>
+  const displayPatternLabels: Partial<Record<ChicPattern, string>> = {
+    floral: '花柄1', floralSoft: '花柄2', floralSeasonal: '花柄3', floralDark: '花柄3',
+    checkLavenderSatin: 'ギンガムチェック1', checkBeigeNoir: 'ギンガムチェック2', checkMauveFrame: 'ギンガムチェック3',
+  };
+  const visiblePatterns = designMode === 'photo' ? patterns.filter((item) => item.id === 'plain') : patterns;
+  const selectedPalette = getChicCheckColor(chicCheckColor);
+  return <View style={[styles.patternSelectorNew, designMode === 'dark' && styles.darkSurface, { borderTopColor: selectedPalette.border }]}>
+    <Text style={[styles.fieldLabel, designMode === 'dark' && styles.darkAccentText, { color: designMode === 'dark' ? '#B4C0D4' : selectedPalette.textPrimary }]}>背景の柄</Text>
     <View style={styles.patternChoices}>
-      {patterns.map((item) => {
+      {visiblePatterns.map((item) => {
         const locked = !!item.feature && !hasPremiumAccess(planTier, item.feature);
         const isCheck = isCheckChicPattern(item.id);
-        const visual = isCheck ? getChicCheckColor(chicCheckColor) : getChicPatternVisual(item.id);
+        const visual = isCheck ? getChicCheckColor(chicCheckColor) : getChicPatternVisual(item.id, getChicCheckColor(chicCheckColor));
         const patternBase = isCheck ? getChicCheckColor(chicCheckColor).patternBase : visual.background;
         const patternStripe = isCheck ? getChicCheckColor(chicCheckColor).patternStripe : visual.warm;
-        return <Pressable key={item.id} style={[styles.patternChoice, chicPattern === item.id && styles.patternChoiceActive]} onPress={() => { if (!locked) onPattern(item.id); }}>
-          <View style={[styles.patternSwatch, styles.patternSwatchLarge, { backgroundColor: patternBase }]}><ChicPatternDecor pattern={item.id} accent={visual.accent} warm={patternStripe} density="compact" checkColor={chicCheckColor} /></View>
-          <Text style={[styles.patternChoiceText, chicPattern === item.id && styles.patternChoiceTextActive]}>{item.label}{locked ? ' 🔒' : ''}</Text>
+        const choicePalette = selectedPalette;
+        const selected = chicPattern === item.id;
+        return <Pressable key={item.id} style={[styles.patternChoice, { backgroundColor: choicePalette.cardSurface, borderColor: selected ? choicePalette.accent : choicePalette.border }, selected && { borderWidth: 2 }]} onPress={() => { if (!locked) onPattern(item.id); }}>
+          <View style={[styles.patternSwatch, styles.patternSwatchLarge, { backgroundColor: patternBase, borderColor: choicePalette.border, borderWidth: 1 }]}><ChicPatternDecor pattern={item.id} accent={visual.accent} warm={patternStripe} density="compact" checkColor={chicCheckColor} /></View>
+          <Text numberOfLines={1} ellipsizeMode="tail" style={[styles.patternChoiceText, { color: selected ? choicePalette.accentStrong : choicePalette.textSecondary }]}>{displayPatternLabels[item.id] ?? item.label}{locked ? ' 🔒' : ''}</Text>
         </Pressable>;
       })}
     </View>
-    {isCheckChicPattern(chicPattern) && <>
-      <Text style={[styles.fieldLabel, { marginTop: 12 }, designMode === 'dark' && styles.darkAccentText]}>チェックの色</Text>
+    <>
+      <Text style={[styles.fieldLabel, { marginTop: 12 }, designMode === 'dark' && styles.darkAccentText, { color: designMode === 'dark' ? '#B4C0D4' : selectedPalette.textPrimary }]}>テーマカラー</Text>
       <View style={styles.patternChoices}>
-        {chicCheckColorChoices.map((choice) => <Pressable key={choice.id} accessibilityLabel={getDesignCheckColorLabel(choice.id)} style={[styles.patternChoice, chicCheckColor === choice.id && styles.patternChoiceActive]} onPress={() => onCheckColor(choice.id)}>
-          <View style={[styles.checkColorSwatch, { backgroundColor: choice.patternBase, borderColor: choice.accent }]}><View style={[styles.checkColorSwatchBand, { backgroundColor: choice.accent }]} /><View style={[styles.checkColorSwatchBandHorizontal, { backgroundColor: choice.patternStripe }]} /></View>
-          <Text style={[styles.patternChoiceText, chicCheckColor === choice.id && styles.patternChoiceTextActive]}>{getDesignCheckColorLabel(choice.id)}</Text>
+        {chicCheckColorChoices.map((choice) => <Pressable key={choice.id} accessibilityLabel={getDesignCheckColorLabel(choice.id)} style={[styles.patternChoice, { backgroundColor: choice.cardSurface, borderColor: chicCheckColor === choice.id ? choice.accent : choice.border }, chicCheckColor === choice.id && { borderWidth: 2 }]} onPress={() => onCheckColor(choice.id)}>
+          <View style={[styles.checkColorSwatch, { backgroundColor: choice.background, borderColor: choice.border }]} />
+          <Text numberOfLines={1} ellipsizeMode="tail" style={[styles.patternChoiceText, { color: chicCheckColor === choice.id ? choice.accentStrong : choice.textSecondary }]}>{getDesignCheckColorLabel(choice.id)}</Text>
         </Pressable>)}
       </View>
-    </>}
+    </>
   </View>;
 }
 
@@ -2410,7 +2420,6 @@ function TodayWinStrip({ tasks, designMode, chicPattern, chicPalette, onRestore 
     <Modal visible={detailsOpen} transparent animationType="slide" onRequestClose={() => setDetailsOpen(false)}>
       <Pressable style={styles.modalBackdrop} onPress={() => setDetailsOpen(false)}>
         <Pressable style={[styles.modalSheet, { backgroundColor: theme.colors.screenBackground, borderRadius: theme.radius.modal }]} onPress={(event) => event.stopPropagation()}>
-          {designMode === 'chic' && !isCheckChicPattern(chicPattern) && <View pointerEvents="none" style={styles.completedModalPattern}><ChicPatternDecor pattern={chicPattern} accent={chicPalette.accent} warm={chicPalette.patternStripe} /></View>}
           <View style={styles.modalHandle} />
           <Text style={[styles.modalTitle, { color: theme.colors.primaryText }]}>今日できたこと</Text>
           {completedToday.length === 0 ? (
@@ -2500,7 +2509,6 @@ function AchievementVessel({ tasks, designMode, chicPattern = 'plain', chicPalet
   }
   const vesselPalette = chicPalette ?? getDesignCheckThemeTokens('cool');
   return <View style={[styles.vesselScene, compact && styles.vesselSceneCompact, designMode === 'chic' && styles.vesselSceneChic, designMode === 'chic' && { backgroundColor: vesselPalette.cardTint, borderColor: vesselPalette.border }]}>
-    {designMode === 'chic' && !isCheckChicPattern(chicPattern) && <ChicPatternDecor pattern={chicPattern} accent={chicPalette?.accent ?? getDesignCheckThemeTokens('cool').accent} warm={chicPalette?.patternStripe ?? getDesignCheckThemeTokens('cool').patternStripe} />}
     <View style={[styles.vesselLabel, designMode === 'chic' && styles.vesselLabelChic]}><Text style={[styles.vesselLabelTop, designMode === 'chic' && { color: vesselPalette.textSecondary }]}>{scope === 'today' ? '今日の小さな達成' : designMode === 'chic' ? '今月の小さな達成' : '今月のできたこと'}</Text><Text style={[styles.vesselLabelTitle, compact && styles.vesselLabelTitleCompact, designMode === 'chic' && { color: vesselPalette.textPrimary }]}>{completed.length}個のできた！</Text></View>
     <View style={[styles.jarLid, designMode === 'chic' && { backgroundColor: vesselPalette.accent }]} />
     <View style={[styles.jarBody, compact && styles.jarBodyCompact, designMode === 'chic' && { borderColor: vesselPalette.border, backgroundColor: vesselPalette.cardSurface }]}>

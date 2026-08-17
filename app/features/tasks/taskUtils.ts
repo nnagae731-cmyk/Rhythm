@@ -1,5 +1,5 @@
-import { ChicPattern, getDesignPatternThemeTokens } from '../../theme';
 import { Category, Priority, RepeatRule, Task, UrgencyStatus } from '../../types';
+import { ChicPattern, ChicThemePalette, getDesignCheckThemeTokens, getDesignPatternThemeTokens } from '../../theme';
 
 export const STORAGE_KEY = 'rhythm-mvp-state-v1';
 export const designModes: { id: 'minimal' | 'chic'; name: string; description: string }[] = [
@@ -207,14 +207,10 @@ export function countdownToClock(clock: string, now: Date) {
   return rest === 0 ? `あと${hours}時間` : `あと${hours}時間${rest}分`;
 }
 
-export function getChicPatternVisual(pattern: ChicPattern) {
+export function getChicPatternVisual(pattern: ChicPattern, palette: ChicThemePalette = getDesignCheckThemeTokens('cool')) {
   if (pattern === 'floral' || pattern === 'floralSoft' || pattern === 'floralSeasonal' || pattern === 'floralDark') {
-    const palette = getDesignPatternThemeTokens(pattern, 'cool');
-    return { background: palette.background, accent: palette.accent, warm: palette.patternStripe };
+    const floralPalette = getDesignPatternThemeTokens(pattern, 'cool');
+    return { background: floralPalette.background, accent: palette.accent, warm: palette.accentSoft };
   }
-  if (pattern === 'dot') return { background: '#FFF4F7', accent: '#D986A1', warm: '#A997C8' };
-  if (pattern === 'checkLavenderSatin') return { background: '#F7F2FC', accent: '#B9ADD8', warm: '#DDD4EE' };
-  if (pattern === 'checkBeigeNoir') return { background: '#FBF4EA', accent: '#C9B49A', warm: '#191614' };
-  if (pattern === 'checkMauveFrame') return { background: '#FFF3F7', accent: '#B9778F', warm: '#E2B6C2' };
-  return { background: '#FFF8F5', accent: '#B88FA0', warm: '#D9C3C9' };
+  return { background: palette.background, accent: palette.accent, warm: palette.accentSoft };
 }

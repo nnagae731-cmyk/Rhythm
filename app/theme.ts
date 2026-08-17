@@ -39,6 +39,14 @@ export type ChicThemePalette = {
   warm: string;
 };
 
+// The Design UI always follows the selected color, independently of the
+// decorative pattern rendered behind it. Keep this smaller public shape for
+// components that only need shared UI tokens while retaining the legacy
+// palette fields above for compatibility with existing callers.
+export type ChicThemeTokens = Pick<ChicThemePalette,
+  'background' | 'surface' | 'surfaceSubtle' | 'accent' | 'accentSoft' |
+  'textPrimary' | 'textSecondary' | 'border' | 'onAccent'>;
+
 const designPalettes: Record<ChicCheckColor, ChicThemePalette> = {
   monochrome: {
     id: 'monochrome', background: '#F4F1EE', patternBase: '#F4F1EE', patternStripe: '#D8D3D6',
