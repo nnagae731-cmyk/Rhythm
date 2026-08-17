@@ -62,7 +62,7 @@ const DepartureCountdownCard = React.memo(function DepartureCountdownCard({ plan
   return <View style={[styles.departureCountdownCard, styles.planCountdownCardNew, isDark && styles.departureCountdownCardDark, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }, designMode === 'chic' && chicPalette && { backgroundColor: chicPalette.cardSurface, borderColor: chicPalette.border, shadowColor: chicPalette.accent }, passed && !checkIn && styles.departurePassed]}>
     <View style={styles.planCardTopRow}>
       <View style={{ flex: 1 }}>
-        <Text style={[styles.departureCountdownTitle, textPrimary]}>{plan.title}</Text>
+        <Text numberOfLines={2} ellipsizeMode="tail" style={[styles.departureCountdownTitle, textPrimary]}>{plan.title}</Text>
         <Text style={[styles.departureCountdownDate, textSecondary]}>{planDateKey(plan).replaceAll('-', '.')}</Text>
       </View>
       <View style={[styles.planStatusBadge, { backgroundColor: isDark ? '#26365F' : theme.colors.softAccent }]}><Text style={[styles.planStatusBadgeText, { color: theme.colors.primaryAccent }]}>{statusLabel}</Text></View>
@@ -93,7 +93,7 @@ const DepartureCountdownCard = React.memo(function DepartureCountdownCard({ plan
     {showRecovery && <View style={styles.planActionRow}><Pressable accessibilityRole="button" style={actionStyle} onPress={() => onRecover(plan)}><Text style={styles.planActionMainText}>今から立て直す</Text></Pressable><Pressable accessibilityRole="button" style={secondaryActionStyle} onPress={() => void openMap()}><Text style={[styles.planActionSecondaryText, { color: theme.colors.primaryText }]}>地図</Text></Pressable></View>}
     {reverse && isPremium && (checkIn || departed) && <Pressable accessibilityRole="button" style={actionStyle} onPress={() => void openMap()}><Text style={styles.planActionMainText}>地図を開く</Text></Pressable>}
 
-    <View style={styles.planUtilityRow}>
+    <View style={[styles.planUtilityRow, { flexWrap: 'wrap' }]}>
       {plan.destination?.trim() ? <Pressable accessibilityRole="button" style={[styles.planUtilityButton, isDark && styles.planUtilityButtonDark]} onPress={() => void openMap()}><Text style={[styles.planUtilityText, { color: theme.colors.primaryAccent }]}>地図</Text></Pressable> : null}
       {reverse && isPremium && <Pressable accessibilityRole="button" style={[styles.planUtilityButton, isDark && styles.planUtilityButtonDark]} onPress={() => onShare(plan)}><Text style={[styles.planUtilityText, { color: theme.colors.primaryAccent }]}>共有</Text></Pressable>}
       <Pressable accessibilityRole="button" style={[styles.planUtilityButton, isDark && styles.planUtilityButtonDark]} onPress={() => onEdit(plan)}><Text style={[styles.planUtilityText, { color: theme.colors.primaryAccent }]}>編集</Text></Pressable>
