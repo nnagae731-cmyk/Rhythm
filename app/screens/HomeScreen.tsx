@@ -2,9 +2,10 @@ import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/dat
 import React, { useState } from 'react';
 import { Modal, Platform, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 import { ChicThemePalette, DesignMode } from '../theme';
-import { Category, Priority, Task, TaskBucket } from '../types';
+import { Category, Priority, RepeatRule, Task, TaskBucket } from '../types';
 import { categories, categoryColors, priorities, repeatOptions } from '../features/tasks/taskUtils';
 import { TaskDateTimePickerSheet } from '../components/TaskDateTimePickerSheet';
+import { parseSmartTaskInput, SmartTaskParseResult } from '../features/tasks/smartTaskInput';
 
 const HomeRuntimeContext = React.createContext<any>(null);
 
@@ -26,6 +27,8 @@ export function HomeScreen({
   onAdd,
   onQuickAdd,
   onToggle,
+  onToggleSubtask,
+  onCompleteParent,
   onEdit,
   onToggleSelection,
   onSelectionMode,
@@ -50,8 +53,10 @@ export function HomeScreen({
   selectionMode: boolean;
   selectedTaskIds: string[];
   onAdd: () => void;
-  onQuickAdd: (title: string, category: Category, priority: Priority, scheduledDate?: string, scheduledTime?: string, isRoutine?: boolean, deadlineDate?: string, deadlineTime?: string, deadlineNotifyBefore?: number) => void;
+  onQuickAdd: (title: string, category: Category, priority: Priority, scheduledDate?: string, scheduledTime?: string, isRoutine?: boolean, deadlineDate?: string, deadlineTime?: string, deadlineNotifyBefore?: number, remindDate?: string, remindAt?: string, repeatRule?: RepeatRule) => void;
   onToggle: (id: string) => void;
+  onToggleSubtask: (taskId: string, subtaskId: string) => void;
+  onCompleteParent: (taskId: string) => void;
   onEdit: (task: Task) => void;
   onToggleSelection: (id: string) => void;
   onSelectionMode: () => void;
@@ -73,6 +78,7 @@ export function HomeScreen({
   const [bucketFilter, setBucketFilter] = useState<TaskBucket>('now');
   const [bucketTask, setBucketTask] = useState<Task | null>(null);
   const [actionTask, setActionTask] = useState<Task | null>(null);
+  const [expandedTaskIds, setExpandedTaskIds] = useState<string[]>([]);
   const bucketTasks = tasks.filter((task) => (task.bucket ?? 'now') === bucketFilter);
   const categoryTasks = categoryFilter === 'すべて' ? bucketTasks : bucketTasks.filter((task) => task.category === categoryFilter);
   const displayTasks = [...categoryTasks].sort((a, b) => priorityOrder[a.priority] - priorityOrder[b.priority]);
@@ -123,11 +129,13 @@ export function HomeScreen({
       ) : displayTasks.map((task) => { return (
         <Pressable key={task.id} style={[styles.taskCard, designMode === 'minimal' && styles.taskCardMinimal, designMode === 'dark' && styles.darkSurface, designMode === 'chic' && styles.taskCardChic, designMode === 'chic' && { backgroundColor: task.done ? chicPalette.surfaceSubtle : chicPalette.taskBackground, borderColor: chicPalette.border }, task.done && designMode !== 'chic' && styles.taskCardDone, task.done && isDark && styles.taskCardDoneDark, task.done && designMode === 'chic' && styles.taskCardChicDone]} onPress={() => setActionTask(task)}>
           <View style={[styles.taskCardInner, designMode === 'chic' && styles.taskCardInnerChic, designMode === 'chic' && { backgroundColor: chicPalette.cardSurface }, task.done && designMode === 'chic' && styles.taskCardInnerChicDone]}>
-          <Pressable style={[styles.check, isDark && styles.checkDark, task.done && styles.checkDone, task.done && isDark && styles.checkDoneDark, task.done && designMode === 'chic' && { backgroundColor: chicPalette.accent, borderColor: chicPalette.accent }, selectionMode && selectedTaskIds.includes(task.id) && styles.selectionChecked, selectionMode && selectedTaskIds.includes(task.id) && isDark && styles.selectionCheckedDark, selectionMode && selectedTaskIds.includes(task.id) && designMode === 'chic' && { backgroundColor: chicPalette.accent, borderColor: chicPalette.accent }]} onPress={() => selectionMode ? onToggleSelection(task.id) : onToggle(task.id)}>
+          <Pressable style={[styles.check, isDark && styles.checkDark, task.done && styles.checkDone, task.done && isDark && styles.checkDoneDark, task.done && designMode === 'chic' && { backgroundColor: chicPalette.accent, borderColor: chicPalette.accent }, selectionMode && selectedTaskIds.includes(task.id) && styles.selectionChecked, selectionMode && selectedTaskIds.includes(task.id) && isDark && styles.selectionCheckedDark, selectionMode && selectedTaskIds.includes(task.id) && designMode === 'chic' && { backgroundColor: chicPalette.accent, borderColor: chicPalette.accent }]} onPress={() => selectionMode ? onToggleSelection(task.id) : (task.subtasks?.some((item) => !item.done) ? onCompleteParent(task.id) : onToggle(task.id))}>
             <Text style={styles.checkMark}>{selectionMode ? (selectedTaskIds.includes(task.id) ? '✓' : '') : (task.done ? completionIcon : '')}</Text>
           </Pressable>
           <Pressable style={styles.taskBody} onPress={() => setActionTask(task)}>
-            <Text style={[styles.taskTitle, task.done && styles.taskTitleDone, isDark && styles.darkBodyText]}>{task.title}</Text>
+             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}><Text style={[styles.taskTitle, task.done && styles.taskTitleDone, isDark && styles.darkBodyText, { flex: 1 }]}>{task.title}</Text>{(task.subtasks?.length ?? 0) > 0 && <Pressable onPress={() => setExpandedTaskIds((current) => current.includes(task.id) ? current.filter((id) => id !== task.id) : [...current, task.id])}><Text style={[styles.taskMeta, isDark && styles.darkAccentText]}>{task.subtasks!.filter((item) => item.done).length}/{task.subtasks!.length}完了 {expandedTaskIds.includes(task.id) ? '⌃' : '⌄'}</Text></Pressable>}</View>
+             {(task.subtasks?.length ?? 0) > 0 && <Text style={[styles.taskMeta, isDark && styles.darkMutedText]}>次: {task.subtasks!.find((item) => !item.done)?.title ?? 'すべて完了'}</Text>}
+             {expandedTaskIds.includes(task.id) && task.subtasks?.map((item) => <Pressable key={item.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 5 }} onPress={() => onToggleSubtask(task.id, item.id)}><Text style={[styles.taskMeta, isDark && styles.darkAccentText]}>{item.done ? '●' : '○'}</Text><Text style={[styles.taskMeta, item.done && styles.taskTitleDone, isDark && styles.darkBodyText]}>{item.title}</Text></Pressable>)}
             {task.navigationEnabled && !task.done && <View style={styles.inlineUrgency}><Text style={styles.inlineUrgencyText}>{getUrgencyStatus(task, now)}</Text><Text style={styles.inlineRisk}>{getLateRiskMessage(task, now)}</Text></View>}
             <View style={styles.taskInfoRow}>
               <View style={[styles.priorityPill, task.priority === '高' && styles.priorityHigh, designMode === 'chic' && { backgroundColor: chicPalette.accentSoft, borderColor: chicPalette.accent }]}><Text style={[styles.priorityText, task.priority === '高' && styles.priorityHighText, designMode === 'chic' && { color: chicPalette.textPrimary }]}>{task.priority === '高' ? '！重要' : task.priority}</Text></View>
@@ -188,7 +196,7 @@ function parseVoiceSchedule(value: string, today: Date, dateKey: (date: Date) =>
   return result;
 }
 
-function VoiceQuickAddCard({ designMode, chicPalette, onQuickAdd }: { designMode: DesignMode; chicPalette: ChicThemePalette; onQuickAdd: (title: string, category: Category, priority: Priority, scheduledDate?: string, scheduledTime?: string, isRoutine?: boolean, deadlineDate?: string, deadlineTime?: string, deadlineNotifyBefore?: number) => void }) {
+function VoiceQuickAddCard({ designMode, chicPalette, onQuickAdd }: { designMode: DesignMode; chicPalette: ChicThemePalette; onQuickAdd: (title: string, category: Category, priority: Priority, scheduledDate?: string, scheduledTime?: string, isRoutine?: boolean, deadlineDate?: string, deadlineTime?: string, deadlineNotifyBefore?: number, remindDate?: string, remindAt?: string, repeatRule?: RepeatRule) => void }) {
   const { styles, helpers } = useHomeRuntime();
   const { dateForReminder, dateKey, formatLiveTime, todayInputValue } = helpers;
   const isDark = designMode === 'dark';
@@ -205,22 +213,24 @@ function VoiceQuickAddCard({ designMode, chicPalette, onQuickAdd }: { designMode
   const [deadlineTime, setDeadlineTime] = useState('');
   const [deadlineNotifyBefore, setDeadlineNotifyBefore] = useState(10);
   const [activePicker, setActivePicker] = useState<null | 'date' | 'time' | 'deadlineDate' | 'deadlineTime'>(null);
+  const [smartResult, setSmartResult] = useState<SmartTaskParseResult>({ title: '', matched: [] });
 
   const resetDraft = () => {
     setTitle(''); setCategory('その他'); setPriority('中'); setScheduledDate(''); setScheduledTime(''); setIsRoutine(false);
-    setDetailsOpen(false); setDeadlineEnabled(false); setDeadlineDate(''); setDeadlineTime(''); setDeadlineNotifyBefore(10); setFieldOpen(null); setActivePicker(null);
+    setDetailsOpen(false); setDeadlineEnabled(false); setDeadlineDate(''); setDeadlineTime(''); setDeadlineNotifyBefore(10); setFieldOpen(null); setActivePicker(null); setSmartResult({ title: '', matched: [] });
   };
   const submit = () => {
     const clean = title.trim();
     if (!clean) return;
-    onQuickAdd(clean, category, priority, scheduledDate || undefined, scheduledTime || undefined, isRoutine, deadlineEnabled ? deadlineDate || undefined : undefined, deadlineEnabled ? deadlineTime || undefined : undefined, deadlineEnabled && deadlineDate && deadlineTime ? deadlineNotifyBefore : undefined);
+    onQuickAdd(smartResult.title.trim() || clean, category, priority, (smartResult.scheduledDate ?? scheduledDate) || undefined, (smartResult.scheduledTime ?? scheduledTime) || undefined, isRoutine, deadlineEnabled ? deadlineDate || undefined : undefined, deadlineEnabled ? deadlineTime || undefined : undefined, deadlineEnabled && deadlineDate && deadlineTime ? deadlineNotifyBefore : undefined, smartResult.remindDate, smartResult.remindAt, smartResult.repeatRule);
     resetDraft();
   };
   const updateTitle = (value: string) => {
     setTitle(value);
-    const suggestion = parseVoiceSchedule(value, new Date(), dateKey);
-    if (suggestion.date) setScheduledDate(suggestion.date);
-    if (suggestion.time) setScheduledTime(suggestion.time);
+    const suggestion = parseSmartTaskInput(value, new Date(), dateKey);
+    setSmartResult(suggestion);
+    if (suggestion.scheduledDate) setScheduledDate(suggestion.scheduledDate);
+    if (suggestion.scheduledTime) setScheduledTime(suggestion.scheduledTime);
     if (value.trim()) setDetailsOpen(true);
   };
   const setPicker = (picker: typeof activePicker) => setActivePicker((current) => current === picker ? null : picker);
@@ -250,6 +260,7 @@ function VoiceQuickAddCard({ designMode, chicPalette, onQuickAdd }: { designMode
       {!detailsOpen && !title && <Pressable style={[styles.voiceAddCompact, isDark && styles.voiceAddCompactDark]} onPress={() => setDetailsOpen(true)}><Text style={[styles.voiceAddCompactTitle, isDark && styles.darkBodyText]}>タップして入力</Text><Text style={[styles.voiceAddCompactCopy, isDark && styles.darkMutedText]}>内容を確認してから追加できます</Text><Text style={[styles.voiceAddMicText, isDark && styles.darkAccentText]}>🎙</Text></Pressable>}
       {(detailsOpen || Boolean(title)) && <>
         <View style={styles.voiceAddInputRow}><TextInput autoFocus={!title} value={title} onChangeText={updateTitle} placeholder="話してそのまま入力" placeholderTextColor={isDark ? '#8F9BB0' : '#A29DAA'} style={[styles.voiceAddInput, designMode === 'minimal' && styles.voiceAddInputMinimal, isDark && styles.voiceAddInputDark, designMode === 'chic' && styles.voiceAddInputChic]} returnKeyType="done" /><Pressable accessibilityRole="button" style={[styles.voiceAddMicButton, isDark && styles.voiceAddMicButtonDark]} onPress={() => setDetailsOpen(true)}><Text style={styles.voiceAddMicText}>🎙</Text></Pressable></View>
+        {smartResult.matched.length > 0 && <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 8 }}><Text style={[styles.voiceAddHint, isDark && styles.darkMutedText]}>解析:</Text>{smartResult.scheduledDate && <Pressable style={styles.voiceAddQuickChip} onPress={() => { setScheduledDate(''); setSmartResult((current) => ({ ...current, scheduledDate: undefined })); }}><Text style={[styles.voiceAddQuickText, isDark && styles.darkBodyText]}>日付 {smartResult.scheduledDate} ×</Text></Pressable>}{smartResult.scheduledTime && <Pressable style={styles.voiceAddQuickChip} onPress={() => { setScheduledTime(''); setSmartResult((current) => ({ ...current, scheduledTime: undefined })); }}><Text style={[styles.voiceAddQuickText, isDark && styles.darkBodyText]}>時刻 {smartResult.scheduledTime} ×</Text></Pressable>}{smartResult.remindAt && <Pressable style={styles.voiceAddQuickChip} onPress={() => setSmartResult((current) => ({ ...current, remindDate: undefined, remindAt: undefined }))}><Text style={[styles.voiceAddQuickText, isDark && styles.darkBodyText]}>通知 {smartResult.remindAt} ×</Text></Pressable>}{smartResult.repeatRule && <Pressable style={styles.voiceAddQuickChip} onPress={() => setSmartResult((current) => ({ ...current, repeatRule: undefined }))}><Text style={[styles.voiceAddQuickText, isDark && styles.darkBodyText]}>繰り返し {smartResult.repeatRule} ×</Text></Pressable>}</View>}
         <View style={styles.voiceAddQuickRow}><Pressable style={[styles.voiceAddQuickChip, isDark && styles.voiceAddChoiceDark, designMode === 'chic' && { backgroundColor: chicPalette.surfaceSubtle, borderColor: chicPalette.border }]} onPress={() => setScheduledDate(todayInputValue())}><Text style={[styles.voiceAddQuickText, isDark && styles.darkBodyText, designMode === 'chic' && { color: chicPalette.textSecondary }]}>今日</Text></Pressable><Pressable style={[styles.voiceAddQuickChip, isDark && styles.voiceAddChoiceDark, designMode === 'chic' && { backgroundColor: chicPalette.surfaceSubtle, borderColor: chicPalette.border }]} onPress={() => setScheduledDate(todayInputValue(1))}><Text style={[styles.voiceAddQuickText, isDark && styles.darkBodyText, designMode === 'chic' && { color: chicPalette.textSecondary }]}>明日</Text></Pressable><Pressable style={[styles.voiceAddQuickChip, isDark && styles.voiceAddChoiceDark, designMode === 'chic' && { backgroundColor: chicPalette.surfaceSubtle, borderColor: chicPalette.border }]} onPress={() => setPicker('date')}><Text style={[styles.voiceAddQuickText, isDark && styles.darkBodyText, designMode === 'chic' && { color: chicPalette.textSecondary }]}>{scheduledDate || '日付指定'}</Text></Pressable><Pressable style={[styles.voiceAddQuickChip, isDark && styles.voiceAddChoiceDark, designMode === 'chic' && { backgroundColor: chicPalette.surfaceSubtle, borderColor: chicPalette.border }]} onPress={() => setScheduledTime('')}><Text style={[styles.voiceAddQuickText, isDark && styles.darkBodyText, designMode === 'chic' && { color: chicPalette.textSecondary }]}>時間なし</Text></Pressable><Pressable style={[styles.voiceAddQuickChip, isDark && styles.voiceAddChoiceDark, designMode === 'chic' && { backgroundColor: chicPalette.surfaceSubtle, borderColor: chicPalette.border }]} onPress={() => setPicker('time')}><Text style={[styles.voiceAddQuickText, isDark && styles.darkBodyText, designMode === 'chic' && { color: chicPalette.textSecondary }]}>{scheduledTime || '時間指定'}</Text></Pressable></View>
         <Pressable style={[styles.voiceAddDetailsToggle, isDark && styles.voiceAddDetailsToggleDark]} onPress={() => setDetailsOpen((value) => !value)}><Text style={[styles.voiceAddDetailsToggleText, isDark && styles.darkBodyText]}>詳細設定</Text><Text style={[styles.voiceAddDetailsToggleText, isDark && styles.darkMutedText]}>{detailsOpen ? '⌃' : '⌄'}</Text></Pressable>
         {detailsOpen && <View style={[styles.voiceAddDetailsPanel, isDark && styles.voiceAddDetailsPanelDark]}>

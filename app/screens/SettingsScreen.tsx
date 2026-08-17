@@ -17,6 +17,7 @@ export function SettingsScreen({
   completionIcon,
   designMode,
   monoAppearance,
+  hapticsEnabled,
   chicPalette,
   chicPattern,
   chicCheckColor,
@@ -27,6 +28,8 @@ export function SettingsScreen({
   onCompletionIcon,
   onDesignMode,
   onMonoAppearance,
+  onHapticsEnabled,
+  onReview,
   onChicPattern,
   onChicCheckColor,
   onSaveAffirmation,
@@ -55,6 +58,7 @@ export function SettingsScreen({
   completionIcon: string;
   designMode: DesignMode;
   monoAppearance: 'auto' | 'light' | 'dark';
+  hapticsEnabled: boolean;
   chicPalette?: ChicThemePalette;
   chicPattern: ChicPattern;
   chicCheckColor: ChicCheckColor;
@@ -65,6 +69,8 @@ export function SettingsScreen({
   onCompletionIcon: (icon: string) => void;
   onDesignMode: (mode: DesignMode) => void;
   onMonoAppearance: (appearance: 'auto' | 'light' | 'dark') => void;
+  onHapticsEnabled: (value: boolean) => void;
+  onReview: () => void;
   onChicPattern: (pattern: ChicPattern) => void;
   onChicCheckColor: (color: ChicCheckColor) => void;
   onSaveAffirmation: (affirmation: Affirmation) => Promise<void> | void;
@@ -148,6 +154,8 @@ export function SettingsScreen({
       <SettingsDisclosure designMode={designMode} title="通知管理" subtitle="予約中の通知を確認・停止" expanded={expandedSetting === 'notifications'} onPress={() => setExpandedSetting((current) => current === 'notifications' ? null : 'notifications')}>
         <NotificationManagerCard designMode={designMode} />
       </SettingsDisclosure>
+      <View style={[styles.settingsCard, isDark && styles.darkSurface]}><View style={styles.switchRow}><View style={{ flex: 1 }}><Text style={[styles.switchTitle, isDark && styles.darkBodyText]}>触覚フィードバック</Text><Text style={[styles.switchCopy, isDark && styles.darkMutedText]}>完了や集中開始を振動で知らせます</Text></View><Switch value={hapticsEnabled} onValueChange={onHapticsEnabled} trackColor={{ true: isDesign && chicPalette ? chicPalette.accent : colors.violet }} /></View></View>
+      <Pressable style={[styles.settingsCard, isDark && styles.darkSurface]} onPress={onReview}><Text style={[styles.settingsTitle, isDark && styles.darkBodyText]}>アプリを評価する</Text><Text style={[styles.switchCopy, isDark && styles.darkMutedText]}>短いレビューでRhythmの改善を応援できます</Text></Pressable>
       <SettingsDisclosure designMode={designMode} title="今日のアファメーション" subtitle="好きな言葉を、選んだ時間に届ける" expanded={expandedSetting === 'affirmations'} onPress={() => setExpandedSetting((current) => current === 'affirmations' ? null : 'affirmations')}>
         <AffirmationSettingsCard affirmations={affirmations} designMode={designMode} chicPalette={chicPalette} planTier={planTier} onPremium={onPremium} onSave={onSaveAffirmation} onDelete={onDeleteAffirmation} styles={styles} />
       </SettingsDisclosure>

@@ -6,7 +6,7 @@ export type PremiumTaskTemplate = {
   title: string;
   category: '仕事' | '家事' | '健康' | '予定' | 'その他';
   priority: '高' | '中' | '低';
-  repeatRule: 'none' | 'daily' | 'weekdays' | 'weekly';
+  repeatRule: 'none' | 'daily' | 'weekdays' | 'weekly' | 'monthly';
   remindAt?: string;
   nudgeMode: 'once' | 'repeat' | 'strong';
   navigationEnabled: boolean;
@@ -53,6 +53,6 @@ export function summarizePremiumTaskTemplate(template: PremiumTaskTemplate): str
   const parts = [`${template.category}・優先度 ${template.priority}`];
   if (template.remindAt) parts.push(`通知 ${template.remindAt}`);
   if (template.navigationEnabled) parts.push(`準備${template.preparationMinutes ?? 0} / 移動${template.travelMinutes ?? 0} / 余裕${template.bufferMinutes ?? 0}`);
-  if (template.repeatRule !== 'none') parts.push(template.repeatRule === 'daily' ? '毎日' : template.repeatRule === 'weekdays' ? '平日' : '毎週');
+  if (template.repeatRule !== 'none') parts.push(template.repeatRule === 'daily' ? '毎日' : template.repeatRule === 'weekdays' ? '平日' : template.repeatRule === 'monthly' ? '毎月' : '毎週');
   return parts.join('　');
 }

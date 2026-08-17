@@ -13,6 +13,7 @@ export const repeatOptions: { id: RepeatRule; label: string }[] = [
   { id: 'daily', label: '毎日' },
   { id: 'weekdays', label: '平日' },
   { id: 'weekly', label: '毎週' },
+  { id: 'monthly', label: '毎月' },
 ];
 export const completionIcons = ['✓', '★', '♥', '✿', '☀'];
 export const categoryColors: Record<Category, string> = {
@@ -85,8 +86,8 @@ export function todayInputValue(offset = 0) {
 
 export function advanceDateValue(value: string | undefined, rule: RepeatRule) {
   const base = value ? dateForReminder(value, '12:00') : new Date();
-  const days = rule === 'weekly' ? 7 : 1;
-  base.setDate(base.getDate() + days);
+  if (rule === 'monthly') base.setMonth(base.getMonth() + 1);
+  else base.setDate(base.getDate() + (rule === 'weekly' ? 7 : 1));
   if (rule === 'weekdays') {
     while (base.getDay() === 0 || base.getDay() === 6) base.setDate(base.getDate() + 1);
   }
@@ -110,9 +111,10 @@ export function completeTasksWithRepeats(current: Task[], ids: string[]) {
         deadlineDate: task.deadlineDate ? advanceDateValue(task.deadlineDate, rule) : undefined,
         remindDate: task.remindDate ? advanceDateValue(task.remindDate, rule) : undefined,
         scheduledDate: advanceDateValue(task.scheduledDate ?? dateKey(), rule),
+        subtasks: task.subtasks?.map((item, index) => ({ ...item, order: index, done: false })),
       });
     }
-    return { ...task, done: true, completedAt };
+    return { ...task, done: true, completedAt, subtasks: task.subtasks?.map((item) => ({ ...item, done: true })) };
   });
   return [...nextTasks, ...updated];
 }

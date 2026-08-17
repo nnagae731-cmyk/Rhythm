@@ -2,12 +2,13 @@ import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/dat
 import React, { useEffect, useState } from 'react';
 import { Alert, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, Switch, Text, TextInput, View } from 'react-native';
 import { ChicThemePalette, DesignMode } from '../theme';
-import { Category, NudgeMode, Priority, RepeatRule, Task } from '../types';
+import { Category, NudgeMode, Priority, RepeatRule, Subtask, Task } from '../types';
 import { PlanTier } from '../premiumAccess';
 import { PremiumGuideFeatureId } from '../premiumGuide';
 import { PremiumTaskTemplate } from '../taskTemplates';
 import { categories, priorities, repeatOptions } from '../features/tasks/taskUtils';
-export function TaskModal({ visible, task, templates, savedTemplates, designMode, chicPalette, planTier, onPremium, onClose, onSave, styles, helpers, components }: { visible: boolean; task?: Task; templates: string[]; savedTemplates: PremiumTaskTemplate[]; designMode: DesignMode; chicPalette?: ChicThemePalette; planTier: PlanTier; onPremium: (featureId?: PremiumGuideFeatureId) => void; onClose: () => void; onSave: (title: string, category: Category, priority: Priority, remindDate?: string, remindAt?: string, deadlineDate?: string, deadlineTime?: string, deadlineNotifyBefore?: number, navigationEnabled?: boolean, preparationMinutes?: number, travelMinutes?: number, bufferMinutes?: number, repeatRule?: RepeatRule, nudgeMode?: NudgeMode, scheduledDate?: string, scheduledTime?: string, isRoutine?: boolean) => void; styles: any; helpers: any; components: any }) {
+import { parseSmartTaskInput, SmartTaskParseResult } from '../features/tasks/smartTaskInput';
+export function TaskModal({ visible, task, templates, savedTemplates, designMode, chicPalette, planTier, onPremium, onClose, onSave, styles, helpers, components }: { visible: boolean; task?: Task; templates: string[]; savedTemplates: PremiumTaskTemplate[]; designMode: DesignMode; chicPalette?: ChicThemePalette; planTier: PlanTier; onPremium: (featureId?: PremiumGuideFeatureId) => void; onClose: () => void; onSave: (title: string, category: Category, priority: Priority, remindDate?: string, remindAt?: string, deadlineDate?: string, deadlineTime?: string, deadlineNotifyBefore?: number, navigationEnabled?: boolean, preparationMinutes?: number, travelMinutes?: number, bufferMinutes?: number, repeatRule?: RepeatRule, nudgeMode?: NudgeMode, scheduledDate?: string, scheduledTime?: string, isRoutine?: boolean, subtasks?: Subtask[]) => void; styles: any; helpers: any; components: any }) {
   const { getThemeTokens, todayInputValue, hasPremiumAccess, dateForReminder, dateKey, formatLiveTime, colors, summarizePremiumTaskTemplate } = helpers;
   const { CompactNumberSetting } = components;
   const theme = getThemeTokens(designMode, chicPalette?.id ?? 'cool');
@@ -37,6 +38,9 @@ export function TaskModal({ visible, task, templates, savedTemplates, designMode
   const [isRoutine, setIsRoutine] = useState(false);
   const [showScheduledDatePicker, setShowScheduledDatePicker] = useState(false);
   const [showScheduledTimePicker, setShowScheduledTimePicker] = useState(false);
+  const [smartResult, setSmartResult] = useState<SmartTaskParseResult>({ title: '', matched: [] });
+  const [subtasks, setSubtasks] = useState<Subtask[]>([]);
+  const [newSubtask, setNewSubtask] = useState('');
 
   useEffect(() => {
     if (!visible) return;
@@ -62,9 +66,17 @@ export function TaskModal({ visible, task, templates, savedTemplates, designMode
     setScheduledDate(task?.scheduledDate ?? todayInputValue());
     setScheduledTime(task?.scheduledTime ?? '');
     setIsRoutine(task?.isRoutine ?? false);
+    setSubtasks((task?.subtasks ?? []).map((item, index) => ({ ...item, order: item.order ?? index })));
+    setNewSubtask('');
+    setSmartResult({ title: task?.title ?? '', matched: [] });
     setShowScheduledDatePicker(false);
     setShowScheduledTimePicker(false);
   }, [visible, task]);
+
+  const updateTitle = (value: string) => {
+    setTitle(value);
+    setSmartResult(parseSmartTaskInput(value, new Date(), dateKey));
+  };
 
   const save = () => {
     const clean = title.trim();
@@ -72,8 +84,33 @@ export function TaskModal({ visible, task, templates, savedTemplates, designMode
       Alert.alert('タスクを入力してください');
       return;
     }
-    onSave(clean, category, priority, remind ? remindDate : undefined, remind ? time : undefined, hasDeadline ? deadlineDate : undefined, hasDeadline ? deadlineTime : undefined, hasDeadline && deadlineNotify ? deadlineNotifyBefore : undefined, hasDeadline && navigationEnabled, preparationMinutes, travelMinutes, bufferMinutes, repeatRule, nudgeMode, scheduledDate, scheduledTime || undefined, isRoutine);
+    const parsed = smartResult;
+    if (parsed.scheduledDate && parsed.scheduledTime && dateForReminder(parsed.scheduledDate, parsed.scheduledTime).getTime() <= Date.now()) {
+      Alert.alert('日時を確認してください', '指定した日時が過去になっています。保存しますか？', [{ text: '修正する', style: 'cancel' }, { text: '保存する', onPress: () => saveTask(parsed) }]);
+      return;
+    }
+    const parsedReminder = parsed.remindAt ? true : remind;
+    onSave(parsed.title || clean, category, priority, parsedReminder ? parsed.remindDate ?? remindDate : undefined, parsedReminder ? parsed.remindAt ?? time : undefined, hasDeadline ? deadlineDate : undefined, hasDeadline ? deadlineTime : undefined, hasDeadline && deadlineNotify ? deadlineNotifyBefore : undefined, hasDeadline && navigationEnabled, preparationMinutes, travelMinutes, bufferMinutes, parsed.repeatRule ?? repeatRule, nudgeMode, parsed.scheduledDate ?? scheduledDate, parsed.scheduledTime ?? (scheduledTime || undefined), isRoutine, subtasks.filter((item) => item.title.trim()).map((item, index) => ({ ...item, title: item.title.trim(), order: index })));
   };
+
+  const saveTask = (parsed: SmartTaskParseResult) => {
+    const clean = title.trim();
+    onSave(parsed.title || clean, category, priority, parsed.remindAt ? parsed.remindDate ?? remindDate : remind ? remindDate : undefined, parsed.remindAt ? parsed.remindAt : remind ? time : undefined, hasDeadline ? deadlineDate : undefined, hasDeadline ? deadlineTime : undefined, hasDeadline && deadlineNotify ? deadlineNotifyBefore : undefined, hasDeadline && navigationEnabled, preparationMinutes, travelMinutes, bufferMinutes, parsed.repeatRule ?? repeatRule, nudgeMode, parsed.scheduledDate ?? scheduledDate, parsed.scheduledTime ?? (scheduledTime || undefined), isRoutine, subtasks.filter((item) => item.title.trim()).map((item, index) => ({ ...item, title: item.title.trim(), order: index })));
+  };
+
+  const addSubtask = () => {
+    const clean = newSubtask.trim();
+    if (!clean) return;
+    setSubtasks((current) => [...current, { id: `${Date.now()}-${Math.random().toString(16).slice(2)}`, title: clean, done: false, order: current.length }]);
+    setNewSubtask('');
+  };
+  const moveSubtask = (index: number, direction: -1 | 1) => setSubtasks((current) => {
+    const nextIndex = index + direction;
+    if (nextIndex < 0 || nextIndex >= current.length) return current;
+    const next = [...current];
+    [next[index], next[nextIndex]] = [next[nextIndex]!, next[index]!];
+    return next.map((item, itemIndex) => ({ ...item, order: itemIndex }));
+  });
 
   const applySavedTemplate = (template: PremiumTaskTemplate) => {
     setTitle(template.title);
@@ -148,7 +185,7 @@ export function TaskModal({ visible, task, templates, savedTemplates, designMode
           <TextInput
             autoFocus
             value={title}
-            onChangeText={setTitle}
+            onChangeText={updateTitle}
             placeholder="例：資料をバッグに入れる"
             placeholderTextColor={designMode === 'dark' ? '#9CA8BC' : '#69758A'}
             style={[styles.modalInput, designMode === 'dark' && styles.darkInput]}
@@ -156,6 +193,7 @@ export function TaskModal({ visible, task, templates, savedTemplates, designMode
             returnKeyType="done"
             onSubmitEditing={save}
           />
+          {smartResult.matched.length > 0 && <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 8 }}><Text style={[styles.fieldLabel, designMode === 'dark' && styles.fieldLabelDark]}>解析結果</Text>{smartResult.scheduledDate && <Pressable style={styles.taskTemplateChip} onPress={() => { setScheduledDate(''); setSmartResult((current) => ({ ...current, scheduledDate: undefined })); }}><Text style={styles.taskTemplateText}>日付 {smartResult.scheduledDate} ×</Text></Pressable>}{smartResult.scheduledTime && <Pressable style={styles.taskTemplateChip} onPress={() => { setScheduledTime(''); setSmartResult((current) => ({ ...current, scheduledTime: undefined })); }}><Text style={styles.taskTemplateText}>時刻 {smartResult.scheduledTime} ×</Text></Pressable>}{smartResult.remindAt && <Pressable style={styles.taskTemplateChip} onPress={() => setSmartResult((current) => ({ ...current, remindAt: undefined, remindDate: undefined }))}><Text style={styles.taskTemplateText}>通知 {smartResult.remindDate} {smartResult.remindAt} ×</Text></Pressable>}{smartResult.repeatRule && <Pressable style={styles.taskTemplateChip} onPress={() => setSmartResult((current) => ({ ...current, repeatRule: undefined }))}><Text style={styles.taskTemplateText}>繰り返し {smartResult.repeatRule} ×</Text></Pressable>}</View>}
           <Text style={[styles.fieldLabel, { marginTop: 18 }, designMode === 'dark' && styles.fieldLabelDark]}>ジャンル</Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.categoryChoices}>
             {categories.map((item) => (
@@ -186,6 +224,7 @@ export function TaskModal({ visible, task, templates, savedTemplates, designMode
             {repeatOptions.map((option) => <Pressable key={option.id} style={[styles.repeatChoice, designMode === 'dark' && styles.repeatChoiceDark, { backgroundColor: designMode === 'dark' ? undefined : theme.colors.secondarySurface }, repeatRule === option.id && styles.repeatChoiceActive, repeatRule === option.id && designMode === 'dark' && styles.repeatChoiceActiveDark, repeatRule === option.id && designMode !== 'dark' && { backgroundColor: theme.colors.softAccent, borderColor: theme.colors.primaryAccent }]} onPress={() => setRepeatRule(option.id)}><Text style={[styles.repeatChoiceText, designMode === 'dark' && styles.repeatChoiceTextDark, repeatRule === option.id && styles.repeatChoiceTextActive, repeatRule === option.id && designMode === 'dark' && styles.repeatChoiceTextActiveDark]}>{option.label}</Text></Pressable>)}
           </View>
           <Pressable style={styles.routineToggleRow} onPress={() => setIsRoutine((value) => !value)}><View style={[styles.routineToggleBox, isRoutine && styles.routineToggleBoxActive]}><Text style={styles.routineToggleCheck}>{isRoutine ? '✓' : ''}</Text></View><View><Text style={[styles.routineToggleTitle, designMode === 'dark' && styles.routineToggleTitleDark]}>ルーティンにする</Text><Text style={[styles.routineToggleCopy, designMode === 'dark' && styles.routineToggleCopyDark]}>継続率と連続日数を分析に表示</Text></View></Pressable>
+          <View style={{ marginTop: 14 }}><Text style={[styles.fieldLabel, designMode === 'dark' && styles.fieldLabelDark]}>サブタスク</Text>{subtasks.map((item, index) => <View key={item.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 6 }}><TextInput value={item.title} onChangeText={(value) => setSubtasks((current) => current.map((entry) => entry.id === item.id ? { ...entry, title: value } : entry))} style={[styles.modalInput, { flex: 1, minHeight: 42 }]} placeholder="サブタスク" /><Pressable onPress={() => moveSubtask(index, -1)}><Text>↑</Text></Pressable><Pressable onPress={() => moveSubtask(index, 1)}><Text>↓</Text></Pressable><Pressable onPress={() => setSubtasks((current) => current.filter((entry) => entry.id !== item.id))}><Text style={styles.taskActionDeleteText}>削除</Text></Pressable></View>)}<View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}><TextInput value={newSubtask} onChangeText={setNewSubtask} onSubmitEditing={addSubtask} placeholder="サブタスクを追加" style={[styles.modalInput, { flex: 1, minHeight: 42 }]} /><Pressable style={styles.taskTemplateSaveAction} onPress={addSubtask}><Text style={styles.taskTemplateSaveTitle}>追加</Text></Pressable></View></View>
           <View style={styles.switchRow}>
             <View>
               <Text style={[styles.switchTitle, designMode === 'dark' && styles.switchTitleDark]}>追加リマインド</Text>

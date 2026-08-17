@@ -12,8 +12,9 @@ export type TimeTab = 'departure' | 'deadline' | 'calendar' | 'focus';
 export type WidgetSize = 'small' | 'medium';
 export type Category = '仕事' | '家事' | '健康' | '予定' | 'その他';
 export type Priority = '高' | '中' | '低';
-export type RepeatRule = 'none' | 'daily' | 'weekdays' | 'weekly';
+export type RepeatRule = 'none' | 'daily' | 'weekdays' | 'weekly' | 'monthly';
 export type TaskBucket = 'now' | 'later' | 'waiting';
+export type Subtask = { id: string; title: string; done: boolean; order: number };
 export type NudgeMode = 'once' | 'repeat' | 'strong';
 export type ThemeMode = DesignMode;
 export type UrgencyStatus = '余裕あり' | 'そろそろ準備' | '今出れば間に合う' | '急いで出発' | '予定どおりは厳しい' | 'リカバリーが必要';
@@ -44,6 +45,8 @@ export type Task = {
   category: Category;
   priority: Priority;
   completedAt?: string;
+  /** One-level child tasks. Absent on legacy tasks. */
+  subtasks?: Subtask[];
 };
 
 export type DeparturePlan = {
@@ -172,6 +175,8 @@ export type PersistedState = {
   designMode: DesignMode;
   /** Mono appearance preference. Optional for backwards compatibility with older saves. */
   monoAppearance?: 'auto' | 'light' | 'dark';
+  hapticsEnabled?: boolean;
+  reviewPromptedAt?: string;
   taskTemplates?: string[];
   chicPattern?: ChicPattern;
   chicCheckColor?: ChicCheckColor;
