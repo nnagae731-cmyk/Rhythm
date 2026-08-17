@@ -449,6 +449,8 @@ export default function App() {
   const [chicCheckColor, setChicCheckColor] = useState<ChicCheckColor>('cool');
   const [affirmations, setAffirmations] = useState<Affirmation[]>([]);
   const [affirmationCustomTexts, setAffirmationCustomTexts] = useState<AffirmationCustomText[]>([]);
+  const affirmationsRef = React.useRef<Affirmation[]>([]);
+  const completeTaskIdsRef = React.useRef<(ids: string[], source?: 'manual' | 'notification') => void>(() => undefined);
   const [completionAffirmation, setCompletionAffirmation] = useState<string>();
   const completionAffirmationTimerRef = React.useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const completionAffirmationLastRef = React.useRef<string | undefined>(undefined);
@@ -861,6 +863,8 @@ export default function App() {
       if (task.isRoutine) recordBehaviorEvent(createRoutineStateChangedBehaviorEvent({ taskId: task.id, routineId: task.routineId ?? task.id, routineTitle: task.title, occurredAt: completedAt, targetDate: dateKey(completedAt), completed: true, source }));
     });
   }, [hapticsEnabled, recordBehaviorEvent, showCompletionAffirmation]);
+  affirmationsRef.current = affirmations;
+  completeTaskIdsRef.current = completeTaskIds;
 
   const toggleSubtask = React.useCallback((taskId: string, subtaskId: string) => {
     const current = tasksRef.current.find((task) => task.id === taskId);
@@ -1182,7 +1186,7 @@ export default function App() {
     const responseSubscription = Notifications.addNotificationResponseReceivedListener((response) => {
       const notificationData = response.notification.request.content.data;
       if (notificationData?.kind === 'affirmation' && typeof notificationData.affirmationId === 'string') {
-        const affirmation = affirmations.find((item) => item.id === notificationData.affirmationId);
+        const affirmation = affirmationsRef.current.find((item) => item.id === notificationData.affirmationId);
         if (affirmation) lastAffirmationNotificationTextRef.current = affirmation.text;
       }
       const taskId = response.notification.request.content.data?.taskId;
@@ -1225,7 +1229,7 @@ export default function App() {
           pendingNotificationCompletionIdsRef.current.push(taskId);
           return;
         }
-        completeTaskIds([taskId], 'notification');
+        completeTaskIdsRef.current([taskId], 'notification');
         void cancelPendingTaskNotifications(taskId);
       }
 
@@ -1253,7 +1257,7 @@ export default function App() {
     });
 
     return () => responseSubscription.remove();
-  }, [affirmations, completeTaskIds, handleDepartureStill, markDeparturePlanAsDeparted, markDeparturePreparationStarted, openPremiumFeature, recordBehaviorEvent, recordNotificationBehaviorAction]);
+  }, [handleDepartureStill, markDeparturePlanAsDeparted, markDeparturePreparationStarted, openPremiumFeature, recordBehaviorEvent, recordNotificationBehaviorAction]);
 
   useEffect(() => {
     const timer = setInterval(() => setNow(new Date()), 30_000);
