@@ -59,7 +59,8 @@ const DepartureCountdownCard = React.memo(function DepartureCountdownCard({ plan
   const statusLabel = reverse && !isPremium ? 'Premium' : checkIn ? '出発済み' : departed ? '移動中' : status === 'prepared' ? '準備中' : prepared ? '準備中' : passed ? '確認が必要' : direct ? '出発予定' : '準備前';
   const showRecovery = reverse && isPremium && !checkIn && moments && moments.leave.getTime() <= now.getTime();
 
-  return <View style={[styles.departureCountdownCard, styles.planCountdownCardNew, isDark && styles.departureCountdownCardDark, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }, designMode === 'chic' && chicPalette && { backgroundColor: chicPalette.cardSurface, borderColor: chicPalette.border, shadowColor: chicPalette.accent }, passed && !checkIn && styles.departurePassed]}>
+  const accent = designMode === 'chic' && chicPalette ? chicPalette.accent : theme.colors.primaryAccent;
+  return <View style={[styles.departureCountdownCard, styles.planCountdownCardNew, isDark && styles.departureCountdownCardDark, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }, designMode === 'chic' && chicPalette && { backgroundColor: chicPalette.cardSurface, borderColor: chicPalette.border, shadowColor: chicPalette.accent }, passed && !checkIn && styles.departurePassed, { borderLeftColor: passed && !checkIn ? theme.colors.secondaryText : accent }]}>
     <View style={styles.planCardTopRow}>
       <View style={{ flex: 1 }}>
         <Text numberOfLines={2} ellipsizeMode="tail" style={[styles.departureCountdownTitle, textPrimary]}>{plan.title}</Text>
@@ -72,12 +73,12 @@ const DepartureCountdownCard = React.memo(function DepartureCountdownCard({ plan
       <View><Text style={[styles.departureCountdownMeta, textSecondary]}>出発時刻</Text><Text style={[styles.planTimeSingleValue, textPrimary]}>{formatLiveTime(countdownAt)}</Text></View>
       <Text style={[styles.planCountdownValue, textPrimary]}>{passed ? '出発時刻を過ぎました' : countdownToDate(countdownAt, now)}</Text>
     </View> : canUseReverse && moments ? <View style={[styles.planTimeGrid, { borderColor: isDark ? '#40506A' : theme.colors.border }]}>
-      <View><Text style={[styles.departureCountdownMeta, textSecondary]}>準備開始</Text><Text style={[styles.planTimeValue, textPrimary]}>{formatLiveTime(moments.prepare)}</Text></View>
+      <View style={styles.planTimeColumnBase}><Text style={[styles.departureCountdownMeta, textSecondary]}>準備開始</Text><Text style={[styles.planTimeValue, textPrimary]}>{formatLiveTime(moments.prepare)}</Text></View>
       <View style={[styles.planTimeColumn, { borderColor: isDark ? '#40506A' : theme.colors.border }]}><Text style={[styles.departureCountdownMeta, textSecondary]}>出発</Text><Text style={[styles.planTimeValue, textPrimary]}>{formatLiveTime(moments.leave)}</Text></View>
       <View style={[styles.planTimeColumn, { borderColor: isDark ? '#40506A' : theme.colors.border }]}><Text style={[styles.departureCountdownMeta, textSecondary]}>到着</Text><Text style={[styles.planTimeValue, textPrimary]}>{formatLiveTime(moments.arrival)}</Text></View>
     </View> : null}
 
-    {plan.destination ? <Text numberOfLines={1} style={[styles.planDestination, textSecondary]}>目的地　{plan.destination}</Text> : null}
+    {plan.destination ? <Text style={[styles.planDestination, textSecondary]}>目的地　{plan.destination}</Text> : null}
     {canUseReverse && <Text style={[styles.planCountdownValue, textPrimary]}>{checkIn ? '出発済みです' : passed ? '予定の確認が必要です' : countdownToDate(countdownAt, now)}</Text>}
     {reverse && !isPremium && <Pressable accessibilityRole="button" style={[styles.planPremiumNotice, { borderColor: isDark ? '#40506A' : theme.colors.border, backgroundColor: isDark ? '#20293A' : theme.colors.secondarySurface }]} onPress={onPremium}><Text style={[styles.planPremiumNoticeText, { color: theme.colors.primaryAccent }]}>到着からの逆算はPremiumで確認できます</Text></Pressable>}
 

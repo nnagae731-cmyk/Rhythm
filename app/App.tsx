@@ -1836,8 +1836,8 @@ function TimeTabButton({ tab, active, designMode, chicPattern, chicPalette, them
   const palette: ChicThemePalette = chicPalette ?? getDesignCheckThemeTokens('cool');
   const label = tab === 'departure' ? '出発' : tab === 'deadline' ? 'スケジュール' : tab === 'calendar' ? '予定表' : '集中';
   const isDark = designMode === 'dark';
-  if (designMode === 'chic') return <Pressable style={[styles.timeTab, styles.timeTabChicPattern, { backgroundColor: palette.background, borderColor: active ? palette.accent : palette.border }, active && { borderWidth: 2 }]} onPress={onPress}><View style={[styles.timeTabGlassLabel, { backgroundColor: active ? palette.accentSoft : palette.cardSurface, borderColor: palette.border }]}><Text style={[styles.timeTabText, { color: active ? palette.accentStrong : palette.textSecondary }]}>{label}</Text>{active && <Text style={[styles.timeTabMarker, { color: palette.accent }]}>●</Text>}</View></Pressable>;
-    return <Pressable style={[styles.timeTab, styles.timeTabMinimal, isDark && styles.darkSurface, active && styles.timeTabActive, active && { backgroundColor: isDark ? '#26365F' : themeAccent, borderColor: isDark ? '#6F8DFF' : themeAccent }]} onPress={onPress}><Text style={[styles.timeTabText, { color: isDark ? '#F4F7FC' : secondaryText }, active && styles.timeTabTextActive, active && styles.timeTabTextActiveMinimal]}>{label}</Text></Pressable>;
+  if (designMode === 'chic') return <Pressable style={[styles.timeTab, styles.timeTabChicPattern, { backgroundColor: palette.background, borderColor: active ? palette.accent : palette.border }, active && { borderWidth: 2 }]} onPress={onPress}><View style={[styles.timeTabGlassLabel, { backgroundColor: active ? palette.accentSoft : palette.cardSurface, borderColor: palette.border }]}><Text numberOfLines={1} style={[styles.timeTabText, { color: active ? palette.accentStrong : palette.textSecondary }]}>{label}</Text>{active && <Text style={[styles.timeTabMarker, { color: palette.accent }]}>●</Text>}</View></Pressable>;
+     return <Pressable style={[styles.timeTab, styles.timeTabMinimal, isDark && styles.darkSurface, active && styles.timeTabActive, active && { backgroundColor: isDark ? '#26365F' : themeAccent, borderColor: isDark ? '#6F8DFF' : themeAccent }]} onPress={onPress}><Text numberOfLines={1} style={[styles.timeTabText, { color: isDark ? '#F4F7FC' : secondaryText }, active && styles.timeTabTextActive, active && styles.timeTabTextActiveMinimal]}>{label}</Text></Pressable>;
 }
 
 function FocusMode({ tasks, designMode, chicPalette, backgroundImageUri, onFocusCompleted, onBehaviorEvent }: { tasks: Task[]; designMode: DesignMode; chicPalette?: ChicThemePalette; backgroundImageUri?: string; onFocusCompleted: (session: FocusSession) => void; onBehaviorEvent: (event: BehaviorEvent) => void }) {
@@ -1952,7 +1952,7 @@ function FocusMode({ tasks, designMode, chicPalette, backgroundImageUri, onFocus
   const isMinimal = designMode === 'minimal';
   const isDark = designMode === 'dark';
   const isChic = designMode === 'chic';
-  const categoryColors = isChic && chicPalette ? Object.fromEntries(categories.map((category) => [category, chicPalette.statusAccent])) as Record<Category, string> : baseCategoryColors;
+  const categoryColors = isChic && chicPalette ? Object.fromEntries(categories.map((category) => [category, chicPalette.accent])) as Record<Category, string> : Object.fromEntries(categories.map((category) => [category, isDark ? '#8EA6FF' : getThemeTokens(designMode).colors.primaryAccent])) as Record<Category, string>;
   const modeCopy = isMinimal ? '今はこれだけ' : isChic ? '静かな時間を、ひとつだけ。' : '相棒も隣でいっしょに集中！';
   return <>
     <View style={[styles.focusHero, isMinimal && styles.focusHeroMinimal, isDark && styles.focusHeroDark, isChic && styles.focusHeroChic, isChic && chicPalette && { backgroundColor: chicPalette.focusBackground, borderColor: chicPalette.border, shadowColor: chicPalette.accent }, backgroundImageUri && styles.focusHeroWithPhoto]}>
@@ -1981,7 +1981,7 @@ function FocusMode({ tasks, designMode, chicPalette, backgroundImageUri, onFocus
 function DailyScheduleTimeline({ date, tasks, plans, externalEvents, now, designMode, chicPalette, planTier, onEditTask, onEditPlan }: { date: string; tasks: Task[]; plans: DeparturePlan[]; externalEvents: Calendar.Event[]; now: Date; designMode: DesignMode; chicPalette?: ChicThemePalette; planTier: PlanTier; onEditTask: (task: Task) => void; onEditPlan: (plan: DeparturePlan) => void }) {
   const theme = getThemeTokens(designMode, chicPalette?.id ?? 'cool');
   const isDark = designMode === 'dark';
-  const categoryColors = Object.fromEntries(categories.map((category) => [category, designMode === 'chic' && chicPalette ? chicPalette.accentSoft : theme.colors.primaryAccent])) as Record<Category, string>;
+  const categoryColors = Object.fromEntries(categories.map((category) => [category, designMode === 'chic' && chicPalette ? chicPalette.accentStrong : theme.colors.primaryAccent])) as Record<Category, string>;
   type ScheduleItem = { id: string; time?: string; title: string; meta: string; kind: 'task' | 'plan' | 'external' | 'done'; onPress?: () => void };
   const items: ScheduleItem[] = [];
   tasks.filter((task) => {
@@ -2055,9 +2055,9 @@ function DesignCalendarPlanActions({ plan, chicPalette, onEdit, onDelete, onOpen
 function TaskScheduleCalendar({ tasks, plans, externalEvents, now, designMode, chicPattern, chicPalette, planTier, focusDate, calendarMarks, onSetCalendarMark, onPremium, onEditTask, onDeleteTask, onEditPlan, onDeletePlan, onOpenMap, behaviorEvents, departureCheckIns, departurePreparationStatuses }: { tasks: Task[]; plans: DeparturePlan[]; externalEvents: Calendar.Event[]; now: Date; designMode: DesignMode; chicPattern: ChicPattern; chicPalette?: ChicThemePalette; planTier: PlanTier; focusDate?: string; calendarMarks: CalendarMarks; onSetCalendarMark: (date: string, mark?: string) => void; onPremium: (featureId?: PremiumGuideFeatureId) => void; onEditTask: (task: Task) => void; onDeleteTask: (id: string) => void; onEditPlan: (plan: DeparturePlan) => void; onDeletePlan: (id: string) => void; onOpenMap: (plan: DeparturePlan) => void; behaviorEvents: BehaviorEvent[]; departureCheckIns: DepartureCheckIn[]; departurePreparationStatuses: Record<string, DeparturePreparationStatus> }) {
   const theme = getThemeTokens(designMode, chicPalette?.id ?? 'cool');
   const isDark = designMode === 'dark';
-  const designPlanAccent = designMode === 'chic' && chicPalette ? chicPalette.accent : '#7B6BE8';
-  const designExternalAccent = designMode === 'chic' && chicPalette ? chicPalette.patternStripe : '#B9A8D8';
-  const categoryColors = Object.fromEntries(categories.map((category) => [category, designMode === 'chic' && chicPalette ? chicPalette.accentSoft : theme.colors.primaryAccent])) as Record<Category, string>;
+  const designPlanAccent = designMode === 'chic' && chicPalette ? chicPalette.accent : theme.colors.primaryAccent;
+  const designExternalAccent = designMode === 'chic' && chicPalette ? chicPalette.patternStripe : theme.colors.secondaryAccent;
+  const categoryColors = Object.fromEntries(categories.map((category) => [category, designMode === 'chic' && chicPalette ? chicPalette.accent : theme.colors.primaryAccent])) as Record<Category, string>;
   const chicAgendaStyle = designMode === 'chic' && chicPalette ? { backgroundColor: chicPalette.taskBackground, borderColor: chicPalette.border } : undefined;
   const [monthDate, setMonthDate] = useState(() => new Date(now.getFullYear(), now.getMonth(), 1));
   const [selectedDate, setSelectedDate] = useState(dateKey(now));
@@ -2219,14 +2219,14 @@ function TaskScheduleCalendar({ tasks, plans, externalEvents, now, designMode, c
           {calendarMarks[key] && <Text style={styles.scheduleCalendarMark}>{calendarMarks[key]}</Text>}
           <View style={styles.scheduleEventStack}>
             {visiblePlanBars.map((item, itemIndex) => <View key={item.id ?? `${item.title}-${itemIndex}`} style={[styles.scheduleEventBar, styles.schedulePlanBar, isDark && styles.schedulePlanBarDark, selected && styles.scheduleEventBarSelected, selected && isDark && styles.schedulePlanBarSelectedDark]}><Text numberOfLines={1} style={[styles.scheduleEventBarText, isDark && styles.scheduleEventBarTextDark, selected && styles.scheduleEventBarTextSelected, selected && isDark && styles.scheduleEventBarTextSelectedDark]}>{item.title}</Text></View>)}
-            {visibleTaskBars.map((task) => <View key={task.id} style={[styles.scheduleEventBar, { backgroundColor: categoryColors[task.category] }, selected && styles.scheduleEventBarSelected]}><Text numberOfLines={1} style={[styles.scheduleEventBarText, isDark && styles.scheduleEventBarTextDark, selected && styles.scheduleEventBarTextSelected, selected && isDark && styles.darkBodyText, designMode === 'minimal' && { color: theme.colors.primaryText }]}>{task.title}</Text></View>)}
+             {visibleTaskBars.map((task) => <View key={task.id} style={[styles.scheduleEventBar, { backgroundColor: designMode === 'chic' && chicPalette ? chicPalette.accentSoft : isDark ? '#26365F' : theme.colors.secondarySurface, borderColor: designMode === 'chic' && chicPalette ? chicPalette.border : theme.colors.border, borderWidth: 1 }, selected && styles.scheduleEventBarSelected]}><Text numberOfLines={1} style={[styles.scheduleEventBarText, isDark && styles.scheduleEventBarTextDark, selected && styles.scheduleEventBarTextSelected, selected && isDark && styles.darkBodyText, designMode === 'minimal' && { color: theme.colors.primaryText }, designMode === 'chic' && chicPalette && { color: chicPalette.accentStrong }]}>{task.title}</Text></View>)}
             {visibleCompletedBars.map((task) => <View key={`done-${task.id}`} style={[styles.scheduleEventBar, styles.scheduleCompletedBar, isDark && styles.scheduleCompletedBarDark]}><Text numberOfLines={1} style={[styles.scheduleCompletedBarText, isDark && styles.scheduleCompletedBarTextDark]}>✓ {task.title}</Text></View>)}
             {visibleExternalBars.map((event) => <View key={`external-${event.id}`} style={[styles.scheduleEventBar, { backgroundColor: designExternalAccent }, isDark && styles.scheduleExternalBarDark, selected && styles.scheduleEventBarSelected]}><Text numberOfLines={1} style={[styles.scheduleEventBarText, isDark && styles.scheduleEventBarTextDark, selected && styles.scheduleEventBarTextSelected, selected && isDark && styles.darkBodyText]}>{event.title || 'カレンダー予定'}</Text></View>)}
             {dayItemCount > 2 && <Text style={[styles.scheduleMoreText, selected && styles.scheduleSelectedText, isDark && styles.scheduleMoreTextDark]}>ほか {dayItemCount - 2}件</Text>}
           </View>
         </Pressable>;
       })}</View>
-      <View style={styles.scheduleLegend}><Text style={[styles.scheduleLegendText, isDark && styles.darkAccentText]}>色付き帯：タスク</Text><Text style={[styles.scheduleLegendPlan, isDark && styles.darkAccentText]}>紫の帯：出発予定</Text></View>
+      <View style={styles.scheduleLegend}><Text style={[styles.scheduleLegendText, isDark && styles.darkAccentText, designMode === 'chic' && chicPalette && { color: chicPalette.accentStrong }]}>{'色付き帯：タスク'}</Text><Text style={[styles.scheduleLegendPlan, isDark && styles.darkAccentText, designMode === 'chic' && chicPalette && { color: chicPalette.accentStrong }]}>{'アクセント帯：出発予定'}</Text></View>
     </View>
 
     <CalendarMarkPicker date={selectedDate} mark={calendarMarks[selectedDate]} onSet={onSetCalendarMark} designMode={designMode} chicPalette={chicPalette} />
@@ -2266,11 +2266,11 @@ function isCheckChicPattern(pattern: ChicPattern): boolean {
   return pattern === 'checkLavenderSatin' || pattern === 'checkBeigeNoir' || pattern === 'checkMauveFrame';
 }
 
-function ChicPatternDecor({ pattern, accent, warm, density = 'regular', checkColor }: { pattern: ChicPattern | 'flower' | 'stripe'; accent: string; warm: string; density?: 'regular' | 'compact'; checkColor?: ChicCheckColor }) {
+function ChicPatternDecor({ pattern, accent, warm, density = 'regular', checkColor, previewTopCrop = false }: { pattern: ChicPattern | 'flower' | 'stripe'; accent: string; warm: string; density?: 'regular' | 'compact'; checkColor?: ChicCheckColor; previewTopCrop?: boolean }) {
   const compact = density === 'compact';
   if (pattern === 'plain') return null;
   if (pattern === 'floral' || pattern === 'floralSoft' || pattern === 'floralSeasonal' || pattern === 'floralDark') {
-    return <View pointerEvents="none" style={styles.patternLayer}><Image source={designFloralBackgroundAssets[pattern]} resizeMode="cover" style={[styles.patternImageLayer, compact && styles.patternImageLayerCompact]} /></View>;
+    return <View pointerEvents="none" style={styles.patternLayer}><Image source={designFloralBackgroundAssets[pattern]} resizeMode="cover" style={[styles.patternImageLayer, compact && styles.patternImageLayerCompact, previewTopCrop && styles.patternImageLayerPreviewTop]} /></View>;
   }
   if (pattern === 'checkLavenderSatin' || pattern === 'checkBeigeNoir' || pattern === 'checkMauveFrame') {
     const selectedCheckColor = checkColor ? getChicCheckColor(checkColor) : undefined;
@@ -2341,17 +2341,17 @@ function ChicPatternSelector({ designMode, chicPattern, chicCheckColor, planTier
         const choicePalette = selectedPalette;
         const selected = chicPattern === item.id;
         return <Pressable key={item.id} style={[styles.patternChoice, { backgroundColor: choicePalette.cardSurface, borderColor: selected ? choicePalette.accent : choicePalette.border }, selected && { borderWidth: 2 }]} onPress={() => { if (!locked) onPattern(item.id); }}>
-          <View style={[styles.patternSwatch, styles.patternSwatchLarge, { backgroundColor: patternBase, borderColor: choicePalette.border, borderWidth: 1 }]}><ChicPatternDecor pattern={item.id} accent={visual.accent} warm={patternStripe} density="compact" checkColor={chicCheckColor} /></View>
-          <Text numberOfLines={2} style={[styles.patternChoiceText, { color: selected ? choicePalette.accentStrong : choicePalette.textSecondary }]}>{displayPatternLabels[item.id] ?? item.label}{locked ? ' 🔒' : ''}</Text>
+          <View style={[styles.patternSwatch, styles.patternSwatchLarge, { backgroundColor: patternBase, borderColor: choicePalette.border, borderWidth: 1 }]}><ChicPatternDecor pattern={item.id} accent={visual.accent} warm={patternStripe} density="compact" checkColor={chicCheckColor} previewTopCrop={item.id === 'floralSoft'} /></View>
+          <Text numberOfLines={2} ellipsizeMode="clip" style={[styles.patternChoiceText, { color: selected ? choicePalette.accentStrong : choicePalette.textSecondary }]}>{displayPatternLabels[item.id] ?? item.label}{locked ? ' 🔒' : ''}</Text>
         </Pressable>;
       })}
     </View>
     <>
       <Text style={[styles.fieldLabel, { marginTop: 12 }, designMode === 'dark' && styles.darkAccentText, { color: designMode === 'dark' ? '#B4C0D4' : selectedPalette.textPrimary }]}>テーマカラー</Text>
-      <View style={styles.patternChoices}>
-        {chicCheckColorChoices.map((choice) => <Pressable key={choice.id} accessibilityLabel={getDesignCheckColorLabel(choice.id)} style={[styles.patternChoice, { backgroundColor: choice.cardSurface, borderColor: chicCheckColor === choice.id ? choice.accent : choice.border }, chicCheckColor === choice.id && { borderWidth: 2 }]} onPress={() => onCheckColor(choice.id)}>
-          <View style={[styles.checkColorSwatch, { backgroundColor: choice.background, borderColor: choice.border }]} />
-          <Text numberOfLines={2} style={[styles.patternChoiceText, { color: chicCheckColor === choice.id ? choice.accentStrong : choice.textSecondary }]}>{getDesignCheckColorLabel(choice.id)}</Text>
+      <View style={styles.themeColorChoices}>
+        {chicCheckColorChoices.map((choice) => <Pressable key={choice.id} accessibilityLabel={getDesignCheckColorLabel(choice.id)} style={[styles.themeColorChoice, { backgroundColor: choice.cardSurface, borderColor: chicCheckColor === choice.id ? choice.accent : choice.border }, chicCheckColor === choice.id && { borderWidth: 2 }]} onPress={() => onCheckColor(choice.id)}>
+          <View style={[styles.themeColorSwatch, { backgroundColor: choice.background, borderColor: choice.border }]} />
+          <Text numberOfLines={2} ellipsizeMode="clip" style={[styles.themeColorText, { color: chicCheckColor === choice.id ? choice.accentStrong : choice.textSecondary }]}>{getDesignCheckColorLabel(choice.id)}</Text>
         </Pressable>)}
       </View>
     </>

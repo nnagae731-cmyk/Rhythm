@@ -185,8 +185,8 @@ export function WishScreen({ designMode: rawDesignMode, chicPattern, chicPalette
     <View style={[styles.screen, designMode === 'minimal' ? styles.screenMinimal : styles.screenChic, rawDesignMode === 'dark' && styles.screenDark, rawDesignMode === 'chic' && { backgroundColor: 'transparent' }]}>
       <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
-          <Pressable style={[styles.backButton, designMode === 'minimal' ? styles.backButtonMinimal : styles.backButtonChic, isDark && styles.backButtonDark]} onPress={onBack}>
-            <Text style={[styles.backButtonText, { color: darkAccent }]}>ホームへ戻る</Text>
+          <Pressable style={[styles.backButton, designMode === 'minimal' ? styles.backButtonMinimal : styles.backButtonChic, isDark && styles.backButtonDark, rawDesignMode === 'chic' && palette && { backgroundColor: palette.cardTint, borderColor: palette.border }]} onPress={onBack}>
+            <Text style={[styles.backButtonText, { color: rawDesignMode === 'chic' && palette ? palette.accentStrong : darkAccent }]}>ホームへ戻る</Text>
           </Pressable>
 
           <SectionCard
@@ -205,7 +205,7 @@ export function WishScreen({ designMode: rawDesignMode, chicPattern, chicPalette
                 <Pressable style={[styles.secondaryButton, designMode === 'minimal' ? styles.secondaryButtonMinimal : styles.secondaryButtonChic, isDark && styles.secondaryButtonDark, designSubtle]} onPress={() => { setThemeDraft(''); commit((current) => ({ ...current, theme: '' })); setThemeEditing(false); }}><Text style={[styles.secondaryButtonText, { color: theme.colors.secondaryText }]}>削除</Text></Pressable>
                 <Pressable style={[styles.primaryButton, designMode === 'minimal' ? styles.primaryButtonMinimal : styles.primaryButtonChic, isDark && styles.primaryButtonDark, designAccent]} onPress={() => { const value = themeDraft.trim(); commit((current) => ({ ...current, theme: value })); setThemeDraft(value); setThemeEditing(false); Keyboard.dismiss(); Alert.alert('保存しました', '今月のテーマを保存しました。'); }}><Text style={styles.primaryButtonText}>保存</Text></Pressable>
               </View>
-            </View> : <Pressable style={[styles.savedThemeCard, isDark && styles.savedThemeCardDark, rawDesignMode === 'chic' && palette && { backgroundColor: palette.cardSurface, borderColor: palette.border }]} onPress={() => setThemeEditing(true)}>
+            </View> : <Pressable style={[styles.savedThemeCard, isDark && styles.savedThemeCardDark]} onPress={() => setThemeEditing(true)}>
               <Text style={[styles.savedThemeHint, { color: theme.colors.secondaryText }]}>今月のテーマ</Text>
               <Text style={[styles.savedThemeText, { color: rawDesignMode === 'chic' && palette ? palette.textPrimary : theme.colors.primaryText }]}>{state.theme}</Text>
               <Text style={[styles.savedThemeEdit, { color: rawDesignMode === 'chic' && palette ? palette.accentStrong : theme.colors.primaryAccent }]}>編集</Text>
@@ -241,7 +241,7 @@ export function WishScreen({ designMode: rawDesignMode, chicPattern, chicPalette
                     style={[styles.completionCheck, designMode === 'minimal' && styles.completionCheckMinimal, isDark && styles.completionCheckDark, wish.completed && styles.completionCheckActive, wish.completed && isDark && styles.completionCheckActiveDark, designMode === 'chic' && palette && { borderColor: palette.accent, backgroundColor: wish.completed ? palette.accent : palette.cardSurface }]}
                     onPress={() => toggleWish(wish.id)}
                   >
-                    <Text style={[styles.completionCheckText, isDark && styles.completionCheckTextDark, wish.completed && styles.completionCheckTextActive]}>✓</Text>
+                    <Text style={[styles.completionCheckText, isDark && styles.completionCheckTextDark, designMode === 'minimal' && { color: theme.colors.primaryAccent }, rawDesignMode === 'chic' && palette && { color: palette.accent }, wish.completed && styles.completionCheckTextActive]}>✓</Text>
                   </Pressable>
                   <View style={styles.itemBody}>
                     <Text style={[styles.itemTitle, isDark && styles.itemTitleDark, wish.completed && styles.itemTitleDone, designText]}>{wish.title}</Text>
@@ -298,7 +298,7 @@ export function WishScreen({ designMode: rawDesignMode, chicPattern, chicPalette
                       style={[styles.completionCheck, designMode === 'minimal' && styles.completionCheckMinimal, isDark && styles.completionCheckDark, action.completed && styles.completionCheckActive, action.completed && isDark && styles.completionCheckActiveDark, designMode === 'chic' && palette && { borderColor: palette.accent, backgroundColor: action.completed ? palette.accent : palette.cardSurface }]}
                       onPress={() => toggleAction(action.id)}
                     >
-                    <Text style={[styles.completionCheckText, isDark && styles.completionCheckTextDark, action.completed && styles.completionCheckTextActive]}>✓</Text>
+                    <Text style={[styles.completionCheckText, isDark && styles.completionCheckTextDark, designMode === 'minimal' && { color: theme.colors.primaryAccent }, rawDesignMode === 'chic' && palette && { color: palette.accent }, action.completed && styles.completionCheckTextActive]}>✓</Text>
                     </Pressable>
                     <View style={styles.itemBody}>
                       <Text style={[styles.itemTitle, isDark && styles.itemTitleDark, action.completed && styles.itemTitleDone, designText]}>{action.title}</Text>
@@ -457,7 +457,7 @@ const styles = StyleSheet.create({
   screenMinimal: { backgroundColor: '#F4F4F2' },
   screenDark: { backgroundColor: '#0E1117' },
   screenChic: { backgroundColor: '#FFF9F6' },
-  scroll: { paddingHorizontal: 16, paddingTop: 12, paddingBottom: 28, gap: 12 },
+  scroll: { paddingHorizontal: 16, paddingTop: 12, paddingBottom: 120, gap: 12 },
   backButton: { alignSelf: 'flex-start', paddingHorizontal: 12, paddingVertical: 10, borderWidth: 1, borderRadius: 12, backgroundColor: '#FFFFFF' },
   backButtonMinimal: { borderRadius: 12, borderColor: '#111111' },
   backButtonChic: { borderColor: '#E8D9E2', backgroundColor: '#FFF3F5' },
@@ -474,8 +474,8 @@ const styles = StyleSheet.create({
   themePanelMinimal: { borderColor: '#111111', borderRadius: 16 },
   themePanelChic: { borderColor: '#E8D9E2' },
   themePanelDark: { backgroundColor: '#20293A', borderColor: '#303B50' },
-  savedThemeCard: { minHeight: 92, borderWidth: 1, borderRadius: 16, padding: 14, backgroundColor: '#FFFFFF' },
-  savedThemeCardDark: { backgroundColor: '#20293A', borderColor: '#303B50' },
+  savedThemeCard: { minHeight: 92, paddingHorizontal: 2, paddingVertical: 4, backgroundColor: 'transparent' },
+  savedThemeCardDark: { backgroundColor: 'transparent' },
   savedThemeHint: { fontSize: 10, fontWeight: '800', marginBottom: 6 },
   savedThemeText: { fontSize: 18, lineHeight: 24, fontWeight: '900' },
   savedThemeEdit: { alignSelf: 'flex-end', fontSize: 11, fontWeight: '900', marginTop: 7 },
