@@ -57,6 +57,7 @@ import {
   StyleSheet,
   Text,
   View,
+  useColorScheme,
 } from 'react-native';
 
 const colors = {
@@ -413,7 +414,11 @@ export default function App() {
   const [widgetSize, setWidgetSize] = useState<WidgetSize>('medium');
   const [showCompleted, setShowCompleted] = useState(false);
   const [completionIcon, setCompletionIcon] = useState('✓');
-  const [designMode, setDesignMode] = useState<DesignMode>('chic');
+  // Mono is available to every plan. Keep the persisted design mode stable and
+  // resolve the actual Light/Dark rendering from this preference and the OS.
+  const [designMode, setDesignMode] = useState<DesignMode>('minimal');
+  const [monoAppearance, setMonoAppearance] = useState<'auto' | 'light' | 'dark'>('auto');
+  const systemColorScheme = useColorScheme();
   const [chicPattern, setChicPattern] = useState<ChicPattern>('plain');
   const [chicCheckColor, setChicCheckColor] = useState<ChicCheckColor>('cool');
   const [affirmations, setAffirmations] = useState<Affirmation[]>([]);
@@ -445,7 +450,13 @@ export default function App() {
   // The pattern is decorative only; the selected Design color owns the UI
   // palette across every screen.
   const appDesignPaletteId = chicCheckColor;
-  const theme = useMemo(() => getThemeTokens(designMode, appDesignPaletteId), [designMode, appDesignPaletteId]);
+  const isMonoDesign = designMode === 'minimal' || designMode === 'dark';
+  const resolvedMonoMode: 'minimal' | 'dark' = monoAppearance === 'dark'
+    ? 'dark'
+    : monoAppearance === 'light'
+      ? 'minimal'
+      : systemColorScheme === 'dark' ? 'dark' : 'minimal';
+  const theme = useMemo(() => getThemeTokens(isMonoDesign ? resolvedMonoMode : designMode, appDesignPaletteId), [designMode, isMonoDesign, resolvedMonoMode, appDesignPaletteId]);
   const [addOpen, setAddOpen] = useState(false);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [selectionMode, setSelectionMode] = useState(false);
@@ -457,7 +468,9 @@ export default function App() {
   const planTier: PlanTier = process.env.EXPO_PUBLIC_RHYTHM_PLAN === 'premium' ? 'premium' : 'free';
   const planTierRef = React.useRef<PlanTier>(planTier);
   const photoThemeEnabled = designMode === 'photo' && hasPremiumAccess(planTier, 'photo_design');
-  const uiDesignMode: Exclude<DesignMode, 'photo'> = designMode === 'photo' ? 'chic' : designMode;
+  const uiDesignMode: Exclude<DesignMode, 'photo'> = designMode === 'photo'
+    ? 'chic'
+    : isMonoDesign ? resolvedMonoMode : designMode;
   const photoBackgroundUri = photoThemeEnabled && photoTheme.placement !== 'top' ? photoTheme.imageUri : undefined;
   const photoTopImageUri = photoThemeEnabled ? photoTheme.topImageUris?.[screen] ?? photoTheme.topImageOriginalUris?.[screen] ?? (photoTheme.placement === 'top' ? photoTheme.imageUri : undefined) : undefined;
   const focusBackgroundUri = photoThemeEnabled ? photoTheme.focusBackgroundUri : undefined;
@@ -956,8 +969,16 @@ export default function App() {
         if (saved.widgetSize) setWidgetSize(saved.widgetSize);
         if (typeof saved.showCompleted === 'boolean') setShowCompleted(saved.showCompleted);
         if (saved.completionIcon) setCompletionIcon(saved.completionIcon);
-        if (saved.designMode === 'minimal' || saved.designMode === 'dark' || saved.designMode === 'chic' || saved.designMode === 'photo') setDesignMode(saved.designMode);
-        else setDesignMode('chic');
+        if (saved.designMode === 'minimal' || saved.designMode === 'dark' || saved.designMode === 'chic' || saved.designMode === 'photo') {
+          setDesignMode(saved.designMode);
+          // Older saves encoded Mono Light/Dark in designMode. Treat those as
+          // explicit manual choices; only new/updated Mono saves can be auto.
+          const legacyAppearance = saved.designMode === 'dark' ? 'dark' : saved.designMode === 'minimal' ? 'light' : undefined;
+          setMonoAppearance(saved.monoAppearance ?? legacyAppearance ?? 'auto');
+        } else {
+          setDesignMode('minimal');
+          setMonoAppearance(saved.monoAppearance ?? 'auto');
+        }
         setChicPattern(saved.chicPattern ? normalizeChicPattern(saved.chicPattern) : 'plain');
         setChicCheckColor(normalizeChicCheckColor(saved.chicCheckColor));
         setAffirmations(saved.affirmations ?? []);
@@ -1117,7 +1138,7 @@ export default function App() {
 
   useEffect(() => {
     if (!hydrated) return;
-    const state: PersistedState = { tasks, plan, departurePlans, widgetSize, showCompleted, completionIcon, designMode, taskTemplates, savedTaskTemplates, chicPattern, chicCheckColor, recoveryHistory, focusSessions, departureCheckIns, behaviorEvents, wishMonths, calendarMarks, sharedEvents, sharedParticipantIdsByToken, sharedParticipantPrefsByToken, departurePreparationStatuses, affirmations, photoTheme };
+    const state: PersistedState = { tasks, plan, departurePlans, widgetSize, showCompleted, completionIcon, designMode, monoAppearance, taskTemplates, savedTaskTemplates, chicPattern, chicCheckColor, recoveryHistory, focusSessions, departureCheckIns, behaviorEvents, wishMonths, calendarMarks, sharedEvents, sharedParticipantIdsByToken, sharedParticipantPrefsByToken, departurePreparationStatuses, affirmations, photoTheme };
     if (persistenceDisabledRef.current) return;
     saveRhythmState(state).catch((error) => {
       console.warn('Rhythm state save failed.', error);
@@ -1126,7 +1147,7 @@ export default function App() {
         Alert.alert('保存できませんでした', '空き容量や端末の設定を確認して、もう一度お試しください。');
       }
     });
-  }, [tasks, plan, departurePlans, widgetSize, showCompleted, completionIcon, designMode, taskTemplates, savedTaskTemplates, chicPattern, chicCheckColor, recoveryHistory, focusSessions, departureCheckIns, behaviorEvents, wishMonths, calendarMarks, sharedEvents, sharedParticipantIdsByToken, sharedParticipantPrefsByToken, departurePreparationStatuses, affirmations, photoTheme, hydrated]);
+  }, [tasks, plan, departurePlans, widgetSize, showCompleted, completionIcon, designMode, monoAppearance, taskTemplates, savedTaskTemplates, chicPattern, chicCheckColor, recoveryHistory, focusSessions, departureCheckIns, behaviorEvents, wishMonths, calendarMarks, sharedEvents, sharedParticipantIdsByToken, sharedParticipantPrefsByToken, departurePreparationStatuses, affirmations, photoTheme, hydrated]);
 
   useEffect(() => {
     if (!hydrated || planTier === 'premium') return;
@@ -1693,7 +1714,8 @@ export default function App() {
               size={widgetSize}
               showCompleted={showCompleted}
               completionIcon={completionIcon}
-               designMode={designMode}
+               designMode={uiDesignMode}
+               monoAppearance={monoAppearance}
                chicPattern={effectiveChicPattern}
                chicCheckColor={chicCheckColor}
                chicPalette={chicPalette}
@@ -1705,7 +1727,16 @@ export default function App() {
               onCompletionIcon={setCompletionIcon}
                onDesignMode={(mode) => {
                  if (mode === 'photo' && !hasPremiumAccess(planTier, 'photo_design')) { openPremiumFeature('photo_design'); return; }
-                 setDesignMode(mode);
+                 if (mode === 'minimal' || mode === 'dark') {
+                   setDesignMode('minimal');
+                   setMonoAppearance(mode === 'dark' ? 'dark' : 'light');
+                 } else {
+                   setDesignMode(mode);
+                 }
+               }}
+               onMonoAppearance={(appearance) => {
+                 setDesignMode('minimal');
+                 setMonoAppearance(appearance);
                }}
               onChicPattern={(pattern) => {
                 const feature = pattern === 'plain' || pattern === 'floral' || pattern === 'floralSoft' || pattern === 'floralSeasonal' || pattern === 'floralDark' ? undefined : getChicPatternFeatureId(pattern);
@@ -1844,6 +1875,7 @@ function FocusMode({ tasks, designMode, chicPalette, backgroundImageUri, onFocus
   const availableTasks = React.useMemo(() => {
     const today = dateKey();
     const seenTitles = new Set<string>();
+    const bucketOrder: Record<TaskBucket, number> = { now: 0, later: 1, waiting: 2 };
     return tasks.filter((task) => {
       const scheduledDate = normalizeTaskDateKey(task.scheduledDate);
       if (task.done || (scheduledDate && scheduledDate > today)) return false;
@@ -1851,7 +1883,7 @@ function FocusMode({ tasks, designMode, chicPalette, backgroundImageUri, onFocus
       if (seenTitles.has(titleKey)) return false;
       seenTitles.add(titleKey);
       return true;
-    });
+    }).sort((a, b) => (bucketOrder[a.bucket ?? 'now'] - bucketOrder[b.bucket ?? 'now']) || a.title.localeCompare(b.title));
   }, [tasks]);
   const [selectedTaskId, setSelectedTaskId] = useState(availableTasks[0]?.id ?? '');
   const [duration, setDuration] = useState(25);
@@ -1953,6 +1985,11 @@ function FocusMode({ tasks, designMode, chicPalette, backgroundImageUri, onFocus
   const isDark = designMode === 'dark';
   const isChic = designMode === 'chic';
   const categoryColors = isChic && chicPalette ? Object.fromEntries(categories.map((category) => [category, chicPalette.accent])) as Record<Category, string> : Object.fromEntries(categories.map((category) => [category, isDark ? '#8EA6FF' : getThemeTokens(designMode).colors.primaryAccent])) as Record<Category, string>;
+  const taskGroups = (['now', 'later', 'waiting'] as TaskBucket[]).map((bucket) => ({
+    bucket,
+    label: bucket === 'now' ? '今やるタスク' : bucket === 'later' ? 'あとで' : '待ち',
+    tasks: availableTasks.filter((task) => (task.bucket ?? 'now') === bucket),
+  })).filter((group) => group.tasks.length > 0);
   const modeCopy = isMinimal ? '今はこれだけ' : isChic ? '静かな時間を、ひとつだけ。' : '相棒も隣でいっしょに集中！';
   return <>
     <View style={[styles.focusHero, isMinimal && styles.focusHeroMinimal, isDark && styles.focusHeroDark, isChic && styles.focusHeroChic, isChic && chicPalette && { backgroundColor: chicPalette.focusBackground, borderColor: chicPalette.border, shadowColor: chicPalette.accent }, backgroundImageUri && styles.focusHeroWithPhoto]}>
@@ -1973,8 +2010,10 @@ function FocusMode({ tasks, designMode, chicPalette, backgroundImageUri, onFocus
     </View>
     <Text style={[styles.focusSectionTitle, isMinimal && styles.focusSectionTitleMinimal, isDark && styles.focusSectionTitleDark, isChic && chicPalette && { color: chicPalette.textPrimary }]}>集中時間</Text>
     <View style={styles.focusDurationRow}>{[5, 15, 25, 45].map((minutesValue) => <Pressable key={minutesValue} style={[styles.focusDurationChip, duration === minutesValue && styles.focusDurationChipActive, duration === minutesValue && isMinimal && styles.focusDurationChipActiveMinimal, duration === minutesValue && isDark && styles.focusDurationChipActiveDark, designMode === 'chic' && chicPalette && { backgroundColor: duration === minutesValue ? chicPalette.accent : chicPalette.cardSurface, borderColor: duration === minutesValue ? chicPalette.accent : chicPalette.border }]} onPress={() => chooseDuration(minutesValue)}><Text style={[styles.focusDurationText, duration === minutesValue && styles.focusDurationTextActive, designMode === 'chic' && chicPalette && { color: duration === minutesValue ? chicPalette.onAccent : chicPalette.textSecondary }]}>{minutesValue}分</Text></Pressable>)}</View>
-    <Text style={[styles.focusSectionTitle, isMinimal && styles.focusSectionTitleMinimal, isDark && styles.focusSectionTitleDark, isChic && chicPalette && { color: chicPalette.textPrimary }]}>今やるタスク</Text>
-    {availableTasks.length === 0 ? <View style={styles.departureEmpty}><Text style={[styles.emptyCopy, isChic && chicPalette && { color: chicPalette.textSecondary }]}>未完了タスクはありません。今日はゆっくりしよう。</Text></View> : availableTasks.slice(0, 8).map((task) => <Pressable key={task.id} style={[styles.focusTaskRow, selectedTaskId === task.id && styles.focusTaskRowActive, designMode === 'chic' && chicPalette && { backgroundColor: selectedTaskId === task.id ? chicPalette.accentSoft : chicPalette.taskBackground, borderColor: selectedTaskId === task.id ? chicPalette.accent : chicPalette.border }]} onPress={() => { setSelectedTaskId(task.id); reset(); }}><View style={[styles.scheduleAgendaDot, { backgroundColor: categoryColors[task.category] }]} /><View style={{ flex: 1 }}><Text style={[styles.focusTaskTitle, designMode === 'chic' && chicPalette && { color: chicPalette.textPrimary }]}>{task.title}</Text><Text style={[styles.focusTaskMeta, designMode === 'chic' && chicPalette && { color: chicPalette.taskMeta }]}>{task.category} ・ 優先度 {task.priority}</Text></View><Text style={[styles.focusTaskCheck, designMode === 'chic' && chicPalette && { color: chicPalette.accent }]}>{selectedTaskId === task.id ? '●' : '○'}</Text></Pressable>)}
+    {availableTasks.length === 0 ? <View style={styles.departureEmpty}><Text style={[styles.emptyCopy, isChic && chicPalette && { color: chicPalette.textSecondary }]}>未完了タスクはありません。今日はゆっくりしよう。</Text></View> : taskGroups.map((group) => <View key={group.bucket}>
+      <Text style={[styles.focusSectionTitle, isMinimal && styles.focusSectionTitleMinimal, isDark && styles.focusSectionTitleDark, isChic && chicPalette && { color: chicPalette.textPrimary }]}>{group.label}</Text>
+      {group.tasks.map((task) => <Pressable key={task.id} style={[styles.focusTaskRow, selectedTaskId === task.id && styles.focusTaskRowActive, designMode === 'chic' && chicPalette && { backgroundColor: selectedTaskId === task.id ? chicPalette.accentSoft : chicPalette.taskBackground, borderColor: selectedTaskId === task.id ? chicPalette.accent : chicPalette.border }]} onPress={() => { setSelectedTaskId(task.id); reset(); }}><View style={[styles.scheduleAgendaDot, { backgroundColor: categoryColors[task.category] }]} /><View style={{ flex: 1 }}><Text style={[styles.focusTaskTitle, designMode === 'chic' && chicPalette && { color: chicPalette.textPrimary }]}>{task.title}</Text><Text style={[styles.focusTaskMeta, designMode === 'chic' && chicPalette && { color: chicPalette.taskMeta }]}>{task.category} ・ 優先度 {task.priority}</Text></View><Text style={[styles.focusTaskCheck, designMode === 'chic' && chicPalette && { color: chicPalette.accent }]}>{selectedTaskId === task.id ? '●' : '○'}</Text></Pressable>)}
+    </View>)}
   </>;
 }
 
@@ -2218,7 +2257,14 @@ function TaskScheduleCalendar({ tasks, plans, externalEvents, now, designMode, c
           <Text style={[styles.scheduleDayNumber, isDark && styles.darkBodyText, date.getDay() === 0 && styles.scheduleSundayNumber, date.getDay() === 6 && styles.scheduleSaturdayNumber, today && styles.scheduleTodayNumber, selected && styles.scheduleSelectedNumber, selected && isDark && styles.scheduleSelectedNumberDark]}>{date.getDate()}</Text>
           {calendarMarks[key] && <Text style={styles.scheduleCalendarMark}>{calendarMarks[key]}</Text>}
           <View style={styles.scheduleEventStack}>
-            {visiblePlanBars.map((item, itemIndex) => <View key={item.id ?? `${item.title}-${itemIndex}`} style={[styles.scheduleEventBar, styles.schedulePlanBar, isDark && styles.schedulePlanBarDark, selected && styles.scheduleEventBarSelected, selected && isDark && styles.schedulePlanBarSelectedDark]}><Text numberOfLines={1} style={[styles.scheduleEventBarText, isDark && styles.scheduleEventBarTextDark, selected && styles.scheduleEventBarTextSelected, selected && isDark && styles.scheduleEventBarTextSelectedDark]}>{item.title}</Text></View>)}
+            {visiblePlanBars.map((item, itemIndex) => {
+              const planBarBackground = designMode === 'chic' && chicPalette ? chicPalette.accentSoft : isDark ? '#40558A' : theme.colors.secondarySurface;
+              const planBarBorder = designMode === 'chic' && chicPalette ? chicPalette.border : isDark ? '#6F82B5' : theme.colors.border;
+              const planBarText = designMode === 'chic' && chicPalette ? chicPalette.accentStrong : isDark ? '#F4F7FC' : theme.colors.primaryText;
+              const selectedPlanBarBackground = designMode === 'chic' && chicPalette ? chicPalette.cardTint : isDark ? '#5872B8' : theme.colors.softAccent;
+              const selectedPlanBarText = designMode === 'chic' && chicPalette ? chicPalette.accentStrong : isDark ? '#FFFFFF' : theme.colors.primaryText;
+              return <View key={item.id ?? `${item.title}-${itemIndex}`} style={[styles.scheduleEventBar, { backgroundColor: selected ? selectedPlanBarBackground : planBarBackground, borderColor: planBarBorder, borderWidth: 1 }, selected && styles.scheduleEventBarSelected]}><Text numberOfLines={1} style={[styles.scheduleEventBarText, { color: selected ? selectedPlanBarText : planBarText }]}>{item.title}</Text></View>;
+            })}
              {visibleTaskBars.map((task) => <View key={task.id} style={[styles.scheduleEventBar, { backgroundColor: designMode === 'chic' && chicPalette ? chicPalette.accentSoft : isDark ? '#26365F' : theme.colors.secondarySurface, borderColor: designMode === 'chic' && chicPalette ? chicPalette.border : theme.colors.border, borderWidth: 1 }, selected && styles.scheduleEventBarSelected]}><Text numberOfLines={1} style={[styles.scheduleEventBarText, isDark && styles.scheduleEventBarTextDark, selected && styles.scheduleEventBarTextSelected, selected && isDark && styles.darkBodyText, designMode === 'minimal' && { color: theme.colors.primaryText }, designMode === 'chic' && chicPalette && { color: chicPalette.accentStrong }]}>{task.title}</Text></View>)}
             {visibleCompletedBars.map((task) => <View key={`done-${task.id}`} style={[styles.scheduleEventBar, styles.scheduleCompletedBar, isDark && styles.scheduleCompletedBarDark]}><Text numberOfLines={1} style={[styles.scheduleCompletedBarText, isDark && styles.scheduleCompletedBarTextDark]}>✓ {task.title}</Text></View>)}
             {visibleExternalBars.map((event) => <View key={`external-${event.id}`} style={[styles.scheduleEventBar, { backgroundColor: designExternalAccent }, isDark && styles.scheduleExternalBarDark, selected && styles.scheduleEventBarSelected]}><Text numberOfLines={1} style={[styles.scheduleEventBarText, isDark && styles.scheduleEventBarTextDark, selected && styles.scheduleEventBarTextSelected, selected && isDark && styles.darkBodyText]}>{event.title || 'カレンダー予定'}</Text></View>)}
@@ -2502,20 +2548,20 @@ function TodayWinStrip({ tasks, designMode, chicPattern, chicPalette, onRestore 
   );
 }
 
-function AchievementVessel({ tasks, designMode, chicPattern = 'plain', chicPalette, scope = 'month', compact = false }: { tasks: Task[]; designMode: ThemeMode; chicPattern?: ChicPattern; chicPalette?: ChicThemePalette; scope?: 'today' | 'month'; compact?: boolean }) {
+function AchievementVessel({ tasks, designMode, chicPattern = 'plain', chicPalette, scope = 'month', targetDate, targetMonth, compact = false }: { tasks: Task[]; designMode: ThemeMode; chicPattern?: ChicPattern; chicPalette?: ChicThemePalette; scope?: 'today' | 'month'; targetDate?: string; targetMonth?: string; compact?: boolean }) {
   const now = new Date();
   const completed = tasks.filter((task) => {
-    if (!task.completedAt) return false;
+    if (!task.done || !task.completedAt) return false;
     const completedDate = new Date(task.completedAt);
-    return scope === 'today' ? dateKey(completedDate) === dateKey(now) : completedDate.getFullYear() === now.getFullYear() && completedDate.getMonth() === now.getMonth();
+    return targetDate ? dateKey(completedDate) === targetDate : scope === 'today' ? dateKey(completedDate) === dateKey(now) : dateKey(completedDate).startsWith(targetMonth ?? dateKey(now).slice(0, 7));
   });
   const visible = completed.slice(-18);
   if (designMode !== 'chic') {
-    return <View style={[styles.minimalAchievement, compact && styles.minimalAchievementCompact, designMode === 'dark' && styles.minimalAchievementDark]}><View><Text style={[styles.minimalAchievementLabel, designMode === 'dark' && styles.minimalAchievementLabelDark]}>{scope === 'today' ? '今日できたこと' : '今月の記録'}</Text><Text style={[styles.minimalAchievementNumber, compact && styles.minimalAchievementNumberCompact, designMode === 'dark' && styles.minimalAchievementNumberDark]}>{String(completed.length).padStart(2, '0')}</Text><Text style={[styles.taskMeta, designMode === 'dark' && styles.minimalAchievementLabelDark]}>{completed.length}件完了</Text></View><View style={styles.minimalAchievementBars}>{Array.from({ length: 10 }, (_, item) => <View key={item} style={[styles.minimalAchievementBar, item < Math.min(10, completed.length) && styles.minimalAchievementBarFilled, designMode === 'dark' && styles.minimalAchievementBarDark, item < Math.min(10, completed.length) && designMode === 'dark' && styles.minimalAchievementBarFilledDark]} />)}</View></View>;
+    return <View style={[styles.minimalAchievement, compact && styles.minimalAchievementCompact, designMode === 'dark' && styles.minimalAchievementDark]}><View><Text style={[styles.minimalAchievementLabel, designMode === 'dark' && styles.minimalAchievementLabelDark]}>{targetDate ? 'この日の達成' : scope === 'today' ? '今日できたこと' : '今月の記録'}</Text><Text style={[styles.minimalAchievementNumber, compact && styles.minimalAchievementNumberCompact, designMode === 'dark' && styles.minimalAchievementNumberDark]}>{String(completed.length).padStart(2, '0')}</Text><Text style={[styles.taskMeta, designMode === 'dark' && styles.minimalAchievementLabelDark]}>{completed.length}件完了</Text></View><View style={styles.minimalAchievementBars}>{Array.from({ length: 10 }, (_, item) => <View key={item} style={[styles.minimalAchievementBar, item < Math.min(10, completed.length) && styles.minimalAchievementBarFilled, designMode === 'dark' && styles.minimalAchievementBarDark, item < Math.min(10, completed.length) && designMode === 'dark' && styles.minimalAchievementBarFilledDark]} />)}</View></View>;
   }
   const vesselPalette = chicPalette ?? getDesignCheckThemeTokens('cool');
   return <View style={[styles.vesselScene, compact && styles.vesselSceneCompact, designMode === 'chic' && styles.vesselSceneChic, designMode === 'chic' && { backgroundColor: vesselPalette.cardTint, borderColor: vesselPalette.border }]}>
-    <View style={[styles.vesselLabel, designMode === 'chic' && styles.vesselLabelChic]}><Text style={[styles.vesselLabelTop, designMode === 'chic' && { color: vesselPalette.textSecondary }]}>{scope === 'today' ? '今日の小さな達成' : designMode === 'chic' ? '今月の小さな達成' : '今月のできたこと'}</Text><Text style={[styles.vesselLabelTitle, compact && styles.vesselLabelTitleCompact, designMode === 'chic' && { color: vesselPalette.textPrimary }]}>{completed.length}個のできた！</Text></View>
+    <View style={[styles.vesselLabel, designMode === 'chic' && styles.vesselLabelChic]}><Text style={[styles.vesselLabelTop, designMode === 'chic' && { color: vesselPalette.textSecondary }]}>{targetDate ? 'この日の小さな達成' : scope === 'today' ? '今日の小さな達成' : designMode === 'chic' ? '今月の小さな達成' : '今月のできたこと'}</Text><Text style={[styles.vesselLabelTitle, compact && styles.vesselLabelTitleCompact, designMode === 'chic' && { color: vesselPalette.textPrimary }]}>{completed.length}個のできた！</Text></View>
     <View style={[styles.jarLid, designMode === 'chic' && { backgroundColor: vesselPalette.accent }]} />
     <View style={[styles.jarBody, compact && styles.jarBodyCompact, designMode === 'chic' && { borderColor: vesselPalette.border, backgroundColor: vesselPalette.cardSurface }]}>
       {visible.map((task, index) => <View key={task.id} style={[styles.jarTreasure, designMode === 'chic' && { backgroundColor: vesselPalette.cardSurface }, { left: 13 + (index % 6) * 39, bottom: 10 + Math.floor(index / 6) * 35, transform: [{ rotate: `${(index % 5) * 8 - 16}deg` }] }]}><Text style={[styles.jarTreasureText, designMode === 'chic' && { color: vesselPalette.accent }]}>{designMode === 'chic' ? (index % 3 === 0 ? '✿' : index % 3 === 1 ? '★' : '●') : (index % 2 ? '★' : '🍪')}</Text></View>)}

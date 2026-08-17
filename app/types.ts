@@ -170,6 +170,8 @@ export type PersistedState = {
   showCompleted: boolean;
   completionIcon: string;
   designMode: DesignMode;
+  /** Mono appearance preference. Optional for backwards compatibility with older saves. */
+  monoAppearance?: 'auto' | 'light' | 'dark';
   taskTemplates?: string[];
   chicPattern?: ChicPattern;
   chicCheckColor?: ChicCheckColor;

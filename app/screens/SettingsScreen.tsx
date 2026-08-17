@@ -16,6 +16,7 @@ export function SettingsScreen({
   showCompleted,
   completionIcon,
   designMode,
+  monoAppearance,
   chicPalette,
   chicPattern,
   chicCheckColor,
@@ -25,6 +26,7 @@ export function SettingsScreen({
   onShowCompleted,
   onCompletionIcon,
   onDesignMode,
+  onMonoAppearance,
   onChicPattern,
   onChicCheckColor,
   onSaveAffirmation,
@@ -52,6 +54,7 @@ export function SettingsScreen({
   showCompleted: boolean;
   completionIcon: string;
   designMode: DesignMode;
+  monoAppearance: 'auto' | 'light' | 'dark';
   chicPalette?: ChicThemePalette;
   chicPattern: ChicPattern;
   chicCheckColor: ChicCheckColor;
@@ -61,6 +64,7 @@ export function SettingsScreen({
   onShowCompleted: (value: boolean) => void;
   onCompletionIcon: (icon: string) => void;
   onDesignMode: (mode: DesignMode) => void;
+  onMonoAppearance: (appearance: 'auto' | 'light' | 'dark') => void;
   onChicPattern: (pattern: ChicPattern) => void;
   onChicCheckColor: (color: ChicCheckColor) => void;
   onSaveAffirmation: (affirmation: Affirmation) => Promise<void> | void;
@@ -122,7 +126,8 @@ export function SettingsScreen({
               </View>
               <Text style={[styles.modeName, (designMode === mode.id || (mode.id === 'minimal' && designMode === 'dark')) && styles.modeNameActive, mode.id === 'minimal' && designMode === 'dark' && styles.modeNameDark, mode.id === 'chic' && designMode === 'chic' && chicPalette && { color: chicPalette.accentStrong }]}>{mode.id === 'minimal' ? 'Mono' : 'Design'}</Text>
               <Text style={[styles.modeDescription, isDark && styles.darkAccentText]}>{mode.description}</Text>
-              {mode.id === 'minimal' && <View style={styles.monoThemeChoices}>
+               {mode.id === 'minimal' && <View style={styles.monoThemeChoices}>
+                 <Pressable style={[styles.monoThemeChoice, monoAppearance === 'auto' && styles.monoThemeChoiceActive]} onPress={() => { onDesignMode('minimal'); onMonoAppearance('auto'); }}><Text style={[styles.monoThemeChoiceText, monoAppearance === 'auto' && styles.monoThemeChoiceTextActive]}>自動（端末に合わせる）</Text></Pressable>
                 <Pressable style={[styles.monoThemeChoice, designMode === 'minimal' && styles.monoThemeChoiceActive]} onPress={() => onDesignMode('minimal')}><Text style={[styles.monoThemeChoiceText, designMode === 'minimal' && styles.monoThemeChoiceTextActive]}>ライト</Text></Pressable>
                 <Pressable style={[styles.monoThemeChoice, designMode === 'dark' && styles.monoThemeChoiceActiveDark]} onPress={() => onDesignMode('dark')}><Text style={[styles.monoThemeChoiceText, designMode === 'dark' && styles.monoThemeChoiceTextActive]}>ダーク</Text></Pressable>
               </View>}

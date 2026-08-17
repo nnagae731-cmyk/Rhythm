@@ -18,6 +18,7 @@ export function HistoryScreen({ tasks, wishMonths, calendarMarks, onSetCalendarM
   const now = new Date();
   const isDark = designMode === 'dark';
   const [selectedKey, setSelectedKey] = useState(dateKey(now));
+  const [hasSelectedDate, setHasSelectedDate] = useState(false);
   const [historyMonthDate, setHistoryMonthDate] = useState(() => new Date(now.getFullYear(), now.getMonth(), 1));
   const [historySearch, setHistorySearch] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
@@ -59,6 +60,7 @@ export function HistoryScreen({ tasks, wishMonths, calendarMarks, onSetCalendarM
     const next = new Date(year, month + amount, 1);
     setHistoryMonthDate(next);
     setSelectedKey(dateKey(next));
+    setHasSelectedDate(false);
   };
   const calendarTasks = premiumHistory ? tasks : tasks.filter((task) => task.completedAt && dateKey(task.completedAt).startsWith(monthPrefix));
   const calendarCompletedByDay = calendarTasks.reduce<Record<string, Task[]>>((result, task) => {
@@ -172,7 +174,7 @@ export function HistoryScreen({ tasks, wishMonths, calendarMarks, onSetCalendarM
     <>
       <Text style={[styles.hero, designMode === 'dark' && styles.darkPanel, designMode === 'dark' && styles.darkBodyText]}>{premiumHistory ? (designMode !== 'chic' ? '今月の記録' : '今月の小さな達成') : '1か月を振り返ろう'}</Text>
       {premiumHistory ? <View style={[styles.historySearchBox, isDark && styles.darkPanel]}><Text style={[styles.taskSearchIcon, isDark && styles.darkAccentText]}>⌕</Text><TextInput value={historySearch} onChangeText={updateHistorySearch} placeholder="過去に完了したタスクを検索" placeholderTextColor={isDark ? '#8F9BB0' : '#A29DAA'} style={[styles.taskSearchInput, isDark && styles.darkBodyText]} />{historySearch.length > 0 && <><Pressable onPress={() => setSearchResultsOpen(true)}><Text style={[styles.historySearchOpenText, isDark && styles.darkAccentText]}>検索</Text></Pressable><Pressable onPress={() => { setHistorySearch(''); setSearchResultsOpen(false); }}><Text style={[styles.historySearchClear, isDark && styles.darkAccentText]}>×</Text></Pressable></>}</View> : <Pressable style={[styles.guideCard, isDark && styles.darkSurface]} onPress={() => onPremium('month')}><View><Text style={[styles.guideCardTitle, isDark && styles.darkBodyText]}>全期間の履歴と検索</Text><Text style={[styles.guideCardCopy, isDark && styles.darkMutedText]}>Premiumで月表示・詳細検索を利用できます</Text></View><Text style={[styles.guideCardArrow, isDark && styles.darkAccentText]}>›</Text></Pressable>}
-      {premiumHistory && <AchievementVessel tasks={tasks} designMode={designMode} chicPattern={chicPattern} chicPalette={chicPalette} scope="month" />}
+      {premiumHistory && <AchievementVessel tasks={tasks} designMode={designMode} chicPattern={chicPattern} chicPalette={chicPalette} scope={hasSelectedDate ? 'today' : 'month'} targetDate={hasSelectedDate ? selectedKey : undefined} targetMonth={monthPrefix} />}
       {premiumHistory && <View style={styles.monthStats}>
         <View style={[styles.monthStat, isDark && styles.darkMonthStat, designMode === 'chic' && chicPalette && { backgroundColor: chicPalette.cardTint, borderColor: chicPalette.border }]}><Text style={[styles.monthStatNumber, isDark && styles.darkAccentText, designMode === 'chic' && chicPalette && { color: chicPalette.accentStrong }]}>{monthlyCount}</Text><Text style={[styles.monthStatLabel, isDark && styles.darkMutedText, designMode === 'chic' && chicPalette && { color: chicPalette.textSecondary }]}>今月の完了</Text></View>
         <View style={[styles.monthStat, isDark && styles.darkMonthStat, designMode === 'chic' && chicPalette && { backgroundColor: chicPalette.cardTint, borderColor: chicPalette.border }]}><Text style={[styles.monthStatNumber, isDark && styles.darkAccentText, designMode === 'chic' && chicPalette && { color: chicPalette.accentStrong }]}>{activeDays}</Text><Text style={[styles.monthStatLabel, isDark && styles.darkMutedText, designMode === 'chic' && chicPalette && { color: chicPalette.textSecondary }]}>活動した日</Text></View>
@@ -193,9 +195,9 @@ export function HistoryScreen({ tasks, wishMonths, calendarMarks, onSetCalendarM
             const count = calendarCompletedByDay[key]?.length ?? 0;
             const dayReviews = reviewsByDay[key] ?? [];
             const dayMark = calendarMarks[key] ?? autoMarkForDay(key);
-            const selected = key === selectedKey;
+            const selected = hasSelectedDate && key === selectedKey;
             return (
-              <Pressable key={key} style={[styles.dayCell, selected && styles.daySelected, selected && isDark && styles.darkDaySelected, selected && designMode === 'chic' && chicPalette && { backgroundColor: chicPalette.accentSoft, borderColor: chicPalette.accent, borderWidth: 1 }]} onPress={() => { setSelectedKey(key); loadJournalDraft(key); setSelectedReview(null); }}>
+              <Pressable key={key} style={[styles.dayCell, selected && styles.daySelected, selected && isDark && styles.darkDaySelected, selected && designMode === 'chic' && chicPalette && { backgroundColor: chicPalette.accentSoft, borderColor: chicPalette.accent, borderWidth: 1 }]} onPress={() => { setSelectedKey(key); setHasSelectedDate(true); loadJournalDraft(key); setSelectedReview(null); }}>
                 <Text style={[styles.dayNumber, isDark && styles.darkBodyText, selected && styles.dayNumberSelected, designMode === 'chic' && chicPalette && { color: chicPalette.accentStrong }]}>{day}</Text>
                 {dayMark && <Text style={[styles.historyCalendarMark, isDark && styles.darkAccentText]}>{dayMark}</Text>}
                 {count > 0 && <View style={[styles.dayDone, isDark && styles.darkDayDone]}><Text style={styles.dayDoneText}>{count}</Text></View>}
