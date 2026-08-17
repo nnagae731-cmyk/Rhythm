@@ -71,17 +71,21 @@ export function HomeScreen({
   renderTodayWinStrip: (tasks: Task[]) => React.ReactNode;
   helpers: any;
 }) {
-  const { deadlineLabel, getUrgencyStatus, getLateRiskMessage } = helpers;
+  const { deadlineLabel, getUrgencyStatus, getLateRiskMessage, dateKey } = helpers;
   const priorityOrder: Record<Priority, number> = { 高: 0, 中: 1, 低: 2 };
   const isDark = designMode === 'dark';
   const [categoryFilter, setCategoryFilter] = useState<'すべて' | Category>('すべて');
   const [bucketFilter, setBucketFilter] = useState<TaskBucket>('now');
   const [bucketTask, setBucketTask] = useState<Task | null>(null);
   const [actionTask, setActionTask] = useState<Task | null>(null);
-  const [expandedTaskIds, setExpandedTaskIds] = useState<string[]>([]);
+  const [tomorrowOpen, setTomorrowOpen] = useState(false);
   const bucketTasks = tasks.filter((task) => (task.bucket ?? 'now') === bucketFilter);
   const categoryTasks = categoryFilter === 'すべて' ? bucketTasks : bucketTasks.filter((task) => task.category === categoryFilter);
   const displayTasks = [...categoryTasks].sort((a, b) => priorityOrder[a.priority] - priorityOrder[b.priority]);
+  const tomorrowDate = new Date(now);
+  tomorrowDate.setDate(tomorrowDate.getDate() + 1);
+  const tomorrowKey = dateKey(tomorrowDate);
+  const tomorrowTasks = allTasks.filter((task) => task.scheduledDate === tomorrowKey).sort((a, b) => (a.scheduledTime ?? '99:99').localeCompare(b.scheduledTime ?? '99:99'));
   return (
     <HomeRuntimeContext.Provider value={{ styles, helpers, chicPalette }}>
     <>
@@ -108,6 +112,13 @@ export function HomeScreen({
         {(['すべて', ...categories] as const).map((category) => <Pressable key={category} style={[styles.filterChip, isDark && styles.filterChipDark, categoryFilter === category && styles.filterChipActive, categoryFilter === category && isDark && styles.filterChipActiveDark, designMode === 'chic' && { backgroundColor: categoryFilter === category ? chicPalette.accentSoft : chicPalette.cardSurface, borderColor: categoryFilter === category ? chicPalette.accent : chicPalette.border }]} onPress={() => setCategoryFilter(category)}><Text style={[styles.filterChipText, isDark && styles.darkMutedText, categoryFilter === category && styles.filterChipTextActive, categoryFilter === category && isDark && styles.filterChipTextActiveDark, designMode === 'chic' && { color: categoryFilter === category ? chicPalette.accentStrong : chicPalette.textSecondary }]}>{category}</Text></Pressable>)}
       </ScrollView>
 
+      <Pressable style={[styles.taskCard, isDark && styles.darkSurface, designMode === 'chic' && { backgroundColor: chicPalette.cardSurface, borderColor: chicPalette.border }]} onPress={() => setTomorrowOpen(true)}>
+        <View style={[styles.taskCardInner, designMode === 'chic' && { backgroundColor: chicPalette.cardSurface }]}>
+          <View style={{ flex: 1 }}><Text style={[styles.taskTitle, isDark && styles.darkBodyText, designMode === 'chic' && { color: chicPalette.textPrimary }]}>明日のタスクを確認</Text><Text style={[styles.taskMeta, isDark && styles.darkMutedText, designMode === 'chic' && { color: chicPalette.textSecondary }]}>{tomorrowTasks.length > 0 ? `${tomorrowTasks.length}件の予定があります` : '明日の予定を先に確認できます'}</Text></View>
+          <Text style={[styles.taskMoreText, isDark && styles.darkAccentText, designMode === 'chic' && { color: chicPalette.accent }]}>›</Text>
+        </View>
+      </Pressable>
+
       {selectionMode && (
         <View style={[styles.batchBar, isDark && styles.batchBarDark]}>
           <Text style={[styles.batchCount, isDark && styles.batchCountDark]}>{selectedTaskIds.length}件を選択中</Text>
@@ -127,15 +138,15 @@ export function HomeScreen({
           <View style={designMode === 'chic' ? styles.emptyChicGlass : styles.emptyPlainContent}><Text style={[styles.emptyIcon, isDark && styles.darkAccentText, designMode === 'chic' && { color: chicPalette.accent }]}>○</Text><Text style={[styles.emptyTitle, isDark && styles.darkBodyText, designMode === 'chic' && { color: chicPalette.textPrimary }]}>最初のタスクを追加しよう</Text><Text style={[styles.emptyCopy, isDark && styles.darkMutedText, designMode === 'chic' && { color: chicPalette.textSecondary }]}>忘れたくないことを、ここに置いておけます。</Text></View>
         </Pressable>
       ) : displayTasks.map((task) => { return (
+        <React.Fragment key={task.id}>
         <Pressable key={task.id} style={[styles.taskCard, designMode === 'minimal' && styles.taskCardMinimal, designMode === 'dark' && styles.darkSurface, designMode === 'chic' && styles.taskCardChic, designMode === 'chic' && { backgroundColor: task.done ? chicPalette.surfaceSubtle : chicPalette.taskBackground, borderColor: chicPalette.border }, task.done && designMode !== 'chic' && styles.taskCardDone, task.done && isDark && styles.taskCardDoneDark, task.done && designMode === 'chic' && styles.taskCardChicDone]} onPress={() => setActionTask(task)}>
           <View style={[styles.taskCardInner, designMode === 'chic' && styles.taskCardInnerChic, designMode === 'chic' && { backgroundColor: chicPalette.cardSurface }, task.done && designMode === 'chic' && styles.taskCardInnerChicDone]}>
           <Pressable style={[styles.check, isDark && styles.checkDark, task.done && styles.checkDone, task.done && isDark && styles.checkDoneDark, task.done && designMode === 'chic' && { backgroundColor: chicPalette.accent, borderColor: chicPalette.accent }, selectionMode && selectedTaskIds.includes(task.id) && styles.selectionChecked, selectionMode && selectedTaskIds.includes(task.id) && isDark && styles.selectionCheckedDark, selectionMode && selectedTaskIds.includes(task.id) && designMode === 'chic' && { backgroundColor: chicPalette.accent, borderColor: chicPalette.accent }]} onPress={() => selectionMode ? onToggleSelection(task.id) : (task.subtasks?.some((item) => !item.done) ? onCompleteParent(task.id) : onToggle(task.id))}>
             <Text style={styles.checkMark}>{selectionMode ? (selectedTaskIds.includes(task.id) ? '✓' : '') : (task.done ? completionIcon : '')}</Text>
           </Pressable>
           <Pressable style={styles.taskBody} onPress={() => setActionTask(task)}>
-             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}><Text style={[styles.taskTitle, task.done && styles.taskTitleDone, isDark && styles.darkBodyText, { flex: 1 }]}>{task.title}</Text>{(task.subtasks?.length ?? 0) > 0 && <Pressable onPress={() => setExpandedTaskIds((current) => current.includes(task.id) ? current.filter((id) => id !== task.id) : [...current, task.id])}><Text style={[styles.taskMeta, isDark && styles.darkAccentText]}>{task.subtasks!.filter((item) => item.done).length}/{task.subtasks!.length}完了 {expandedTaskIds.includes(task.id) ? '⌃' : '⌄'}</Text></Pressable>}</View>
-             {(task.subtasks?.length ?? 0) > 0 && <Text style={[styles.taskMeta, isDark && styles.darkMutedText]}>次: {task.subtasks!.find((item) => !item.done)?.title ?? 'すべて完了'}</Text>}
-             {expandedTaskIds.includes(task.id) && task.subtasks?.map((item) => <Pressable key={item.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 5 }} onPress={() => onToggleSubtask(task.id, item.id)}><Text style={[styles.taskMeta, isDark && styles.darkAccentText]}>{item.done ? '●' : '○'}</Text><Text style={[styles.taskMeta, item.done && styles.taskTitleDone, isDark && styles.darkBodyText]}>{item.title}</Text></Pressable>)}
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}><Text style={[styles.taskTitle, task.done && styles.taskTitleDone, isDark && styles.darkBodyText, { flex: 1 }]}>{task.title}</Text>{(task.subtasks?.length ?? 0) > 0 && <Text style={[styles.taskMeta, isDark && styles.darkAccentText]}>{task.subtasks!.filter((item) => item.done).length}/{task.subtasks!.length}完了</Text>}</View>
+              {(task.subtasks?.length ?? 0) > 0 && <Text style={[styles.taskMeta, isDark && styles.darkMutedText]}>次: {task.subtasks!.find((item) => !item.done)?.title ?? 'すべて完了'}</Text>}
             {task.navigationEnabled && !task.done && <View style={styles.inlineUrgency}><Text style={styles.inlineUrgencyText}>{getUrgencyStatus(task, now)}</Text><Text style={styles.inlineRisk}>{getLateRiskMessage(task, now)}</Text></View>}
             <View style={styles.taskInfoRow}>
               <View style={[styles.priorityPill, task.priority === '高' && styles.priorityHigh, designMode === 'chic' && { backgroundColor: chicPalette.accentSoft, borderColor: chicPalette.accent }]}><Text style={[styles.priorityText, task.priority === '高' && styles.priorityHighText, designMode === 'chic' && { color: chicPalette.textPrimary }]}>{task.priority === '高' ? '！重要' : task.priority}</Text></View>
@@ -150,8 +161,10 @@ export function HomeScreen({
           </Pressable>
           {!selectionMode && <Pressable style={styles.taskBucketButton} onPress={() => setBucketTask(task)}><Text style={styles.taskBucketButtonText}>{(task.bucket ?? 'now') === 'now' ? '今やる' : task.bucket === 'later' ? 'あとで' : '待ち'}⌄</Text></Pressable>}
           {!selectionMode && <Pressable style={styles.taskMoreButton} onPress={() => setActionTask(task)} hitSlop={8}><Text style={styles.taskMoreText}>•••</Text></Pressable>}
-          </View>
-        </Pressable>
+           </View>
+         </Pressable>
+         {task.subtasks?.slice().sort((a, b) => a.order - b.order).map((item) => <Pressable key={`${task.id}:${item.id}`} style={[styles.taskCard, designMode === 'minimal' && styles.taskCardMinimal, isDark && styles.darkSurface, designMode === 'chic' && styles.taskCardChic, { marginLeft: 18, borderLeftWidth: 3, borderLeftColor: designMode === 'chic' ? chicPalette.accent : isDark ? '#8EA6FF' : '#68748A' }, item.done && styles.taskCardDone]} onPress={() => onToggleSubtask(task.id, item.id)}><View style={[styles.taskCardInner, designMode === 'chic' && styles.taskCardInnerChic, designMode === 'chic' && { backgroundColor: chicPalette.cardSurface }]}><Pressable style={[styles.check, isDark && styles.checkDark, item.done && styles.checkDone, item.done && isDark && styles.checkDoneDark, designMode === 'chic' && { backgroundColor: item.done ? chicPalette.accent : chicPalette.cardTint, borderColor: chicPalette.accent }]} onPress={() => onToggleSubtask(task.id, item.id)}><Text style={styles.checkMark}>{item.done ? completionIcon : ''}</Text></Pressable><View style={styles.taskBody}><Text style={[styles.taskTitle, item.done && styles.taskTitleDone, isDark && styles.darkBodyText, designMode === 'chic' && { color: chicPalette.textPrimary }]}>{item.title}</Text><Text style={[styles.taskMeta, isDark && styles.darkMutedText, designMode === 'chic' && { color: chicPalette.taskMeta }]}>サブタスク ・ 親: {task.title}</Text><View style={styles.taskInfoRow}><View style={[styles.categoryPill, isDark && styles.darkSurface, designMode === 'chic' && { backgroundColor: chicPalette.accentSoft, borderColor: chicPalette.border }]}><Text style={[styles.categoryText, isDark && styles.darkBodyText, designMode === 'chic' && { color: chicPalette.textSecondary }]}>次の一歩</Text></View><Text style={[styles.taskMeta, isDark && styles.darkAccentText, designMode === 'chic' && { color: chicPalette.taskMeta }]}>{(task.bucket ?? 'now') === 'now' ? '今やる' : task.bucket === 'later' ? 'あとで' : '待ち'}</Text></View></View></View></Pressable>)}
+        </React.Fragment>
       ); })}
       <Modal visible={Boolean(bucketTask)} transparent animationType="fade" onRequestClose={() => setBucketTask(null)}>
         <Pressable style={styles.bucketModalBackdrop} onPress={() => setBucketTask(null)}>
@@ -174,6 +187,18 @@ export function HomeScreen({
               <Pressable style={[styles.taskActionOption, styles.taskActionDelete]} onPress={() => { if (actionTask) onDelete(actionTask.id); setActionTask(null); }}><Text style={[styles.taskActionIcon, styles.taskActionDeleteText]}>×</Text><Text style={[styles.taskActionLabel, styles.taskActionDeleteText]}>削除</Text></Pressable>
             </View>
             <Pressable style={styles.taskTemplateSaveAction} onPress={() => { if (actionTask) onSaveTemplate(actionTask); setActionTask(null); }}><View><Text style={styles.taskTemplateSaveTitle}>設定ごとひな型に保存</Text><Text style={styles.taskTemplateSaveCopy}>カテゴリ・通知・間に合うナビも再利用</Text></View><Text style={styles.taskTemplateSavePremium}>Premium</Text></Pressable>
+          </View>
+        </Pressable>
+      </Modal>
+      <Modal visible={tomorrowOpen} transparent animationType="fade" onRequestClose={() => setTomorrowOpen(false)}>
+        <Pressable style={styles.bucketModalBackdrop} onPress={() => setTomorrowOpen(false)}>
+          <View style={[styles.bucketModalCard, isDark && styles.darkSurface, designMode === 'chic' && { backgroundColor: chicPalette.cardSurface, borderColor: chicPalette.border }]}>
+            <Text style={[styles.bucketModalTitle, isDark && styles.darkBodyText, designMode === 'chic' && { color: chicPalette.textPrimary }]}>明日のタスク</Text>
+            <Text style={[styles.taskMeta, isDark && styles.darkMutedText, designMode === 'chic' && { color: chicPalette.textSecondary }]}>{tomorrowKey.replace('-', '/')} ・ {tomorrowTasks.length}件</Text>
+            <ScrollView style={{ maxHeight: 420, marginTop: 12 }} showsVerticalScrollIndicator={false}>
+              {tomorrowTasks.length === 0 ? <Text style={[styles.emptyCopy, isDark && styles.darkMutedText, designMode === 'chic' && { color: chicPalette.textSecondary }]}>明日のタスクはまだありません。</Text> : tomorrowTasks.map((task) => <View key={task.id} style={{ paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: isDark ? '#303B50' : '#E5E0E5' }}><Text style={[styles.taskTitle, isDark && styles.darkBodyText, designMode === 'chic' && { color: chicPalette.textPrimary }]}>{task.title}</Text><Text style={[styles.taskMeta, isDark && styles.darkMutedText, designMode === 'chic' && { color: chicPalette.taskMeta }]}>{task.scheduledTime ?? '時間指定なし'} ・ {(task.bucket ?? 'now') === 'now' ? '今やる' : task.bucket === 'later' ? 'あとで' : '待ち'}{task.subtasks?.length ? ` ・ サブタスク${task.subtasks.filter((item) => item.done).length}/${task.subtasks.length}` : ''}</Text></View>)}
+            </ScrollView>
+            <Pressable style={[styles.taskTemplateSaveAction, { marginTop: 14 }]} onPress={() => setTomorrowOpen(false)}><Text style={styles.taskTemplateSaveTitle}>閉じる</Text></Pressable>
           </View>
         </Pressable>
       </Modal>
