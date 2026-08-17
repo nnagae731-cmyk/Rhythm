@@ -1,5 +1,5 @@
 import * as ImagePicker from 'expo-image-picker';
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Image, Modal, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 import { ChicPattern, ChicThemePalette } from '../theme';
 import { hasPremiumAccess, isWithinFreeHistory, PlanTier } from '../premiumAccess';
@@ -20,6 +20,7 @@ export function HistoryScreen({ tasks, wishMonths, calendarMarks, onSetCalendarM
   const [selectedKey, setSelectedKey] = useState(dateKey(now));
   const [historyMonthDate, setHistoryMonthDate] = useState(() => new Date(now.getFullYear(), now.getMonth(), 1));
   const [historySearch, setHistorySearch] = useState('');
+  const [searchQuery, setSearchQuery] = useState('');
   const [searchResultsOpen, setSearchResultsOpen] = useState(false);
   const year = historyMonthDate.getFullYear();
   const month = historyMonthDate.getMonth();
@@ -42,11 +43,17 @@ export function HistoryScreen({ tasks, wishMonths, calendarMarks, onSetCalendarM
     result[key] = [...(result[key] ?? []), task];
     return result;
   }, {});
-  const selectedTasks = !premiumHistory ? historyTasks.filter((task) => task.done && task.completedAt).sort((a, b) => new Date(b.completedAt!).getTime() - new Date(a.completedAt!).getTime()) : historySearch.trim() ? historyTasks.filter((task) => task.done && task.completedAt && task.title.toLowerCase().includes(historySearch.trim().toLowerCase())).sort((a, b) => new Date(b.completedAt!).getTime() - new Date(a.completedAt!).getTime()) : completedByDay[selectedKey] ?? [];
+  const selectedTasks = !premiumHistory ? historyTasks.filter((task) => task.done && task.completedAt).sort((a, b) => new Date(b.completedAt!).getTime() - new Date(a.completedAt!).getTime()) : searchQuery.trim() ? historyTasks.filter((task) => task.done && task.completedAt && task.title.toLowerCase().includes(searchQuery.trim().toLowerCase())).sort((a, b) => new Date(b.completedAt!).getTime() - new Date(a.completedAt!).getTime()) : completedByDay[selectedKey] ?? [];
   const updateHistorySearch = (value: string) => {
     setHistorySearch(value);
-    setSearchResultsOpen(Boolean(value.trim()));
   };
+  useEffect(() => {
+    if (searchResultsOpen) setSearchQuery(historySearch.trim());
+  }, [searchResultsOpen]);
+
+  useEffect(() => {
+    if (!historySearch.trim() && !searchResultsOpen) setSearchQuery('');
+  }, [historySearch, searchResultsOpen]);
   const monthPrefix = `${year}-${String(month + 1).padStart(2, '0')}`;
   const moveHistoryMonth = (amount: number) => {
     const next = new Date(year, month + amount, 1);
@@ -218,9 +225,9 @@ export function HistoryScreen({ tasks, wishMonths, calendarMarks, onSetCalendarM
         {(departurePlansByDay[selectedKey] ?? []).length > 0 && <View style={[styles.reviewDaySummary, isDark && styles.darkReviewDaySummary]}><Text style={[styles.reviewDaySummaryTitle, isDark && styles.darkBodyText]}>この日の出発予定</Text>{(departurePlansByDay[selectedKey] ?? []).map((plan) => <View key={plan.id ?? plan.title} style={[styles.reviewDayRow, isDark && styles.darkReviewDayRow]}><Text style={[styles.reviewDayIcon, isDark && styles.darkAccentText]}>↗</Text><View style={{ flex: 1 }}><Text style={[styles.reviewDayText, isDark && styles.darkBodyText]}>{plan.title}</Text><Text style={[styles.reviewDayHint, isDark && styles.darkMutedText]}>{plan.arrival} 到着 ・ {plan.destination || '目的地未設定'}</Text></View></View>)}</View>}
       </View>
 
-      <View style={historySearch.trim() ? { display: 'none' } : undefined}>
+      <View style={searchResultsOpen && searchQuery.trim() ? { display: 'none' } : undefined}>
       <View style={styles.historyHeader}>
-        <Text style={[styles.sectionTitle, isDark && styles.darkBodyText]}>{premiumHistory ? (historySearch.trim() ? '検索結果' : selectedKey.replaceAll('-', '.')) : '最近の完了'}</Text>
+        <Text style={[styles.sectionTitle, isDark && styles.darkBodyText]}>{premiumHistory ? (searchResultsOpen && searchQuery.trim() ? '検索結果' : selectedKey.replaceAll('-', '.')) : '最近の完了'}</Text>
         <Text style={[styles.sectionSub, isDark && styles.darkMutedText]}>{selectedTasks.length}件見つかりました</Text>
       </View>
       {selectedTasks.length === 0 ? (
@@ -240,11 +247,11 @@ export function HistoryScreen({ tasks, wishMonths, calendarMarks, onSetCalendarM
       {visibleFocusSessions.length > 0 && <View style={styles.recoveryHistorySection}><View style={styles.historyHeader}><Text style={[styles.sectionTitle, isDark && styles.darkBodyText]}>集中した記録</Text><Text style={[styles.sectionSub, isDark && styles.darkMutedText]}>{premiumHistory ? `今月 ${monthlyFocusMinutes}分` : '直近7日'}</Text></View>{visibleFocusSessions.slice(0, 5).map((session) => <View key={session.id} style={[styles.recoveryHistoryRow, isDark && styles.darkRecoveryRow]}><View style={[styles.recoveryHistoryIcon, styles.focusHistoryIcon, isDark && styles.darkRecoveryIcon]}><Text style={[styles.focusHistoryIconText, isDark && styles.darkFocusIconText]}>◉</Text></View><View style={{ flex: 1 }}><Text style={[styles.taskTitle, isDark && styles.darkBodyText]}>{session.taskTitle}</Text><Text style={[styles.taskMeta, isDark && styles.darkMutedText]}>{session.durationMinutes}分 ・ {dateKey(session.completedAt).replaceAll('-', '.')}</Text></View></View>)}</View>}
       {(visibleDepartureCheckIns.length > 0 || departureBehaviorDetails.length > 0) && <View style={styles.recoveryHistorySection}><View style={styles.historyHeader}><Text style={[styles.sectionTitle, isDark && styles.darkBodyText]}>出発・行動の記録</Text><Text style={[styles.sectionSub, isDark && styles.darkMutedText]}>{visibleDepartureCheckIns.length + departureBehaviorDetails.length}件</Text></View>{visibleDepartureCheckIns.slice(0, 5).map((record) => <View key={`checkin-${record.id}`} style={[styles.recoveryHistoryRow, isDark && styles.darkRecoveryRow]}><View style={[styles.recoveryHistoryIcon, isDark && styles.darkRecoveryIcon]}><Text style={[styles.recoveryHistoryIconText, isDark && styles.darkRecoveryIconText]}>➜</Text></View><View style={{ flex: 1 }}><Text style={[styles.taskTitle, isDark && styles.darkBodyText]}>{record.planTitle}</Text><Text style={[styles.taskMeta, isDark && styles.darkMutedText]}>{record.onTime ? '予定どおり出発' : '遅れて出発'} ・ {dateKey(record.departedAt).replaceAll('-', '.')} {formatLiveTime(new Date(record.departedAt))}</Text></View></View>)}{departureBehaviorDetails.map((detail) => <View key={`behavior-${detail.title}-${detail.date ?? ''}`} style={[styles.recoveryHistoryRow, isDark && styles.darkRecoveryRow]}><View style={[styles.recoveryHistoryIcon, isDark && styles.darkRecoveryIcon]}><Text style={[styles.recoveryHistoryIconText, isDark && styles.darkRecoveryIconText]}>↗</Text></View><View style={{ flex: 1 }}><Text style={[styles.taskTitle, isDark && styles.darkBodyText]}>{detail.title}</Text><Text style={[styles.taskMeta, isDark && styles.darkMutedText]}>{detail.date ? `${detail.date.replaceAll('-', '.')} ・ ` : ''}{detail.preparation ? `準備 ${formatLiveTime(new Date(detail.preparation.occurredAt))}` : '準備記録なし'}{detail.departure ? ` ・ 出発 ${formatLiveTime(new Date(detail.departure.occurredAt))}` : ' ・ 出発記録なし'}</Text></View></View>)}</View>}
       {visibleNotificationEvents.length > 0 && <View style={styles.recoveryHistorySection}><View style={styles.historyHeader}><Text style={[styles.sectionTitle, isDark && styles.darkBodyText]}>通知に答えた記録</Text><Text style={[styles.sectionSub, isDark && styles.darkMutedText]}>{visibleNotificationEvents.length}件</Text></View>{visibleNotificationEvents.map((event) => <View key={event.id} style={[styles.recoveryHistoryRow, isDark && styles.darkRecoveryRow]}><View style={[styles.recoveryHistoryIcon, styles.focusHistoryIcon, isDark && styles.darkRecoveryIcon]}><Text style={[styles.focusHistoryIconText, isDark && styles.darkFocusIconText]}>{event.notificationAction === 'completed' ? '✓' : '後'}</Text></View><View style={{ flex: 1 }}><Text style={[styles.taskTitle, isDark && styles.darkBodyText]}>{event.taskTitleSnapshot || event.departurePlanTitleSnapshot || '通知への回答'}</Text><Text style={[styles.taskMeta, isDark && styles.darkMutedText]}>{event.notificationAction === 'completed' ? '完了として回答' : 'あとで確認'} ・ {dateKey(event.occurredAt).replaceAll('-', '.')} {formatLiveTime(new Date(event.occurredAt))}</Text></View></View>)}</View>}
-      <Modal visible={searchResultsOpen && Boolean(historySearch.trim())} transparent animationType="fade" onRequestClose={() => setSearchResultsOpen(false)}>
+      <Modal visible={searchResultsOpen && Boolean(searchQuery.trim())} transparent animationType="fade" onRequestClose={() => setSearchResultsOpen(false)}>
         <Pressable style={styles.modalBackdrop} onPress={() => setSearchResultsOpen(false)}>
           <Pressable style={[styles.historySearchModal, isDark && styles.darkSurface]} onPress={(event) => event.stopPropagation()}>
             <View style={styles.historySearchModalHeader}><Text style={[styles.historySearchModalTitle, isDark && styles.darkBodyText]}>検索結果</Text><Pressable onPress={() => setSearchResultsOpen(false)}><Text style={[styles.historySearchClear, isDark && styles.darkAccentText]}>×</Text></Pressable></View>
-            <Text style={[styles.historySearchModalMeta, isDark && styles.darkMutedText]}>「{historySearch.trim()}」・{selectedTasks.length}件</Text>
+            <Text style={[styles.historySearchModalMeta, isDark && styles.darkMutedText]}>「{searchQuery}」・{selectedTasks.length}件</Text>
             <ScrollView style={styles.historySearchResults} contentContainerStyle={{ paddingBottom: 8 }}>
               {selectedTasks.length === 0 ? <Text style={[styles.emptyCopy, isDark && styles.darkMutedText]}>検索結果がありません</Text> : selectedTasks.map((task) => <View key={task.id} style={[styles.historyTask, isDark && styles.darkHistoryTask, designMode === 'chic' && chicPalette && { backgroundColor: chicPalette.cardSurface, borderColor: chicPalette.border }]}><View style={[styles.historyIcon, isDark && styles.darkHistoryIcon]}><Text style={[styles.historyIconText, isDark && styles.darkAccentText]}>{completionIcon}</Text></View><View style={{ flex: 1 }}><Text style={[styles.taskTitle, isDark && styles.darkBodyText]}>{task.title}</Text><Text style={[styles.taskMeta, isDark && styles.darkMutedText]}>{task.category}・{task.completedAt ? dateKey(task.completedAt).replaceAll('-', '.') : ''}</Text></View><View style={styles.historyTaskActions}><Pressable style={[styles.restoreButton, isDark && styles.darkRestoreButton]} onPress={() => onRestore(task.id)}><Text style={[styles.restoreButtonText, isDark && styles.darkBodyText]}>元に戻す</Text></Pressable></View></View>)}
             </ScrollView>

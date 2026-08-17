@@ -62,10 +62,12 @@ export function WishScreen({ designMode: rawDesignMode, chicPattern, chicPalette
   const darkAccent = rawDesignMode === 'dark' ? '#8EA6FF' : theme.colors.primaryAccent;
   const progress = useMemo(() => calculateWishProgress(state), [state]);
   const [themeDraft, setThemeDraft] = useState(state.theme ?? '');
+  const [themeEditing, setThemeEditing] = useState(!(state.theme ?? '').trim());
   const [editor, setEditor] = useState<EditorState>(emptyEditor);
 
   useEffect(() => {
     setThemeDraft(state.theme ?? '');
+    if (!(state.theme ?? '').trim()) setThemeEditing(true);
   }, [state.theme]);
 
   const commit = (updater: (current: MonthlyWishState) => MonthlyWishState) => {
@@ -197,31 +199,17 @@ export function WishScreen({ designMode: rawDesignMode, chicPattern, chicPalette
             title="今月のテーマ"
             subtitle={monthLabel}
           >
-            <View style={[styles.themePanel, designMode === 'minimal' ? styles.themePanelMinimal : styles.themePanelChic, isDark && styles.themePanelDark, designSubtle]}>
-              <TextInput
-                value={themeDraft}
-                onChangeText={setThemeDraft}
-                placeholder="今月は、どんな自分でいたい？"
-                placeholderTextColor={theme.colors.secondaryText}
-                style={[styles.themeInput, designMode === 'minimal' ? styles.themeInputMinimal : styles.themeInputChic, isDark && styles.themeInputDark, designSurface, designText]}
-                multiline
-              />
+            {themeEditing ? <View style={[styles.themePanel, designMode === 'minimal' ? styles.themePanelMinimal : styles.themePanelChic, isDark && styles.themePanelDark, designSubtle]}>
+              <TextInput value={themeDraft} onChangeText={setThemeDraft} placeholder="今月は、どんな自分でいたい？" placeholderTextColor={theme.colors.secondaryText} style={[styles.themeInput, designMode === 'minimal' ? styles.themeInputMinimal : styles.themeInputChic, isDark && styles.themeInputDark, designSurface, designText]} multiline />
               <View style={styles.rowActions}>
-                <Pressable style={[styles.secondaryButton, designMode === 'minimal' ? styles.secondaryButtonMinimal : styles.secondaryButtonChic, isDark && styles.secondaryButtonDark, designSubtle]} onPress={() => { setThemeDraft(''); commit((current) => ({ ...current, theme: '' })); }}>
-                  <Text style={[styles.secondaryButtonText, { color: theme.colors.secondaryText }]}>削除</Text>
-                </Pressable>
-                <Pressable
-                  style={[styles.primaryButton, designMode === 'minimal' ? styles.primaryButtonMinimal : styles.primaryButtonChic, isDark && styles.primaryButtonDark, designAccent]}
-                  onPress={() => {
-                    commit((current) => ({ ...current, theme: themeDraft.trim() }));
-                    Keyboard.dismiss();
-                    Alert.alert('保存しました', '今月のテーマを保存しました。');
-                  }}
-                >
-                  <Text style={styles.primaryButtonText}>保存</Text>
-                </Pressable>
+                <Pressable style={[styles.secondaryButton, designMode === 'minimal' ? styles.secondaryButtonMinimal : styles.secondaryButtonChic, isDark && styles.secondaryButtonDark, designSubtle]} onPress={() => { setThemeDraft(''); commit((current) => ({ ...current, theme: '' })); setThemeEditing(false); }}><Text style={[styles.secondaryButtonText, { color: theme.colors.secondaryText }]}>削除</Text></Pressable>
+                <Pressable style={[styles.primaryButton, designMode === 'minimal' ? styles.primaryButtonMinimal : styles.primaryButtonChic, isDark && styles.primaryButtonDark, designAccent]} onPress={() => { const value = themeDraft.trim(); commit((current) => ({ ...current, theme: value })); setThemeDraft(value); setThemeEditing(false); Keyboard.dismiss(); Alert.alert('保存しました', '今月のテーマを保存しました。'); }}><Text style={styles.primaryButtonText}>保存</Text></Pressable>
               </View>
-            </View>
+            </View> : <Pressable style={[styles.savedThemeCard, isDark && styles.savedThemeCardDark, rawDesignMode === 'chic' && palette && { backgroundColor: palette.cardSurface, borderColor: palette.border }]} onPress={() => setThemeEditing(true)}>
+              <Text style={[styles.savedThemeHint, { color: theme.colors.secondaryText }]}>今月のテーマ</Text>
+              <Text style={[styles.savedThemeText, { color: rawDesignMode === 'chic' && palette ? palette.textPrimary : theme.colors.primaryText }]}>{state.theme}</Text>
+              <Text style={[styles.savedThemeEdit, { color: rawDesignMode === 'chic' && palette ? palette.accentStrong : theme.colors.primaryAccent }]}>編集</Text>
+            </Pressable>}
           </SectionCard>
 
           <SectionCard
@@ -486,6 +474,11 @@ const styles = StyleSheet.create({
   themePanelMinimal: { borderColor: '#111111', borderRadius: 16 },
   themePanelChic: { borderColor: '#E8D9E2' },
   themePanelDark: { backgroundColor: '#20293A', borderColor: '#303B50' },
+  savedThemeCard: { minHeight: 92, borderWidth: 1, borderRadius: 16, padding: 14, backgroundColor: '#FFFFFF' },
+  savedThemeCardDark: { backgroundColor: '#20293A', borderColor: '#303B50' },
+  savedThemeHint: { fontSize: 10, fontWeight: '800', marginBottom: 6 },
+  savedThemeText: { fontSize: 18, lineHeight: 24, fontWeight: '900' },
+  savedThemeEdit: { alignSelf: 'flex-end', fontSize: 11, fontWeight: '900', marginTop: 7 },
   themeInput: { minHeight: 78, borderWidth: 1, borderRadius: 14, paddingHorizontal: 12, paddingVertical: 12, fontSize: 15, fontWeight: '800', color: '#282538', textAlignVertical: 'top', backgroundColor: '#FFFFFF' },
   sectionTitleDark: { color: '#F4F7FC' },
   sectionSubtitleDark: { color: '#B4C0D4' },

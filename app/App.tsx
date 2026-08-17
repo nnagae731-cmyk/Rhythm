@@ -1981,7 +1981,7 @@ function FocusMode({ tasks, designMode, chicPalette, backgroundImageUri, onFocus
 function DailyScheduleTimeline({ date, tasks, plans, externalEvents, now, designMode, chicPalette, planTier, onEditTask, onEditPlan }: { date: string; tasks: Task[]; plans: DeparturePlan[]; externalEvents: Calendar.Event[]; now: Date; designMode: DesignMode; chicPalette?: ChicThemePalette; planTier: PlanTier; onEditTask: (task: Task) => void; onEditPlan: (plan: DeparturePlan) => void }) {
   const theme = getThemeTokens(designMode, chicPalette?.id ?? 'cool');
   const isDark = designMode === 'dark';
-  const categoryColors = Object.fromEntries(categories.map((category) => [category, designMode === 'chic' && chicPalette ? chicPalette.accent : theme.colors.primaryAccent])) as Record<Category, string>;
+  const categoryColors = Object.fromEntries(categories.map((category) => [category, designMode === 'chic' && chicPalette ? chicPalette.accentSoft : theme.colors.primaryAccent])) as Record<Category, string>;
   type ScheduleItem = { id: string; time?: string; title: string; meta: string; kind: 'task' | 'plan' | 'external' | 'done'; onPress?: () => void };
   const items: ScheduleItem[] = [];
   tasks.filter((task) => {
@@ -2057,7 +2057,7 @@ function TaskScheduleCalendar({ tasks, plans, externalEvents, now, designMode, c
   const isDark = designMode === 'dark';
   const designPlanAccent = designMode === 'chic' && chicPalette ? chicPalette.accent : '#7B6BE8';
   const designExternalAccent = designMode === 'chic' && chicPalette ? chicPalette.patternStripe : '#B9A8D8';
-  const categoryColors = Object.fromEntries(categories.map((category) => [category, designMode === 'chic' && chicPalette ? chicPalette.accent : theme.colors.primaryAccent])) as Record<Category, string>;
+  const categoryColors = Object.fromEntries(categories.map((category) => [category, designMode === 'chic' && chicPalette ? chicPalette.accentSoft : theme.colors.primaryAccent])) as Record<Category, string>;
   const chicAgendaStyle = designMode === 'chic' && chicPalette ? { backgroundColor: chicPalette.taskBackground, borderColor: chicPalette.border } : undefined;
   const [monthDate, setMonthDate] = useState(() => new Date(now.getFullYear(), now.getMonth(), 1));
   const [selectedDate, setSelectedDate] = useState(dateKey(now));
