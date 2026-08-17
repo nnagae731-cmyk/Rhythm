@@ -29,7 +29,7 @@ import { BottomNav } from './components/BottomNav';
 import { GuideModal } from './components/GuideModal';
 import { RecoveryModal } from './components/RecoveryModal';
 import { styles } from './styles/appStyles';
-import { Affirmation, CalendarMarks, Category, DeparturePlan, DeparturePreparationStatus, MonthlyReview, MonthlyWishState, NudgeMode, PersistedState, PhotoThemePhotoTarget, PhotoThemeSettings, Priority, RepeatRule, Screen, SharedEvent, SharedParticipantPrefs, Subtask, Task, TaskBucket, ThemeMode, TimeTab, UrgencyStatus, WidgetSize, WishAction, WishMonthMap } from './types';
+import { Affirmation, AffirmationCustomText, CalendarMarks, Category, DeparturePlan, DeparturePreparationStatus, MonthlyReview, MonthlyWishState, NudgeMode, PersistedState, PhotoThemePhotoTarget, PhotoThemeSettings, Priority, RepeatRule, Screen, SharedEvent, SharedParticipantPrefs, Subtask, Task, TaskBucket, ThemeMode, TimeTab, UrgencyStatus, WidgetSize, WishAction, WishMonthMap } from './types';
 import { initialPlan } from './storage/rhythmState';
 import { loadRhythmState, saveRhythmState } from './storage/rhythmStorage';
 import { categories, priorities, completionIcons, categoryColors as baseCategoryColors, designModes, getLateRiskMessage, getNextBestAction, getUrgencyStatus, urgencyLevel } from './features/tasks/taskUtils';
@@ -46,7 +46,7 @@ import { deleteManagedPhotoUri, persistPhotoUri } from './features/photo/persist
 import {
   Alert,
   Animated,
-  Appearance,
+  useColorScheme,
   Easing,
   Image,
   Linking,
@@ -430,14 +430,14 @@ export default function App() {
   const [hapticsEnabled, setHapticsEnabled] = useState(true);
   const hapticsPreferenceTouchedRef = React.useRef(false);
   const [reviewPromptedAt, setReviewPromptedAt] = useState<string | undefined>();
-  const [systemColorScheme, setSystemColorScheme] = useState(Appearance.getColorScheme());
-  useEffect(() => {
-    const subscription = Appearance.addChangeListener(({ colorScheme }) => setSystemColorScheme(colorScheme));
-    return () => subscription.remove();
-  }, []);
+  // useColorScheme subscribes to iOS/Android appearance changes and triggers a
+  // render immediately. It is only consulted while Mono is selected; Design
+  // remains independent from the OS appearance.
+  const systemColorScheme = useColorScheme();
   const [chicPattern, setChicPattern] = useState<ChicPattern>('plain');
   const [chicCheckColor, setChicCheckColor] = useState<ChicCheckColor>('cool');
   const [affirmations, setAffirmations] = useState<Affirmation[]>([]);
+  const [affirmationCustomTexts, setAffirmationCustomTexts] = useState<AffirmationCustomText[]>([]);
   const [photoTheme, setPhotoTheme] = useState<PhotoThemeSettings>({ placement: 'background' });
   const [pendingTopPhoto, setPendingTopPhoto] = useState<{ target: Exclude<PhotoThemePhotoTarget, 'background' | 'focus'>; originalUri: string; sourceWidth: number; sourceHeight: number; cropRect?: NormalizedCropRect }>();
   const [recoveryHistory, setRecoveryHistory] = useState<RecoveryRecord[]>([]);
@@ -561,6 +561,15 @@ export default function App() {
       return;
     }
     const existing = affirmations.find((item) => item.id === draft.id);
+    if (!existing && affirmations.length >= 5) {
+      Alert.alert('アファメーションは最大5件までです', '不要な通知を削除してから追加してください。');
+      return;
+    }
+    const duplicateTime = affirmations.find((item) => item.id !== draft.id && item.time === draft.time);
+    if (duplicateTime) {
+      Alert.alert('同じ時刻の通知があります', '別の時刻を選択してください。');
+      return;
+    }
     await Notifications.cancelScheduledNotificationAsync(existing?.notificationId ?? `affirmation:${draft.id}`).catch(() => undefined);
     const next: Affirmation = { ...draft, notificationId: undefined };
     if (next.enabled) {
@@ -574,6 +583,12 @@ export default function App() {
     }
     setAffirmations((current) => current.some((item) => item.id === next.id) ? current.map((item) => item.id === next.id ? next : item) : [next, ...current]);
   }, [affirmations, openPremiumFeature, planTier]);
+  const saveAffirmationCustomText = React.useCallback((draft: AffirmationCustomText) => {
+    setAffirmationCustomTexts((current) => current.some((item) => item.id === draft.id) ? current.map((item) => item.id === draft.id ? draft : item) : [draft, ...current]);
+  }, []);
+  const deleteAffirmationCustomText = React.useCallback((id: string) => {
+    setAffirmationCustomTexts((current) => current.filter((item) => item.id !== id));
+  }, []);
   const deleteAffirmation = React.useCallback(async (affirmation: Affirmation) => {
     await Notifications.cancelScheduledNotificationAsync(affirmation.notificationId ?? `affirmation:${affirmation.id}`).catch(() => undefined);
     setAffirmations((current) => current.filter((item) => item.id !== affirmation.id));
@@ -1034,6 +1049,7 @@ export default function App() {
         setChicPattern(saved.chicPattern ? normalizeChicPattern(saved.chicPattern) : 'plain');
         setChicCheckColor(normalizeChicCheckColor(saved.chicCheckColor));
         setAffirmations(saved.affirmations ?? []);
+        setAffirmationCustomTexts(saved.affirmationCustomTexts ?? []);
         setPhotoTheme({
           placement: saved.photoTheme?.placement === 'top' ? 'top' : 'background',
           imageUri: saved.photoTheme?.imageUri,
@@ -1190,7 +1206,7 @@ export default function App() {
 
   useEffect(() => {
     if (!hydrated) return;
-    const state: PersistedState = { tasks, plan, departurePlans, widgetSize, showCompleted, completionIcon, designMode, monoAppearance, hapticsEnabled, reviewPromptedAt, taskTemplates, savedTaskTemplates, chicPattern, chicCheckColor, recoveryHistory, focusSessions, departureCheckIns, behaviorEvents, wishMonths, calendarMarks, sharedEvents, sharedParticipantIdsByToken, sharedParticipantPrefsByToken, departurePreparationStatuses, affirmations, photoTheme };
+    const state: PersistedState = { tasks, plan, departurePlans, widgetSize, showCompleted, completionIcon, designMode, monoAppearance, hapticsEnabled, reviewPromptedAt, taskTemplates, savedTaskTemplates, chicPattern, chicCheckColor, recoveryHistory, focusSessions, departureCheckIns, behaviorEvents, wishMonths, calendarMarks, sharedEvents, sharedParticipantIdsByToken, sharedParticipantPrefsByToken, departurePreparationStatuses, affirmations, affirmationCustomTexts, photoTheme };
     if (persistenceDisabledRef.current) return;
     saveRhythmState(state).catch((error) => {
       console.warn('Rhythm state save failed.', error);
@@ -1199,7 +1215,7 @@ export default function App() {
         Alert.alert('保存できませんでした', '空き容量や端末の設定を確認して、もう一度お試しください。');
       }
     });
-  }, [tasks, plan, departurePlans, widgetSize, showCompleted, completionIcon, designMode, monoAppearance, hapticsEnabled, reviewPromptedAt, taskTemplates, savedTaskTemplates, chicPattern, chicCheckColor, recoveryHistory, focusSessions, departureCheckIns, behaviorEvents, wishMonths, calendarMarks, sharedEvents, sharedParticipantIdsByToken, sharedParticipantPrefsByToken, departurePreparationStatuses, affirmations, photoTheme, hydrated]);
+  }, [tasks, plan, departurePlans, widgetSize, showCompleted, completionIcon, designMode, monoAppearance, hapticsEnabled, reviewPromptedAt, taskTemplates, savedTaskTemplates, chicPattern, chicCheckColor, recoveryHistory, focusSessions, departureCheckIns, behaviorEvents, wishMonths, calendarMarks, sharedEvents, sharedParticipantIdsByToken, sharedParticipantPrefsByToken, departurePreparationStatuses, affirmations, affirmationCustomTexts, photoTheme, hydrated]);
 
   const requestAppReview = React.useCallback(async () => {
     try {
@@ -1801,6 +1817,7 @@ export default function App() {
                chicCheckColor={chicCheckColor}
                chicPalette={chicPalette}
                affirmations={affirmations}
+               affirmationCustomTexts={affirmationCustomTexts}
                photoTheme={photoTheme}
               planTier={planTier}
               onSize={setWidgetSize}
@@ -1829,6 +1846,8 @@ export default function App() {
                onChicCheckColor={setChicCheckColor}
                onSaveAffirmation={saveAffirmation}
                onDeleteAffirmation={deleteAffirmation}
+               onSaveAffirmationCustomText={saveAffirmationCustomText}
+               onDeleteAffirmationCustomText={deleteAffirmationCustomText}
                onPickPhotoTheme={(target) => void pickPhotoTheme(target)}
                onAdjustPhotoTheme={(target) => adjustTopPhoto(target)}
                onClearPhotoTheme={(target) => setPhotoTheme((current) => {

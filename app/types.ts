@@ -105,10 +105,19 @@ export type MonthlyWishState = {
 export type Affirmation = {
   id: string;
   text: string;
+  templateId?: string;
+  source?: 'template' | 'custom';
+  customTextId?: string;
   time: string;
   enabled: boolean;
   createdAt: string;
   notificationId?: string;
+};
+
+export type AffirmationCustomText = {
+  id: string;
+  text: string;
+  createdAt: string;
 };
 
 export type PhotoThemeTopSlot = 'home' | 'timeline' | 'analysis' | 'wish' | 'settings';
@@ -194,5 +203,6 @@ export type PersistedState = {
   sharedParticipantPrefsByToken?: Record<string, SharedParticipantPrefs>;
   departurePreparationStatuses?: Record<string, DeparturePreparationStatus>;
   affirmations?: Affirmation[];
+  affirmationCustomTexts?: AffirmationCustomText[];
   photoTheme?: PhotoThemeSettings;
 };

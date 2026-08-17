@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Image, Pressable, Switch, Text, TextInput, View } from 'react-native';
 import { ChicCheckColor, ChicPattern, ChicThemePalette, DesignMode, getDesignCheckColorLabel } from '../theme';
-import { Affirmation, PhotoThemePhotoTarget, PhotoThemeSettings, Task, WidgetSize } from '../types';
+import { Affirmation, AffirmationCustomText, PhotoThemePhotoTarget, PhotoThemeSettings, Task, WidgetSize } from '../types';
 import { PlanTier } from '../premiumAccess';
 import { PremiumGuideFeatureId } from '../premiumGuide';
 import { PremiumTaskTemplate } from '../taskTemplates';
@@ -22,6 +22,7 @@ export function SettingsScreen({
   chicPattern,
   chicCheckColor,
   affirmations,
+  affirmationCustomTexts,
   photoTheme,
   onSize,
   onShowCompleted,
@@ -34,6 +35,8 @@ export function SettingsScreen({
   onChicCheckColor,
   onSaveAffirmation,
   onDeleteAffirmation,
+  onSaveAffirmationCustomText,
+  onDeleteAffirmationCustomText,
   onPickPhotoTheme,
   onAdjustPhotoTheme,
   onClearPhotoTheme,
@@ -63,6 +66,7 @@ export function SettingsScreen({
   chicPattern: ChicPattern;
   chicCheckColor: ChicCheckColor;
   affirmations: Affirmation[];
+  affirmationCustomTexts: AffirmationCustomText[];
   photoTheme: PhotoThemeSettings;
   onSize: (size: WidgetSize) => void;
   onShowCompleted: (value: boolean) => void;
@@ -75,6 +79,8 @@ export function SettingsScreen({
   onChicCheckColor: (color: ChicCheckColor) => void;
   onSaveAffirmation: (affirmation: Affirmation) => Promise<void> | void;
   onDeleteAffirmation: (affirmation: Affirmation) => Promise<void> | void;
+  onSaveAffirmationCustomText: (text: AffirmationCustomText) => void;
+  onDeleteAffirmationCustomText: (id: string) => void;
   onPickPhotoTheme: (target: PhotoThemePhotoTarget) => void;
   onAdjustPhotoTheme: (target: Exclude<PhotoThemePhotoTarget, 'background' | 'focus'>) => void;
   onClearPhotoTheme: (target: PhotoThemePhotoTarget) => void;
@@ -156,9 +162,7 @@ export function SettingsScreen({
       </SettingsDisclosure>
       <View style={[styles.settingsCard, isDark && styles.darkSurface]}><View style={styles.switchRow}><View style={{ flex: 1 }}><Text style={[styles.switchTitle, isDark && styles.darkBodyText]}>触覚フィードバック</Text><Text style={[styles.switchCopy, isDark && styles.darkMutedText]}>完了や集中開始を振動で知らせます</Text></View><Switch value={hapticsEnabled} onValueChange={(value) => onHapticsEnabled(value)} trackColor={{ false: isDark ? '#40506A' : '#D8D3DE', true: isDesign && chicPalette ? chicPalette.accent : colors.violet }} thumbColor={hapticsEnabled ? (isDesign && chicPalette ? chicPalette.onAccent : '#FFFFFF') : (isDark ? '#8F9BB0' : '#FFFFFF')} /></View></View>
       <Pressable style={[styles.settingsCard, isDark && styles.darkSurface]} onPress={onReview}><Text style={[styles.settingsTitle, isDark && styles.darkBodyText]}>アプリを評価する</Text><Text style={[styles.switchCopy, isDark && styles.darkMutedText]}>短いレビューでRhythmの改善を応援できます</Text></Pressable>
-      <SettingsDisclosure designMode={designMode} title="今日のアファメーション" subtitle="好きな言葉を、選んだ時間に届ける" expanded={expandedSetting === 'affirmations'} onPress={() => setExpandedSetting((current) => current === 'affirmations' ? null : 'affirmations')}>
-        <AffirmationSettingsCard affirmations={affirmations} designMode={designMode} chicPalette={chicPalette} planTier={planTier} onPremium={onPremium} onSave={onSaveAffirmation} onDelete={onDeleteAffirmation} styles={styles} />
-      </SettingsDisclosure>
+      <AffirmationSettingsCard affirmations={affirmations} customTexts={affirmationCustomTexts} designMode={designMode} chicPalette={chicPalette} planTier={planTier} onPremium={onPremium} onSave={onSaveAffirmation} onDelete={onDeleteAffirmation} onSaveCustomText={onSaveAffirmationCustomText} onDeleteCustomText={onDeleteAffirmationCustomText} styles={styles} />
       <SettingsDisclosure designMode={designMode} title="クイック雛形" subtitle="よく使うタスクを保存" expanded={expandedSetting === 'quick'} onPress={() => setExpandedSetting((current) => current === 'quick' ? null : 'quick')}>
       <View style={[styles.settingsCard, isDark && styles.darkSurface]}>
         <Text style={[styles.switchCopy, isDark && styles.darkMutedText]}>よく登録するタスクを自分用に保存できます</Text>
