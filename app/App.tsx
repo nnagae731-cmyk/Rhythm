@@ -46,6 +46,7 @@ import { deleteManagedPhotoUri, persistPhotoUri } from './features/photo/persist
 import {
   Alert,
   Animated,
+  Appearance,
   Easing,
   Image,
   Linking,
@@ -59,7 +60,6 @@ import {
   Text,
   View,
   Vibration,
-  useColorScheme,
 } from 'react-native';
 
 const colors = {
@@ -428,8 +428,13 @@ export default function App() {
   const [designMode, setDesignMode] = useState<DesignMode>('minimal');
   const [monoAppearance, setMonoAppearance] = useState<'auto' | 'light' | 'dark'>('auto');
   const [hapticsEnabled, setHapticsEnabled] = useState(true);
+  const hapticsPreferenceTouchedRef = React.useRef(false);
   const [reviewPromptedAt, setReviewPromptedAt] = useState<string | undefined>();
-  const systemColorScheme = useColorScheme();
+  const [systemColorScheme, setSystemColorScheme] = useState(Appearance.getColorScheme());
+  useEffect(() => {
+    const subscription = Appearance.addChangeListener(({ colorScheme }) => setSystemColorScheme(colorScheme));
+    return () => subscription.remove();
+  }, []);
   const [chicPattern, setChicPattern] = useState<ChicPattern>('plain');
   const [chicCheckColor, setChicCheckColor] = useState<ChicCheckColor>('cool');
   const [affirmations, setAffirmations] = useState<Affirmation[]>([]);
@@ -1014,7 +1019,7 @@ export default function App() {
         if (saved.widgetSize) setWidgetSize(saved.widgetSize);
         if (typeof saved.showCompleted === 'boolean') setShowCompleted(saved.showCompleted);
         if (saved.completionIcon) setCompletionIcon(saved.completionIcon);
-        if (typeof saved.hapticsEnabled === 'boolean') setHapticsEnabled(saved.hapticsEnabled);
+        if (!hapticsPreferenceTouchedRef.current && typeof saved.hapticsEnabled === 'boolean') setHapticsEnabled(saved.hapticsEnabled);
         if (saved.reviewPromptedAt) setReviewPromptedAt(saved.reviewPromptedAt);
         if (saved.designMode === 'minimal' || saved.designMode === 'dark' || saved.designMode === 'chic' || saved.designMode === 'photo') {
           setDesignMode(saved.designMode);
@@ -1205,6 +1210,11 @@ export default function App() {
     } catch {
       // Review UI is OS controlled and may be unavailable in Expo Go or simulators.
     }
+  }, []);
+
+  const handleHapticsEnabled = React.useCallback((value: boolean) => {
+    hapticsPreferenceTouchedRef.current = true;
+    setHapticsEnabled(Boolean(value));
   }, []);
 
   useEffect(() => {
@@ -1768,9 +1778,10 @@ export default function App() {
               }}
               calendarMarks={calendarMarks}
               onSetCalendarMark={(date: string, mark?: string) => setCalendarMarks((current) => { const next = { ...current }; if (mark) next[date] = mark; else delete next[date]; return next; })}
+              hapticsEnabled={hapticsEnabled}
               styles={styles}
               helpers={{ getThemeTokens: getThemedThemeTokens, dateKey, planDateKey, hasPremiumAccess, formatLiveDate, formatLiveTime, getDepartureMoments, normalizePlanDate, countdownToDate, dateForReminder, getMapSearchTarget, openMapSearch, getPlanCountdownAt, colors: themedColors }}
-              components={{ TimeTabButton, FocusMode: (props: any) => <FocusMode {...props} hapticsEnabled={hapticsEnabled} />, TaskScheduleCalendar, DailyScheduleTimeline, RecoveryModal }}
+              components={{ TimeTabButton, FocusMode, TaskScheduleCalendar, DailyScheduleTimeline, RecoveryModal }}
             />
           )}
 
@@ -1808,7 +1819,7 @@ export default function App() {
                  setDesignMode('minimal');
                  setMonoAppearance(appearance);
                }}
-               onHapticsEnabled={setHapticsEnabled}
+               onHapticsEnabled={handleHapticsEnabled}
                onReview={() => void requestAppReview()}
               onChicPattern={(pattern) => {
                 const feature = pattern === 'plain' || pattern === 'floral' || pattern === 'floralSoft' || pattern === 'floralSeasonal' || pattern === 'floralDark' ? undefined : getChicPatternFeatureId(pattern);
