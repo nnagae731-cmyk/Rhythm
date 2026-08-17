@@ -41,6 +41,7 @@ export function TaskModal({ visible, task, templates, savedTemplates, designMode
   const [smartResult, setSmartResult] = useState<SmartTaskParseResult>({ title: '', matched: [] });
   const [subtasks, setSubtasks] = useState<Subtask[]>([]);
   const [newSubtask, setNewSubtask] = useState('');
+  const titleInputRef = React.useRef<TextInput>(null);
 
   useEffect(() => {
     if (!visible) return;
@@ -182,7 +183,9 @@ export function TaskModal({ visible, task, templates, savedTemplates, designMode
           {!task && templates.length > 0 && <><Text style={styles.templateGroupLabel}>クイックひな型</Text><ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.taskTemplates}>{templates.map((item) => <Pressable key={item} style={styles.taskTemplateChip} onPress={() => setTitle(item)}><Text style={styles.taskTemplateText}>＋ {item}</Text></Pressable>)}</ScrollView></>}
           {!task && (hasPremiumAccess(planTier, 'saved_task_templates') ? <View style={styles.savedTemplatePicker}><Text style={styles.templateGroupLabel}>マイひな型</Text>{savedTemplates.length === 0 ? <Text style={styles.savedTemplateEmpty}>タスクの「•••」から設定ごと保存できます。</Text> : <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.savedTemplateChips}>{savedTemplates.map((template) => <Pressable key={template.id} style={styles.savedTemplateChip} onPress={() => applySavedTemplate(template)}><Text numberOfLines={1} style={styles.savedTemplateChipTitle}>{template.title}</Text><Text numberOfLines={2} style={styles.savedTemplateChipCopy}>{summarizePremiumTaskTemplate(template)}</Text><Text style={styles.savedTemplateChoose}>選ぶ ›</Text></Pressable>)}</ScrollView>}</View> : <Pressable style={styles.savedTemplateLocked} onPress={() => onPremium('templates')}><View style={{ flex: 1 }}><Text style={styles.savedTemplateLockedTitle}>マイひな型</Text><Text style={styles.savedTemplateLockedCopy}>一度作った設定を、次からそのまま使う</Text></View><Text style={styles.taskTemplateSavePremium}>Premium機能</Text></Pressable>)}
           <Text style={[styles.fieldLabel, designMode === 'dark' && styles.fieldLabelDark]}>やること・忘れたくないこと</Text>
+          <View style={styles.voiceAddInputRow}>
           <TextInput
+            ref={titleInputRef}
             autoFocus
             value={title}
             onChangeText={updateTitle}
@@ -193,6 +196,16 @@ export function TaskModal({ visible, task, templates, savedTemplates, designMode
             returnKeyType="done"
             onSubmitEditing={save}
           />
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="音声入力"
+            style={[styles.voiceAddMicButton, isDark && styles.voiceAddMicButtonDark]}
+            onPress={() => titleInputRef.current?.focus()}
+          >
+            <Text style={styles.voiceAddMicText}>🎙</Text>
+          </Pressable>
+          </View>
+          <Text style={[styles.voiceAddHint, isDark && styles.darkMutedText]}>マイクで話した内容も日時・通知・繰り返しを解析します</Text>
           {smartResult.matched.length > 0 && <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 8 }}><Text style={[styles.fieldLabel, designMode === 'dark' && styles.fieldLabelDark]}>解析結果</Text>{smartResult.scheduledDate && <Pressable style={styles.taskTemplateChip} onPress={() => { setScheduledDate(''); setSmartResult((current) => ({ ...current, scheduledDate: undefined })); }}><Text style={styles.taskTemplateText}>日付 {smartResult.scheduledDate} ×</Text></Pressable>}{smartResult.scheduledTime && <Pressable style={styles.taskTemplateChip} onPress={() => { setScheduledTime(''); setSmartResult((current) => ({ ...current, scheduledTime: undefined })); }}><Text style={styles.taskTemplateText}>時刻 {smartResult.scheduledTime} ×</Text></Pressable>}{smartResult.remindAt && <Pressable style={styles.taskTemplateChip} onPress={() => setSmartResult((current) => ({ ...current, remindAt: undefined, remindDate: undefined }))}><Text style={styles.taskTemplateText}>通知 {smartResult.remindDate} {smartResult.remindAt} ×</Text></Pressable>}{smartResult.repeatRule && <Pressable style={styles.taskTemplateChip} onPress={() => setSmartResult((current) => ({ ...current, repeatRule: undefined }))}><Text style={styles.taskTemplateText}>繰り返し {smartResult.repeatRule} ×</Text></Pressable>}</View>}
           <Text style={[styles.fieldLabel, { marginTop: 18 }, designMode === 'dark' && styles.fieldLabelDark]}>ジャンル</Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.categoryChoices}>

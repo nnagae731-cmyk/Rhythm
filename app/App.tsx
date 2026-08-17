@@ -1668,7 +1668,7 @@ export default function App() {
               selectionMode={selectionMode}
               selectedTaskIds={selectedTaskIds}
               onAdd={() => setAddOpen(true)}
-                onQuickAdd={(title, category, priority, scheduledDate, scheduledTime, isRoutine, deadlineDate, deadlineTime, deadlineNotifyBefore, remindDate, remindAt, repeatRule) => addTask(title, category, priority, remindDate, remindAt, deadlineDate, deadlineTime, deadlineNotifyBefore, undefined, undefined, undefined, undefined, repeatRule ?? 'none', 'once', scheduledDate, scheduledTime, isRoutine)}
+                onQuickAdd={(title, category, priority, scheduledDate, scheduledTime, isRoutine, deadlineDate, deadlineTime, deadlineNotifyBefore, remindDate, remindAt, repeatRule, subtasks) => addTask(title, category, priority, remindDate, remindAt, deadlineDate, deadlineTime, deadlineNotifyBefore, undefined, undefined, undefined, undefined, repeatRule ?? 'none', 'once', scheduledDate, scheduledTime, isRoutine, subtasks)}
               onToggle={(id) => completeTaskIds([id])}
               onToggleSubtask={toggleSubtask}
               onCompleteParent={completeParentTask}
