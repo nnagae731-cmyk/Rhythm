@@ -311,7 +311,6 @@ export const styles = StyleSheet.create({
   modeMiniSun: { position: 'absolute', width: 39, height: 39, borderRadius: 20, backgroundColor: '#FFE4BD', right: 7, top: 5 },
   modeMiniEgg: { position: 'absolute', fontSize: 31, left: 14, top: 17 },
   modeMiniGround: { position: 'absolute', left: -8, right: -8, height: 28, borderRadius: 40, bottom: -15, backgroundColor: '#CFE8E1' },
-  patternSelector: { marginTop: 16, borderTopWidth: 1, borderTopColor: '#F0DFE5', paddingTop: 13, display: 'none' },
   patternSelectorNew: { marginTop: 16, borderTopWidth: 1, borderTopColor: '#F0DFE5', paddingTop: 13 },
   patternChoices: { flexDirection: 'row', flexWrap: 'wrap', gap: 4, marginTop: 8 },
   patternChoice: { width: '30%', flexGrow: 0, flexShrink: 0, minWidth: 0, borderRadius: 14, borderWidth: 2, borderColor: 'transparent', backgroundColor: '#FFF3F5', padding: 4, minHeight: 82 },

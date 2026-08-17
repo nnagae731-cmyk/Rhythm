@@ -1,6 +1,7 @@
 import * as ImagePicker from 'expo-image-picker';
 import React, { useEffect, useState } from 'react';
-import { Image, Modal, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
+import { Image, Modal, Pressable, ScrollView, Share, Text, TextInput, View } from 'react-native';
+import * as ImageManipulator from 'expo-image-manipulator';
 import { ChicPattern, ChicThemePalette } from '../theme';
 import { hasPremiumAccess, isWithinFreeHistory, PlanTier } from '../premiumAccess';
 import { PremiumGuideFeatureId } from '../premiumGuide';
@@ -37,6 +38,12 @@ export function HistoryScreen({ tasks, wishMonths, calendarMarks, onSetCalendarM
   const [reviewEditNote, setReviewEditNote] = useState('');
   const [reviewEditMemo, setReviewEditMemo] = useState('');
   const [journalDraft, setJournalDraft] = useState<MonthlyReview>({ date: dateKey(now), photos: [], photo: '', shortNote: '', memo: '', satisfaction: 0 });
+  const [monthlyCardUri, setMonthlyCardUri] = useState<string>();
+  const [monthlyCardPhotoCount, setMonthlyCardPhotoCount] = useState(0);
+  const closeMonthlyCard = () => {
+    setMonthlyCardUri(undefined);
+    setMonthlyCardPhotoCount(0);
+  };
   const historyTasks = premiumHistory ? tasks : tasks.filter((task) => task.completedAt && isWithinFreeHistory(task.completedAt, now));
   const completedByDay = historyTasks.reduce<Record<string, Task[]>>((result, task) => {
     if (!task.completedAt) return result;
@@ -138,16 +145,16 @@ export function HistoryScreen({ tasks, wishMonths, calendarMarks, onSetCalendarM
     }, {})).slice(0, 8);
   const selectedDayReview = reviewsByDay[selectedKey]?.[0];
   const selectedJournalPhotos = journalDraft.photos?.filter(Boolean) ?? (journalDraft.photo ? [journalDraft.photo] : []);
-  const maxJournalPhotos = planTier === 'premium' ? 3 : 1;
+  // Photo logs remain available to every plan. The recap card, rather than the
+  // underlying journal, is limited by plan to keep exports lightweight.
+  const maxJournalPhotos = 20;
+  const monthlyCardLimit = planTier === 'premium' ? 9 : 3;
   const loadJournalDraft = (key: string) => {
     const existing = reviewsByDay[key]?.[0];
     setJournalDraft(existing ? normalizeMonthlyReview(existing) : { id: undefined, date: key, photo: '', photos: [], shortNote: '', memo: '', satisfaction: 0 });
   };
   const chooseJournalPhoto = async () => {
-    if (selectedJournalPhotos.length >= maxJournalPhotos) {
-      if (planTier !== 'premium') onPremium('month');
-      return;
-    }
+    if (selectedJournalPhotos.length >= maxJournalPhotos) return;
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!permission.granted) return;
     const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], allowsEditing: true, aspect: [4, 3], quality: 0.78 });
@@ -168,6 +175,20 @@ export function HistoryScreen({ tasks, wishMonths, calendarMarks, onSetCalendarM
   const saveJournal = () => {
     const photos = journalDraft.photos?.filter(Boolean) ?? (journalDraft.photo ? [journalDraft.photo] : []);
     onSaveDailyReview(selectedKey.slice(0, 7), { ...journalDraft, id: selectedDayReview?.id ?? journalDraft.id, date: selectedKey, photo: photos[0] ?? '', photos, shortNote: journalDraft.shortNote?.trim() ?? '', memo: journalDraft.memo?.trim() ?? '' });
+  };
+  const createMonthlyCard = async () => {
+    const monthPhotos = reviewEntries.flatMap((entry) => entry.review.photos?.filter(Boolean) ?? (entry.review.photo ? [entry.review.photo] : []));
+    const selectedPhotos = monthPhotos.slice(0, monthlyCardLimit);
+    if (selectedPhotos.length === 0) {
+      return;
+    }
+    try {
+      const result = await ImageManipulator.manipulateAsync(selectedPhotos[0]!, [{ resize: { width: 1080, height: 1920 } }], { compress: 0.9, format: ImageManipulator.SaveFormat.PNG });
+      setMonthlyCardUri(result.uri);
+      setMonthlyCardPhotoCount(selectedPhotos.length);
+    } catch (error) {
+      console.warn('Could not create monthly photo card.', error);
+    }
   };
 
   return (
@@ -212,11 +233,12 @@ export function HistoryScreen({ tasks, wishMonths, calendarMarks, onSetCalendarM
             <View><Text style={[styles.journalEditorTitle, isDark && styles.darkBodyText]}>今日の記録</Text><Text style={[styles.journalEditorDate, isDark && styles.darkAccentText]}>{selectedKey.replaceAll('-', '.')}</Text></View>
             <Text style={[styles.journalEditorCount, isDark && styles.darkAccentText]}>写真 {selectedJournalPhotos.length} / {maxJournalPhotos}</Text>
           </View>
+          <Pressable style={[styles.journalSaveButton, { marginBottom: 10 }]} onPress={() => void createMonthlyCard()}><Text style={styles.journalSaveButtonText}>今月の振り返りカードを作成</Text></Pressable>
           <View style={styles.journalPhotoRow}>
             {selectedJournalPhotos.map((uri, index) => <View key={`${uri}-${index}`} style={styles.journalPhotoWrap}><Pressable onPress={() => { setSelectedReview({ ...journalDraft, photo: uri, photos: selectedJournalPhotos }); setSelectedReviewPhotoIndex(index); }}><Image source={{ uri }} style={styles.journalPhotoThumb} /></Pressable><Pressable style={styles.journalPhotoRemove} onPress={() => setJournalDraft((current) => { const photos = (current.photos?.filter(Boolean) ?? (current.photo ? [current.photo] : [])).filter((_, photoIndex) => photoIndex !== index); return { ...current, photo: photos[0] ?? '', photos }; })}><Text style={styles.journalPhotoRemoveText}>×</Text></Pressable></View>)}
             {selectedJournalPhotos.length < maxJournalPhotos && <Pressable style={[styles.journalPhotoAdd, isDark && styles.darkJournalPhotoAdd]} onPress={() => void chooseJournalPhoto()}><Text style={[styles.journalPhotoAddIcon, isDark && styles.darkAccentText]}>＋</Text><Text style={[styles.journalPhotoAddText, isDark && styles.darkAccentText]}>写真を追加</Text></Pressable>}
           </View>
-          {planTier !== 'premium' && <Text style={[styles.journalPhotoHint, isDark && styles.darkMutedText]}>無料版は1枚まで。Premiumでは1日3枚まで残せます。</Text>}
+          {planTier !== 'premium' && <Text style={[styles.journalPhotoHint, isDark && styles.darkMutedText]}>無料版は当月3枚までカードにまとめられます。4枚目以降はPremiumでまとめられます。</Text>}
           <TextInput value={journalDraft.shortNote ?? ''} onChangeText={(shortNote) => setJournalDraft((current) => ({ ...current, shortNote }))} placeholder="今日のひとこと" placeholderTextColor={isDark ? '#8F9BB0' : '#A29DAA'} style={[styles.journalInput, isDark && styles.darkInput]} />
           <TextInput value={journalDraft.memo ?? ''} onChangeText={(memo) => setJournalDraft((current) => ({ ...current, memo }))} placeholder="今日のことを少し残す" placeholderTextColor={isDark ? '#8F9BB0' : '#A29DAA'} multiline style={[styles.journalInput, styles.journalMemo, isDark && styles.darkInput]} />
           <View style={styles.journalSatisfactionRow}>{[1, 2, 3, 4, 5].map((value) => <Pressable key={value} style={[styles.journalSatisfaction, isDark && styles.darkJournalSatisfaction, journalDraft.satisfaction === value && styles.journalSatisfactionActive, journalDraft.satisfaction === value && isDark && styles.darkJournalSatisfactionActive]} onPress={() => setJournalDraft((current) => ({ ...current, satisfaction: value }))}><Text style={[styles.journalSatisfactionText, isDark && styles.darkMutedText, journalDraft.satisfaction === value && styles.journalSatisfactionTextActive]}>{value}</Text></Pressable>)}<Text style={[styles.journalSatisfactionLabel, isDark && styles.darkAccentText]}>満足度</Text></View>
@@ -276,6 +298,19 @@ export function HistoryScreen({ tasks, wishMonths, calendarMarks, onSetCalendarM
               <Pressable style={[styles.reviewDeleteButton, isDark && styles.darkDangerBorder]} onPress={() => { if (!selectedReviewEntry) return; onDeleteReview(selectedReviewEntry.monthKey, selectedReviewEntry.reviewKey); setSelectedReview(null); }}><Text style={[styles.reviewDeleteButtonText, isDark && styles.darkDangerText]}>削除</Text></Pressable>
             </View>
             <Pressable style={[styles.reviewPhotoModalClose, isDark && styles.darkRestoreButton]} onPress={() => setSelectedReview(null)}><Text style={styles.reviewPhotoModalCloseText}>閉じる</Text></Pressable>
+          </Pressable>
+        </Pressable>
+      </Modal>
+      <Modal visible={Boolean(monthlyCardUri)} transparent animationType="fade" onRequestClose={closeMonthlyCard}>
+        <Pressable style={styles.modalBackdrop} onPress={closeMonthlyCard}>
+          <Pressable style={[styles.reviewPhotoModal, isDark && styles.darkReviewModal]} onPress={(event) => event.stopPropagation()}>
+            <Text style={[styles.reviewEditTitle, isDark && styles.darkBodyText]}>今月の振り返りカード</Text>
+            {monthlyCardUri && <Image source={{ uri: monthlyCardUri }} style={[styles.reviewPhotoLarge, { aspectRatio: 9 / 16 }, isDark && styles.darkReviewImage]} />}
+            <Text style={[styles.reviewPhotoModalMemo, isDark && styles.darkMutedText]}>{monthlyCardPhotoCount}枚の写真から作成しました</Text>
+            <View style={styles.reviewPhotoModalActions}>
+              <Pressable style={styles.reviewEditButton} onPress={() => { if (monthlyCardUri) void Share.share({ url: monthlyCardUri, message: 'Rhythmの今月の振り返り' }).catch(() => undefined); }}><Text style={[styles.reviewEditButtonText, isDark && styles.darkAccentText]}>共有</Text></Pressable>
+              <Pressable style={[styles.reviewPhotoModalClose, isDark && styles.darkRestoreButton]} onPress={closeMonthlyCard} accessibilityRole="button"><Text style={styles.reviewPhotoModalCloseText}>閉じる</Text></Pressable>
+            </View>
           </Pressable>
         </Pressable>
       </Modal>

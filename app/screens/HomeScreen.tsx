@@ -35,6 +35,7 @@ export function HomeScreen({
   onCompleteSelected,
   onDeleteSelected,
   onDelete,
+  onSkip,
   onDuplicate,
   onSaveTemplate,
   onPostpone,
@@ -63,6 +64,7 @@ export function HomeScreen({
   onCompleteSelected: () => void;
   onDeleteSelected: () => void;
   onDelete: (id: string) => void;
+  onSkip: (id: string) => void;
   onDuplicate: (task: Task) => void;
   onSaveTemplate: (task: Task) => void;
   onPostpone: (id: string) => void;
@@ -186,6 +188,7 @@ export function HomeScreen({
               <Pressable style={styles.taskActionOption} onPress={() => { if (actionTask) onPostpone(actionTask.id); setActionTask(null); }}><Text style={styles.taskActionIcon}>→</Text><Text style={styles.taskActionLabel}>明日へ</Text></Pressable>
               <Pressable style={[styles.taskActionOption, styles.taskActionDelete]} onPress={() => { if (actionTask) onDelete(actionTask.id); setActionTask(null); }}><Text style={[styles.taskActionIcon, styles.taskActionDeleteText]}>×</Text><Text style={[styles.taskActionLabel, styles.taskActionDeleteText]}>削除</Text></Pressable>
             </View>
+            <Pressable style={styles.taskActionOption} onPress={() => { if (actionTask) onSkip(actionTask.id); setActionTask(null); }}><Text style={styles.taskActionIcon}>☾</Text><Text style={styles.taskActionLabel}>今日はスキップ</Text></Pressable>
             <Pressable style={styles.taskTemplateSaveAction} onPress={() => { if (actionTask) onSaveTemplate(actionTask); setActionTask(null); }}><View><Text style={styles.taskTemplateSaveTitle}>設定ごとひな型に保存</Text><Text style={styles.taskTemplateSaveCopy}>カテゴリ・通知・間に合うナビも再利用</Text></View><Text style={styles.taskTemplateSavePremium}>Premium</Text></Pressable>
           </View>
         </Pressable>

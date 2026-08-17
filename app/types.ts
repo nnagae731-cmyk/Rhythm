@@ -15,6 +15,7 @@ export type Priority = '高' | '中' | '低';
 export type RepeatRule = 'none' | 'daily' | 'weekdays' | 'weekly' | 'monthly';
 export type TaskBucket = 'now' | 'later' | 'waiting';
 export type Subtask = { id: string; title: string; done: boolean; order: number };
+export type TaskStatus = 'active' | 'completed' | 'skipped';
 export type NudgeMode = 'once' | 'repeat' | 'strong';
 export type ThemeMode = DesignMode;
 export type UrgencyStatus = '余裕あり' | 'そろそろ準備' | '今出れば間に合う' | '急いで出発' | '予定どおりは厳しい' | 'リカバリーが必要';
@@ -24,6 +25,10 @@ export type Task = {
   title: string;
   createdAt?: string;
   done: boolean;
+  /** New status flag; legacy tasks derive this from `done` when absent. */
+  status?: TaskStatus;
+  /** Local day on which the task was skipped. */
+  skippedAt?: string;
   remindAt?: string;
   remindDate?: string;
   deadlineDate?: string;
