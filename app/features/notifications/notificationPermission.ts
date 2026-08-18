@@ -1,146 +1,92 @@
-import { Platform } from 'react-native';
 import * as Notifications from 'expo-notifications';
 
-export type RhythmNotificationPermission =
-  | 'granted'
+export type RhythmNotificationPermissionStatus =
+  | 'authorized'
   | 'provisional'
   | 'denied'
-  | 'undetermined';
+  | 'notDetermined';
 
-export type NotificationHealth = {
-  permission: RhythmNotificationPermission;
-  scheduledCount: number;
-};
-
-function mapNotificationPermission(
+function mapPermissionStatus(
   settings: Awaited<
     ReturnType<typeof Notifications.getPermissionsAsync>
   >,
-): RhythmNotificationPermission {
-  if (settings.granted) {
-    return 'granted';
-  }
-
+): RhythmNotificationPermissionStatus {
   if (
-    Platform.OS === 'ios' &&
     settings.ios?.status ===
-      Notifications.IosAuthorizationStatus.PROVISIONAL
+    Notifications.IosAuthorizationStatus.PROVISIONAL
   ) {
     return 'provisional';
+  }
+
+  if (settings.status === 'granted') {
+    return 'authorized';
   }
 
   if (settings.status === 'denied') {
     return 'denied';
   }
 
-  return 'undetermined';
+  return 'notDetermined';
 }
 
-/**
- * 現在の通知許可状態を確認する。
- *
- * この関数では許可ダイアログを表示しない。
- */
-export async function getNotificationPermission(): Promise<
-  RhythmNotificationPermission
-> {
+export async function getNotificationPermissionStatus(): Promise<RhythmNotificationPermissionStatus> {
   const settings =
     await Notifications.getPermissionsAsync();
 
-  return mapNotificationPermission(settings);
+  return mapPermissionStatus(settings);
 }
 
-/**
- * ユーザー操作を起点として
- * 通知許可を要求するときに使用する。
- *
- * アプリ起動直後に自動実行しないこと。
- */
-export async function requestNotificationPermission(): Promise<
-  RhythmNotificationPermission
-> {
-  const settings =
+export function canUseNotifications(
+  status: RhythmNotificationPermissionStatus,
+): boolean {
+  return (
+    status === 'authorized' ||
+    status === 'provisional'
+  );
+}
+
+export async function requestRhythmNotificationPermission(): Promise<RhythmNotificationPermissionStatus> {
+  const current =
+    await getNotificationPermissionStatus();
+
+  if (
+    current === 'authorized' ||
+    current === 'provisional' ||
+    current === 'denied'
+  ) {
+    return current;
+  }
+
+  const result =
     await Notifications.requestPermissionsAsync({
       ios: {
         allowAlert: true,
-        allowBadge: true,
         allowSound: true,
+        allowBadge: true,
       },
     });
 
-  return mapNotificationPermission(settings);
+  return mapPermissionStatus(result);
 }
 
-/**
- * 通知設定画面などで使用する
- * 現在の簡易ステータス。
- */
-export async function getNotificationHealth(): Promise<NotificationHealth> {
-  const [permissionSettings, scheduled] =
-    await Promise.all([
-      Notifications.getPermissionsAsync(),
-      Notifications.getAllScheduledNotificationsAsync(),
-    ]);
+export type NotificationPermissionAction =
+  | 'none'
+  | 'request'
+  | 'openSettings';
 
-  return {
-    permission:
-      mapNotificationPermission(permissionSettings),
-    scheduledCount: scheduled.length,
-  };
-}
-
-export type NotificationTestResult =
-  | {
-      scheduled: true;
-      notificationId: string;
-    }
-  | {
-      scheduled: false;
-      reason: 'permission_required';
-    };
-
-/**
- * Rhythmの通知が実際に届くか確認するための
- * ローカルテスト通知。
- *
- * 既存のNotification Handlerを使用するため、
- * このファイルではsetNotificationHandlerを登録しない。
- */
-export async function scheduleNotificationTest(): Promise<NotificationTestResult> {
-  const permission =
-    await getNotificationPermission();
-
+export function getNotificationPermissionAction(
+  status: RhythmNotificationPermissionStatus,
+): NotificationPermissionAction {
   if (
-    permission !== 'granted' &&
-    permission !== 'provisional'
+    status === 'authorized' ||
+    status === 'provisional'
   ) {
-    return {
-      scheduled: false,
-      reason: 'permission_required',
-    };
+    return 'none';
   }
 
-  const notificationId =
-    await Notifications.scheduleNotificationAsync({
-      content: {
-        title: 'Rhythm 通知テスト',
-        body: '通知は正常に動いています。',
-        sound: 'default',
-        data: {
-          kind: 'rhythm_notification_test',
-        },
-      },
+  if (status === 'denied') {
+    return 'openSettings';
+  }
 
-      trigger: {
-        type:
-          Notifications
-            .SchedulableTriggerInputTypes.TIME_INTERVAL,
-        seconds: 3,
-      },
-    });
-
-  return {
-    scheduled: true,
-    notificationId,
-  };
+  return 'request';
 }

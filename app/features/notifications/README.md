@@ -1,24 +1,109 @@
-# Rhythm Notifications
+# Rhythm Notification Permission
 
-Rhythm全体の通知状態確認に関する
-共通処理を管理する。
+Rhythmの通知許可に関する
+共通仕様を管理する。
 
----
-
-# 目的
-
-設定画面から、
-
-- 通知が許可されているか
-- 通知許可を要求する
-- テスト通知を送る
-- 現在何件の通知が予約されているか
-
-を確認できるようにする。
+テスト通知機能は作らない。
 
 ---
 
-# 既存通知管理
+# 基本方針
+
+通知許可は必要。
+
+ただし、
+アプリ初回起動直後には要求しない。
+
+通知が必要になる操作を
+ユーザーが行ったタイミングで案内する。
+
+---
+
+# 初回起動
+
+初回起動時：
+
+通知許可ダイアログを表示しない。
+
+まずRhythmの基本操作を
+Todoから体験してもらう。
+
+---
+
+# 通知許可を出すタイミング
+
+通知を利用する機能を
+初めて使用するときに案内する。
+
+例：
+
+- Todoのリマインド
+- 予定・出発通知
+- 集中タイマー終了通知
+- アファメーション通知
+
+実際に最初にどの操作で
+通知許可を要求するかは、
+各画面のUX設計時に決定する。
+
+---
+
+# 許可前のRhythm案内
+
+iOSのシステムダイアログを
+突然表示しない。
+
+先にRhythm側で短く説明する。
+
+CTA：
+
+「通知を許可する」
+
+CTAを押した後に
+
+requestRhythmNotificationPermission()
+
+を呼ぶ。
+
+---
+
+# 許可状態
+
+authorized
+
+通知利用可能。
+
+provisional
+
+通知利用可能な状態として扱う。
+
+notDetermined
+
+まだ通知許可を要求していない状態。
+
+denied
+
+ユーザーが通知を拒否した状態。
+
+---
+
+# deniedの場合
+
+システム許可ダイアログを
+何度も要求しない。
+
+必要な場合は
+
+「iPhoneの設定から通知をオンにできます」
+
+という案内へ切り替える。
+
+将来、
+設定アプリを開く導線を追加する。
+
+---
+
+# 設定画面
 
 SettingsScreenにはすでに
 
@@ -26,153 +111,77 @@ NotificationManagerCard
 
 が存在する。
 
-現在、
+新しい通知設定画面を作らない。
 
-「通知管理」
-「予約中の通知を確認・停止」
+将来Codexで、
+既存の通知管理へ
 
-というUIがある。
+- 通知ON
+- 通知OFF
+- 設定から変更
 
-そのため、
-新しい通知管理画面を作らない。
-
-notificationHealth.tsは
-既存NotificationManagerCardへ
-必要な情報を追加するために使用する。
-
----
-
-# notificationHealth.ts
-
-担当：
-
-- 通知許可状態確認
-- 通知許可要求
-- テスト通知
-- 予約通知件数取得
-
-予定やTodoなど、
-個別通知の予約ロジックは担当しない。
+などの状態表示を追加する。
 
 ---
 
 # 個別通知
 
-既存の個別通知処理は維持する。
+この機能は
+通知許可だけを担当する。
 
-例：
+Todo
+予定・出発
+Focus
+Affirmation
 
-tasks/taskNotifications.ts
-
-departure関連通知
-
-focus/focusNotifications.ts
-
-これらを
-notificationHealth.tsへ統合しない。
+などの個別通知ロジックは
+それぞれの機能側で管理する。
 
 ---
 
-# Notification Handler
+# Focus
 
-App.tsxにはすでに
+Focus終了通知でも
+Rhythm共通の通知許可状態を利用する。
 
-Notifications.setNotificationHandler()
-
-が存在する。
-
-新しいHandlerを
-notificationHealth.tsへ追加しない。
-
-アプリ全体で
-既存Handlerを共通利用する。
+AlarmKitのauthorizationは
+通常の通知許可とは別なので、
+将来AlarmKit実装時に分離して扱う。
 
 ---
 
-# 通知許可
+# Onboardingとの違い
 
-アプリ起動直後に
-突然通知許可を要求しない。
+Feature Onboarding：
 
-ユーザーが、
+機能の使い方を説明する。
 
-- 通知を使う機能を使用する
-- 設定画面から通知を有効にする
+Notification Permission：
 
-など、
-通知の意味を理解できるタイミングで要求する。
-
----
-
-# 設定画面
-
-将来Codexで
-既存NotificationManagerCardへ以下を追加する。
-
-通知状態：
-
-許可済み
-一時許可
-未許可
-拒否
-
-テスト通知：
-
-「テスト通知を送る」
-
-予約通知：
-
-現在の予約件数
-
-既存の予約通知一覧や
-停止機能はそのまま利用する。
-
----
-
-# テスト通知
-
-scheduleNotificationTest()
-
-を使用する。
-
-3秒後に
-
-Rhythm 通知テスト
-
-を表示する。
-
-テスト通知のために
-独自Notification Handlerを作らない。
+iOS通知許可へ進む前の
+意味説明と状態管理を担当する。
 
 ---
 
 # デザイン
 
-通知管理画面は
-通常の設定画面の一部。
+通知許可のRhythm側案内は
+表示されている画面のテーマへ追従する。
 
-Onboardingとは異なる。
-
-ユーザーが現在選択している
-
-- Mono Light
-- Mono Dark
-- Design
-- Photo
-
-のテーマへ追従する。
+Feature Onboardingの
+Mono Light固定仕様とは別。
 
 ---
 
 # Codex実装時
 
-1. 現在のNotificationManagerCardを確認
-2. 新しい通知管理画面を作らない
-3. notificationHealth.tsを既存Cardへ接続
-4. 通知許可状態を表示
-5. 必要な場合だけ通知許可ボタンを表示
-6. テスト通知ボタンを追加
-7. 予約通知件数を表示
-8. 既存の通知一覧・停止処理は維持
-9. App.tsxのNotification Handlerを増やさない
-10. Todo / 予定 / Focus通知ロジックを壊さない
+1. notificationPermission.tsを共通利用する
+2. 初回起動時に自動要求しない
+3. 通知が必要になる操作で案内する
+4. Rhythm側の説明後にiOS許可を表示する
+5. denied時に許可要求を繰り返さない
+6. 既存NotificationManagerCardを利用する
+7. 新しい通知設定画面を作らない
+8. テスト通知機能を追加しない
+9. 個別通知ロジックを統合しない
+10. App.tsxのNotification Handlerを増やさない
