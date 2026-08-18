@@ -2295,7 +2295,8 @@ function DailyScheduleTimeline({ date, tasks, plans, externalEvents, now, design
   const timelineHeight = timelineHours.length * hourHeight;
   const placements = timed.reduce<Array<ScheduleItem & { startMinutes: number; endMinutes: number; column: number }>>((result, item) => {
     const startMinutes = parseClock(item.time!);
-    const endMinutes = item.endTime ? Math.max(startMinutes + 30, parseClock(item.endTime)) : startMinutes + 48;
+    const minimumCardMinutes = designMode === 'chic' ? 72 : 48;
+    const endMinutes = item.endTime ? Math.max(startMinutes + (designMode === 'chic' ? 72 : 30), parseClock(item.endTime)) : startMinutes + minimumCardMinutes;
     let column = 0;
     while (result.some((placed) => placed.column === column && startMinutes < placed.endMinutes && endMinutes > placed.startMinutes)) column += 1;
     result.push({ ...item, startMinutes, endMinutes, column });
@@ -2326,8 +2327,8 @@ function DailyScheduleTimeline({ date, tasks, plans, externalEvents, now, design
       {placements.map((item) => {
         const accent = item.kind === 'plan' ? theme.colors.primaryAccent : item.kind === 'external' ? theme.colors.secondaryAccent : item.kind === 'done' ? theme.colors.secondaryText : categoryColors[tasks.find((task) => `task-${task.id}` === item.id)?.category ?? categories[0]!];
         const top = ((item.startMinutes - axisStartMinutes) / 60) * hourHeight + 4;
-        const height = Math.max(58, ((item.endMinutes - item.startMinutes) / 60) * hourHeight - 8);
-        const content = <View style={{ flex: 1, padding: 10, borderLeftWidth: 4, borderLeftColor: accent, borderRadius: 10, backgroundColor: theme.colors.secondarySurface, opacity: item.kind === 'done' ? 0.58 : 1, justifyContent: 'space-between' }}><Text style={{ color: accent, fontSize: 10, fontWeight: '900' }}>{item.time}</Text><Text numberOfLines={2} style={{ color: theme.colors.primaryText, fontSize: 14, fontWeight: '800', marginTop: 2 }}>{item.kind === 'done' ? '笨・' : ''}{item.title}</Text><Text numberOfLines={1} style={{ color: theme.colors.secondaryText, fontSize: 10, marginTop: 3 }}>{item.meta}</Text>{item.endTime && <Text style={{ color: theme.colors.secondaryText, fontSize: 10, fontWeight: '800', marginTop: 4 }}>終了 {item.endTime}</Text>}</View>;
+        const height = Math.max(designMode === 'chic' ? 76 : 58, ((item.endMinutes - item.startMinutes) / 60) * hourHeight - 8);
+        const content = <View style={{ flex: 1, padding: 10, borderLeftWidth: 4, borderLeftColor: accent, borderRadius: 10, backgroundColor: theme.colors.secondarySurface, opacity: item.kind === 'done' ? 0.58 : 1, justifyContent: 'space-between' }}><Text style={{ color: accent, fontSize: 10, fontWeight: '900' }}>{item.time}</Text><Text numberOfLines={designMode === 'chic' ? 3 : 2} ellipsizeMode="tail" style={{ color: theme.colors.primaryText, fontSize: designMode === 'chic' ? 13 : 14, lineHeight: designMode === 'chic' ? 18 : undefined, fontWeight: '800', marginTop: 2, flexShrink: 1 }}>{item.kind === 'done' ? '笨・' : ''}{item.title}</Text><Text numberOfLines={1} style={{ color: theme.colors.secondaryText, fontSize: 10, marginTop: 3 }}>{item.meta}</Text>{item.endTime && <Text style={{ color: theme.colors.secondaryText, fontSize: 10, fontWeight: '800', marginTop: 4 }}>終了 {item.endTime}</Text>}</View>;
         const card = item.onPress ? <Pressable onPress={item.onPress} style={{ flex: 1 }}>{content}</Pressable> : <View style={{ flex: 1 }}>{content}</View>;
         return <View key={`timeline-item-${item.id}`} style={{ position: 'absolute', top, left: `${(item.column * 100) / columnCount}%`, width: `${100 / columnCount}%`, height, paddingHorizontal: 4 }}>{card}</View>;
       })}
