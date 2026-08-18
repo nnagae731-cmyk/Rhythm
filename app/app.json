@@ -12,7 +12,10 @@
     },
     "android": {
       "package": "app.rhythm.daily",
-      "permissions": ["POST_NOTIFICATIONS", "SCHEDULE_EXACT_ALARM"]
+      "permissions": [
+        "POST_NOTIFICATIONS",
+        "SCHEDULE_EXACT_ALARM"
+      ]
     },
     "plugins": [
       [
@@ -32,6 +35,13 @@
         "expo-image-picker",
         {
           "photosPermission": "好きな写真をRhythmの背景やトップ画像に設定するために使用します。"
+        }
+      ],
+      [
+        "react-native-google-mobile-ads",
+        {
+          "iosAppId": "ca-app-pub-3940256099942544~1458002511",
+          "androidAppId": "ca-app-pub-3940256099942544~3347511713"
         }
       ]
     ]
