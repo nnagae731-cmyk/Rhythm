@@ -13,8 +13,11 @@
     "android": {
       "package": "app.rhythm.daily",
       "permissions": [
-        "POST_NOTIFICATIONS",
-        "SCHEDULE_EXACT_ALARM"
+        "android.permission.POST_NOTIFICATIONS",
+        "android.permission.SCHEDULE_EXACT_ALARM",
+        "android.permission.READ_CALENDAR",
+        "android.permission.WRITE_CALENDAR",
+        "android.permission.RECORD_AUDIO"
       ]
     },
     "plugins": [
@@ -44,6 +47,12 @@
           "androidAppId": "ca-app-pub-3940256099942544~3347511713"
         }
       ]
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "9f27c177-8ebe-4ef2-a6f2-89b48f60a821"
+      }
+    },
+    "owner": "rhythm-nn"
   }
 }
