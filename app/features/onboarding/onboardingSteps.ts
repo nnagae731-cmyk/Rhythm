@@ -22,10 +22,10 @@ export const ONBOARDING_STEPS: Record<
 > = {
   todo: {
     id: 'todo',
-    title: 'まずは今日やることを1つ',
+    title: 'やることを、そのまま入力',
     description:
-      'Todoを追加すると、今日やることが整理されます。まずは1つ登録してみましょう。',
-    actionLabel: 'Todoを追加',
+      '「明日15時に美容院」のように入力すると、日時も自動で設定できます。マイクから話して入力してもOK。',
+    actionLabel: 'やることを追加',
   },
 
   timeline: {
