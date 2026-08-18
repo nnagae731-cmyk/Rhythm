@@ -1786,7 +1786,7 @@ export default function App() {
         {photoTopImageUri ? <><Header designMode={uiDesignMode} now={now} compact chicPalette={chicPalette} /><View style={styles.photoThemeTopImage}><Image source={{ uri: photoTopImageUri }} resizeMode="contain" style={styles.photoThemeTopImageContent} /></View></> : <Header designMode={uiDesignMode} now={now} chicPalette={chicPalette} />}
         {completionAffirmation && <Animated.View pointerEvents="none" style={{ position: 'absolute', top: 72, left: 20, right: 20, zIndex: 30, opacity: completionAffirmationOpacity, alignItems: 'center' }}><View style={{ maxWidth: 340, paddingHorizontal: 18, paddingVertical: 12, borderRadius: 18, backgroundColor: uiDesignMode === 'dark' ? '#20293A' : uiDesignMode === 'chic' ? chicPalette.cardSurface : '#FFFFFF', borderWidth: 1, borderColor: uiDesignMode === 'dark' ? '#40506A' : uiDesignMode === 'chic' ? chicPalette.border : '#E5E0E5', shadowColor: '#000', shadowOpacity: 0.12, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 4 }}><Text style={{ textAlign: 'center', color: uiDesignMode === 'dark' ? '#F4F7FC' : uiDesignMode === 'chic' ? chicPalette.textPrimary : '#282538', fontSize: 14, fontWeight: '600' }}>{completionAffirmation}</Text></View></Animated.View>}
 
-        <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+        <ScrollView contentContainerStyle={[styles.content, screen === 'timeline' && styles.contentTimeline]} keyboardShouldPersistTaps="handled">
           {screen === 'home' && (
             <HomeScreen
               tasks={visibleTasks}
@@ -2290,18 +2290,29 @@ function DailyScheduleTimeline({ date, tasks, plans, externalEvents, now, design
   const firstHour = Math.min(7, ...axisHours);
   const lastHour = Math.max(22, ...axisHours);
   const timelineHours = Array.from({ length: lastHour - firstHour + 1 }, (_, index) => firstHour + index);
+  const hourHeight = 64;
+  const axisStartMinutes = firstHour * 60;
+  const timelineHeight = timelineHours.length * hourHeight;
+  const placements = timed.reduce<Array<ScheduleItem & { startMinutes: number; endMinutes: number; column: number }>>((result, item) => {
+    const startMinutes = parseClock(item.time!);
+    const endMinutes = item.endTime ? Math.max(startMinutes + 30, parseClock(item.endTime)) : startMinutes + 48;
+    let column = 0;
+    while (result.some((placed) => placed.column === column && startMinutes < placed.endMinutes && endMinutes > placed.startMinutes)) column += 1;
+    result.push({ ...item, startMinutes, endMinutes, column });
+    return result;
+  }, []);
+  const columnCount = Math.max(1, ...placements.map((item) => item.column + 1));
   return <View style={{ marginTop: 12, marginBottom: 8 }}>
     <View style={{ flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 8 }}><Text style={[styles.sectionTitle, { color: isDark ? '#F4F7FC' : theme.colors.primaryText }]}>今日の流れ</Text><Text style={{ color: theme.colors.primaryAccent, fontSize: 11, fontWeight: '800' }}>{date === currentDate ? '現在時刻を表示中' : '1日の予定'}</Text></View>
-    <View style={{ backgroundColor: theme.colors.surface, borderColor: theme.colors.border, borderWidth: 1, borderRadius: designMode === 'minimal' || isDark ? 16 : 18, overflow: 'hidden' }}>
+    <View style={{ backgroundColor: theme.colors.surface, borderColor: theme.colors.border, borderWidth: 1, borderRadius: designMode === 'minimal' || isDark ? 16 : 18, overflow: 'hidden', height: timelineHeight, position: 'relative' }}>
       {timelineHours.map((hour) => {
         const isCurrentHour = date === currentDate && now.getHours() === hour;
         const hourItems = timed.filter((item) => Math.floor(parseClock(item.time!) / 60) === hour);
-        const hourBlockHeight = Math.max(48, ...hourItems.map((item) => item.time && item.endTime ? Math.max(62, Math.min(360, (parseClock(item.endTime) - parseClock(item.time)) * 1.35 + 24)) : 48));
-        return <View key={`timeline-hour-${hour}`} style={{ flexDirection: 'row', minHeight: hourBlockHeight, borderBottomColor: theme.colors.border, borderBottomWidth: 1 }}>
+        return <View key={`timeline-hour-${hour}`} style={{ flexDirection: 'row', height: hourHeight, minHeight: hourHeight, borderBottomColor: theme.colors.border, borderBottomWidth: 1 }}>
           <View style={{ width: 66, paddingTop: 11, alignItems: 'center' }}><Text style={{ color: isCurrentHour ? theme.colors.primaryAccent : theme.colors.secondaryText, fontSize: 11, fontWeight: '700' }}>{String(hour).padStart(2, '0')}:00</Text></View>
           <View style={{ flex: 1, borderLeftWidth: 1, borderLeftColor: theme.colors.border, paddingBottom: hourItems.length > 0 ? 7 : 0 }}>
             <View style={{ marginTop: 23, borderTopWidth: 1, borderTopColor: isCurrentHour ? theme.colors.primaryAccent : theme.colors.border, opacity: isCurrentHour ? 0.9 : 0.65 }} />
-            {hourItems.map((item) => {
+            {false && hourItems.map((item) => {
               const accent = item.kind === 'plan' ? theme.colors.primaryAccent : item.kind === 'external' ? theme.colors.secondaryAccent : item.kind === 'done' ? theme.colors.secondaryText : categoryColors[tasks.find((task) => `task-${task.id}` === item.id)?.category ?? categories[0]!];
               const durationMinutes = item.time && item.endTime ? Math.max(0, parseClock(item.endTime) - parseClock(item.time)) : 0;
               const blockHeight = durationMinutes > 0 ? Math.max(62, Math.min(360, durationMinutes * 1.35)) : undefined;
@@ -2311,6 +2322,16 @@ function DailyScheduleTimeline({ date, tasks, plans, externalEvents, now, design
           </View>
         </View>;
       })}
+      <View pointerEvents="box-none" style={{ position: 'absolute', left: 66, right: 0, top: 0, bottom: 0 }}>
+      {placements.map((item) => {
+        const accent = item.kind === 'plan' ? theme.colors.primaryAccent : item.kind === 'external' ? theme.colors.secondaryAccent : item.kind === 'done' ? theme.colors.secondaryText : categoryColors[tasks.find((task) => `task-${task.id}` === item.id)?.category ?? categories[0]!];
+        const top = ((item.startMinutes - axisStartMinutes) / 60) * hourHeight + 4;
+        const height = Math.max(58, ((item.endMinutes - item.startMinutes) / 60) * hourHeight - 8);
+        const content = <View style={{ flex: 1, padding: 10, borderLeftWidth: 4, borderLeftColor: accent, borderRadius: 10, backgroundColor: theme.colors.secondarySurface, opacity: item.kind === 'done' ? 0.58 : 1, justifyContent: 'space-between' }}><Text style={{ color: accent, fontSize: 10, fontWeight: '900' }}>{item.time}</Text><Text numberOfLines={2} style={{ color: theme.colors.primaryText, fontSize: 14, fontWeight: '800', marginTop: 2 }}>{item.kind === 'done' ? '笨・' : ''}{item.title}</Text><Text numberOfLines={1} style={{ color: theme.colors.secondaryText, fontSize: 10, marginTop: 3 }}>{item.meta}</Text>{item.endTime && <Text style={{ color: theme.colors.secondaryText, fontSize: 10, fontWeight: '800', marginTop: 4 }}>邨ゆｺ・{item.endTime}</Text>}</View>;
+        const card = item.onPress ? <Pressable onPress={item.onPress} style={{ flex: 1 }}>{content}</Pressable> : <View style={{ flex: 1 }}>{content}</View>;
+        return <View key={`timeline-item-${item.id}`} style={{ position: 'absolute', top, left: `${(item.column * 100) / columnCount}%`, width: `${100 / columnCount}%`, height, paddingHorizontal: 4 }}>{card}</View>;
+      })}
+      </View>
     </View>
   </View>;
 }

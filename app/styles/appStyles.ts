@@ -46,6 +46,7 @@ export const styles = StyleSheet.create({
   brand: { color: colors.ink, fontSize: 29, fontWeight: '900', letterSpacing: -1.2 },
   brandMinimal: { color: '#182235', letterSpacing: -1.5 },
   content: { paddingHorizontal: 22, paddingTop: 16, paddingBottom: 140 },
+  contentTimeline: { paddingBottom: 190 },
   hero: { color: colors.ink, fontSize: 30, lineHeight: 38, fontWeight: '900', letterSpacing: -1.2, marginBottom: 22 },
   patternLayer: { ...StyleSheet.absoluteFillObject, overflow: 'hidden' },
   patternImageLayer: { ...StyleSheet.absoluteFillObject, width: '100%', height: '100%' },
