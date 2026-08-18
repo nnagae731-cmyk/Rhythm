@@ -2280,9 +2280,15 @@ function DailyScheduleTimeline({ date, tasks, plans, externalEvents, now, design
   externalEvents.filter((event) => dateKey(new Date(event.startDate)) === date).forEach((event) => items.push({ id: `external-${event.id}`, time: formatLiveTime(new Date(event.startDate)), title: event.title || 'カレンダー予定', meta: '端末カレンダー', kind: 'external' }));
   const timed = items.filter((item) => item.time).sort((a, b) => parseClock(a.time!) - parseClock(b.time!));
   const currentDate = dateKey(now);
-  const itemHours = timed.map((item) => Math.floor(parseClock(item.time!) / 60));
-  const firstHour = Math.min(7, ...itemHours);
-  const lastHour = Math.max(22, ...itemHours);
+  // Include each plan's end time when building the axis so the timeline
+  // continues through the full displayed time range, not only its start hour.
+  const axisHours = timed.flatMap((item) => {
+    const startMinutes = parseClock(item.time!);
+    const endMinutes = item.endTime ? Math.max(startMinutes, parseClock(item.endTime)) : startMinutes;
+    return [Math.floor(startMinutes / 60), Math.ceil(endMinutes / 60)];
+  });
+  const firstHour = Math.min(7, ...axisHours);
+  const lastHour = Math.max(22, ...axisHours);
   const timelineHours = Array.from({ length: lastHour - firstHour + 1 }, (_, index) => firstHour + index);
   return <View style={{ marginTop: 12, marginBottom: 8 }}>
     <View style={{ flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 8 }}><Text style={[styles.sectionTitle, { color: isDark ? '#F4F7FC' : theme.colors.primaryText }]}>今日の流れ</Text><Text style={{ color: theme.colors.primaryAccent, fontSize: 11, fontWeight: '800' }}>{date === currentDate ? '現在時刻を表示中' : '1日の予定'}</Text></View>
