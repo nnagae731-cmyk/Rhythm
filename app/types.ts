@@ -47,6 +47,8 @@ export type Task = {
   nudgeMode?: NudgeMode;
   scheduledDate?: string;
   scheduledTime?: string;
+  /** Optional end time for schedule range display. Legacy tasks omit this. */
+  endAt?: string;
   category: Category;
   priority: Priority;
   completedAt?: string;
@@ -68,6 +70,8 @@ export type DeparturePlan = {
   departureTime?: string;
   date: string;
   arrival: string;
+  /** Optional local HH:mm end time for schedule display. */
+  endAt?: string | null;
   travelMinutes: number;
   preparationMinutes: number;
   bufferMinutes: number;

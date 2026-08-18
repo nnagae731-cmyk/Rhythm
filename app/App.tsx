@@ -43,7 +43,6 @@ import { SharedEventScreen } from './SharedEventScreen';
 import { TopImageCropModal } from './components/TopImageCropModal';
 import { cropRectToPixels, displayToNormalizedRect, getContainBounds, getInitialCropRect, NormalizedCropRect } from './features/photo/topImageCrop';
 import { deleteManagedPhotoUri, persistPhotoUri } from './features/photo/persistentPhoto';
-import { affirmationTemplates } from './features/affirmations/affirmationTemplates';
 import {
   Alert,
   Animated,
@@ -76,6 +75,30 @@ const colors = {
   line: '#ECE8F0',
 };
 const categoryColors = baseCategoryColors;
+
+const focusCompletionMessages = [
+  'お疲れさま。ここまで集中できたね',
+  'よく頑張ったね。少し休憩しよう',
+  '集中タイム完了。頭と体を休ませよう',
+  'ひと区切りついたね。水分補給しよう',
+  '今取り組んだ時間は、ちゃんと積み重なっているよ',
+  'ここまで進めた自分を認めよう',
+  'ナイス集中。次は無理せず休もう',
+  '今日の自分に、まずは小さな拍手',
+] as const;
+
+const taskCompletionMessages = [
+  'タスク完了。今日も一歩前進',
+  'よくできたね。ちゃんと終わらせたよ',
+  'ひとつ片づいたね。えらい',
+  'やることをひとつ減らせたね',
+  '今日の自分、いい感じ',
+  '完了できた自分を褒めよう',
+  '小さな達成も、大事な前進',
+  'よく頑張ったね。次も自分のペースで',
+] as const;
+
+type CompletionFeedbackKind = 'focus' | 'task';
 
 // One static image per floral pattern. The same cached asset is reused by the
 // app background and pattern previews; no flowers are generated at runtime.
@@ -454,6 +477,7 @@ export default function App() {
   const [completionAffirmation, setCompletionAffirmation] = useState<string>();
   const completionAffirmationTimerRef = React.useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const completionAffirmationLastRef = React.useRef<string | undefined>(undefined);
+  const completionAffirmationRunRef = React.useRef(0);
   const lastAffirmationNotificationTextRef = React.useRef<string | undefined>(undefined);
   const preparationFeedbackKeysRef = React.useRef(new Set<string>());
   const completionAffirmationOpacity = React.useRef(new Animated.Value(0)).current;
@@ -531,12 +555,16 @@ export default function App() {
     line: chicPalette.border,
   } : colors, [uiDesignMode, chicPalette]);
   const currentWishMonthKey = wishMonthKey(now);
-  const showCompletionAffirmation = React.useCallback((withHaptic = false) => {
+  const showCompletionAffirmation = React.useCallback((kind: CompletionFeedbackKind = 'task', withHaptic = false) => {
     const configured = [...affirmations.map((item) => item.text.trim()), ...affirmationCustomTexts.map((item) => item.text.trim())].filter(Boolean);
-    const fallback = affirmationTemplates.map((item) => item.text);
-    const pool = (configured.length ? configured : fallback).filter((text) => text !== completionAffirmationLastRef.current && text !== lastAffirmationNotificationTextRef.current);
+    const fallback = kind === 'focus' ? focusCompletionMessages : taskCompletionMessages;
+    const candidates = [...configured, ...fallback];
+    const nonRepeating = candidates.filter((text) => text !== completionAffirmationLastRef.current && text !== lastAffirmationNotificationTextRef.current);
+    const pool = nonRepeating.length > 0 ? nonRepeating : candidates.filter((text) => text !== completionAffirmationLastRef.current);
     const text = pool[Math.floor(Math.random() * pool.length)] ?? fallback[0] ?? 'よく頑張ったね';
     completionAffirmationLastRef.current = text;
+    const runId = completionAffirmationRunRef.current + 1;
+    completionAffirmationRunRef.current = runId;
     if (completionAffirmationTimerRef.current) clearTimeout(completionAffirmationTimerRef.current);
     setCompletionAffirmation(text);
     completionAffirmationOpacity.stopAnimation();
@@ -545,7 +573,7 @@ export default function App() {
       Animated.timing(completionAffirmationOpacity, { toValue: 1, duration: 180, easing: Easing.out(Easing.ease), useNativeDriver: true }),
       Animated.delay(2200),
       Animated.timing(completionAffirmationOpacity, { toValue: 0, duration: 320, easing: Easing.in(Easing.ease), useNativeDriver: true }),
-    ]).start(({ finished }) => { if (finished) setCompletionAffirmation(undefined); });
+    ]).start(({ finished }) => { if (finished && completionAffirmationRunRef.current === runId) setCompletionAffirmation(undefined); });
     if (withHaptic) triggerHaptic(hapticsEnabled, [0, 35, 70]);
   }, [affirmations, affirmationCustomTexts, completionAffirmationOpacity, hapticsEnabled]);
   const currentWishState = getMonthlyWishState(wishMonths, currentWishMonthKey);
@@ -848,7 +876,7 @@ export default function App() {
     });
     void playCompletionSound();
     triggerHaptic(hapticsEnabled, 18);
-    showCompletionAffirmation(false);
+    showCompletionAffirmation('task');
     result.newlyCompleted.forEach((task) => {
       const completedAt = new Date(task.completedAt!);
       recordBehaviorEvent(createTaskCompletedBehaviorEvent({
@@ -875,7 +903,7 @@ export default function App() {
     const next = tasksRef.current.map((task) => task.id === taskId ? updated : task);
     tasksRef.current = next;
     setTasks(next);
-    if (allDone && !current.done) { void playCompletionSound(); triggerHaptic(hapticsEnabled, 18); showCompletionAffirmation(false); }
+    if (allDone && !current.done) { void playCompletionSound(); triggerHaptic(hapticsEnabled, 18); showCompletionAffirmation('task'); }
   }, [hapticsEnabled, showCompletionAffirmation]);
 
   const completeParentTask = React.useCallback((taskId: string) => {
@@ -891,7 +919,7 @@ export default function App() {
         setTasks(next);
         void playCompletionSound();
         triggerHaptic(hapticsEnabled, 18);
-        showCompletionAffirmation(false);
+        showCompletionAffirmation('task');
       } },
     ]);
   }, [completeTaskIds, hapticsEnabled, showCompletionAffirmation]);
@@ -1355,7 +1383,7 @@ export default function App() {
       const key = `${item.id}:${planDateKey(item)}`;
       if (prepareAt.getTime() <= now.getTime() && now.getTime() - prepareAt.getTime() < 60_000 && !preparationFeedbackKeysRef.current.has(key)) {
         preparationFeedbackKeysRef.current.add(key);
-        showCompletionAffirmation(true);
+        showCompletionAffirmation('task', true);
       }
     });
   }, [departurePlans, hydrated, now, planTier, showCompletionAffirmation]);
@@ -1371,7 +1399,11 @@ export default function App() {
     .filter((task) => !task.done && !isTaskSkippedOnDate(task, todayTaskDate) && task.navigationEnabled && task.deadlineDate)
     .sort((a, b) => urgencyLevel(getUrgencyStatus(b, now)) - urgencyLevel(getUrgencyStatus(a, now)))[0];
 
-  const addTask = (title: string, category: Category, priority: Priority, remindDate?: string, remindAt?: string, deadlineDate?: string, deadlineTime?: string, deadlineNotifyBefore?: number, navigationEnabled?: boolean, preparationMinutes?: number, travelMinutes?: number, bufferMinutes?: number, repeatRule: RepeatRule = 'none', nudgeMode: NudgeMode = 'once', scheduledDate?: string, scheduledTime?: string, isRoutine = false, subtasks: Subtask[] = []) => {
+  const addTask = (title: string, category: Category, priority: Priority, remindDate?: string, remindAt?: string, deadlineDate?: string, deadlineTime?: string, deadlineNotifyBefore?: number, navigationEnabled?: boolean, preparationMinutes?: number, travelMinutes?: number, bufferMinutes?: number, repeatRule: RepeatRule = 'none', nudgeMode: NudgeMode = 'once', scheduledDate?: string, scheduledTime?: string, endAt?: string, isRoutine = false, subtasks: Subtask[] = []) => {
+    if (scheduledTime && endAt && endAt <= scheduledTime) {
+      Alert.alert('終了時間を確認してください', '終了時間は開始時間より後にしてください。');
+      return;
+    }
     const routineLimit = hasPremiumAccess(planTier, 'full_history') ? 100 : 5;
     const activeRoutineIds = new Set(tasksRef.current.filter((item) => item.isRoutine).map((item) => item.routineId ?? item.id));
     if (isRoutine && activeRoutineIds.size >= routineLimit) {
@@ -1402,6 +1434,7 @@ export default function App() {
       nudgeMode,
       scheduledDate: scheduledDate ?? dateKey(now),
       scheduledTime,
+      endAt: endAt && /^\d{2}:\d{2}$/.test(endAt) ? endAt : undefined,
       subtasks: subtasks.map((item, index) => ({ ...item, order: index, done: Boolean(item.done) })),
     };
     const nextTasks = [task, ...tasksRef.current];
@@ -1411,8 +1444,12 @@ export default function App() {
     if (remindAt || (deadlineDate && deadlineTime && deadlineNotifyBefore !== undefined)) void scheduleAllTaskNotifications(task);
   };
 
-  const updateTask = (title: string, category: Category, priority: Priority, remindDate?: string, remindAt?: string, deadlineDate?: string, deadlineTime?: string, deadlineNotifyBefore?: number, navigationEnabled?: boolean, preparationMinutes?: number, travelMinutes?: number, bufferMinutes?: number, repeatRule: RepeatRule = 'none', nudgeMode: NudgeMode = 'once', scheduledDate?: string, scheduledTime?: string, isRoutine = false, subtasks: Subtask[] = []) => {
+  const updateTask = (title: string, category: Category, priority: Priority, remindDate?: string, remindAt?: string, deadlineDate?: string, deadlineTime?: string, deadlineNotifyBefore?: number, navigationEnabled?: boolean, preparationMinutes?: number, travelMinutes?: number, bufferMinutes?: number, repeatRule: RepeatRule = 'none', nudgeMode: NudgeMode = 'once', scheduledDate?: string, scheduledTime?: string, endAt?: string, isRoutine = false, subtasks: Subtask[] = []) => {
     if (!editingTask) return;
+    if (scheduledTime && endAt && endAt <= scheduledTime) {
+      Alert.alert('終了時間を確認してください', '終了時間は開始時間より後にしてください。');
+      return;
+    }
     const routineLimit = hasPremiumAccess(planTier, 'full_history') ? 100 : 5;
     const existingRoutineId = editingTask.routineId ?? editingTask.id;
     const activeRoutineIds = new Set(tasksRef.current.filter((item) => item.isRoutine && (item.routineId ?? item.id) !== existingRoutineId).map((item) => item.routineId ?? item.id));
@@ -1422,7 +1459,7 @@ export default function App() {
     }
     const reactivatesRoutine = isRoutine && !editingTask.isRoutine && Boolean(editingTask.routineId);
     const endedAt = editingTask.isRoutine && !isRoutine ? new Date().toISOString() : editingTask.routineEndedAt;
-    const updated = { ...editingTask, title, category, priority, remindDate, remindAt, deadlineDate, deadlineTime, deadlineNotifyBefore, navigationEnabled, preparationMinutes, travelMinutes, bufferMinutes, repeatRule, isRoutine, routineId: isRoutine ? editingTask.routineId ?? editingTask.id : editingTask.routineId, routineEndedAt: isRoutine ? undefined : endedAt, nudgeMode, scheduledDate: scheduledDate ?? editingTask.scheduledDate ?? dateKey(now), scheduledTime, status: 'active' as const, skippedAt: undefined, subtasks: subtasks.map((item, index) => ({ ...item, order: index, done: Boolean(item.done) })) };
+    const updated = { ...editingTask, title, category, priority, remindDate, remindAt, deadlineDate, deadlineTime, deadlineNotifyBefore, navigationEnabled, preparationMinutes, travelMinutes, bufferMinutes, repeatRule, isRoutine, routineId: isRoutine ? editingTask.routineId ?? editingTask.id : editingTask.routineId, routineEndedAt: isRoutine ? undefined : endedAt, nudgeMode, scheduledDate: scheduledDate ?? editingTask.scheduledDate ?? dateKey(now), scheduledTime, endAt: endAt && /^\d{2}:\d{2}$/.test(endAt) ? endAt : undefined, status: 'active' as const, skippedAt: undefined, subtasks: subtasks.map((item, index) => ({ ...item, order: index, done: Boolean(item.done) })) };
     const nextTasks = tasksRef.current.map((task) => {
       if (task.id === editingTask.id) return updated;
       if (editingTask.isRoutine && !isRoutine && (task.routineId ?? task.id) === existingRoutineId) {
@@ -1735,7 +1772,7 @@ export default function App() {
 
   const completeFocusSession = (session: FocusSession) => {
     setFocusSessions((current) => current.some((item) => item.id === session.id) ? current : [session, ...current].slice(0, 300));
-    showCompletionAffirmation(false);
+    showCompletionAffirmation('focus');
   };
 
   return (
@@ -1762,7 +1799,7 @@ export default function App() {
               selectionMode={selectionMode}
               selectedTaskIds={selectedTaskIds}
               onAdd={() => setAddOpen(true)}
-                onQuickAdd={(title, category, priority, scheduledDate, scheduledTime, isRoutine, deadlineDate, deadlineTime, deadlineNotifyBefore, remindDate, remindAt, repeatRule, subtasks) => addTask(title, category, priority, remindDate, remindAt, deadlineDate, deadlineTime, deadlineNotifyBefore, undefined, undefined, undefined, undefined, repeatRule ?? 'none', 'once', scheduledDate, scheduledTime, isRoutine, subtasks)}
+                onQuickAdd={(title, category, priority, scheduledDate, scheduledTime, endAt, isRoutine, deadlineDate, deadlineTime, deadlineNotifyBefore, remindDate, remindAt, repeatRule, subtasks) => addTask(title, category, priority, remindDate, remindAt, deadlineDate, deadlineTime, deadlineNotifyBefore, undefined, undefined, undefined, undefined, repeatRule ?? 'none', 'once', scheduledDate, scheduledTime, endAt, isRoutine, subtasks)}
               onToggle={(id) => completeTaskIds([id])}
               onToggleSubtask={toggleSubtask}
               onCompleteParent={completeParentTask}
@@ -1889,7 +1926,10 @@ export default function App() {
               size={widgetSize}
               showCompleted={showCompleted}
               completionIcon={completionIcon}
-               designMode={uiDesignMode}
+               // Keep the raw mode here so persisted photo settings remain
+               // reachable; the rest of the app intentionally maps photo to
+               // the Design visual mode.
+               designMode={designMode}
                monoAppearance={monoAppearance}
                hapticsEnabled={hapticsEnabled}
                chicPattern={effectiveChicPattern}
@@ -2214,7 +2254,7 @@ function DailyScheduleTimeline({ date, tasks, plans, externalEvents, now, design
   const theme = getThemeTokens(designMode, chicPalette?.id ?? 'cool');
   const isDark = designMode === 'dark';
   const categoryColors = Object.fromEntries(categories.map((category) => [category, designMode === 'chic' && chicPalette ? chicPalette.accentStrong : theme.colors.primaryAccent])) as Record<Category, string>;
-  type ScheduleItem = { id: string; time?: string; title: string; meta: string; kind: 'task' | 'plan' | 'external' | 'done'; onPress?: () => void };
+  type ScheduleItem = { id: string; time?: string; endTime?: string; title: string; meta: string; kind: 'task' | 'plan' | 'external' | 'done'; onPress?: () => void };
   const items: ScheduleItem[] = [];
   tasks.filter((task) => {
     const dates = [task.scheduledDate, task.deadlineDate, task.remindDate, task.done && task.completedAt ? dateKey(task.completedAt) : undefined];
@@ -2222,7 +2262,7 @@ function DailyScheduleTimeline({ date, tasks, plans, externalEvents, now, design
   }).forEach((task) => {
     const time = task.scheduledTime;
     if (!time) return;
-    items.push({ id: `task-${task.id}`, time, title: task.title, meta: task.done ? '完了' : task.category, kind: task.done ? 'done' : 'task', onPress: task.done ? undefined : () => onEditTask(task) });
+    items.push({ id: `task-${task.id}`, time, endTime: task.endAt, title: task.title, meta: task.done ? '完了' : task.category, kind: task.done ? 'done' : 'task', onPress: task.done ? undefined : () => onEditTask(task) });
   });
   plans.filter((plan) => isPlanOnDate(plan, date)).forEach((plan, index) => {
     const mode = getDeparturePlanMode(plan);
@@ -2235,7 +2275,7 @@ function DailyScheduleTimeline({ date, tasks, plans, externalEvents, now, design
         : canUseReversePlan
           ? `出発 ${formatLiveTime(getDepartureMoments(plan).leave)} ・ 準備 ${formatLiveTime(getDepartureMoments(plan).prepare)}`
           : '到着からの逆算 ・ Premium';
-    items.push({ id: `plan-${plan.id ?? index}`, time, title: plan.title, meta, kind: 'plan', onPress: () => onEditPlan(plan) });
+    items.push({ id: `plan-${plan.id ?? index}`, time, endTime: plan.endAt ?? undefined, title: plan.title, meta, kind: 'plan', onPress: () => onEditPlan(plan) });
   });
   externalEvents.filter((event) => dateKey(new Date(event.startDate)) === date).forEach((event) => items.push({ id: `external-${event.id}`, time: formatLiveTime(new Date(event.startDate)), title: event.title || 'カレンダー予定', meta: '端末カレンダー', kind: 'external' }));
   const timed = items.filter((item) => item.time).sort((a, b) => parseClock(a.time!) - parseClock(b.time!));
@@ -2250,13 +2290,16 @@ function DailyScheduleTimeline({ date, tasks, plans, externalEvents, now, design
       {timelineHours.map((hour) => {
         const isCurrentHour = date === currentDate && now.getHours() === hour;
         const hourItems = timed.filter((item) => Math.floor(parseClock(item.time!) / 60) === hour);
-        return <View key={`timeline-hour-${hour}`} style={{ flexDirection: 'row', minHeight: 48, borderBottomColor: theme.colors.border, borderBottomWidth: 1 }}>
+        const hourBlockHeight = Math.max(48, ...hourItems.map((item) => item.time && item.endTime ? Math.max(62, Math.min(360, (parseClock(item.endTime) - parseClock(item.time)) * 1.35 + 24)) : 48));
+        return <View key={`timeline-hour-${hour}`} style={{ flexDirection: 'row', minHeight: hourBlockHeight, borderBottomColor: theme.colors.border, borderBottomWidth: 1 }}>
           <View style={{ width: 66, paddingTop: 11, alignItems: 'center' }}><Text style={{ color: isCurrentHour ? theme.colors.primaryAccent : theme.colors.secondaryText, fontSize: 11, fontWeight: '700' }}>{String(hour).padStart(2, '0')}:00</Text></View>
           <View style={{ flex: 1, borderLeftWidth: 1, borderLeftColor: theme.colors.border, paddingBottom: hourItems.length > 0 ? 7 : 0 }}>
             <View style={{ marginTop: 23, borderTopWidth: 1, borderTopColor: isCurrentHour ? theme.colors.primaryAccent : theme.colors.border, opacity: isCurrentHour ? 0.9 : 0.65 }} />
             {hourItems.map((item) => {
               const accent = item.kind === 'plan' ? theme.colors.primaryAccent : item.kind === 'external' ? theme.colors.secondaryAccent : item.kind === 'done' ? theme.colors.secondaryText : categoryColors[tasks.find((task) => `task-${task.id}` === item.id)?.category ?? categories[0]!];
-              const content = <View style={{ marginHorizontal: 8, marginTop: 7, padding: 10, borderLeftWidth: 4, borderLeftColor: accent, borderRadius: 10, backgroundColor: theme.colors.secondarySurface, opacity: item.kind === 'done' ? 0.58 : 1 }}><Text style={{ color: accent, fontSize: 10, fontWeight: '900' }}>{item.time}</Text><Text style={{ color: theme.colors.primaryText, fontSize: 14, fontWeight: '800', marginTop: 2 }}>{item.kind === 'done' ? '✓ ' : ''}{item.title}</Text><Text style={{ color: theme.colors.secondaryText, fontSize: 10, marginTop: 3 }}>{item.meta}</Text></View>;
+              const durationMinutes = item.time && item.endTime ? Math.max(0, parseClock(item.endTime) - parseClock(item.time)) : 0;
+              const blockHeight = durationMinutes > 0 ? Math.max(62, Math.min(360, durationMinutes * 1.35)) : undefined;
+              const content = <View style={{ marginHorizontal: 8, marginTop: 7, padding: 10, minHeight: blockHeight, borderLeftWidth: 4, borderLeftColor: accent, borderRadius: 10, backgroundColor: theme.colors.secondarySurface, opacity: item.kind === 'done' ? 0.58 : 1 }}><Text style={{ color: accent, fontSize: 10, fontWeight: '900' }}>{item.time}</Text><Text style={{ color: theme.colors.primaryText, fontSize: 14, fontWeight: '800', marginTop: 2 }}>{item.kind === 'done' ? '✓ ' : ''}{item.title}</Text><Text style={{ color: theme.colors.secondaryText, fontSize: 10, marginTop: 3 }}>{item.meta}</Text>{item.endTime && <Text style={{ color: theme.colors.secondaryText, fontSize: 10, fontWeight: '800', marginTop: 'auto' }}>終了 {item.endTime}</Text>}</View>;
               return item.onPress ? <Pressable key={item.id} onPress={item.onPress}>{content}</Pressable> : <View key={item.id}>{content}</View>;
             })}
           </View>
@@ -2360,10 +2403,11 @@ function TaskScheduleCalendar({ tasks, plans, externalEvents, now, designMode, c
       ? { backgroundColor: chicPalette.accentSoft, color: chicPalette.accentStrong }
       : status ? getStatusPalette(status) : undefined;
     const canUseReversePlan = isArrivalReversePlan(item) && planTier === 'premium';
+    const endSuffix = item.endAt ? ` 〜 ${item.endAt}` : '';
     const meta = mode === 'calendar_only'
-      ? `予定表の予定 ・ ${getPlanScheduledTime(item)}`
+      ? `予定表の予定 ・ ${getPlanScheduledTime(item)}${endSuffix}`
       : mode === 'departure_reminder'
-        ? `出発時刻 ・ ${getPlanScheduledTime(item)}`
+        ? `出発時刻 ・ ${getPlanScheduledTime(item)}${endSuffix}`
         : canUseReversePlan
           ? `到着 ${item.arrival} ・ 出発 ${formatLiveTime(getDepartureMoments(item).leave)}`
           : '到着からの逆算 ・ Premium';

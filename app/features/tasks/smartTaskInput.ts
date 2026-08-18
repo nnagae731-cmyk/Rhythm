@@ -4,6 +4,7 @@ export type SmartTaskParseResult = {
   title: string;
   scheduledDate?: string;
   scheduledTime?: string;
+  endTime?: string;
   remindDate?: string;
   remindAt?: string;
   repeatRule?: RepeatRule;
@@ -50,6 +51,7 @@ export function parseSmartTaskInput(input: string, now = new Date(), dateKey: (d
   const matched: string[] = [];
   let scheduledDate: string | undefined;
   let scheduledTime: string | undefined;
+  let endTime: string | undefined;
   let remindDate: string | undefined;
   let remindAt: string | undefined;
   let repeatRule: RepeatRule | undefined;
@@ -60,6 +62,21 @@ export function parseSmartTaskInput(input: string, now = new Date(), dateKey: (d
     matched.push(value);
     title = title.replace(value, ' ');
   };
+
+  // Keep ranges in the parser so typed and voice input share one result.
+  const range = original.match(/(\d{1,2}):(\d{2})\s*[-〜]\s*(\d{1,2}):(\d{2})/u)
+    ?? original.match(/(\d{1,2})時(?:から|〜|-)\s*(\d{1,2})(?:時半|時)(?:\s*|$)/u);
+  if (range) {
+    const startHour = Number(range[1]);
+    const startMinute = range[2] !== undefined ? Number(range[2]) : 0;
+    const endHour = Number(range[3]);
+    const endMinute = range[4] !== undefined ? Number(range[4]) : 30;
+    if (startHour <= 23 && startMinute <= 59 && endHour <= 23 && endMinute <= 59) {
+      scheduledTime = clock(startHour, startMinute);
+      endTime = clock(endHour, endMinute);
+      consume(range[0]);
+    }
+  }
 
   const relative = original.match(/(\d+)\s*(分|時間)後/u);
   if (relative) {
@@ -101,7 +118,7 @@ export function parseSmartTaskInput(input: string, now = new Date(), dateKey: (d
     consume(weekday[0]);
   }
 
-  const timeMatch = parseClock(original);
+  const timeMatch = scheduledTime ? {} : parseClock(original);
   if (timeMatch.time) {
     scheduledTime = timeMatch.time;
     consume(timeMatch.source ?? '');
@@ -141,5 +158,5 @@ export function parseSmartTaskInput(input: string, now = new Date(), dateKey: (d
     consume(sameDay[0]);
   }
 
-  return { title: title.replace(/[、,，。]+$/u, '').replace(/\s{2,}/g, ' ').trim() || original, scheduledDate, scheduledTime, remindDate, remindAt, repeatRule, matched };
+  return { title: title.replace(/[、,，。]+$/u, '').replace(/\s{2,}/g, ' ').trim() || original, scheduledDate, scheduledTime, endTime, remindDate, remindAt, repeatRule, matched };
 }

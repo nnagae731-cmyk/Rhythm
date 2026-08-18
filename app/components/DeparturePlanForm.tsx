@@ -72,6 +72,7 @@ export function DeparturePlanForm({
   const isDirectDeparture = isDepartureReminderPlan(plan);
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showTimePicker, setShowTimePicker] = useState(false);
+  const [showEndTimePicker, setShowEndTimePicker] = useState(false);
   const [durationEditor, setDurationEditor] = useState<DurationEditor>();
   const [showOtherDuration, setShowOtherDuration] = useState(false);
   const [learningMessage, setLearningMessage] = useState<string>();
@@ -142,6 +143,7 @@ export function DeparturePlanForm({
     });
     setShowDatePicker(false);
     setShowTimePicker(false);
+    setShowEndTimePicker(false);
     setDurationEditor(undefined);
     setShowOtherDuration(false);
   };
@@ -183,6 +185,10 @@ export function DeparturePlanForm({
     }
     if (!/^\d{4}-\d{2}-\d{2}$/.test(plan.date) || !isClock(selectedTime)) {
       Alert.alert('日付と時刻を確認してください');
+      return;
+    }
+    if (plan.endAt && (!isClock(plan.endAt) || plan.endAt <= selectedTime)) {
+      Alert.alert('終了時間を確認してください', '終了時間は開始時間より後にしてください。');
       return;
     }
     await onSubmit();
@@ -267,6 +273,26 @@ export function DeparturePlanForm({
           if (event.type === 'set' && selected) {
             const time = `${String(selected.getHours()).padStart(2, '0')}:${String(selected.getMinutes()).padStart(2, '0')}`;
             updatePlan(isDirectDeparture ? { departureTime: time, arrival: time } : { arrival: time });
+          }
+        }}
+      />}
+      <View style={styles.endTimeRow}>
+        <View style={{ flex: 1 }}><Text style={[styles.fieldLabel, secondaryText]}>終了時間（任意）</Text><Text style={[styles.destinationNote, secondaryText]}>設定するとスケジュールの表示時間が伸びます</Text></View>
+        <Pressable style={[styles.dateTimeButton, input, styles.endTimeButton]} onPress={() => { setShowDatePicker(false); setShowTimePicker(false); setShowEndTimePicker((current) => !current); }}>
+          <Text style={[styles.dateTimeValue, fieldText]}>{plan.endAt ?? '設定なし'}</Text>
+        </Pressable>
+      </View>
+      {showEndTimePicker && <DateTimePicker
+        value={dateForReminder(plan.date, plan.endAt ?? selectedTime)}
+        mode="time"
+        display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+        themeVariant={isDark ? 'dark' : 'light'}
+        onChange={(event, selected) => {
+          if (Platform.OS !== 'ios') setShowEndTimePicker(false);
+          if (event.type === 'set' && selected) {
+            const time = `${String(selected.getHours()).padStart(2, '0')}:${String(selected.getMinutes()).padStart(2, '0')}`;
+            updatePlan({ endAt: time });
+            if (Platform.OS === 'ios') setShowEndTimePicker(false);
           }
         }}
       />}
@@ -376,6 +402,8 @@ const styles = StyleSheet.create({
   dateTimeButton: { minHeight: 54, borderWidth: 1, borderRadius: 14, flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 11 },
   dateTimeIcon: { fontSize: 20, fontWeight: '900' },
   dateTimeValue: { flex: 1, fontSize: 14, fontWeight: '800' },
+  endTimeRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 14 },
+  endTimeButton: { minWidth: 112, flexGrow: 0 },
   mapButton: { marginTop: 12, minHeight: 48, borderWidth: 1.4, borderRadius: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 12 },
   mapButtonText: { fontSize: 15, fontWeight: '900' },
   mapChevron: { fontSize: 24, fontWeight: '500', marginTop: -2 },
