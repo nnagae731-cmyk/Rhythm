@@ -6,7 +6,7 @@ import { Category, Priority, RepeatRule, Subtask, Task, TaskBucket } from '../ty
 import { categories, categoryColors, priorities, repeatOptions } from '../features/tasks/taskUtils';
 import { TaskDateTimePickerSheet } from '../components/TaskDateTimePickerSheet';
 import { parseSmartTaskInput, SmartTaskParseResult } from '../features/tasks/smartTaskInput';
-
+import { OnboardingHint } from '../features/onboarding/OnboardingHint';
 const HomeRuntimeContext = React.createContext<any>(null);
 
 function useHomeRuntime() {
@@ -42,6 +42,8 @@ export function HomeScreen({
   onBucket,
   styles,
   renderTodayWinStrip,
+  showTodoOnboarding,
+  onTodoOnboardingCompleted,
   helpers,
 }: {
   tasks: Task[];
@@ -71,6 +73,8 @@ export function HomeScreen({
   onBucket: (id: string, bucket: TaskBucket) => void;
   styles: any;
   renderTodayWinStrip: (tasks: Task[]) => React.ReactNode;
+  showTodoOnboarding?: boolean;
+  onTodoOnboardingCompleted?: () => void;
   helpers: any;
 }) {
   const { deadlineLabel, getUrgencyStatus, getLateRiskMessage, dateKey } = helpers;
@@ -92,8 +96,21 @@ export function HomeScreen({
     <HomeRuntimeContext.Provider value={{ styles, helpers, chicPalette }}>
     <>
       {renderTodayWinStrip(allTasks)}
-
-      <VoiceQuickAddCard designMode={designMode} chicPalette={chicPalette} onQuickAdd={onQuickAdd} />
+      {showTodoOnboarding && (
+       <View style={{ marginBottom: 12 }}>
+        <OnboardingHint
+          featureId="todo"
+     />
+      </View>
+      )}
+    <VoiceQuickAddCard
+      designMode={designMode}
+      chicPalette={chicPalette}
+      onQuickAdd={(...args) => {
+        onQuickAdd(...args);
+        onTodoOnboardingCompleted?.();
+      }}
+    />
 
       <View style={[styles.sectionHeader, designMode === 'minimal' && styles.sectionHeaderMinimal, isDark && styles.darkPanel]}>
         <View>

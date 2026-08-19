@@ -26,7 +26,8 @@ import { WishPremiumLockScreen } from './screens/WishPremiumLockScreen';
 import { TaskModal } from './components/TaskModal';
 import { PremiumModal } from './components/PremiumModal';
 import { BottomNav } from './components/BottomNav';
-import { GuideModal } from './components/GuideModal';
+import { OnboardingCarousel } from './features/onboarding/OnboardingCarousel';
+import { useOnboarding } from './features/onboarding/useOnboarding';
 import { RecoveryModal } from './components/RecoveryModal';
 import { styles } from './styles/appStyles';
 import { Affirmation, AffirmationCustomText, CalendarMarks, Category, DeparturePlan, DeparturePreparationStatus, MonthlyReview, MonthlyWishState, NudgeMode, PersistedState, PhotoThemePhotoTarget, PhotoThemeSettings, Priority, RepeatRule, Screen, SharedEvent, SharedParticipantPrefs, Subtask, Task, TaskBucket, ThemeMode, TimeTab, UrgencyStatus, WidgetSize, WishAction, WishMonthMap } from './types';
@@ -433,6 +434,7 @@ async function scheduleAffirmationNotification(affirmation: Affirmation) {
 }
 
 export default function App() {
+  const onboarding = useOnboarding();
   const [screen, setScreen] = useState<Screen>('home');
   const [timelineInitialTab, setTimelineInitialTab] = useState<TimeTab>('departure');
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -505,7 +507,6 @@ export default function App() {
   const [recoveryTargetPlanId, setRecoveryTargetPlanId] = useState<string>();
   const [taskTemplates, setTaskTemplates] = useState<string[]>(['朝の支度', '持ち物を確認', '連絡を返す', '薬を飲む']);
   const [savedTaskTemplates, setSavedTaskTemplates] = useState<PremiumTaskTemplate[]>([]);
-  const [guideOpen, setGuideOpen] = useState(false);
   // The pattern is decorative only; the selected Design color owns the UI
   // palette across every screen.
   const appDesignPaletteId = chicCheckColor;
@@ -1844,6 +1845,8 @@ export default function App() {
               }}
               styles={styles}
               renderTodayWinStrip={(todayTasks) => <TodayWinStrip tasks={todayTasks} designMode={uiDesignMode} chicPattern={effectiveChicPattern} chicPalette={chicPalette} onRestore={restoreTaskById} />}
+              showTodoOnboarding={onboarding.ready && onboarding.isCompleted('intro') && !onboarding.isCompleted('todo')}
+              onTodoOnboardingCompleted={() => void onboarding.complete('todo')}
               helpers={{ deadlineLabel, getUrgencyStatus, getLateRiskMessage, dateForReminder, dateKey, formatLiveTime, isCheckChicPattern, todayInputValue }}
             />
           )}
@@ -1997,7 +2000,7 @@ export default function App() {
               savedTemplates={savedTaskTemplates}
               onAddTemplate={(title) => setTaskTemplates((current) => current.includes(title) ? current : [...current, title])}
               onDeleteTemplate={(title) => setTaskTemplates((current) => current.filter((item) => item !== title))}
-              onGuide={() => setGuideOpen(true)}
+              onGuide={onboarding.openIntro}
               onPremium={openPremiumFeature}
               onDeleteSavedTemplate={deleteSavedTaskTemplate}
                           styles={styles}
@@ -2079,7 +2082,17 @@ export default function App() {
       />
       <PremiumModal visible={premiumOpen} initialFeatureId={premiumTargetFeature} designMode={uiDesignMode} chicPalette={chicPalette} onClose={() => setPremiumOpen(false)} styles={styles} helpers={{ getThemeTokens: getThemedThemeTokens }} />
       <TopImageCropModal visible={Boolean(pendingTopPhoto)} uri={pendingTopPhoto?.originalUri} sourceWidth={pendingTopPhoto?.sourceWidth ?? 1} sourceHeight={pendingTopPhoto?.sourceHeight ?? 1} initialRect={pendingTopPhoto?.cropRect} styles={styles} onCancel={() => setPendingTopPhoto(undefined)} onReselect={() => { if (pendingTopPhoto) void pickPhotoTheme(pendingTopPhoto.target); }} onUse={(cropRect) => { void applyPendingTopPhoto(cropRect); }} />
-      <GuideModal visible={guideOpen} styles={styles} designMode={uiDesignMode} chicPalette={chicPalette} onClose={() => setGuideOpen(false)} />
+      <OnboardingCarousel
+  visible={
+    onboarding.ready &&
+    onboarding.introVisible
+  }
+  onDismiss={
+    onboarding.isCompleted('intro')
+      ? onboarding.closeIntro
+      : onboarding.finishIntro
+  }
+/>
     </SafeAreaView>
   );
 }

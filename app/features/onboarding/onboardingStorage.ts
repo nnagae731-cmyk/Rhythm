@@ -6,10 +6,7 @@ export const ONBOARDING_STORAGE_KEY =
 
 export type OnboardingState = {
   version: 1;
-
-  completed: Partial<
-    Record<OnboardingFeatureId, string>
-  >;
+  completed: Partial<Record<OnboardingFeatureId, string>>;
 };
 
 export const DEFAULT_ONBOARDING_STATE: OnboardingState = {
@@ -17,17 +14,32 @@ export const DEFAULT_ONBOARDING_STATE: OnboardingState = {
   completed: {},
 };
 
+const ONBOARDING_FEATURE_IDS: readonly OnboardingFeatureId[] = [
+  'intro',
+  'todo',
+  'todoComplete',
+  'completedTasks',
+  'taskBuckets',
+  'taskDetails',
+  'schedule',
+  'planRegistration',
+  'calendarImport',
+  'focus',
+  'analysis',
+  'routine',
+  'history',
+  'photoLog',
+  'wish',
+  'affirmation',
+  'design',
+  'recovery',
+];
+
 export function isOnboardingFeatureId(
   value: string,
 ): value is OnboardingFeatureId {
-  return (
-    value === 'todo' ||
-    value === 'timeline' ||
-    value === 'focus' ||
-    value === 'analysis' ||
-    value === 'wish' ||
-    value === 'routine' ||
-    value === 'design'
+  return ONBOARDING_FEATURE_IDS.includes(
+    value as OnboardingFeatureId,
   );
 }
 
@@ -108,7 +120,6 @@ export async function markOnboardingCompleted(
 
   const next: OnboardingState = {
     ...current,
-
     completed: {
       ...current.completed,
       [featureId]: new Date().toISOString(),
