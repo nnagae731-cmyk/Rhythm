@@ -27,6 +27,7 @@ import { TaskModal } from './components/TaskModal';
 import { PremiumModal } from './components/PremiumModal';
 import { BottomNav } from './components/BottomNav';
 import { OnboardingCarousel } from './features/onboarding/OnboardingCarousel';
+import { OnboardingHint } from './features/onboarding/OnboardingHint';
 import { useOnboarding } from './features/onboarding/useOnboarding';
 import { RecoveryModal } from './components/RecoveryModal';
 import { styles } from './styles/appStyles';
@@ -583,7 +584,8 @@ export default function App() {
       const previous = getMonthlyWishState(current, currentWishMonthKey);
       return { ...current, [currentWishMonthKey]: updater(previous) };
     });
-  }, [currentWishMonthKey]);
+    void onboarding.complete('wish');
+  }, [currentWishMonthKey, onboarding]);
   const updateWishReview = React.useCallback((monthKey: string, reviewKey: string, updates: Partial<MonthlyReview>) => {
     setWishMonths((current) => {
       const monthState = getMonthlyWishState(current, monthKey);
@@ -612,7 +614,8 @@ export default function App() {
       const nextReviews = existingIndex >= 0 ? reviews.map((review, index) => index === existingIndex ? { ...review, ...nextReview } : review) : [...reviews, nextReview];
       return { ...current, [monthKey]: { ...monthState, review: {}, reviews: nextReviews } };
     });
-  }, []);
+    if ((draft.photos?.filter(Boolean).length ?? (draft.photo ? 1 : 0)) > 0) void onboarding.complete('photoLog');
+  }, [onboarding]);
   const openPremiumFeature = React.useCallback((featureId: PremiumGuideFeatureId = DEFAULT_PREMIUM_GUIDE_FEATURE) => {
     setPremiumTargetFeature(featureId);
     setPremiumOpen(true);
@@ -647,10 +650,12 @@ export default function App() {
       }
     }
     setAffirmations((current) => current.some((item) => item.id === next.id) ? current.map((item) => item.id === next.id ? next : item) : [next, ...current]);
-  }, [affirmations, openPremiumFeature, planTier]);
+    void onboarding.complete('affirmation');
+  }, [affirmations, onboarding, openPremiumFeature, planTier]);
   const saveAffirmationCustomText = React.useCallback((draft: AffirmationCustomText) => {
     setAffirmationCustomTexts((current) => current.some((item) => item.id === draft.id) ? current.map((item) => item.id === draft.id ? draft : item) : [draft, ...current]);
-  }, []);
+    void onboarding.complete('affirmation');
+  }, [onboarding]);
   const deleteAffirmationCustomText = React.useCallback((id: string) => {
     setAffirmationCustomTexts((current) => current.filter((item) => item.id !== id));
   }, []);
@@ -1442,6 +1447,7 @@ export default function App() {
     tasksRef.current = nextTasks;
     setTasks(nextTasks);
     setAddOpen(false);
+    if (isRoutine) void onboarding.complete('routine');
     if (remindAt || (deadlineDate && deadlineTime && deadlineNotifyBefore !== undefined)) void scheduleAllTaskNotifications(task);
   };
 
@@ -1471,6 +1477,7 @@ export default function App() {
     tasksRef.current = nextTasks;
     setTasks(nextTasks);
     setEditingTask(null);
+    if (isRoutine) void onboarding.complete('routine');
     if (editingTask.isRoutine && !isRoutine && updated.routineId && endedAt) {
       recordBehaviorEvent(createRoutineDeactivatedBehaviorEvent({ routineId: updated.routineId, routineTitle: editingTask.title, taskId: editingTask.id, occurredAt: new Date(endedAt), targetDate: dateKey(endedAt) }));
     }
@@ -1677,6 +1684,7 @@ export default function App() {
     }
     if (mode === 'calendar_only') Alert.alert(plan.id ? '予定を保存しました' : '予定を追加しました', '予定表に表示しました。');
     closePlanEditor();
+    void onboarding.complete('planRegistration');
     return true;
   };
 
@@ -1707,6 +1715,7 @@ export default function App() {
     const nextPlans = [...departurePlansRef.current, imported];
     departurePlansRef.current = nextPlans;
     setDeparturePlans(nextPlans);
+    void onboarding.complete('calendarImport');
     return true;
   };
 
@@ -1769,6 +1778,7 @@ export default function App() {
       }
     }
     setRecoveryTargetPlanId(undefined);
+    void onboarding.complete('recovery');
   };
 
   const completeFocusSession = (session: FocusSession) => {
@@ -1788,6 +1798,12 @@ export default function App() {
         {completionAffirmation && <Animated.View pointerEvents="none" style={{ position: 'absolute', top: 72, left: 20, right: 20, zIndex: 30, opacity: completionAffirmationOpacity, alignItems: 'center' }}><View style={{ maxWidth: 340, paddingHorizontal: 18, paddingVertical: 12, borderRadius: 18, backgroundColor: uiDesignMode === 'dark' ? '#20293A' : uiDesignMode === 'chic' ? chicPalette.cardSurface : '#FFFFFF', borderWidth: 1, borderColor: uiDesignMode === 'dark' ? '#40506A' : uiDesignMode === 'chic' ? chicPalette.border : '#E5E0E5', shadowColor: '#000', shadowOpacity: 0.12, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 4 }}><Text style={{ textAlign: 'center', color: uiDesignMode === 'dark' ? '#F4F7FC' : uiDesignMode === 'chic' ? chicPalette.textPrimary : '#282538', fontSize: 14, fontWeight: '600' }}>{completionAffirmation}</Text></View></Animated.View>}
 
         <ScrollView contentContainerStyle={[styles.content, screen === 'timeline' && styles.contentTimeline]} keyboardShouldPersistTaps="handled">
+          {onboarding.ready && onboarding.isCompleted('todo') && screen === 'timeline' && !onboarding.isCompleted('schedule') && <View style={{ marginBottom: 12 }}><OnboardingHint featureId="schedule" /></View>}
+          {onboarding.ready && onboarding.isCompleted('schedule') && screen === 'timeline' && !onboarding.isCompleted('planRegistration') && <View style={{ marginBottom: 12 }}><OnboardingHint featureId="planRegistration" /></View>}
+          {onboarding.ready && onboarding.isCompleted('planRegistration') && screen === 'timeline' && !onboarding.isCompleted('calendarImport') && <View style={{ marginBottom: 12 }}><OnboardingHint featureId="calendarImport" /></View>}
+          {onboarding.ready && screen === 'analysis' && !onboarding.isCompleted('analysis') && <View style={{ marginBottom: 12 }}><OnboardingHint featureId="analysis" /></View>}
+          {onboarding.ready && screen === 'analysis' && !onboarding.isCompleted('history') && <View style={{ marginBottom: 12 }}><OnboardingHint featureId="history" /></View>}
+          {onboarding.ready && screen === 'settings' && !onboarding.isCompleted('design') && <View style={{ marginBottom: 12 }}><OnboardingHint featureId="design" /></View>}
           {screen === 'home' && (
             <HomeScreen
               tasks={visibleTasks}
@@ -1911,6 +1927,7 @@ export default function App() {
               planEditorOpen={planEditorOpen}
               onOpenNewPlan={openNewPlanEditor}
               onClosePlanEditor={closePlanEditor}
+              onScheduleUsed={() => void onboarding.complete('schedule')}
               onImportCalendarEvent={importCalendarEventAsPlan}
               onEdit={(item: DeparturePlan) => openPlanEditor(item)}
               onSharePlan={shareDeparturePlan}
@@ -1921,6 +1938,7 @@ export default function App() {
               onRecovery={applyRecovery}
               onRecoveryClosed={() => setRecoveryTargetPlanId(undefined)}
               onFocusCompleted={completeFocusSession}
+              onFocusStarted={() => void onboarding.complete('focus')}
               onBehaviorEvent={recordBehaviorEvent}
               onDeparted={markDeparturePlanAsDeparted}
               onPreparationStarted={markDeparturePreparationStarted}
@@ -1970,10 +1988,12 @@ export default function App() {
                  } else {
                    setDesignMode(mode);
                  }
+                 void onboarding.complete('design');
                }}
                onMonoAppearance={(appearance) => {
                  setDesignMode('minimal');
                  setMonoAppearance(appearance);
+                 void onboarding.complete('design');
                }}
                onHapticsEnabled={handleHapticsEnabled}
                onReview={() => void requestAppReview()}
@@ -1981,8 +2001,9 @@ export default function App() {
                 const feature = pattern === 'plain' || pattern === 'floral' || pattern === 'floralSoft' || pattern === 'floralSeasonal' || pattern === 'floralDark' ? undefined : getChicPatternFeatureId(pattern);
                 if (feature && !hasPremiumAccess(planTier, feature)) { openPremiumFeature(); return; }
                 setChicPattern(pattern);
+                void onboarding.complete('design');
               }}
-               onChicCheckColor={setChicCheckColor}
+               onChicCheckColor={(color) => { setChicCheckColor(color); void onboarding.complete('design'); }}
                onSaveAffirmation={saveAffirmation}
                onDeleteAffirmation={deleteAffirmation}
                onSaveAffirmationCustomText={saveAffirmationCustomText}
@@ -2058,7 +2079,7 @@ export default function App() {
                 setTasks(next);
                 recordBehaviorEvent(createRoutineDeactivatedBehaviorEvent({ routineId, routineTitle: target.title, taskId: target.id, occurredAt: new Date(endedAt), targetDate: dateKey(endedAt) }));
               } }])}
-              recordContent={<HistoryScreen tasks={tasks} wishMonths={wishMonths} calendarMarks={calendarMarks} onSetCalendarMark={(date, mark) => setCalendarMarks((current) => { const next = { ...current }; if (mark) next[date] = mark; else delete next[date]; return next; })} recoveryHistory={recoveryHistory} focusSessions={focusSessions} departureCheckIns={departureCheckIns} departurePlans={departurePlans} behaviorEvents={behaviorEvents} completionIcon={completionIcon} designMode={uiDesignMode} chicPattern={effectiveChicPattern} chicPalette={chicPalette} planTier={planTier} onPremium={openPremiumFeature} onSaveTemplate={saveTaskAsTemplate} onRestore={restoreTaskById} onSaveDailyReview={saveDailyReview} onUpdateReview={updateWishReview} onDeleteReview={deleteWishReview} styles={styles} helpers={{ dateKey, formatLiveTime, getThemeTokens: getThemedThemeTokens }} components={{ AchievementVessel, CalendarMarkPicker }} />}
+              recordContent={<HistoryScreen tasks={tasks} wishMonths={wishMonths} calendarMarks={calendarMarks} onSetCalendarMark={(date, mark) => setCalendarMarks((current) => { const next = { ...current }; if (mark) next[date] = mark; else delete next[date]; return next; })} recoveryHistory={recoveryHistory} focusSessions={focusSessions} departureCheckIns={departureCheckIns} departurePlans={departurePlans} behaviorEvents={behaviorEvents} completionIcon={completionIcon} designMode={uiDesignMode} chicPattern={effectiveChicPattern} chicPalette={chicPalette} planTier={planTier} onPremium={openPremiumFeature} onSaveTemplate={saveTaskAsTemplate} onRestore={(id) => { void onboarding.complete('history'); restoreTaskById(id); }} onSaveDailyReview={saveDailyReview} onUpdateReview={updateWishReview} onDeleteReview={deleteWishReview} styles={styles} helpers={{ dateKey, formatLiveTime, getThemeTokens: getThemedThemeTokens }} components={{ AchievementVessel, CalendarMarkPicker }} />}
             />
           )}
         </ScrollView>
@@ -2122,7 +2143,7 @@ function TimeTabButton({ tab, active, designMode, chicPattern, chicPalette, them
      return <Pressable style={[styles.timeTab, styles.timeTabMinimal, isDark && styles.darkSurface, active && styles.timeTabActive, active && { backgroundColor: isDark ? '#26365F' : themeAccent, borderColor: isDark ? '#6F8DFF' : themeAccent }]} onPress={onPress}><Text numberOfLines={1} style={[styles.timeTabText, { color: isDark ? '#F4F7FC' : secondaryText }, active && styles.timeTabTextActive, active && styles.timeTabTextActiveMinimal]}>{label}</Text></Pressable>;
 }
 
-function FocusMode({ tasks, designMode, chicPalette, backgroundImageUri, onFocusCompleted, onBehaviorEvent, hapticsEnabled = true }: { tasks: Task[]; designMode: DesignMode; chicPalette?: ChicThemePalette; backgroundImageUri?: string; onFocusCompleted: (session: FocusSession) => void; onBehaviorEvent: (event: BehaviorEvent) => void; hapticsEnabled?: boolean }) {
+function FocusMode({ tasks, designMode, chicPalette, backgroundImageUri, onFocusCompleted, onFocusStarted, onBehaviorEvent, hapticsEnabled = true }: { tasks: Task[]; designMode: DesignMode; chicPalette?: ChicThemePalette; backgroundImageUri?: string; onFocusCompleted: (session: FocusSession) => void; onFocusStarted?: () => void; onBehaviorEvent: (event: BehaviorEvent) => void; hapticsEnabled?: boolean }) {
   const availableTasks = React.useMemo(() => {
     const today = dateKey();
     const seenTitles = new Set<string>();
@@ -2232,6 +2253,7 @@ function FocusMode({ tasks, designMode, chicPalette, backgroundImageUri, onFocus
       const id = createFocusSessionId(startedAt, Math.random().toString(36).slice(2, 10));
       const plannedDurationMinutes = Math.max(1, Math.ceil(nextSeconds / 60));
       sessionRef.current = { id, startedAt, taskId: selectedTask?.id, taskTitle: selectedTask?.title, plannedDurationMinutes };
+      onFocusStarted?.();
       behaviorCallbackRef.current(createFocusStartedEvent({ sessionId: id, taskId: selectedTask?.id, taskTitle: selectedTask?.title, plannedDurationMinutes, occurredAt: startedAt }));
       triggerHaptic(hapticsEnabled, 15);
     }
