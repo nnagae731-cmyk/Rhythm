@@ -44,6 +44,14 @@ export function HomeScreen({
   renderTodayWinStrip,
   showTodoOnboarding,
   onTodoOnboardingCompleted,
+  showTodoCompleteOnboarding,
+  onTodoCompleteOnboarding,
+  showCompletedTasksOnboarding,
+  onCompletedTasksOnboarding,
+  showTaskBucketsOnboarding,
+  onTaskBucketsOnboarding,
+  showTaskDetailsOnboarding,
+  onTaskDetailsOnboarding,
   helpers,
 }: {
   tasks: Task[];
@@ -75,6 +83,14 @@ export function HomeScreen({
   renderTodayWinStrip: (tasks: Task[]) => React.ReactNode;
   showTodoOnboarding?: boolean;
   onTodoOnboardingCompleted?: () => void;
+  showTodoCompleteOnboarding?: boolean;
+  onTodoCompleteOnboarding?: () => void;
+  showCompletedTasksOnboarding?: boolean;
+  onCompletedTasksOnboarding?: () => void;
+  showTaskBucketsOnboarding?: boolean;
+  onTaskBucketsOnboarding?: () => void;
+  showTaskDetailsOnboarding?: boolean;
+  onTaskDetailsOnboarding?: () => void;
   helpers: any;
 }) {
   const { deadlineLabel, getUrgencyStatus, getLateRiskMessage, dateKey } = helpers;
@@ -102,6 +118,26 @@ export function HomeScreen({
           featureId="todo"
      />
       </View>
+      )}
+      {showTodoCompleteOnboarding && (
+       <View style={{ marginBottom: 12 }}>
+        <OnboardingHint featureId="todoComplete" />
+       </View>
+      )}
+      {showCompletedTasksOnboarding && (
+       <View style={{ marginBottom: 12 }}>
+        <OnboardingHint featureId="completedTasks" />
+       </View>
+      )}
+      {showTaskBucketsOnboarding && (
+       <View style={{ marginBottom: 12 }}>
+        <OnboardingHint featureId="taskBuckets" />
+       </View>
+      )}
+      {showTaskDetailsOnboarding && (
+       <View style={{ marginBottom: 12 }}>
+        <OnboardingHint featureId="taskDetails" />
+       </View>
       )}
     <VoiceQuickAddCard
       designMode={designMode}

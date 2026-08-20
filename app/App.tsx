@@ -1801,10 +1801,17 @@ export default function App() {
               selectedTaskIds={selectedTaskIds}
               onAdd={() => setAddOpen(true)}
                 onQuickAdd={(title, category, priority, scheduledDate, scheduledTime, endAt, isRoutine, deadlineDate, deadlineTime, deadlineNotifyBefore, remindDate, remindAt, repeatRule, subtasks) => addTask(title, category, priority, remindDate, remindAt, deadlineDate, deadlineTime, deadlineNotifyBefore, undefined, undefined, undefined, undefined, repeatRule ?? 'none', 'once', scheduledDate, scheduledTime, endAt, isRoutine, subtasks)}
-              onToggle={(id) => completeTaskIds([id])}
+              onToggle={(id) => {
+                const task = tasksRef.current.find((item) => item.id === id);
+                completeTaskIds([id]);
+                if (task && !task.done) void onboarding.complete('todoComplete');
+              }}
               onToggleSubtask={toggleSubtask}
               onCompleteParent={completeParentTask}
-              onEdit={(task) => setEditingTask(task)}
+              onEdit={(task) => {
+                setEditingTask(task);
+                void onboarding.complete('taskDetails');
+              }}
               onToggleSelection={(id) => setSelectedTaskIds((current) => current.includes(id) ? current.filter((item) => item !== id) : [...current, id])}
               onSelectionMode={() => {
                 setSelectionMode((current) => !current);
@@ -1812,6 +1819,7 @@ export default function App() {
               }}
               onCompleteSelected={() => {
                 completeTaskIds(selectedTaskIds);
+                if (selectedTaskIds.some((id) => !tasksRef.current.find((task) => task.id === id)?.done)) void onboarding.complete('todoComplete');
                 setSelectionMode(false);
                 setSelectedTaskIds([]);
               }}
@@ -1842,11 +1850,20 @@ export default function App() {
                 tasksRef.current = tasksRef.current.map((item) => item.id === id ? updated : item);
                 setTasks(tasksRef.current);
                 void scheduleAllTaskNotifications(updated);
+                if (task.bucket !== bucket) void onboarding.complete('taskBuckets');
               }}
               styles={styles}
-              renderTodayWinStrip={(todayTasks) => <TodayWinStrip tasks={todayTasks} designMode={uiDesignMode} chicPattern={effectiveChicPattern} chicPalette={chicPalette} onRestore={restoreTaskById} />}
+              renderTodayWinStrip={(todayTasks) => <TodayWinStrip tasks={todayTasks} designMode={uiDesignMode} chicPattern={effectiveChicPattern} chicPalette={chicPalette} onRestore={restoreTaskById} onOpenCompleted={() => void onboarding.complete('completedTasks')} />}
               showTodoOnboarding={onboarding.ready && onboarding.isCompleted('intro') && !onboarding.isCompleted('todo')}
               onTodoOnboardingCompleted={() => void onboarding.complete('todo')}
+              showTodoCompleteOnboarding={onboarding.ready && onboarding.isCompleted('todo') && !onboarding.isCompleted('todoComplete') && tasks.some((task) => !task.done)}
+              onTodoCompleteOnboarding={() => void onboarding.complete('todoComplete')}
+              showCompletedTasksOnboarding={onboarding.ready && onboarding.isCompleted('todoComplete') && !onboarding.isCompleted('completedTasks') && tasks.some((task) => task.done)}
+              onCompletedTasksOnboarding={() => void onboarding.complete('completedTasks')}
+              showTaskBucketsOnboarding={onboarding.ready && onboarding.isCompleted('completedTasks') && !onboarding.isCompleted('taskBuckets') && tasks.length > 0}
+              onTaskBucketsOnboarding={() => void onboarding.complete('taskBuckets')}
+              showTaskDetailsOnboarding={onboarding.ready && onboarding.isCompleted('taskBuckets') && !onboarding.isCompleted('taskDetails') && tasks.length > 0}
+              onTaskDetailsOnboarding={() => void onboarding.complete('taskDetails')}
               helpers={{ deadlineLabel, getUrgencyStatus, getLateRiskMessage, dateForReminder, dateKey, formatLiveTime, isCheckChicPattern, todayInputValue }}
             />
           )}
@@ -2715,7 +2732,7 @@ function NotificationManagerCard({ designMode }: { designMode?: DesignMode }) {
   </View>;
 }
 
-function TodayWinStrip({ tasks, designMode, chicPattern, chicPalette, onRestore }: { tasks: Task[]; designMode: ThemeMode; chicPattern: ChicPattern; chicPalette: ChicThemePalette; onRestore: (id: string) => void }) {
+function TodayWinStrip({ tasks, designMode, chicPattern, chicPalette, onRestore, onOpenCompleted }: { tasks: Task[]; designMode: ThemeMode; chicPattern: ChicPattern; chicPalette: ChicThemePalette; onRestore: (id: string) => void; onOpenCompleted?: () => void }) {
   const theme = getThemeTokens(designMode, chicPalette.id);
   const now = new Date();
   const todayKey = dateKey(now);
@@ -2776,7 +2793,7 @@ function TodayWinStrip({ tasks, designMode, chicPattern, chicPalette, onRestore 
   if (designMode !== 'chic') {
     return (
       <>
-        <Pressable style={[styles.todayHeroCard, styles.todayHeroCardMinimal, designMode === 'dark' && styles.todayHeroCardMinimalDark]} onPress={() => setDetailsOpen(true)}>
+        <Pressable style={[styles.todayHeroCard, styles.todayHeroCardMinimal, designMode === 'dark' && styles.todayHeroCardMinimalDark]} onPress={() => { onOpenCompleted?.(); setDetailsOpen(true); }}>
           <View style={styles.todayHeroMinimalLayout}>
             <View style={styles.todayHeroMinimalLeft}>
               <Text style={[styles.todayHeroMinimalKicker, designMode === 'dark' && styles.todayHeroMinimalKickerDark]}>TODAY</Text>
@@ -2800,7 +2817,7 @@ function TodayWinStrip({ tasks, designMode, chicPattern, chicPalette, onRestore 
   const treasureColors = [chicPalette.accentSoft, chicPalette.patternStripe, chicPalette.border];
   return (
     <>
-      <Pressable style={[styles.todayHeroCard, styles.todayHeroCardChic, { backgroundColor: chicPalette.cardSurface, borderColor: chicPalette.border, shadowColor: chicPalette.accent }]} onPress={() => setDetailsOpen(true)}>
+      <Pressable style={[styles.todayHeroCard, styles.todayHeroCardChic, { backgroundColor: chicPalette.cardSurface, borderColor: chicPalette.border, shadowColor: chicPalette.accent }]} onPress={() => { onOpenCompleted?.(); setDetailsOpen(true); }}>
         {designMode === 'chic' && chicPattern === 'checkLavenderSatin' && <BThemeRibbonDecoration today />}
         {designMode === 'chic' && chicPattern === 'checkBeigeNoir' && <CThemeRibbonDecoration today />}
         <View style={styles.todayHeroChicLayout}>
