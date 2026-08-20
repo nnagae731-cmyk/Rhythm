@@ -48,6 +48,8 @@ import { canUseNotifications, getNotificationPermissionAction, getNotificationPe
 import { canCreateWish } from './features/ads/rewardedAccessLogic';
 import { DEFAULT_REWARDED_ACCESS_STATE, loadRewardedAccessState, RewardedAccessState, saveRewardedAccessState } from './features/ads/rewardedAccessStorage';
 import { showTestRewardedAd } from './services/rewardedAds';
+import { cancelFocusCompletionNotification, cancelPendingFocusCompletionNotifications, scheduleFocusCompletionNotification } from './features/focus/focusNotifications';
+import { FOCUS_NAVIGATION_GUARD_COPY, getFocusNavigationDecision } from './features/focus/focusUsagePolicy';
 import {
   Alert,
   Animated,
@@ -454,8 +456,10 @@ async function scheduleAffirmationNotification(affirmation: Affirmation) {
 export default function App() {
   const onboarding = useOnboarding();
   const [screen, setScreen] = useState<Screen>('home');
+  const [focusNavigationNotice, setFocusNavigationNotice] = useState(false);
   const [timelineInitialTab, setTimelineInitialTab] = useState<TimeTab>('departure');
   const [tasks, setTasks] = useState<Task[]>([]);
+  const [focusTimerActive, setFocusTimerActive] = useState(false);
   const [rewardedAccess, setRewardedAccess] = useState<RewardedAccessState>(DEFAULT_REWARDED_ACCESS_STATE);
   const rewardedWishBusyRef = React.useRef(false);
   const tasksRef = React.useRef<Task[]>([]);
@@ -1839,6 +1843,16 @@ export default function App() {
     showCompletionAffirmation('focus');
   };
 
+  const navigateWithinApp = React.useCallback((nextScreen: Screen) => {
+    const decision = getFocusNavigationDecision(focusTimerActive && nextScreen !== 'timeline');
+    if (!decision.allowed) {
+      setFocusNavigationNotice(true);
+      return;
+    }
+    if (nextScreen === 'wish') openWish();
+    else setScreen(nextScreen);
+  }, [focusTimerActive, openWish, screen]);
+
   return (
         <SafeAreaView style={[styles.safe, uiDesignMode === 'minimal' && styles.safeMinimal, uiDesignMode === 'dark' && styles.safeDark, designMode === 'photo' && styles.safePhoto, { backgroundColor: uiDesignMode === 'chic' ? getChicPatternVisual(effectiveChicPattern, chicPalette).background : theme.colors.screenBackground }]}>
       <StatusBar style={uiDesignMode === 'dark' ? 'light' : 'dark'} />
@@ -1987,6 +2001,9 @@ export default function App() {
               onRecoveryClosed={() => setRecoveryTargetPlanId(undefined)}
               onFocusCompleted={completeFocusSession}
               onFocusStarted={() => void onboarding.complete('focus')}
+              onFocusRunningChange={setFocusTimerActive}
+              focusTimerActive={focusTimerActive}
+              onFocusNavigationBlocked={() => setFocusNavigationNotice(true)}
               onBehaviorEvent={recordBehaviorEvent}
               onDeparted={markDeparturePlanAsDeparted}
               onPreparationStarted={markDeparturePreparationStarted}
@@ -2132,8 +2149,18 @@ export default function App() {
           )}
         </ScrollView>
 
-        <BottomNav screen={screen} designMode={uiDesignMode} chicPalette={chicPalette} onChange={(nextScreen) => nextScreen === 'wish' ? openWish() : setScreen(nextScreen)} />
+        <BottomNav screen={screen} designMode={uiDesignMode} chicPalette={chicPalette} onChange={navigateWithinApp} />
       </View>
+
+      <Modal visible={focusNavigationNotice} transparent animationType="fade" onRequestClose={() => setFocusNavigationNotice(false)}>
+        <Pressable style={styles.modalBackdrop} onPress={() => setFocusNavigationNotice(false)}>
+          <Pressable style={[styles.modalSheet, { backgroundColor: theme.colors.screenBackground }]} onPress={(event) => event.stopPropagation()}>
+            <Text style={[styles.modalTitle, { color: theme.colors.primaryText }]}>{FOCUS_NAVIGATION_GUARD_COPY.title}</Text>
+            <Text style={[styles.emptyCopy, { color: theme.colors.secondaryText }]}>{FOCUS_NAVIGATION_GUARD_COPY.message}</Text>
+            <Pressable style={[styles.primaryButton, { backgroundColor: theme.colors.primaryAccent }]} onPress={() => setFocusNavigationNotice(false)}><Text style={styles.primaryButtonText}>{FOCUS_NAVIGATION_GUARD_COPY.confirm}</Text></Pressable>
+          </Pressable>
+        </Pressable>
+      </Modal>
 
       <SharedEventScreen
         visible={sharedEventOpen && hasPremiumAccess(planTier, 'late_recovery')}
@@ -2191,7 +2218,7 @@ function TimeTabButton({ tab, active, designMode, chicPattern, chicPalette, them
      return <Pressable style={[styles.timeTab, styles.timeTabMinimal, isDark && styles.darkSurface, active && styles.timeTabActive, active && { backgroundColor: isDark ? '#26365F' : themeAccent, borderColor: isDark ? '#6F8DFF' : themeAccent }]} onPress={onPress}><Text numberOfLines={1} style={[styles.timeTabText, { color: isDark ? '#F4F7FC' : secondaryText }, active && styles.timeTabTextActive, active && styles.timeTabTextActiveMinimal]}>{label}</Text></Pressable>;
 }
 
-function FocusMode({ tasks, designMode, chicPalette, backgroundImageUri, onFocusCompleted, onFocusStarted, onBehaviorEvent, hapticsEnabled = true }: { tasks: Task[]; designMode: DesignMode; chicPalette?: ChicThemePalette; backgroundImageUri?: string; onFocusCompleted: (session: FocusSession) => void; onFocusStarted?: () => void; onBehaviorEvent: (event: BehaviorEvent) => void; hapticsEnabled?: boolean }) {
+function FocusMode({ tasks, designMode, chicPalette, backgroundImageUri, onFocusCompleted, onFocusStarted, onFocusRunningChange, onBehaviorEvent, hapticsEnabled = true }: { tasks: Task[]; designMode: DesignMode; chicPalette?: ChicThemePalette; backgroundImageUri?: string; onFocusCompleted: (session: FocusSession) => void; onFocusStarted?: () => void; onFocusRunningChange?: (running: boolean) => void; onBehaviorEvent: (event: BehaviorEvent) => void; hapticsEnabled?: boolean }) {
   const availableTasks = React.useMemo(() => {
     const today = dateKey();
     const seenTitles = new Set<string>();
@@ -2217,6 +2244,12 @@ function FocusMode({ tasks, designMode, chicPalette, backgroundImageUri, onFocus
   completionCallbackRef.current = onFocusCompleted;
   const behaviorCallbackRef = React.useRef(onBehaviorEvent);
   behaviorCallbackRef.current = onBehaviorEvent;
+  const focusNotificationIdRef = React.useRef<string | null>(null);
+  const cancelFocusNotification = React.useCallback(async () => {
+    await cancelFocusCompletionNotification(focusNotificationIdRef.current);
+    focusNotificationIdRef.current = null;
+    if (sessionRef.current?.id) await cancelPendingFocusCompletionNotifications(sessionRef.current.id);
+  }, []);
 
   useEffect(() => {
     const selectedStillExists = availableTasks.some((task) => task.id === selectedTaskId);
@@ -2234,12 +2267,14 @@ function FocusMode({ tasks, designMode, chicPalette, backgroundImageUri, onFocus
     endAtRef.current = undefined;
     behaviorCallbackRef.current(createFocusCompletedBehaviorEvent({ sessionId: activeSession.id, taskId: activeSession.taskId, taskTitle: activeSession.taskTitle, plannedDurationMinutes: activeSession.plannedDurationMinutes, focusStartedAt: activeSession.startedAt, actualAt }));
     setRunning(false);
+    onFocusRunningChange?.(false);
     setSecondsLeft(0);
     pausedSecondsRef.current = 0;
     completionCallbackRef.current(session);
+    void cancelFocusNotification();
     triggerHaptic(hapticsEnabled, [0, 35, 70]);
     Alert.alert('集中タイム終了', activeSession.taskTitle ? `「${activeSession.taskTitle}」に取り組めました。少し休憩しよう。` : '少し休憩しよう。');
-  }, [hapticsEnabled]);
+  }, [cancelFocusNotification, hapticsEnabled, onFocusRunningChange]);
 
   const stopActiveSession = React.useCallback(() => {
     const activeSession = sessionRef.current;
@@ -2251,6 +2286,8 @@ function FocusMode({ tasks, designMode, chicPalette, backgroundImageUri, onFocus
 
   useEffect(() => () => {
     stopActiveSession();
+    void cancelFocusNotification();
+    onFocusRunningChange?.(false);
   }, [stopActiveSession]);
 
   useEffect(() => {
@@ -2277,6 +2314,8 @@ function FocusMode({ tasks, designMode, chicPalette, backgroundImageUri, onFocus
   };
   const reset = () => {
     if (sessionRef.current) stopActiveSession();
+    void cancelFocusNotification();
+    onFocusRunningChange?.(false);
     setRunning(false);
     setSecondsLeft(duration * 60);
     pausedSecondsRef.current = duration * 60;
@@ -2293,6 +2332,8 @@ function FocusMode({ tasks, designMode, chicPalette, backgroundImageUri, onFocus
       }
       stopActiveSession();
       setRunning(false);
+      onFocusRunningChange?.(false);
+      void cancelFocusNotification();
       return;
     }
     const nextSeconds = pausedSecondsRef.current > 0 ? pausedSecondsRef.current : secondsLeft === 0 ? duration * 60 : secondsLeft;
@@ -2309,6 +2350,12 @@ function FocusMode({ tasks, designMode, chicPalette, backgroundImageUri, onFocus
     pausedSecondsRef.current = nextSeconds;
     endAtRef.current = Date.now() + nextSeconds * 1000;
     setRunning(true);
+    onFocusRunningChange?.(true);
+    if (sessionRef.current) {
+      void cancelFocusNotification().then(async () => {
+        focusNotificationIdRef.current = await scheduleFocusCompletionNotification({ timerId: sessionRef.current?.id ?? '', endAt: new Date(endAtRef.current ?? Date.now()).toISOString(), taskTitle: sessionRef.current?.taskTitle });
+      });
+    }
   };
   const minutes = Math.floor(secondsLeft / 60);
   const seconds = secondsLeft % 60;
