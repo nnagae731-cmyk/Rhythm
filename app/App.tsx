@@ -47,7 +47,6 @@ import { deleteManagedPhotoUri, persistPhotoUri } from './features/photo/persist
 import { canUseNotifications, getNotificationPermissionAction, getNotificationPermissionStatus, requestRhythmNotificationPermission } from './features/notifications/notificationPermission';
 import { canCreateWish } from './features/ads/rewardedAccessLogic';
 import { DEFAULT_REWARDED_ACCESS_STATE, loadRewardedAccessState, RewardedAccessState, saveRewardedAccessState } from './features/ads/rewardedAccessStorage';
-import { showTestRewardedAd } from './services/rewardedAds';
 import { cancelFocusCompletionNotification, cancelPendingFocusCompletionNotifications, scheduleFocusCompletionNotification } from './features/focus/focusNotifications';
 import { FOCUS_NAVIGATION_GUARD_COPY, getFocusNavigationDecision } from './features/focus/focusUsagePolicy';
 import {
@@ -657,6 +656,9 @@ export default function App() {
     if (rewardedWishBusyRef.current) return false;
     rewardedWishBusyRef.current = true;
     try {
+      // Google Mobile Ads is a native module and is loaded only when the user
+      // explicitly requests a rewarded ad, keeping Expo Go startup safe.
+      const { showTestRewardedAd } = require('./services/rewardedAds') as typeof import('./services/rewardedAds');
       const earned = await showTestRewardedAd().catch(() => false);
       if (!earned) {
         Alert.alert('広告を完了できませんでした', '報酬を受け取れなかったため、追加権は増えていません。');
