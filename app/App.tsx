@@ -44,6 +44,7 @@ import { SharedEventScreen } from './SharedEventScreen';
 import { TopImageCropModal } from './components/TopImageCropModal';
 import { cropRectToPixels, displayToNormalizedRect, getContainBounds, getInitialCropRect, NormalizedCropRect } from './features/photo/topImageCrop';
 import { deleteManagedPhotoUri, persistPhotoUri } from './features/photo/persistentPhoto';
+import { canUseNotifications, getNotificationPermissionAction, getNotificationPermissionStatus, requestRhythmNotificationPermission } from './features/notifications/notificationPermission';
 import { canCreateWish } from './features/ads/rewardedAccessLogic';
 import { DEFAULT_REWARDED_ACCESS_STATE, loadRewardedAccessState, RewardedAccessState, saveRewardedAccessState } from './features/ads/rewardedAccessStorage';
 import { showTestRewardedAd } from './services/rewardedAds';
@@ -382,8 +383,22 @@ function getInitialNormalizedCrop(sourceWidth: number, sourceHeight: number): No
 }
 
 async function ensureNotifications() {
-  const permission = await Notifications.requestPermissionsAsync();
-  if (!permission.granted) return false;
+  const status = await getNotificationPermissionStatus();
+  if (!canUseNotifications(status)) {
+    const action = getNotificationPermissionAction(status);
+    const proceed = await new Promise<boolean>((resolve) => {
+      Alert.alert(
+        '通知を許可しますか？',
+        '設定した時間や集中タイムの終了をRhythmからお知らせします。',
+        action === 'openSettings'
+          ? [{ text: 'あとで', style: 'cancel', onPress: () => resolve(false) }, { text: 'iPhoneの設定を開く', onPress: () => { void Linking.openSettings(); resolve(false); } }]
+          : [{ text: 'あとで', style: 'cancel', onPress: () => resolve(false) }, { text: '通知を許可する', onPress: () => resolve(true) }],
+      );
+    });
+    if (!proceed) return false;
+    const requested = await requestRhythmNotificationPermission();
+    if (!canUseNotifications(requested)) return false;
+  }
 
   if (Platform.OS === 'android') {
     await Notifications.setNotificationChannelAsync('reminders', {

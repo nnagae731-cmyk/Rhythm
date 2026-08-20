@@ -1,4 +1,5 @@
 import * as Notifications from 'expo-notifications';
+import { canUseNotifications, getNotificationPermissionAction, getNotificationPermissionStatus, requestRhythmNotificationPermission } from '../notifications/notificationPermission';
 
 export const FOCUS_COMPLETION_NOTIFICATION_KIND =
   'focus_timer_complete';
@@ -17,17 +18,11 @@ export type ScheduleFocusCompletionNotificationArgs = {
  * フォールバック通知専用。
  */
 export async function ensureFocusNotificationPermission(): Promise<boolean> {
-  const current =
-    await Notifications.getPermissionsAsync();
-
-  if (current.status === 'granted') {
-    return true;
-  }
-
-  const requested =
-    await Notifications.requestPermissionsAsync();
-
-  return requested.status === 'granted';
+  const current = await getNotificationPermissionStatus();
+  if (canUseNotifications(current)) return true;
+  if (getNotificationPermissionAction(current) !== 'request') return false;
+  const requested = await requestRhythmNotificationPermission();
+  return canUseNotifications(requested);
 }
 
 /**
