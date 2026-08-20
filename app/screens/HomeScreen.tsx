@@ -45,13 +45,9 @@ export function HomeScreen({
   showTodoOnboarding,
   onTodoOnboardingCompleted,
   showTodoCompleteOnboarding,
-  onTodoCompleteOnboarding,
   showCompletedTasksOnboarding,
-  onCompletedTasksOnboarding,
   showTaskBucketsOnboarding,
-  onTaskBucketsOnboarding,
   showTaskDetailsOnboarding,
-  onTaskDetailsOnboarding,
   helpers,
 }: {
   tasks: Task[];
@@ -84,13 +80,9 @@ export function HomeScreen({
   showTodoOnboarding?: boolean;
   onTodoOnboardingCompleted?: () => void;
   showTodoCompleteOnboarding?: boolean;
-  onTodoCompleteOnboarding?: () => void;
   showCompletedTasksOnboarding?: boolean;
-  onCompletedTasksOnboarding?: () => void;
   showTaskBucketsOnboarding?: boolean;
-  onTaskBucketsOnboarding?: () => void;
   showTaskDetailsOnboarding?: boolean;
-  onTaskDetailsOnboarding?: () => void;
   helpers: any;
 }) {
   const { deadlineLabel, getUrgencyStatus, getLateRiskMessage, dateKey } = helpers;

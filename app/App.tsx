@@ -1942,13 +1942,9 @@ export default function App() {
               showTodoOnboarding={onboarding.ready && onboarding.isCompleted('intro') && !onboarding.isCompleted('todo')}
               onTodoOnboardingCompleted={() => void onboarding.complete('todo')}
               showTodoCompleteOnboarding={onboarding.ready && onboarding.isCompleted('todo') && !onboarding.isCompleted('todoComplete') && tasks.some((task) => !task.done)}
-              onTodoCompleteOnboarding={() => void onboarding.complete('todoComplete')}
               showCompletedTasksOnboarding={onboarding.ready && onboarding.isCompleted('todoComplete') && !onboarding.isCompleted('completedTasks') && tasks.some((task) => task.done)}
-              onCompletedTasksOnboarding={() => void onboarding.complete('completedTasks')}
               showTaskBucketsOnboarding={onboarding.ready && onboarding.isCompleted('completedTasks') && !onboarding.isCompleted('taskBuckets') && tasks.length > 0}
-              onTaskBucketsOnboarding={() => void onboarding.complete('taskBuckets')}
               showTaskDetailsOnboarding={onboarding.ready && onboarding.isCompleted('taskBuckets') && !onboarding.isCompleted('taskDetails') && tasks.length > 0}
-              onTaskDetailsOnboarding={() => void onboarding.complete('taskDetails')}
               helpers={{ deadlineLabel, getUrgencyStatus, getLateRiskMessage, dateForReminder, dateKey, formatLiveTime, isCheckChicPattern, todayInputValue }}
             />
           )}
