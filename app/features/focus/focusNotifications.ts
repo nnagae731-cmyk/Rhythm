@@ -1,5 +1,4 @@
 import * as Notifications from 'expo-notifications';
-import { canUseNotifications, getNotificationPermissionAction, getNotificationPermissionStatus, requestRhythmNotificationPermission } from '../notifications/notificationPermission';
 
 export const FOCUS_COMPLETION_NOTIFICATION_KIND =
   'focus_timer_complete';
@@ -8,22 +7,9 @@ export type ScheduleFocusCompletionNotificationArgs = {
   timerId: string;
   endAt: string;
   taskTitle?: string;
+  /** Permission UI is handled by the caller after showing Rhythm's explanation. */
+  permissionGranted: boolean;
 };
-
-/**
- * Focus終了通知に必要な通知権限を確認する。
- *
- * AlarmKitの権限とは別物。
- * この関数はexpo-notificationsによる
- * フォールバック通知専用。
- */
-export async function ensureFocusNotificationPermission(): Promise<boolean> {
-  const current = await getNotificationPermissionStatus();
-  if (canUseNotifications(current)) return true;
-  if (getNotificationPermissionAction(current) !== 'request') return false;
-  const requested = await requestRhythmNotificationPermission();
-  return canUseNotifications(requested);
-}
 
 /**
  * 集中タイマー終了時刻に
@@ -36,6 +22,7 @@ export async function scheduleFocusCompletionNotification({
   timerId,
   endAt,
   taskTitle,
+  permissionGranted,
 }: ScheduleFocusCompletionNotificationArgs): Promise<
   string | null
 > {
@@ -48,10 +35,7 @@ export async function scheduleFocusCompletionNotification({
     return null;
   }
 
-  const hasPermission =
-    await ensureFocusNotificationPermission();
-
-  if (!hasPermission) {
+  if (!permissionGranted) {
     return null;
   }
 

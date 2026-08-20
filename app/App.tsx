@@ -658,8 +658,22 @@ export default function App() {
     try {
       // Google Mobile Ads is a native module and is loaded only when the user
       // explicitly requests a rewarded ad, keeping Expo Go startup safe.
-      const { showTestRewardedAd } = require('./services/rewardedAds') as typeof import('./services/rewardedAds');
-      const earned = await showTestRewardedAd().catch(() => false);
+      let showTestRewardedAd: typeof import('./services/rewardedAds').showTestRewardedAd;
+      try {
+        // Keep the native module lazy so Expo Go can start safely. The require
+        // itself can also fail in environments without a Development Build.
+        ({ showTestRewardedAd } = require('./services/rewardedAds') as typeof import('./services/rewardedAds'));
+      } catch {
+        Alert.alert('広告を利用できません', '広告の確認にはDevelopment Buildが必要です。');
+        return false;
+      }
+      let earned = false;
+      try {
+        earned = await showTestRewardedAd();
+      } catch {
+        Alert.alert('広告を利用できません', '広告の確認にはDevelopment Buildが必要です。');
+        return false;
+      }
       if (!earned) {
         Alert.alert('広告を完了できませんでした', '報酬を受け取れなかったため、追加権は増えていません。');
         return false;
@@ -1871,7 +1885,8 @@ export default function App() {
           {onboarding.ready && onboarding.isCompleted('schedule') && screen === 'timeline' && !onboarding.isCompleted('planRegistration') && <View style={{ marginBottom: 12 }}><OnboardingHint featureId="planRegistration" /></View>}
           {onboarding.ready && onboarding.isCompleted('planRegistration') && screen === 'timeline' && !onboarding.isCompleted('calendarImport') && <View style={{ marginBottom: 12 }}><OnboardingHint featureId="calendarImport" /></View>}
           {onboarding.ready && screen === 'analysis' && !onboarding.isCompleted('analysis') && <View style={{ marginBottom: 12 }}><OnboardingHint featureId="analysis" /></View>}
-          {onboarding.ready && screen === 'analysis' && !onboarding.isCompleted('history') && <View style={{ marginBottom: 12 }}><OnboardingHint featureId="history" /></View>}
+          {onboarding.ready && screen === 'analysis' && onboarding.isCompleted('analysis') && !onboarding.isCompleted('routine') && <View style={{ marginBottom: 12 }}><OnboardingHint featureId="routine" /></View>}
+          {onboarding.ready && screen === 'analysis' && onboarding.isCompleted('analysis') && onboarding.isCompleted('routine') && !onboarding.isCompleted('history') && <View style={{ marginBottom: 12 }}><OnboardingHint featureId="history" /></View>}
           {onboarding.ready && screen === 'settings' && !onboarding.isCompleted('design') && <View style={{ marginBottom: 12 }}><OnboardingHint featureId="design" /></View>}
           {screen === 'home' && (
             <HomeScreen
@@ -1999,6 +2014,7 @@ export default function App() {
               onRecoveryClosed={() => setRecoveryTargetPlanId(undefined)}
               onFocusCompleted={completeFocusSession}
               onFocusStarted={() => void onboarding.complete('focus')}
+              onFocusNotificationPermission={ensureNotifications}
               onFocusRunningChange={setFocusTimerActive}
               focusTimerActive={focusTimerActive}
               onFocusNavigationBlocked={() => setFocusNavigationNotice(true)}
@@ -2217,7 +2233,7 @@ function TimeTabButton({ tab, active, designMode, chicPattern, chicPalette, them
      return <Pressable style={[styles.timeTab, styles.timeTabMinimal, isDark && styles.darkSurface, active && styles.timeTabActive, active && { backgroundColor: isDark ? '#26365F' : themeAccent, borderColor: isDark ? '#6F8DFF' : themeAccent }]} onPress={onPress}><Text numberOfLines={1} style={[styles.timeTabText, { color: isDark ? '#F4F7FC' : secondaryText }, active && styles.timeTabTextActive, active && styles.timeTabTextActiveMinimal]}>{label}</Text></Pressable>;
 }
 
-function FocusMode({ tasks, designMode, chicPalette, backgroundImageUri, onFocusCompleted, onFocusStarted, onFocusRunningChange, onBehaviorEvent, hapticsEnabled = true }: { tasks: Task[]; designMode: DesignMode; chicPalette?: ChicThemePalette; backgroundImageUri?: string; onFocusCompleted: (session: FocusSession) => void; onFocusStarted?: () => void; onFocusRunningChange?: (running: boolean) => void; onBehaviorEvent: (event: BehaviorEvent) => void; hapticsEnabled?: boolean }) {
+function FocusMode({ tasks, designMode, chicPalette, backgroundImageUri, onFocusCompleted, onFocusStarted, onFocusNotificationPermission, onFocusRunningChange, onBehaviorEvent, hapticsEnabled = true }: { tasks: Task[]; designMode: DesignMode; chicPalette?: ChicThemePalette; backgroundImageUri?: string; onFocusCompleted: (session: FocusSession) => void; onFocusStarted?: () => void; onFocusNotificationPermission?: () => Promise<boolean>; onFocusRunningChange?: (running: boolean) => void; onBehaviorEvent: (event: BehaviorEvent) => void; hapticsEnabled?: boolean }) {
   const availableTasks = React.useMemo(() => {
     const today = dateKey();
     const seenTitles = new Set<string>();
@@ -2321,7 +2337,7 @@ function FocusMode({ tasks, designMode, chicPalette, backgroundImageUri, onFocus
     sessionRef.current = undefined;
     endAtRef.current = undefined;
   };
-  const toggleTimer = () => {
+  const toggleTimer = async () => {
     if (running) {
       const endAt = endAtRef.current;
       if (endAt) {
@@ -2335,6 +2351,9 @@ function FocusMode({ tasks, designMode, chicPalette, backgroundImageUri, onFocus
       void cancelFocusNotification();
       return;
     }
+    const notificationPermissionGranted = onFocusNotificationPermission
+      ? await onFocusNotificationPermission()
+      : true;
     const nextSeconds = pausedSecondsRef.current > 0 ? pausedSecondsRef.current : secondsLeft === 0 ? duration * 60 : secondsLeft;
     if (!sessionRef.current) {
       const startedAt = new Date();
@@ -2352,7 +2371,8 @@ function FocusMode({ tasks, designMode, chicPalette, backgroundImageUri, onFocus
     onFocusRunningChange?.(true);
     if (sessionRef.current) {
       void cancelFocusNotification().then(async () => {
-        focusNotificationIdRef.current = await scheduleFocusCompletionNotification({ timerId: sessionRef.current?.id ?? '', endAt: new Date(endAtRef.current ?? Date.now()).toISOString(), taskTitle: sessionRef.current?.taskTitle });
+        if (!sessionRef.current || !endAtRef.current) return;
+        focusNotificationIdRef.current = await scheduleFocusCompletionNotification({ timerId: sessionRef.current.id, endAt: new Date(endAtRef.current).toISOString(), taskTitle: sessionRef.current.taskTitle, permissionGranted: notificationPermissionGranted });
       });
     }
   };
