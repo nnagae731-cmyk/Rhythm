@@ -8,6 +8,7 @@ export type PremiumFeature =
   | 'full_history'
   | 'history_search'
   | 'chic_dot'
+  | 'chic_floral'
   | 'chic_check_lavender_satin'
   | 'chic_check_beige_noir'
   | 'chic_check_mauve_frame'
@@ -33,14 +34,12 @@ export function getEffectiveNudgeMode<T extends 'once' | 'repeat' | 'strong'>(ti
 }
 
 export function getEffectiveChicPattern<T extends 'plain' | 'floral' | 'floralSoft' | 'floralSeasonal' | 'floralDark' | 'dot' | 'checkLavenderSatin' | 'checkBeigeNoir' | 'checkMauveFrame'>(tier: PlanTier, pattern: T): T | 'plain' {
-  // 花柄3種は無料版でも選択できる基本テーマ。Premium限定なのはドット／チェック系。
-  // Floral backgrounds are Design's built-in choices and remain available on every tier.
-  if (pattern === 'floral' || pattern === 'floralSoft' || pattern === 'floralSeasonal' || pattern === 'floralDark') return pattern;
   if (pattern === 'plain') return pattern;
   return tier === 'premium' ? pattern : 'plain';
 }
 
-export function getChicPatternFeatureId(pattern: 'dot' | 'checkLavenderSatin' | 'checkBeigeNoir' | 'checkMauveFrame') {
+export function getChicPatternFeatureId(pattern: 'floral' | 'floralSoft' | 'floralSeasonal' | 'floralDark' | 'dot' | 'checkLavenderSatin' | 'checkBeigeNoir' | 'checkMauveFrame') {
+  if (pattern === 'floral' || pattern === 'floralSoft' || pattern === 'floralSeasonal' || pattern === 'floralDark') return 'chic_floral';
   if (pattern === 'dot') return 'chic_dot';
   if (pattern === 'checkBeigeNoir') return 'chic_check_beige_noir';
   if (pattern === 'checkMauveFrame') return 'chic_check_mauve_frame';

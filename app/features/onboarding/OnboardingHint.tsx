@@ -1,5 +1,6 @@
 import React from 'react';
 import {
+  Modal,
   Pressable,
   StyleSheet,
   Text,
@@ -52,19 +53,21 @@ export function OnboardingHint({
   onAction,
   actionLabel,
 }: Props) {
-  if (!visible) {
-    return null;
-  }
+  const [open, setOpen] = React.useState(visible);
+  React.useEffect(() => setOpen(visible), [visible]);
+  if (!visible || !open) return null;
 
   const step = getOnboardingStep(featureId);
   const buttonLabel =
     actionLabel ?? step.actionLabel;
 
+  const dismiss = () => { setOpen(false); onDismiss?.(); };
+  const action = () => { setOpen(false); onAction?.(); };
   return (
-    <View
-      style={styles.card}
-      accessibilityRole="summary"
-    >
+    <Modal visible transparent animationType="fade" onRequestClose={dismiss}>
+      <Pressable style={styles.backdrop} onPress={dismiss}>
+      <Pressable style={styles.sheet} onPress={(event) => event.stopPropagation()}>
+      <View style={styles.card} accessibilityRole="summary">
       <View style={styles.topRow}>
         <View style={styles.badge}>
           <Text style={styles.badgeText}>
@@ -72,12 +75,11 @@ export function OnboardingHint({
           </Text>
         </View>
 
-        {onDismiss ? (
-          <Pressable
+        <Pressable
             accessibilityRole="button"
             accessibilityLabel="案内を閉じる"
             hitSlop={10}
-            onPress={onDismiss}
+            onPress={dismiss}
             style={({ pressed }) => [
               styles.closeButton,
               pressed &&
@@ -88,7 +90,6 @@ export function OnboardingHint({
               ×
             </Text>
           </Pressable>
-        ) : null}
       </View>
 
       <Text style={styles.title}>
@@ -103,7 +104,7 @@ export function OnboardingHint({
         <Pressable
           accessibilityRole="button"
           accessibilityLabel={buttonLabel}
-          onPress={onAction}
+          onPress={action}
           style={({ pressed }) => [
             styles.actionButton,
             pressed &&
@@ -115,7 +116,10 @@ export function OnboardingHint({
           </Text>
         </Pressable>
       ) : null}
-    </View>
+      </View>
+      </Pressable>
+      </Pressable>
+    </Modal>
   );
 }
 
@@ -130,6 +134,20 @@ const styles = StyleSheet.create({
     borderRadius:
       theme.radius.large,
     padding: 16,
+  },
+
+  backdrop: {
+    flex: 1,
+    justifyContent: 'flex-end',
+    backgroundColor: 'rgba(23, 24, 28, 0.18)',
+    paddingHorizontal: 14,
+    paddingBottom: 18,
+  },
+
+  sheet: {
+    width: '100%',
+    maxWidth: 460,
+    alignSelf: 'center',
   },
 
   topRow: {

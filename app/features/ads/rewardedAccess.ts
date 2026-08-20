@@ -31,8 +31,14 @@ export const REWARDED_AD_RULES = {
 
   premiumDesignTrial: {
     label: 'プレミアデザイン試着',
+    adsRequired: 0,
+    perDesign: false,
+  },
+
+  premiumDesignTrialExpired: {
+    label: 'プレミアデザインを12時間使う',
     adsRequired: 1,
-    perDesign: true,
+    unlockDurationHours: 12,
   },
 
   photoTop: {

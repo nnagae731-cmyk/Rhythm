@@ -173,3 +173,14 @@ export function getRoutineSkipBonusProgress(
       REWARDED_AD_RULES.routineSkipBonus.maxAddedDays,
   };
 }
+
+export function isPremiumDesignTrialActive(
+  state: RewardedAccessState,
+  now = new Date(),
+): boolean {
+  return state.premiumDesignTrial.used && isUnlockActive(state.premiumDesignTrial.expiresAt, now);
+}
+
+export function canStartPremiumDesignTrial(state: RewardedAccessState): boolean {
+  return !state.premiumDesignTrial.used;
+}

@@ -19,6 +19,13 @@ export type RewardedAccessState = {
     unlockedUntil: string | null;
   };
 
+  /** One-time 24-hour Design trial. Kept in rewarded storage for compatibility. */
+  premiumDesignTrial: {
+    used: boolean;
+    designId: string | null;
+    expiresAt: string | null;
+  };
+
   premiumDesignTrialCredits: Record<string, number>;
 
   calendarImportCredits: number;
@@ -50,6 +57,12 @@ export const DEFAULT_REWARDED_ACCESS_STATE: RewardedAccessState = {
 
   premiumDesign: {
     unlockedUntil: null,
+  },
+
+  premiumDesignTrial: {
+    used: false,
+    designId: null,
+    expiresAt: null,
   },
 
   premiumDesignTrialCredits: {},
@@ -155,6 +168,12 @@ export function normalizeRewardedAccessState(
       unlockedUntil: normalizeNullableString(
         raw.premiumDesign?.unlockedUntil,
       ),
+    },
+
+    premiumDesignTrial: {
+      used: raw.premiumDesignTrial?.used === true,
+      designId: typeof raw.premiumDesignTrial?.designId === 'string' ? raw.premiumDesignTrial.designId : null,
+      expiresAt: normalizeNullableString(raw.premiumDesignTrial?.expiresAt),
     },
 
     premiumDesignTrialCredits:

@@ -43,6 +43,7 @@ export function HomeScreen({
   styles,
   renderTodayWinStrip,
   showTodoOnboarding,
+  onTodoOnboardingAction,
   onTodoOnboardingCompleted,
   showTodoCompleteOnboarding,
   showCompletedTasksOnboarding,
@@ -78,6 +79,7 @@ export function HomeScreen({
   styles: any;
   renderTodayWinStrip: (tasks: Task[]) => React.ReactNode;
   showTodoOnboarding?: boolean;
+  onTodoOnboardingAction?: () => void;
   onTodoOnboardingCompleted?: () => void;
   showTodoCompleteOnboarding?: boolean;
   showCompletedTasksOnboarding?: boolean;
@@ -108,6 +110,7 @@ export function HomeScreen({
        <View style={{ marginBottom: 12 }}>
         <OnboardingHint
           featureId="todo"
+          onAction={onTodoOnboardingAction}
      />
       </View>
       )}

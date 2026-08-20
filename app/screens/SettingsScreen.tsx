@@ -32,6 +32,7 @@ export function SettingsScreen({
   onHapticsEnabled,
   onReview,
   onChicPattern,
+  onDesignPreview,
   onChicCheckColor,
   onSaveAffirmation,
   onDeleteAffirmation,
@@ -76,6 +77,7 @@ export function SettingsScreen({
   onHapticsEnabled: (value: boolean) => void;
   onReview: () => void;
   onChicPattern: (pattern: ChicPattern) => void;
+  onDesignPreview: (pattern: ChicPattern) => void;
   onChicCheckColor: (color: ChicCheckColor) => void;
   onSaveAffirmation: (affirmation: Affirmation) => Promise<void> | void;
   onDeleteAffirmation: (affirmation: Affirmation) => Promise<void> | void;
@@ -129,7 +131,7 @@ export function SettingsScreen({
       <View accessibilityLabel={isDesign ? `Design ${checkColorLabel}` : 'Mono'} style={[styles.modeCard, isDark && styles.darkSurface, isDesign && chicPalette && { backgroundColor: chicPalette.cardSurface, borderColor: chicPalette.border }]}>
         {designMode === 'chic' && chicPattern === 'checkLavenderSatin' && <BThemeRibbonDecoration compact />}
         {designMode === 'chic' && chicPattern === 'checkBeigeNoir' && <CThemeRibbonDecoration compact />}
-        {isDesign && <ChicPatternSelector designMode={designMode} chicPattern={chicPattern} chicCheckColor={chicCheckColor} planTier={planTier} onPattern={onChicPattern} onCheckColor={onChicCheckColor} onPremium={onPremium} />}
+        {isDesign && <ChicPatternSelector designMode={designMode} chicPattern={chicPattern} chicCheckColor={chicCheckColor} planTier={planTier} onPattern={onChicPattern} onCheckColor={onChicCheckColor} onPremium={onPremium} onPreview={onDesignPreview} />}
         <View style={styles.modeChoices}>
           {designModes.map((mode: { id: 'minimal' | 'chic'; description: string }) => (
             <Pressable key={mode.id} style={[styles.modeChoice, (designMode === mode.id || (mode.id === 'minimal' && designMode === 'dark')) && styles.modeChoiceActive, mode.id === 'minimal' && designMode === 'dark' && styles.modeChoiceActiveDark, mode.id === 'chic' && designMode === 'chic' && chicPalette && { borderColor: chicPalette.accent, backgroundColor: chicPalette.cardTint }]} onPress={() => onDesignMode(mode.id === 'minimal' && designMode === 'dark' ? 'dark' : mode.id)}>

@@ -318,27 +318,14 @@ Premiumユーザーは広告不要。
 
 # 12. Premium Design試着
 
-Rewarded Feature：
+プレビュー画面で全Designを確認するだけなら広告は不要です。
+Freeユーザーが初めて選んだPremium Designは、`premiumDesignTrial` に
+`used`・`designId`・`expiresAt` を保存し、24時間だけ本体へ適用できます。
 
-`premiumDesignTrial`
+試着終了後に12時間だけ使う場合は、既存の `premiumDesign`（広告1回・12時間）を
+利用します。広告を閉じただけでは解放せず、報酬受領時だけ `unlockedUntil` を更新します。
 
-必要広告：
-
-**1回**
-
-1広告につき、
-
-**1デザインを1回試着**
-
-可能。
-
-通常の
-
-`Premium Design 12時間解放`
-
-とは別扱い。
-
-Premiumユーザーは広告不要。
+Premiumユーザーは試着・広告ともに不要です。
 
 ---
 
@@ -631,6 +618,7 @@ Storage Key：
 - wishCreateProgress
 - wishActionCreateProgress
 - premiumDesign unlockedUntil
+- premiumDesignTrial used / designId / expiresAt
 - premiumDesignTrialCredits
 - calendarImportCredits
 - Photo customization unlock
