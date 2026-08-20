@@ -28,7 +28,7 @@ const reflectionCardPalettes: Record<ReflectionCardPalette, { background: string
   peach: { background: '#FFF7F2', surface: '#FFFFFF', accent: '#D67C62', text: '#4A2E28', muted: '#96766D' },
   green: { background: '#F2FAF5', surface: '#FFFFFF', accent: '#4D9372', text: '#1F4032', muted: '#6E8A7C' },
 };
-const reflectionTemplateLabels: Record<ReflectionCardTemplate, string> = { gallery: 'Gallery', film: 'Film', scrapbook: 'Scrapbook' };
+const reflectionTemplateLabels: Record<ReflectionCardTemplate, string> = { gallery: 'Magazine', film: 'Collage', scrapbook: 'Memory Scrapbook' };
 const reflectionPaletteLabels: Record<ReflectionCardPalette, string> = { lavender: 'Lavender', blue: 'Blue', peach: 'Peach', green: 'Green' };
 
 function normalizeReflectionCard(value: unknown, monthKey: string): MonthlyReflectionCard | undefined {
@@ -53,14 +53,27 @@ function normalizeReflectionCard(value: unknown, monthKey: string): MonthlyRefle
   };
 }
 
-function reflectionPhotoStyle(count: number, index: number): { width: `${number}%`; height: number } {
-  if (count === 1) return { width: '100%', height: 210 };
-  if (count === 2) return { width: '48%', height: 205 };
-  if (count === 3 && index === 0) return { width: '100%', height: 190 };
-  if (count === 3) return { width: '48%', height: 104 };
-  if (count === 4) return { width: '48%', height: 122 };
-  if (index === 0) return { width: '100%', height: 172 };
-  return { width: '48%', height: 82 };
+function templatePhotoStyle(template: ReflectionCardTemplate, count: number, index: number): { width: `${number}%`; height: number } {
+  if (template === 'gallery') {
+    if (index === 0) return { width: '100%', height: count === 1 ? 246 : 214 };
+    return { width: count >= 4 ? '31%' : '48%', height: 68 };
+  }
+  if (template === 'film') {
+    if (count === 1) return { width: '100%', height: 230 };
+    if (count === 2) return { width: '48%', height: 178 };
+    if (count === 3 && index === 0) return { width: '100%', height: 136 };
+    if (count === 3) return { width: '48%', height: 88 };
+    if (count === 4) return { width: '48%', height: 104 };
+    if (index === 0) return { width: '100%', height: 124 };
+    return { width: '31%', height: 76 };
+  }
+  if (count === 1) return { width: '100%', height: 208 };
+  if (count === 2) return { width: '48%', height: 166 };
+  if (count === 3 && index === 0) return { width: '100%', height: 158 };
+  if (count === 3) return { width: '48%', height: 84 };
+  if (count === 4) return { width: '48%', height: 96 };
+  if (index === 0) return { width: '62%', height: 138 };
+  return { width: '31%', height: 72 };
 }
 
 const reflectionStyles = StyleSheet.create({
@@ -72,9 +85,21 @@ const reflectionStyles = StyleSheet.create({
   cardWord: { fontSize: 16, fontWeight: '900', textAlign: 'center', marginTop: 13, minHeight: 22 },
   cardSection: { fontSize: 11, fontWeight: '900', letterSpacing: 0.6, marginTop: 12, marginBottom: 8 },
   photoGrid: { width: '100%', flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', gap: 7 },
-  cardPhoto: { borderRadius: 10, backgroundColor: '#E8ECF0' },
-  filmPhoto: { borderRadius: 3, borderWidth: 3, borderColor: '#FFFFFF' },
+  cardPhoto: { width: '100%', height: '100%', backgroundColor: '#E8ECF0' },
+  magazineFrame: { overflow: 'hidden', borderRadius: 4, backgroundColor: '#E8ECF0' },
+  magazineStrip: { width: '100%', flexDirection: 'row', gap: 6, marginTop: 7 },
+  collageFrame: { padding: 4, backgroundColor: '#FFFFFF', borderWidth: 1, overflow: 'hidden' },
+  filmStrip: { width: '100%', flexDirection: 'row', gap: 5, paddingHorizontal: 3, paddingVertical: 5, backgroundColor: '#252525', marginBottom: 7 },
+  filmPerforation: { width: 5, height: 4, borderRadius: 2, backgroundColor: '#F5F5F5', opacity: 0.9 },
+  scrapbookFrame: { padding: 4, backgroundColor: '#FFFFFF', borderWidth: 1, overflow: 'hidden' },
+  scrapbookHeader: { width: '100%', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 },
+  scrapbookStamp: { borderWidth: 1, borderRadius: 4, paddingHorizontal: 7, paddingVertical: 4, transform: [{ rotate: '3deg' }] },
+  scrapbookNotes: { width: '100%', flexDirection: 'row', gap: 6, marginTop: 9 },
+  scrapbookNote: { flex: 1, borderWidth: 1, borderRadius: 4, paddingHorizontal: 7, paddingVertical: 6 },
   bestBlock: { width: '100%', borderWidth: 1, borderRadius: 9, paddingHorizontal: 10, paddingVertical: 7, marginTop: 10 },
+  collageMemo: { width: '100%', borderWidth: 1, paddingHorizontal: 10, paddingVertical: 8, marginTop: 9, transform: [{ rotate: '-1deg' }] },
+  collageMemoLabel: { fontSize: 9, fontWeight: '900', letterSpacing: 0.8 },
+  collageMemoText: { fontSize: 12, fontWeight: '800', marginTop: 3 },
   bestLabel: { fontSize: 9, fontWeight: '900' },
   bestTitle: { fontSize: 11, fontWeight: '800', marginTop: 2 },
   cardFooter: { fontSize: 9, fontWeight: '800', marginTop: 'auto' },
@@ -88,26 +113,48 @@ const reflectionStyles = StyleSheet.create({
 
 function MonthlyReflectionCardView({ model, cardRef, onReady }: { model: ReflectionCardModel; cardRef: React.RefObject<View | null>; onReady: () => void }) {
   const palette = reflectionCardPalettes[model.palette];
+  const isMagazine = model.template === 'gallery';
+  const isCollage = model.template === 'film';
+  const isScrapbook = model.template === 'scrapbook';
   const [loaded, setLoaded] = useState<Set<number>>(new Set());
   const [laidOut, setLaidOut] = useState(false);
   useEffect(() => {
     if (model.photos.length > 0 && laidOut && loaded.size >= model.photos.length) onReady();
   }, [laidOut, loaded, model.photos.length, onReady]);
+  const markLoaded = (index: number) => setLoaded((current) => new Set(current).add(index));
+  const photo = (uri: string, index: number) => {
+    const photoStyle = templatePhotoStyle(model.template, model.photos.length, index);
+    const rotation = isCollage ? (index % 3 === 0 ? '-1.5deg' : index % 3 === 1 ? '1.2deg' : '-0.7deg') : isScrapbook ? (index % 2 === 0 ? '-2deg' : '2deg') : '0deg';
+    const frameStyle = isMagazine ? reflectionStyles.magazineFrame : isCollage ? reflectionStyles.collageFrame : reflectionStyles.scrapbookFrame;
+    return <View key={`${uri}-${index}`} style={[frameStyle, photoStyle, { transform: [{ rotate: rotation }] }, isCollage && { borderColor: palette.accent }, isScrapbook && { borderColor: palette.accent }]}><Image source={{ uri }} resizeMode={isMagazine ? 'cover' : 'cover'} onLoadEnd={() => markLoaded(index)} onError={() => markLoaded(index)} style={reflectionStyles.cardPhoto} /></View>;
+  };
+  const magazinePhotos = model.photos.map((uri, index) => photo(uri, index));
+  const collagePhotos = model.photos.map((uri, index) => photo(uri, index));
+  const scrapbookPhotos = model.photos.map((uri, index) => photo(uri, index));
   return <View ref={cardRef} collapsable={false} onLayout={() => setLaidOut(true)} style={[reflectionStyles.cardShot, { backgroundColor: palette.background, borderColor: palette.accent }]}>
     <View collapsable={false} style={[reflectionStyles.cardInner, { backgroundColor: palette.surface }]}>
-      <Text style={[reflectionStyles.cardKicker, { color: palette.accent }]}>✦</Text>
-      <Text style={[reflectionStyles.cardTitle, { color: palette.text }]}>{model.monthLabel}の振り返り</Text>
-      <View style={[reflectionStyles.cardRule, { backgroundColor: palette.accent }]} />
-      <Text numberOfLines={2} style={[reflectionStyles.cardWord, { color: palette.text }]}>{model.phrase || 'よく頑張ったね'}</Text>
-      <Text style={[reflectionStyles.cardSection, { color: palette.accent }]}>今月の記録</Text>
-      <View style={reflectionStyles.photoGrid}>
-        {model.photos.map((uri, index) => {
-          const photoStyle = reflectionPhotoStyle(model.photos.length, index);
-          const markLoaded = () => setLoaded((current) => new Set(current).add(index));
-          return <Image key={`${uri}-${index}`} source={{ uri }} resizeMode="cover" onLoadEnd={markLoaded} onError={markLoaded} style={[reflectionStyles.cardPhoto, photoStyle, model.template === 'film' && reflectionStyles.filmPhoto, model.template === 'scrapbook' && { transform: [{ rotate: `${index % 2 === 0 ? -2 : 2}deg` }] }]} />;
-        })}
-      </View>
-      {model.bestMemory ? <View style={[reflectionStyles.bestBlock, { backgroundColor: palette.background, borderColor: palette.accent }]}><Text style={[reflectionStyles.bestLabel, { color: palette.accent }]}>今月のベスト</Text><Text numberOfLines={2} style={[reflectionStyles.bestTitle, { color: palette.text }]}>{model.bestMemory}</Text></View> : null}
+      {isMagazine ? <>
+        <Text style={[reflectionStyles.cardKicker, { color: palette.accent, fontSize: 10, letterSpacing: 1.8 }]}>RHYTHM / MONTHLY EDITION</Text>
+        <Text style={[reflectionStyles.cardTitle, { color: palette.text, fontSize: 25, lineHeight: 29, marginTop: 8 }]}>{model.monthLabel}</Text>
+        <View style={[reflectionStyles.cardRule, { backgroundColor: palette.accent, width: '88%', marginTop: 10 }]} />
+        <Text numberOfLines={2} style={[reflectionStyles.cardWord, { color: palette.text, fontSize: 17, marginTop: 12 }]}>{model.phrase || 'よく頑張ったね'}</Text>
+        <Text style={[reflectionStyles.cardSection, { color: palette.accent, alignSelf: 'flex-start', marginTop: 14 }]}>今月の記録　／　{model.photos.length} PHOTOS</Text>
+        <View style={reflectionStyles.photoGrid}>{magazinePhotos.slice(0, 1)}</View>
+        {model.photos.length > 1 && <View style={reflectionStyles.magazineStrip}>{magazinePhotos.slice(1)}</View>}
+        {model.bestMemory ? <View style={[reflectionStyles.bestBlock, { backgroundColor: palette.background, borderColor: palette.accent, borderRadius: 2 }]}><Text style={[reflectionStyles.bestLabel, { color: palette.accent, letterSpacing: 1 }]}>EDITOR'S PICK / 今月のベスト</Text><Text numberOfLines={2} style={[reflectionStyles.bestTitle, { color: palette.text, fontSize: 13 }]}>{model.bestMemory}</Text></View> : null}
+      </> : isCollage ? <>
+        <View style={[reflectionStyles.filmStrip, { backgroundColor: palette.accent }]}>{Array.from({ length: 9 }, (_, index) => <View key={index} style={reflectionStyles.filmPerforation} />)}</View>
+        <Text style={[reflectionStyles.cardTitle, { color: palette.text, fontSize: 20, alignSelf: 'flex-start' }]}>{model.monthLabel}のコラージュ</Text>
+        <Text numberOfLines={2} style={[reflectionStyles.cardWord, { color: palette.text, fontSize: 14, alignSelf: 'flex-start', textAlign: 'left', marginTop: 6 }]}>{model.phrase || 'よく頑張ったね'}</Text>
+        <View style={[reflectionStyles.photoGrid, { marginTop: 13 }]}>{collagePhotos}</View>
+        {model.bestMemory ? <View style={[reflectionStyles.collageMemo, { backgroundColor: palette.background, borderColor: palette.accent }]}><Text style={[reflectionStyles.collageMemoLabel, { color: palette.accent }]}>MEMO / 今月のベスト</Text><Text numberOfLines={2} style={[reflectionStyles.collageMemoText, { color: palette.text }]}>{model.bestMemory}</Text></View> : null}
+      </> : <>
+        <View style={reflectionStyles.scrapbookHeader}><Text style={[reflectionStyles.cardKicker, { color: palette.accent, fontSize: 11, letterSpacing: 1.2 }]}>MEMORY SCRAPBOOK</Text><View style={[reflectionStyles.scrapbookStamp, { borderColor: palette.accent }]}><Text style={{ color: palette.accent, fontSize: 9, fontWeight: '900' }}>KEEP</Text></View></View>
+        <Text style={[reflectionStyles.cardTitle, { color: palette.text, fontSize: 20, alignSelf: 'flex-start' }]}>{model.monthLabel}</Text>
+        <View style={[reflectionStyles.cardRule, { backgroundColor: palette.accent, width: '100%', marginTop: 6 }]} />
+        <View style={[reflectionStyles.photoGrid, { marginTop: 15 }]}>{scrapbookPhotos}</View>
+        <View style={reflectionStyles.scrapbookNotes}><View style={[reflectionStyles.scrapbookNote, { backgroundColor: palette.background, borderColor: palette.accent }]}><Text style={[reflectionStyles.bestLabel, { color: palette.accent }]}>今月の言葉</Text><Text numberOfLines={3} style={[reflectionStyles.bestTitle, { color: palette.text }]}>{model.phrase || 'よく頑張ったね'}</Text></View>{model.bestMemory ? <View style={[reflectionStyles.scrapbookNote, { backgroundColor: palette.background, borderColor: palette.accent }]}><Text style={[reflectionStyles.bestLabel, { color: palette.accent }]}>ベスト記録</Text><Text numberOfLines={3} style={[reflectionStyles.bestTitle, { color: palette.text }]}>{model.bestMemory}</Text></View> : null}</View>
+      </>}
       <Text style={[reflectionStyles.cardFooter, { color: palette.muted }]}>Rhythm　♡</Text>
     </View>
   </View>;
