@@ -2118,6 +2118,7 @@ export default function App() {
               chicPalette={chicPalette}
               planTier={planTier}
               onPremium={openPremiumFeature}
+              onAnalysisUsed={() => void onboarding.complete('analysis')}
               departurePlans={departurePlans}
               onApplySuggestion={(suggestion) => {
                 const nextPlans = departurePlansRef.current.map((item) => item.id === suggestion.planId ? { ...item, preparationMinutes: suggestion.nextPreparationMinutes } : item);
