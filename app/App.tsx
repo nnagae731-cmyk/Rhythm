@@ -2965,10 +2965,10 @@ function CompactNumberSetting({ label, value, onChange, isDark = false }: { labe
 
 function ChicPatternSelector({ designMode, chicPattern, chicCheckColor, planTier, onPattern, onCheckColor, onPremium, onPreview }: { designMode: DesignMode; chicPattern: ChicPattern; chicCheckColor: ChicCheckColor; planTier: PlanTier; onPattern: (pattern: ChicPattern) => void; onCheckColor: (color: ChicCheckColor) => void; onPremium: () => void; onPreview: (pattern: ChicPattern) => void }) {
   const patterns: { id: ChicPattern; label: string; feature?: 'chic_floral' | 'chic_dot' | 'chic_check_lavender_satin' | 'chic_check_beige_noir' | 'chic_check_mauve_frame' }[] = [
+    { id: 'plain', label: 'プレーン' },
     { id: 'floral', label: '花柄1', feature: 'chic_floral' },
     { id: 'floralSoft', label: '花柄2', feature: 'chic_floral' },
     { id: 'floralSeasonal', label: '花柄3', feature: 'chic_floral' },
-    { id: 'plain', label: 'プレーン' },
     { id: 'dot', label: 'ドット', feature: 'chic_dot' },
     { id: 'checkLavenderSatin', label: 'くすみラベンダーチェック', feature: 'chic_check_lavender_satin' },
     { id: 'checkBeigeNoir', label: 'ベージュ×ブラックチェック', feature: 'chic_check_beige_noir' },
