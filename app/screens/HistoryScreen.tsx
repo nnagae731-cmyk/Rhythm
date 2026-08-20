@@ -1,7 +1,6 @@
 import * as ImagePicker from 'expo-image-picker';
-import React, { useEffect, useState } from 'react';
-import { Image, Modal, Pressable, ScrollView, Share, Text, TextInput, View } from 'react-native';
-import * as ImageManipulator from 'expo-image-manipulator';
+import React, { useEffect, useRef, useState } from 'react';
+import { Alert, Image, Modal, Pressable, ScrollView, Share, StyleSheet, Text, TextInput, View } from 'react-native';
 import { ChicPattern, ChicThemePalette } from '../theme';
 import { hasPremiumAccess, isWithinFreeHistory, PlanTier } from '../premiumAccess';
 import { PremiumGuideFeatureId } from '../premiumGuide';
@@ -9,11 +8,112 @@ import { BehaviorEvent } from '../behaviorEvents';
 import { DepartureCheckIn } from '../departureCheckIn';
 import { FocusSession } from '../focusSession';
 import { RecoveryRecord } from '../recovery';
-import { CalendarMarks, DeparturePlan, MonthlyReview, Task, ThemeMode, WishMonthMap } from '../types';
+import { CalendarMarks, DeparturePlan, MonthlyReflectionCard, MonthlyReview, ReflectionCardPalette, ReflectionCardTemplate, Task, ThemeMode, WishMonthMap } from '../types';
 import { normalizeMonthlyReview } from '../features/wish/wishUtils';
 import { persistPhotoUri } from '../features/photo/persistentPhoto';
 
-export function HistoryScreen({ tasks, wishMonths, calendarMarks, onSetCalendarMark, recoveryHistory, focusSessions, departureCheckIns, departurePlans, behaviorEvents, completionIcon, designMode, chicPattern, chicPalette, planTier, onPremium, onSaveTemplate, onRestore, onSaveDailyReview, onUpdateReview, onDeleteReview, styles, helpers, components }: { tasks: Task[]; wishMonths: WishMonthMap; calendarMarks: CalendarMarks; onSetCalendarMark: (date: string, mark?: string) => void; recoveryHistory: RecoveryRecord[]; focusSessions: FocusSession[]; departureCheckIns: DepartureCheckIn[]; departurePlans: DeparturePlan[]; behaviorEvents: BehaviorEvent[]; completionIcon: string; designMode: ThemeMode; chicPattern: ChicPattern; chicPalette?: ChicThemePalette; planTier: PlanTier; onPremium: (featureId?: PremiumGuideFeatureId) => void; onSaveTemplate: (task: Task) => void; onRestore: (id: string) => void; onSaveDailyReview: (monthKey: string, draft: MonthlyReview) => void; onUpdateReview: (monthKey: string, reviewKey: string, updates: Partial<MonthlyReview>) => void; onDeleteReview: (monthKey: string, reviewKey: string) => void; styles: any; helpers: any; components: any }) {
+type ReflectionCardModel = {
+  monthKey: string;
+  monthLabel: string;
+  photos: string[];
+  template: ReflectionCardTemplate;
+  palette: ReflectionCardPalette;
+  phrase: string;
+  bestMemory: string;
+};
+
+const reflectionCardPalettes: Record<ReflectionCardPalette, { background: string; surface: string; accent: string; text: string; muted: string }> = {
+  lavender: { background: '#F7F8FF', surface: '#FFFFFF', accent: '#5B82E8', text: '#182B4A', muted: '#71809A' },
+  blue: { background: '#F3F8FD', surface: '#FFFFFF', accent: '#3D8AC7', text: '#17344B', muted: '#68869C' },
+  peach: { background: '#FFF7F2', surface: '#FFFFFF', accent: '#D67C62', text: '#4A2E28', muted: '#96766D' },
+  green: { background: '#F2FAF5', surface: '#FFFFFF', accent: '#4D9372', text: '#1F4032', muted: '#6E8A7C' },
+};
+const reflectionTemplateLabels: Record<ReflectionCardTemplate, string> = { gallery: 'Gallery', film: 'Film', scrapbook: 'Scrapbook' };
+const reflectionPaletteLabels: Record<ReflectionCardPalette, string> = { lavender: 'Lavender', blue: 'Blue', peach: 'Peach', green: 'Green' };
+
+function normalizeReflectionCard(value: unknown, monthKey: string): MonthlyReflectionCard | undefined {
+  if (!value || typeof value !== 'object') return undefined;
+  const raw = value as Partial<MonthlyReflectionCard> & { uri?: unknown; monthlyWord?: unknown; bestTitle?: unknown; photoCount?: unknown; generatedAt?: unknown };
+  // Older builds did not persist card settings. If a legacy card is present,
+  // read its image URI as a photo reference but never write that generated image back.
+  const photoIds = Array.isArray(raw.photoIds)
+    ? raw.photoIds.filter((photoId): photoId is string => typeof photoId === 'string' && photoId.length > 0)
+    : typeof raw.uri === 'string' && raw.uri.length > 0 ? [raw.uri] : [];
+  if (photoIds.length === 0) return undefined;
+  const template: ReflectionCardTemplate = raw.template === 'film' || raw.template === 'scrapbook' ? raw.template : 'gallery';
+  const palette: ReflectionCardPalette = raw.palette === 'blue' || raw.palette === 'peach' || raw.palette === 'green' ? raw.palette : 'lavender';
+  return {
+    monthKey: typeof raw.monthKey === 'string' && raw.monthKey ? raw.monthKey : monthKey,
+    photoIds,
+    phrase: typeof raw.phrase === 'string' ? raw.phrase : typeof raw.monthlyWord === 'string' ? raw.monthlyWord : '',
+    bestMemory: typeof raw.bestMemory === 'string' ? raw.bestMemory : typeof raw.bestTitle === 'string' ? raw.bestTitle : '',
+    template,
+    palette,
+    updatedAt: typeof raw.updatedAt === 'string' ? raw.updatedAt : typeof raw.generatedAt === 'string' ? raw.generatedAt : new Date(0).toISOString(),
+  };
+}
+
+function reflectionPhotoStyle(count: number, index: number): { width: `${number}%`; height: number } {
+  if (count === 1) return { width: '100%', height: 210 };
+  if (count === 2) return { width: '48%', height: 205 };
+  if (count === 3 && index === 0) return { width: '100%', height: 190 };
+  if (count === 3) return { width: '48%', height: 104 };
+  if (count === 4) return { width: '48%', height: 122 };
+  if (index === 0) return { width: '100%', height: 172 };
+  return { width: '48%', height: 82 };
+}
+
+const reflectionStyles = StyleSheet.create({
+  cardShot: { width: 300, height: 533, borderRadius: 18, borderWidth: 2, padding: 8 },
+  cardInner: { flex: 1, borderRadius: 13, paddingHorizontal: 18, paddingVertical: 16, alignItems: 'center' },
+  cardKicker: { fontSize: 19, lineHeight: 22, marginTop: 1 },
+  cardTitle: { fontSize: 19, fontWeight: '900', textAlign: 'center', marginTop: 4 },
+  cardRule: { width: '72%', height: 1, opacity: 0.7, marginTop: 8 },
+  cardWord: { fontSize: 16, fontWeight: '900', textAlign: 'center', marginTop: 13, minHeight: 22 },
+  cardSection: { fontSize: 11, fontWeight: '900', letterSpacing: 0.6, marginTop: 12, marginBottom: 8 },
+  photoGrid: { width: '100%', flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', gap: 7 },
+  cardPhoto: { borderRadius: 10, backgroundColor: '#E8ECF0' },
+  filmPhoto: { borderRadius: 3, borderWidth: 3, borderColor: '#FFFFFF' },
+  bestBlock: { width: '100%', borderWidth: 1, borderRadius: 9, paddingHorizontal: 10, paddingVertical: 7, marginTop: 10 },
+  bestLabel: { fontSize: 9, fontWeight: '900' },
+  bestTitle: { fontSize: 11, fontWeight: '800', marginTop: 2 },
+  cardFooter: { fontSize: 9, fontWeight: '800', marginTop: 'auto' },
+  controlLabel: { fontSize: 10, fontWeight: '900', marginTop: 9, marginBottom: 4 },
+  choiceRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+  choiceChip: { minHeight: 30, borderWidth: 1, borderRadius: 10, paddingHorizontal: 9, flexDirection: 'row', alignItems: 'center', gap: 4 },
+  paletteDot: { width: 10, height: 10, borderRadius: 5 },
+  savedCardButton: { alignItems: 'center', paddingVertical: 5, marginBottom: 6 },
+  savedCardButtonText: { color: '#6E6675', fontSize: 10, fontWeight: '800' },
+});
+
+function MonthlyReflectionCardView({ model, cardRef, onReady }: { model: ReflectionCardModel; cardRef: React.RefObject<View | null>; onReady: () => void }) {
+  const palette = reflectionCardPalettes[model.palette];
+  const [loaded, setLoaded] = useState<Set<number>>(new Set());
+  const [laidOut, setLaidOut] = useState(false);
+  useEffect(() => {
+    if (model.photos.length > 0 && laidOut && loaded.size >= model.photos.length) onReady();
+  }, [laidOut, loaded, model.photos.length, onReady]);
+  return <View ref={cardRef} collapsable={false} onLayout={() => setLaidOut(true)} style={[reflectionStyles.cardShot, { backgroundColor: palette.background, borderColor: palette.accent }]}>
+    <View collapsable={false} style={[reflectionStyles.cardInner, { backgroundColor: palette.surface }]}>
+      <Text style={[reflectionStyles.cardKicker, { color: palette.accent }]}>✦</Text>
+      <Text style={[reflectionStyles.cardTitle, { color: palette.text }]}>{model.monthLabel}の振り返り</Text>
+      <View style={[reflectionStyles.cardRule, { backgroundColor: palette.accent }]} />
+      <Text numberOfLines={2} style={[reflectionStyles.cardWord, { color: palette.text }]}>{model.phrase || 'よく頑張ったね'}</Text>
+      <Text style={[reflectionStyles.cardSection, { color: palette.accent }]}>今月の記録</Text>
+      <View style={reflectionStyles.photoGrid}>
+        {model.photos.map((uri, index) => {
+          const photoStyle = reflectionPhotoStyle(model.photos.length, index);
+          const markLoaded = () => setLoaded((current) => new Set(current).add(index));
+          return <Image key={`${uri}-${index}`} source={{ uri }} resizeMode="cover" onLoadEnd={markLoaded} onError={markLoaded} style={[reflectionStyles.cardPhoto, photoStyle, model.template === 'film' && reflectionStyles.filmPhoto, model.template === 'scrapbook' && { transform: [{ rotate: `${index % 2 === 0 ? -2 : 2}deg` }] }]} />;
+        })}
+      </View>
+      {model.bestMemory ? <View style={[reflectionStyles.bestBlock, { backgroundColor: palette.background, borderColor: palette.accent }]}><Text style={[reflectionStyles.bestLabel, { color: palette.accent }]}>今月のベスト</Text><Text numberOfLines={2} style={[reflectionStyles.bestTitle, { color: palette.text }]}>{model.bestMemory}</Text></View> : null}
+      <Text style={[reflectionStyles.cardFooter, { color: palette.muted }]}>Rhythm　♡</Text>
+    </View>
+  </View>;
+}
+
+export function HistoryScreen({ tasks, wishMonths, calendarMarks, onSetCalendarMark, recoveryHistory, focusSessions, departureCheckIns, departurePlans, behaviorEvents, completionIcon, designMode, chicPattern, chicPalette, planTier, onPremium, onSaveTemplate, onRestore, onSaveDailyReview, onSaveMonthlyReflectionCard, onUpdateReview, onDeleteReview, styles, helpers, components }: { tasks: Task[]; wishMonths: WishMonthMap; calendarMarks: CalendarMarks; onSetCalendarMark: (date: string, mark?: string) => void; recoveryHistory: RecoveryRecord[]; focusSessions: FocusSession[]; departureCheckIns: DepartureCheckIn[]; departurePlans: DeparturePlan[]; behaviorEvents: BehaviorEvent[]; completionIcon: string; designMode: ThemeMode; chicPattern: ChicPattern; chicPalette?: ChicThemePalette; planTier: PlanTier; onPremium: (featureId?: PremiumGuideFeatureId) => void; onSaveTemplate: (task: Task) => void; onRestore: (id: string) => void; onSaveDailyReview: (monthKey: string, draft: MonthlyReview) => void; onSaveMonthlyReflectionCard: (monthKey: string, card: MonthlyReflectionCard) => void; onUpdateReview: (monthKey: string, reviewKey: string, updates: Partial<MonthlyReview>) => void; onDeleteReview: (monthKey: string, reviewKey: string) => void; styles: any; helpers: any; components: any }) {
   const { dateKey, formatLiveTime } = helpers;
   const { AchievementVessel, CalendarMarkPicker } = components;
   const now = new Date();
@@ -38,11 +138,21 @@ export function HistoryScreen({ tasks, wishMonths, calendarMarks, onSetCalendarM
   const [reviewEditNote, setReviewEditNote] = useState('');
   const [reviewEditMemo, setReviewEditMemo] = useState('');
   const [journalDraft, setJournalDraft] = useState<MonthlyReview>({ date: dateKey(now), photos: [], photo: '', shortNote: '', memo: '', satisfaction: 0 });
-  const [monthlyCardUri, setMonthlyCardUri] = useState<string>();
+  const [journalSaveMessage, setJournalSaveMessage] = useState('');
   const [monthlyCardPhotoCount, setMonthlyCardPhotoCount] = useState(0);
+  const [monthlyCardModel, setMonthlyCardModel] = useState<ReflectionCardModel>();
+  const [monthlyCardGenerating, setMonthlyCardGenerating] = useState(false);
+  const [monthlyCardReady, setMonthlyCardReady] = useState(false);
+  const [monthlyCardTemplate, setMonthlyCardTemplate] = useState<ReflectionCardTemplate>('gallery');
+  const [monthlyCardPalette, setMonthlyCardPalette] = useState<ReflectionCardPalette>('lavender');
+  const [monthlyWord, setMonthlyWord] = useState('');
+  const [bestMemory, setBestMemory] = useState('');
+  const monthlyCardRef = useRef<View>(null);
   const closeMonthlyCard = () => {
-    setMonthlyCardUri(undefined);
+    setMonthlyCardModel(undefined);
     setMonthlyCardPhotoCount(0);
+    setMonthlyCardGenerating(false);
+    setMonthlyCardReady(false);
   };
   const historyTasks = premiumHistory ? tasks : tasks.filter((task) => task.completedAt && isWithinFreeHistory(task.completedAt, now));
   const completedByDay = historyTasks.reduce<Record<string, Task[]>>((result, task) => {
@@ -63,6 +173,13 @@ export function HistoryScreen({ tasks, wishMonths, calendarMarks, onSetCalendarM
     if (!historySearch.trim() && !searchResultsOpen) setSearchQuery('');
   }, [historySearch, searchResultsOpen]);
   const monthPrefix = `${year}-${String(month + 1).padStart(2, '0')}`;
+  useEffect(() => {
+    const savedCard = normalizeReflectionCard(wishMonths[monthPrefix]?.reflectionCard, monthPrefix);
+    setMonthlyCardTemplate(savedCard?.template ?? 'gallery');
+    setMonthlyCardPalette(savedCard?.palette ?? 'lavender');
+    setMonthlyWord(savedCard?.phrase ?? '');
+    setBestMemory(savedCard?.bestMemory ?? '');
+  }, [monthPrefix, wishMonths]);
   const moveHistoryMonth = (amount: number) => {
     const next = new Date(year, month + amount, 1);
     setHistoryMonthDate(next);
@@ -144,14 +261,15 @@ export function HistoryScreen({ tasks, wishMonths, calendarMarks, onSetCalendarM
       return result;
     }, {})).slice(0, 8);
   const selectedDayReview = reviewsByDay[selectedKey]?.[0];
-  const selectedJournalPhotos = journalDraft.photos?.filter(Boolean) ?? (journalDraft.photo ? [journalDraft.photo] : []);
+  const selectedJournalPhotos = [...new Set([...(journalDraft.photos ?? []), journalDraft.photo ?? ''].filter(Boolean))];
   // Photo logs remain available to every plan. The recap card, rather than the
   // underlying journal, is limited by plan to keep exports lightweight.
-  const maxJournalPhotos = 20;
-  const monthlyCardLimit = planTier === 'premium' ? 9 : 3;
+  const maxJournalPhotos = planTier === 'premium' ? 5 : 2;
+  const monthlyCardLimit = planTier === 'premium' ? 5 : 2;
   const loadJournalDraft = (key: string) => {
     const existing = reviewsByDay[key]?.[0];
     setJournalDraft(existing ? normalizeMonthlyReview(existing) : { id: undefined, date: key, photo: '', photos: [], shortNote: '', memo: '', satisfaction: 0 });
+    setJournalSaveMessage('');
   };
   const chooseJournalPhoto = async () => {
     if (selectedJournalPhotos.length >= maxJournalPhotos) return;
@@ -168,27 +286,74 @@ export function HistoryScreen({ tasks, wishMonths, calendarMarks, onSetCalendarM
       return;
     }
     setJournalDraft((current) => {
-      const photos = [...(current.photos?.filter(Boolean) ?? (current.photo ? [current.photo] : [])), persistentUri];
+      const photos = [...new Set([...(current.photos ?? []), current.photo ?? '', persistentUri].filter(Boolean))];
       return { ...current, photo: photos[0] ?? '', photos };
     });
   };
   const saveJournal = () => {
-    const photos = journalDraft.photos?.filter(Boolean) ?? (journalDraft.photo ? [journalDraft.photo] : []);
+    const photos = [...new Set([...(journalDraft.photos ?? []), journalDraft.photo ?? ''].filter(Boolean))];
     onSaveDailyReview(selectedKey.slice(0, 7), { ...journalDraft, id: selectedDayReview?.id ?? journalDraft.id, date: selectedKey, photo: photos[0] ?? '', photos, shortNote: journalDraft.shortNote?.trim() ?? '', memo: journalDraft.memo?.trim() ?? '' });
+    setJournalSaveMessage(photos.length > 0 ? '写真と記録を更新しました' : '記録を更新しました');
   };
-  const createMonthlyCard = async () => {
-    const monthPhotos = reviewEntries.flatMap((entry) => entry.review.photos?.filter(Boolean) ?? (entry.review.photo ? [entry.review.photo] : []));
+  const createMonthlyCard = () => {
+    const monthPhotos = [...new Set(reviewEntries.flatMap((entry) => [...new Set([...(entry.review.photos ?? []), entry.review.photo ?? ''].filter(Boolean))]))];
     const selectedPhotos = monthPhotos.slice(0, monthlyCardLimit);
     if (selectedPhotos.length === 0) {
       return;
     }
+    const bestTitle = monthEntries.flatMap(([, items]) => items).sort((a, b) => new Date(b.completedAt ?? 0).getTime() - new Date(a.completedAt ?? 0).getTime())[0]?.title ?? '';
+    setMonthlyCardPhotoCount(selectedPhotos.length);
+    setMonthlyCardReady(false);
+    setMonthlyCardModel({ monthKey: monthPrefix, monthLabel: `${year}年${month + 1}月`, photos: selectedPhotos, template: monthlyCardTemplate, palette: monthlyCardPalette, phrase: monthlyWord.trim().slice(0, 30), bestMemory: (bestMemory.trim() || bestTitle).slice(0, 30) });
+  };
+  const saveMonthlyCardSettings = React.useCallback(() => {
+    if (!monthlyCardModel) return;
+    const card: MonthlyReflectionCard = {
+      monthKey: monthlyCardModel.monthKey,
+      photoIds: monthlyCardModel.photos,
+      phrase: monthlyCardModel.phrase,
+      bestMemory: monthlyCardModel.bestMemory,
+      template: monthlyCardModel.template,
+      palette: monthlyCardModel.palette,
+      updatedAt: new Date().toISOString(),
+    };
+    onSaveMonthlyReflectionCard(monthlyCardModel.monthKey, card);
+  }, [monthlyCardModel, onSaveMonthlyReflectionCard]);
+  const shareMonthlyCard = React.useCallback(async () => {
+    if (!monthlyCardModel || !monthlyCardReady || !monthlyCardRef.current || monthlyCardGenerating) return;
+    setMonthlyCardGenerating(true);
     try {
-      const result = await ImageManipulator.manipulateAsync(selectedPhotos[0]!, [{ resize: { width: 1080, height: 1920 } }], { compress: 0.9, format: ImageManipulator.SaveFormat.PNG });
-      setMonthlyCardUri(result.uri);
-      setMonthlyCardPhotoCount(selectedPhotos.length);
+      // Sharing a card also commits its settings; the image itself remains transient.
+      saveMonthlyCardSettings();
+      // Keep the native module out of the initial bundle path so Expo Go can
+      // still open the app. It is loaded only when the user requests sharing.
+      const viewShot = require('react-native-view-shot') as { captureRef?: (view: View, options: { format: 'png'; quality: number; width: number; height: number; result: 'tmpfile' }) => Promise<string> };
+      if (!viewShot.captureRef) throw new Error('View capture is unavailable in this build.');
+      await new Promise<void>((resolve) => {
+        if (typeof requestAnimationFrame === 'function') {
+          requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+        } else {
+          setTimeout(resolve, 50);
+        }
+      });
+      const uri = await viewShot.captureRef(monthlyCardRef.current, { format: 'png', quality: 1, width: 1080, height: 1920, result: 'tmpfile' });
+      await Share.share({ url: uri, message: 'Rhythmの今月の振り返り' });
     } catch (error) {
-      console.warn('Could not create monthly photo card.', error);
+      console.warn('Could not create monthly reflection card.', error);
+      Alert.alert('共有できません', '共有画像の作成にはDevelopment Buildが必要です。カード設定は保存できます。');
+    } finally {
+      setMonthlyCardGenerating(false);
     }
+  }, [monthlyCardGenerating, monthlyCardModel, monthlyCardReady, saveMonthlyCardSettings]);
+  const reflectionTemplates: ReflectionCardTemplate[] = premiumHistory ? ['gallery', 'film', 'scrapbook'] : ['gallery'];
+  const reflectionPalettes: ReflectionCardPalette[] = premiumHistory ? ['lavender', 'blue', 'peach', 'green'] : ['lavender'];
+  const savedMonthlyCard = normalizeReflectionCard(wishMonths[monthPrefix]?.reflectionCard, monthPrefix);
+  const openSavedMonthlyCard = () => {
+    if (!savedMonthlyCard?.photoIds?.length) return;
+    setMonthlyCardReady(false);
+    setMonthlyCardModel({ monthKey: savedMonthlyCard.monthKey, monthLabel: `${year}年${month + 1}月`, photos: savedMonthlyCard.photoIds.slice(0, monthlyCardLimit), template: savedMonthlyCard.template, palette: savedMonthlyCard.palette, phrase: savedMonthlyCard.phrase, bestMemory: savedMonthlyCard.bestMemory });
+    setMonthlyCardPhotoCount(Math.min(savedMonthlyCard.photoIds.length, monthlyCardLimit));
+    setMonthlyCardGenerating(false);
   };
 
   return (
@@ -234,15 +399,24 @@ export function HistoryScreen({ tasks, wishMonths, calendarMarks, onSetCalendarM
             <Text style={[styles.journalEditorCount, isDark && styles.darkAccentText]}>写真 {selectedJournalPhotos.length} / {maxJournalPhotos}</Text>
           </View>
           <Pressable style={[styles.journalSaveButton, { marginBottom: 10 }]} onPress={() => void createMonthlyCard()}><Text style={styles.journalSaveButtonText}>今月の振り返りカードを作成</Text></Pressable>
+          {savedMonthlyCard?.photoIds?.length && <Pressable style={reflectionStyles.savedCardButton} onPress={openSavedMonthlyCard}><Text style={reflectionStyles.savedCardButtonText}>保存済みカードを見る</Text></Pressable>}
           <View style={styles.journalPhotoRow}>
-            {selectedJournalPhotos.map((uri, index) => <View key={`${uri}-${index}`} style={styles.journalPhotoWrap}><Pressable onPress={() => { setSelectedReview({ ...journalDraft, photo: uri, photos: selectedJournalPhotos }); setSelectedReviewPhotoIndex(index); }}><Image source={{ uri }} style={styles.journalPhotoThumb} /></Pressable><Pressable style={styles.journalPhotoRemove} onPress={() => setJournalDraft((current) => { const photos = (current.photos?.filter(Boolean) ?? (current.photo ? [current.photo] : [])).filter((_, photoIndex) => photoIndex !== index); return { ...current, photo: photos[0] ?? '', photos }; })}><Text style={styles.journalPhotoRemoveText}>×</Text></Pressable></View>)}
+            {selectedJournalPhotos.map((uri, index) => <View key={`${uri}-${index}`} style={styles.journalPhotoWrap}><Pressable onPress={() => { setSelectedReview({ ...journalDraft, photo: uri, photos: selectedJournalPhotos }); setSelectedReviewPhotoIndex(index); }}><Image source={{ uri }} style={styles.journalPhotoThumb} /></Pressable><Pressable style={styles.journalPhotoRemove} onPress={() => setJournalDraft((current) => { const photos = [...new Set([...(current.photos ?? []), current.photo ?? ''].filter(Boolean))].filter((_, photoIndex) => photoIndex !== index); return { ...current, photo: photos[0] ?? '', photos }; })}><Text style={styles.journalPhotoRemoveText}>×</Text></Pressable></View>)}
             {selectedJournalPhotos.length < maxJournalPhotos && <Pressable style={[styles.journalPhotoAdd, isDark && styles.darkJournalPhotoAdd]} onPress={() => void chooseJournalPhoto()}><Text style={[styles.journalPhotoAddIcon, isDark && styles.darkAccentText]}>＋</Text><Text style={[styles.journalPhotoAddText, isDark && styles.darkAccentText]}>写真を追加</Text></Pressable>}
           </View>
-          {planTier !== 'premium' && <Text style={[styles.journalPhotoHint, isDark && styles.darkMutedText]}>無料版は当月3枚までカードにまとめられます。4枚目以降はPremiumでまとめられます。</Text>}
+          {planTier !== 'premium' && <Text style={[styles.journalPhotoHint, isDark && styles.darkMutedText]}>無料版はカードに写真2枚まで。追加の写真は保存したまま、Premiumでまとめられます。</Text>}
+          <Text style={[reflectionStyles.controlLabel, { color: isDark ? '#B4C0D4' : chicPalette?.textSecondary ?? '#625D68' }]}>今月の言葉</Text>
+          <TextInput value={monthlyWord} onChangeText={setMonthlyWord} placeholder="今月の自分へひとこと" placeholderTextColor={isDark ? '#8F9BB0' : '#A29DAA'} style={[styles.journalInput, isDark && styles.darkInput]} />
+          <TextInput value={bestMemory} onChangeText={setBestMemory} placeholder="今月のベスト" placeholderTextColor={isDark ? '#8F9BB0' : '#A29DAA'} style={[styles.journalInput, isDark && styles.darkInput]} />
+          <Text style={[reflectionStyles.controlLabel, { color: isDark ? '#B4C0D4' : chicPalette?.textSecondary ?? '#625D68' }]}>テンプレート</Text>
+          <View style={reflectionStyles.choiceRow}>{reflectionTemplates.map((template) => <Pressable key={template} onPress={() => setMonthlyCardTemplate(template)} style={[reflectionStyles.choiceChip, { borderColor: monthlyCardTemplate === template ? (isDark ? '#8EA6FF' : chicPalette?.accent ?? '#7559E8') : (isDark ? '#40506A' : '#DDD7E3'), backgroundColor: monthlyCardTemplate === template ? (isDark ? '#26365F' : chicPalette?.accentSoft ?? '#EEE9FF') : 'transparent' }]}><Text style={{ color: monthlyCardTemplate === template ? (isDark ? '#FFFFFF' : chicPalette?.accentStrong ?? '#5E4BB7') : (isDark ? '#B4C0D4' : '#625D68'), fontSize: 10, fontWeight: '800' }}>{reflectionTemplateLabels[template]}</Text></Pressable>)}</View>
+          <Text style={[reflectionStyles.controlLabel, { color: isDark ? '#B4C0D4' : chicPalette?.textSecondary ?? '#625D68' }]}>カラーパレット</Text>
+          <View style={reflectionStyles.choiceRow}>{reflectionPalettes.map((paletteId) => <Pressable key={paletteId} onPress={() => setMonthlyCardPalette(paletteId)} style={[reflectionStyles.choiceChip, { borderColor: monthlyCardPalette === paletteId ? reflectionCardPalettes[paletteId].accent : (isDark ? '#40506A' : '#DDD7E3'), backgroundColor: monthlyCardPalette === paletteId ? reflectionCardPalettes[paletteId].background : 'transparent' }]}><View style={[reflectionStyles.paletteDot, { backgroundColor: reflectionCardPalettes[paletteId].accent }]} /><Text style={{ color: isDark ? '#B4C0D4' : '#625D68', fontSize: 10, fontWeight: '800' }}>{reflectionPaletteLabels[paletteId]}</Text></Pressable>)}</View>
           <TextInput value={journalDraft.shortNote ?? ''} onChangeText={(shortNote) => setJournalDraft((current) => ({ ...current, shortNote }))} placeholder="今日のひとこと" placeholderTextColor={isDark ? '#8F9BB0' : '#A29DAA'} style={[styles.journalInput, isDark && styles.darkInput]} />
           <TextInput value={journalDraft.memo ?? ''} onChangeText={(memo) => setJournalDraft((current) => ({ ...current, memo }))} placeholder="今日のことを少し残す" placeholderTextColor={isDark ? '#8F9BB0' : '#A29DAA'} multiline style={[styles.journalInput, styles.journalMemo, isDark && styles.darkInput]} />
           <View style={styles.journalSatisfactionRow}>{[1, 2, 3, 4, 5].map((value) => <Pressable key={value} style={[styles.journalSatisfaction, isDark && styles.darkJournalSatisfaction, journalDraft.satisfaction === value && styles.journalSatisfactionActive, journalDraft.satisfaction === value && isDark && styles.darkJournalSatisfactionActive]} onPress={() => setJournalDraft((current) => ({ ...current, satisfaction: value }))}><Text style={[styles.journalSatisfactionText, isDark && styles.darkMutedText, journalDraft.satisfaction === value && styles.journalSatisfactionTextActive]}>{value}</Text></Pressable>)}<Text style={[styles.journalSatisfactionLabel, isDark && styles.darkAccentText]}>満足度</Text></View>
           <View style={styles.journalActions}><Pressable style={styles.journalSaveButton} onPress={saveJournal}><Text style={styles.journalSaveButtonText}>{selectedDayReviewEntry ? '更新する' : '保存する'}</Text></Pressable>{selectedDayReviewEntry && <Pressable style={styles.journalDeleteButton} onPress={() => { onDeleteReview(selectedDayReviewEntry.monthKey, selectedDayReviewEntry.reviewKey); loadJournalDraft(selectedKey); }}><Text style={styles.journalDeleteButtonText}>削除</Text></Pressable>}</View>
+          {journalSaveMessage ? <Text style={[styles.journalPhotoHint, isDark && styles.darkMutedText]}>{journalSaveMessage}</Text> : null}
         </View>
         {(reviewsByDay[selectedKey] ?? []).length > 0 && <View style={[styles.reviewDaySummary, isDark && styles.darkReviewDaySummary]}><Text style={[styles.reviewDaySummaryTitle, isDark && styles.darkBodyText]}>この日の振り返り</Text>{(reviewsByDay[selectedKey] ?? []).map((review, index) => <Pressable key={review.id ?? `${selectedKey}-${index}`} style={[styles.reviewDayRow, isDark && styles.darkReviewDayRow]} onPress={() => setSelectedReview(review)}><Text style={[styles.reviewDayIcon, isDark && styles.darkAccentText]}>✦</Text><View style={{ flex: 1 }}><Text style={[styles.reviewDayText, isDark && styles.darkBodyText]}>{review.shortNote || review.memo || '写真の記録'}</Text><Text style={[styles.reviewDayHint, isDark && styles.darkMutedText]}>タップして記録を見る</Text></View></Pressable>)}</View>}
         {(completedWishesByDay[selectedKey] ?? []).length > 0 && <View style={[styles.reviewDaySummary, isDark && styles.darkReviewDaySummary]}><Text style={[styles.reviewDaySummaryTitle, isDark && styles.darkBodyText]}>この日に叶ったこと</Text>{(completedWishesByDay[selectedKey] ?? []).map((wish) => <View key={wish.id} style={[styles.reviewDayRow, isDark && styles.darkReviewDayRow]}><Text style={styles.reviewDayIcon}>🌟</Text><View style={{ flex: 1 }}><Text style={[styles.reviewDayText, isDark && styles.darkBodyText]}>{wish.title}</Text><Text style={[styles.reviewDayHint, isDark && styles.darkMutedText]}>叶えたいことを完了</Text></View></View>)}</View>}
@@ -287,7 +461,7 @@ export function HistoryScreen({ tasks, wishMonths, calendarMarks, onSetCalendarM
         <Pressable style={styles.modalBackdrop} onPress={() => setSelectedReview(null)}>
           <Pressable style={[styles.reviewPhotoModal, isDark && styles.darkReviewModal]} onPress={(event) => event.stopPropagation()}>
             {(() => {
-              const photos = selectedReview?.photos?.filter(Boolean) ?? (selectedReview?.photo ? [selectedReview.photo] : []);
+              const photos = [...new Set([...(selectedReview?.photos ?? []), selectedReview?.photo ?? ''].filter(Boolean))];
               const photo = photos[selectedReviewPhotoIndex] ?? photos[0];
               return photo ? <><Image source={{ uri: photo }} style={[styles.reviewPhotoLarge, isDark && styles.darkReviewImage]} />{photos.length > 1 && <View style={styles.reviewPhotoPager}>{photos.map((uri, index) => <Pressable key={uri} style={[styles.reviewPhotoPagerDot, isDark && styles.darkReviewPagerDot, index === selectedReviewPhotoIndex && styles.reviewPhotoPagerDotActive]} onPress={() => setSelectedReviewPhotoIndex(index)}><Text style={[styles.reviewPhotoPagerText, isDark && styles.darkBodyText]}>{index + 1}</Text></Pressable>)}</View>}</> : <View style={[styles.reviewPhotoLargeEmpty, isDark && styles.darkReviewImage]}><Text style={[styles.reviewPhotoLargeEmptyText, isDark && styles.darkMutedText]}>写真なし</Text></View>;
             })()}
@@ -301,14 +475,14 @@ export function HistoryScreen({ tasks, wishMonths, calendarMarks, onSetCalendarM
           </Pressable>
         </Pressable>
       </Modal>
-      <Modal visible={Boolean(monthlyCardUri)} transparent animationType="fade" onRequestClose={closeMonthlyCard}>
+      <Modal visible={Boolean(monthlyCardModel)} transparent animationType="fade" onRequestClose={closeMonthlyCard}>
         <Pressable style={styles.modalBackdrop} onPress={closeMonthlyCard}>
           <Pressable style={[styles.reviewPhotoModal, isDark && styles.darkReviewModal]} onPress={(event) => event.stopPropagation()}>
             <Text style={[styles.reviewEditTitle, isDark && styles.darkBodyText]}>今月の振り返りカード</Text>
-            {monthlyCardUri && <Image source={{ uri: monthlyCardUri }} style={[styles.reviewPhotoLarge, { aspectRatio: 9 / 16 }, isDark && styles.darkReviewImage]} />}
-            <Text style={[styles.reviewPhotoModalMemo, isDark && styles.darkMutedText]}>{monthlyCardPhotoCount}枚の写真から作成しました</Text>
+            {monthlyCardModel ? <MonthlyReflectionCardView model={monthlyCardModel} cardRef={monthlyCardRef} onReady={() => setMonthlyCardReady(true)} /> : null}
+            <Text style={[styles.reviewPhotoModalMemo, isDark && styles.darkMutedText]}>{monthlyCardGenerating ? '共有画像を作成しています…' : monthlyCardReady ? `${monthlyCardPhotoCount}枚の写真から作成しました。共有から「画像を保存」を選べます。` : '写真を読み込んでいます…'}</Text>
             <View style={styles.reviewPhotoModalActions}>
-              <Pressable style={styles.reviewEditButton} onPress={() => { if (monthlyCardUri) void Share.share({ url: monthlyCardUri, message: 'Rhythmの今月の振り返り' }).catch(() => undefined); }}><Text style={[styles.reviewEditButtonText, isDark && styles.darkAccentText]}>共有</Text></Pressable>
+              <Pressable disabled={!monthlyCardReady || monthlyCardGenerating} style={[styles.reviewEditButton, (!monthlyCardReady || monthlyCardGenerating) && { opacity: 0.45 }]} onPress={() => void shareMonthlyCard()}><Text style={[styles.reviewEditButtonText, isDark && styles.darkAccentText]}>共有</Text></Pressable>
               <Pressable style={[styles.reviewPhotoModalClose, isDark && styles.darkRestoreButton]} onPress={closeMonthlyCard} accessibilityRole="button"><Text style={styles.reviewPhotoModalCloseText}>閉じる</Text></Pressable>
             </View>
           </Pressable>

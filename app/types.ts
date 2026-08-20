@@ -103,12 +103,27 @@ export type MonthlyReview = {
   satisfaction?: number;
 };
 
+export type ReflectionCardTemplate = 'gallery' | 'film' | 'scrapbook';
+export type ReflectionCardPalette = 'lavender' | 'blue' | 'peach' | 'green';
+
+/** Optional monthly card metadata; old wish data remains valid without it. */
+export type MonthlyReflectionCard = {
+  monthKey: string;
+  photoIds: string[];
+  phrase: string;
+  bestMemory: string;
+  template: ReflectionCardTemplate;
+  palette: ReflectionCardPalette;
+  updatedAt: string;
+};
+
 export type MonthlyWishState = {
   theme?: string;
   wishes: Wish[];
   actions: WishAction[];
   review: MonthlyReview;
   reviews?: MonthlyReview[];
+  reflectionCard?: MonthlyReflectionCard;
 };
 
 export type Affirmation = {

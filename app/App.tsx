@@ -30,7 +30,7 @@ import { OnboardingHint } from './features/onboarding/OnboardingHint';
 import { useOnboarding } from './features/onboarding/useOnboarding';
 import { RecoveryModal } from './components/RecoveryModal';
 import { styles } from './styles/appStyles';
-import { Affirmation, AffirmationCustomText, CalendarMarks, Category, DeparturePlan, DeparturePreparationStatus, MonthlyReview, MonthlyWishState, NudgeMode, PersistedState, PhotoThemePhotoTarget, PhotoThemeSettings, Priority, RepeatRule, Screen, SharedEvent, SharedParticipantPrefs, Subtask, Task, TaskBucket, ThemeMode, TimeTab, UrgencyStatus, WidgetSize, WishAction, WishMonthMap } from './types';
+import { Affirmation, AffirmationCustomText, CalendarMarks, Category, DeparturePlan, DeparturePreparationStatus, MonthlyReflectionCard, MonthlyReview, MonthlyWishState, NudgeMode, PersistedState, PhotoThemePhotoTarget, PhotoThemeSettings, Priority, RepeatRule, Screen, SharedEvent, SharedParticipantPrefs, Subtask, Task, TaskBucket, ThemeMode, TimeTab, UrgencyStatus, WidgetSize, WishAction, WishMonthMap } from './types';
 import { initialPlan } from './storage/rhythmState';
 import { loadRhythmState, saveRhythmState } from './storage/rhythmStorage';
 import { categories, priorities, completionIcons, categoryColors as baseCategoryColors, designModes, getLateRiskMessage, getNextBestAction, getUrgencyStatus, urgencyLevel } from './features/tasks/taskUtils';
@@ -635,14 +635,20 @@ export default function App() {
     setWishMonths((current) => {
       const monthState = getMonthlyWishState(current, monthKey);
       const reviews = reviewsForMonth(monthState);
-      const photos = draft.photos?.filter(Boolean) ?? (draft.photo ? [draft.photo] : []);
+      const photos = [...new Set([...(draft.photos ?? []), draft.photo ?? ''].filter(Boolean))];
       const nextReview: MonthlyReview = { ...draft, id: draft.id ?? `journal-${draft.date ?? Date.now()}`, photo: photos[0] ?? '', photos };
       const existingIndex = reviews.findIndex((review) => review.id === nextReview.id || review.date === nextReview.date);
       const nextReviews = existingIndex >= 0 ? reviews.map((review, index) => index === existingIndex ? { ...review, ...nextReview } : review) : [...reviews, nextReview];
       return { ...current, [monthKey]: { ...monthState, review: {}, reviews: nextReviews } };
     });
-    if ((draft.photos?.filter(Boolean).length ?? (draft.photo ? 1 : 0)) > 0) void onboarding.complete('photoLog');
+    if ([...(draft.photos ?? []), draft.photo ?? ''].some(Boolean)) void onboarding.complete('photoLog');
   }, [onboarding]);
+  const saveMonthlyReflectionCard = React.useCallback((monthKey: string, card: MonthlyReflectionCard) => {
+    setWishMonths((current) => {
+      const monthState = getMonthlyWishState(current, monthKey);
+      return { ...current, [monthKey]: { ...monthState, reflectionCard: card } };
+    });
+  }, []);
   const openPremiumFeature = React.useCallback((featureId: PremiumGuideFeatureId = DEFAULT_PREMIUM_GUIDE_FEATURE) => {
     setPremiumTargetFeature(featureId);
     setPremiumOpen(true);
@@ -2159,7 +2165,7 @@ export default function App() {
                 setTasks(next);
                 recordBehaviorEvent(createRoutineDeactivatedBehaviorEvent({ routineId, routineTitle: target.title, taskId: target.id, occurredAt: new Date(endedAt), targetDate: dateKey(endedAt) }));
               } }])}
-              recordContent={<HistoryScreen tasks={tasks} wishMonths={wishMonths} calendarMarks={calendarMarks} onSetCalendarMark={(date, mark) => setCalendarMarks((current) => { const next = { ...current }; if (mark) next[date] = mark; else delete next[date]; return next; })} recoveryHistory={recoveryHistory} focusSessions={focusSessions} departureCheckIns={departureCheckIns} departurePlans={departurePlans} behaviorEvents={behaviorEvents} completionIcon={completionIcon} designMode={uiDesignMode} chicPattern={effectiveChicPattern} chicPalette={chicPalette} planTier={planTier} onPremium={openPremiumFeature} onSaveTemplate={saveTaskAsTemplate} onRestore={(id) => { void onboarding.complete('history'); restoreTaskById(id); }} onSaveDailyReview={saveDailyReview} onUpdateReview={updateWishReview} onDeleteReview={deleteWishReview} styles={styles} helpers={{ dateKey, formatLiveTime, getThemeTokens: getThemedThemeTokens }} components={{ AchievementVessel, CalendarMarkPicker }} />}
+              recordContent={<HistoryScreen tasks={tasks} wishMonths={wishMonths} calendarMarks={calendarMarks} onSetCalendarMark={(date, mark) => setCalendarMarks((current) => { const next = { ...current }; if (mark) next[date] = mark; else delete next[date]; return next; })} recoveryHistory={recoveryHistory} focusSessions={focusSessions} departureCheckIns={departureCheckIns} departurePlans={departurePlans} behaviorEvents={behaviorEvents} completionIcon={completionIcon} designMode={uiDesignMode} chicPattern={effectiveChicPattern} chicPalette={chicPalette} planTier={planTier} onPremium={openPremiumFeature} onSaveTemplate={saveTaskAsTemplate} onRestore={(id) => { void onboarding.complete('history'); restoreTaskById(id); }} onSaveDailyReview={saveDailyReview} onSaveMonthlyReflectionCard={saveMonthlyReflectionCard} onUpdateReview={updateWishReview} onDeleteReview={deleteWishReview} styles={styles} helpers={{ dateKey, formatLiveTime, getThemeTokens: getThemedThemeTokens }} components={{ AchievementVessel, CalendarMarkPicker }} />}
             />
           )}
         </ScrollView>
