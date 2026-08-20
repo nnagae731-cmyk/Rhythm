@@ -74,3 +74,33 @@ export function loadTestRewardedAd() {
     },
   };
 }
+
+/**
+ * Shows one test rewarded ad and resolves only when EARNED_REWARD fires.
+ * Closing or failing the ad never grants access.
+ */
+export function showTestRewardedAd(): Promise<boolean> {
+  return new Promise((resolve) => {
+    const rewardedAd = createTestRewardedAd();
+    let settled = false;
+    let earned = false;
+    const finish = (value: boolean) => {
+      if (settled) return;
+      settled = true;
+      unsubscribeLoaded();
+      unsubscribeReward();
+      unsubscribeClosed();
+      unsubscribeError();
+      resolve(value);
+    };
+    const unsubscribeLoaded = rewardedAd.addAdEventListener(RewardedAdEventType.LOADED, () => {
+      void rewardedAd.show().catch(() => finish(false));
+    });
+    const unsubscribeReward = rewardedAd.addAdEventListener(RewardedAdEventType.EARNED_REWARD, () => {
+      earned = true;
+    });
+    const unsubscribeClosed = rewardedAd.addAdEventListener(AdEventType.CLOSED, () => finish(earned));
+    const unsubscribeError = rewardedAd.addAdEventListener(AdEventType.ERROR, () => finish(false));
+    rewardedAd.load();
+  });
+}

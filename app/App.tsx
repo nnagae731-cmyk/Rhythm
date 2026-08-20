@@ -22,7 +22,6 @@ import { HomeScreen } from './screens/HomeScreen';
 import { TimelineScreen } from './screens/TimelineScreen';
 import { SettingsScreen } from './screens/SettingsScreen';
 import { HistoryScreen } from './screens/HistoryScreen';
-import { WishPremiumLockScreen } from './screens/WishPremiumLockScreen';
 import { TaskModal } from './components/TaskModal';
 import { PremiumModal } from './components/PremiumModal';
 import { BottomNav } from './components/BottomNav';
@@ -45,6 +44,9 @@ import { SharedEventScreen } from './SharedEventScreen';
 import { TopImageCropModal } from './components/TopImageCropModal';
 import { cropRectToPixels, displayToNormalizedRect, getContainBounds, getInitialCropRect, NormalizedCropRect } from './features/photo/topImageCrop';
 import { deleteManagedPhotoUri, persistPhotoUri } from './features/photo/persistentPhoto';
+import { canCreateWish } from './features/ads/rewardedAccessLogic';
+import { DEFAULT_REWARDED_ACCESS_STATE, loadRewardedAccessState, RewardedAccessState, saveRewardedAccessState } from './features/ads/rewardedAccessStorage';
+import { showTestRewardedAd } from './services/rewardedAds';
 import {
   Alert,
   Animated,
@@ -439,9 +441,16 @@ export default function App() {
   const [screen, setScreen] = useState<Screen>('home');
   const [timelineInitialTab, setTimelineInitialTab] = useState<TimeTab>('departure');
   const [tasks, setTasks] = useState<Task[]>([]);
+  const [rewardedAccess, setRewardedAccess] = useState<RewardedAccessState>(DEFAULT_REWARDED_ACCESS_STATE);
+  const rewardedWishBusyRef = React.useRef(false);
   const tasksRef = React.useRef<Task[]>([]);
   const scheduleTaskNotificationsRef = React.useRef<(task: Task) => Promise<void>>(async () => undefined);
   const hydratedRef = React.useRef(false);
+  useEffect(() => {
+    let active = true;
+    void loadRewardedAccessState().then((loaded) => { if (active) setRewardedAccess(loaded); });
+    return () => { active = false; };
+  }, []);
   const persistenceDisabledRef = React.useRef(false);
   const saveFailureNotifiedRef = React.useRef(false);
   const pendingNotificationCompletionIdsRef = React.useRef<string[]>([]);
@@ -623,6 +632,35 @@ export default function App() {
   const openWish = React.useCallback(() => {
     setScreen('wish');
   }, []);
+  const requestWishReward = React.useCallback(async () => {
+    if (hasPremiumAccess(planTier, 'wish_planning')) return true;
+    if (canCreateWish(rewardedAccess)) return true;
+    if (rewardedWishBusyRef.current) return false;
+    rewardedWishBusyRef.current = true;
+    try {
+      const earned = await showTestRewardedAd().catch(() => false);
+      if (!earned) {
+        Alert.alert('広告を完了できませんでした', '報酬を受け取れなかったため、追加権は増えていません。');
+        return false;
+      }
+      const next: RewardedAccessState = { ...rewardedAccess, wishCreateProgress: Math.min(2, rewardedAccess.wishCreateProgress + 1) };
+      setRewardedAccess(next);
+      await saveRewardedAccessState(next);
+      if (next.wishCreateProgress < 2) {
+        Alert.alert('広告を1回確認しました', `あと${2 - next.wishCreateProgress}回で1件追加できます。`);
+        return false;
+      }
+      return true;
+    } finally {
+      rewardedWishBusyRef.current = false;
+    }
+  }, [planTier, rewardedAccess]);
+  const consumeWishReward = React.useCallback(() => {
+    if (hasPremiumAccess(planTier, 'wish_planning') || rewardedAccess.wishCreateProgress <= 0) return;
+    const next: RewardedAccessState = { ...rewardedAccess, wishCreateProgress: Math.max(0, rewardedAccess.wishCreateProgress - 2) };
+    setRewardedAccess(next);
+    void saveRewardedAccessState(next);
+  }, [planTier, rewardedAccess]);
   const saveAffirmation = React.useCallback(async (draft: Affirmation) => {
     if (!hasPremiumAccess(planTier, 'affirmations')) {
       openPremiumFeature('affirmation');
@@ -1885,7 +1923,6 @@ export default function App() {
           )}
 
           {screen === 'wish' && (
-            hasPremiumAccess(planTier, 'wish_planning') ? (
             <WishScreen
               designMode={uiDesignMode}
               chicPattern={effectiveChicPattern}
@@ -1894,16 +1931,12 @@ export default function App() {
               state={currentWishState}
               onSaveState={saveCurrentWishState}
               onCreateTaskFromAction={createTaskFromWishAction}
+              canCreateWish={hasPremiumAccess(planTier, 'wish_planning') || canCreateWish(rewardedAccess)}
+              wishRewardProgress={{ current: rewardedAccess.wishCreateProgress, required: 2 }}
+              onRequestWishReward={requestWishReward}
+              onWishCreated={consumeWishReward}
               onBack={() => setScreen('home')}
             />
-            ) : (
-              <WishPremiumLockScreen
-                designMode={uiDesignMode}
-                chicPalette={chicPalette}
-                onOpenPremium={() => openPremiumFeature('wish')}
-                styles={styles}
-              />
-            )
           )}
 
           {screen === 'timeline' && (

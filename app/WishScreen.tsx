@@ -14,6 +14,10 @@ type WishScreenProps = {
   state: MonthlyWishState;
   onSaveState: (updater: (current: MonthlyWishState) => MonthlyWishState) => void;
   onCreateTaskFromAction?: (action: WishAction) => void;
+  canCreateWish?: boolean;
+  wishRewardProgress?: { current: number; required: number };
+  onRequestWishReward?: () => Promise<boolean> | boolean;
+  onWishCreated?: () => void;
   onBack: () => void;
 };
 
@@ -49,7 +53,7 @@ function sectionText(mode: DesignMode, chic: string, minimal: string) {
   return mode === 'minimal' ? minimal : chic;
 }
 
-export function WishScreen({ designMode: rawDesignMode, chicPattern, chicPalette, monthLabel, state, onSaveState, onCreateTaskFromAction, onBack }: WishScreenProps) {
+export function WishScreen({ designMode: rawDesignMode, chicPattern, chicPalette, monthLabel, state, onSaveState, onCreateTaskFromAction, canCreateWish = true, wishRewardProgress, onRequestWishReward, onWishCreated, onBack }: WishScreenProps) {
   // Mono DarkはMono Lightと同じレイアウトを使い、色だけを反転する。
   const designMode: 'minimal' | 'chic' = rawDesignMode === 'dark' || rawDesignMode === 'photo' ? 'minimal' : rawDesignMode;
   const isDark = rawDesignMode === 'dark';
@@ -74,7 +78,11 @@ export function WishScreen({ designMode: rawDesignMode, chicPattern, chicPalette
     onSaveState(updater);
   };
 
-  const openWishEditor = (wish?: Wish) => {
+  const openWishEditor = async (wish?: Wish) => {
+    if (!wish && !canCreateWish) {
+      const granted = await onRequestWishReward?.();
+      if (!granted) return;
+    }
     setEditor({
       visible: true,
       mode: 'wish',
@@ -115,6 +123,7 @@ export function WishScreen({ designMode: rawDesignMode, chicPattern, chicPalette
           ? current.wishes.map((item) => (item.id === wish.id ? wish : item))
           : [wish, ...current.wishes],
       }));
+      if (!isEditing) onWishCreated?.();
     } else {
       if (!editor.wishId) {
         Alert.alert('先にWishを1つ選んでね');
@@ -262,6 +271,7 @@ export function WishScreen({ designMode: rawDesignMode, chicPattern, chicPalette
             <Pressable style={[styles.addRow, designMode === 'minimal' ? styles.addRowMinimal : styles.addRowChic, isDark && styles.addRowDark, designSubtle]} onPress={() => openWishEditor()}>
               <Text style={[styles.addRowText, { color: darkAccent }]}>＋ 叶えたいことを追加</Text>
             </Pressable>
+            {!canCreateWish && wishRewardProgress && <Text style={[styles.itemMeta, { color: theme.colors.secondaryText, marginTop: 8 }]}>広告を2回見ると、叶えたいことを1件追加できます。 {wishRewardProgress.current} / {wishRewardProgress.required}</Text>}
           </SectionCard>
 
           <SectionCard
