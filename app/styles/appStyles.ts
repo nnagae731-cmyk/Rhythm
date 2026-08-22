@@ -48,7 +48,7 @@ export const styles = StyleSheet.create({
   content: { paddingHorizontal: 22, paddingTop: 16, paddingBottom: 140 },
   contentTimeline: { paddingBottom: 190 },
   hero: { color: colors.ink, fontSize: 30, lineHeight: 38, fontWeight: '900', letterSpacing: -1.2, marginBottom: 22 },
-  patternLayer: { ...StyleSheet.absoluteFillObject, overflow: 'hidden' },
+  patternLayer: { ...StyleSheet.absoluteFillObject, width: '100%', height: '100%', overflow: 'hidden' },
   patternImageLayer: { ...StyleSheet.absoluteFillObject, width: '100%', height: '100%' },
   patternImageLayerCompact: { opacity: 0.78 },
   patternDotSmall: { position: 'absolute', opacity: 0.42 },

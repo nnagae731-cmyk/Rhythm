@@ -51,6 +51,7 @@ import { cancelFocusCompletionNotification, cancelPendingFocusCompletionNotifica
 import { FOCUS_NAVIGATION_GUARD_COPY, getFocusNavigationDecision } from './features/focus/focusUsagePolicy';
 import {
   Alert,
+  ActivityIndicator,
   Animated,
   useColorScheme,
   Easing,
@@ -106,13 +107,18 @@ const taskCompletionMessages = [
 
 type CompletionFeedbackKind = 'focus' | 'task';
 
-// One static image per floral pattern. The same cached asset is reused by the
-// app background and pattern previews; no flowers are generated at runtime.
-const designFloralBackgroundAssets: Record<'floral' | 'floralSoft' | 'floralSeasonal' | 'floralDark', number> = {
-  floral: require('./assets/themes/floral/vintage-bloom.jpg'),
-  floralSoft: require('./assets/themes/floral/botanical-line.jpg'),
-  floralSeasonal: require('./assets/themes/floral/sheer-floral.jpg'),
-  floralDark: require('./assets/themes/floral/sheer-floral.jpg'),
+type FloralPatternId = 'floral' | 'floralSoft' | 'floralSeasonal' | 'floralDark';
+
+// Keep the template id, display name, and bundled image together. These are
+// static require() values so React Native can cache and reuse the same image
+// in the app background, settings swatches, and the design preview.
+const designFloralAssets: Record<FloralPatternId, { source: number; label: string }> = {
+  floral: { source: require('./assets/themes/floral/vintage-bloom.jpg'), label: '花柄1' },
+  floralSoft: { source: require('./assets/themes/floral/botanical-line.jpg'), label: '花柄2' },
+  floralSeasonal: { source: require('./assets/themes/floral/sheer-floral.jpg'), label: '花柄3' },
+  // Legacy id kept for saved-data compatibility. It uses the same formal name
+  // as the third floral preview and is not shown as a separate option.
+  floralDark: { source: require('./assets/themes/floral/sheer-floral.jpg'), label: '花柄3' },
 };
 
 // PREPARED is retained only to safely receive actions from notifications that
@@ -2334,17 +2340,20 @@ function DesignPreviewModal({ visible, initialPattern, chicCheckColor, photoUri,
   const palette = getDesignCheckThemeTokens(chicCheckColor);
   const previewVisual = getChicPatternVisual(pattern, palette);
   const previewPatterns: { id: ChicPattern; label: string }[] = [
-    { id: 'plain', label: 'Design plain' },
-    { id: 'floral', label: '花柄1' },
-    { id: 'floralSoft', label: '花柄2' },
-    { id: 'floralSeasonal', label: '花柄3' },
-    { id: 'floralDark', label: '季節の花柄' },
+    { id: 'plain', label: 'プレーン' },
+    { id: 'floral', label: designFloralAssets.floral.label },
+    { id: 'floralSoft', label: designFloralAssets.floralSoft.label },
+    { id: 'floralSeasonal', label: designFloralAssets.floralSeasonal.label },
     { id: 'dot', label: 'ドット' },
     { id: 'checkLavenderSatin', label: 'ギンガム1' },
     { id: 'checkBeigeNoir', label: 'ギンガム2' },
     { id: 'checkMauveFrame', label: 'ギンガム3' },
   ];
-  return <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+  return <>
+    <View pointerEvents="none" style={designPreviewStyles.floralPreload}>
+      {(['floral', 'floralSoft', 'floralSeasonal'] as FloralPatternId[]).map((floralPattern) => <Image key={floralPattern} source={designFloralAssets[floralPattern].source} resizeMode="cover" style={designPreviewStyles.floralPreloadImage} />)}
+    </View>
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
     <Pressable style={designPreviewStyles.backdrop} onPress={onClose}>
       <Pressable style={designPreviewStyles.sheet} onPress={(event) => event.stopPropagation()}>
         <View style={designPreviewStyles.header}><View><Text style={designPreviewStyles.eyebrow}>DESIGN PREVIEW</Text><Text style={designPreviewStyles.title}>見た目を試してみよう</Text></View><Pressable onPress={onClose} hitSlop={10}><Text style={designPreviewStyles.close}>×</Text></Pressable></View>
@@ -2354,7 +2363,7 @@ function DesignPreviewModal({ visible, initialPattern, chicCheckColor, photoUri,
         </View>
         {mode === 'chic' && <View style={designPreviewStyles.patternRow}>{previewPatterns.map((item) => <Pressable key={item.id} style={[designPreviewStyles.patternChip, pattern === item.id && { borderColor: palette.accent, backgroundColor: palette.accentSoft }]} onPress={() => setPattern(item.id)}><View style={[designPreviewStyles.patternDot, { backgroundColor: item.id === 'plain' ? palette.accent : getChicPatternVisual(item.id, palette).accent }]} /><Text numberOfLines={1} style={[designPreviewStyles.patternText, pattern === item.id && { color: palette.accentStrong }]}>{item.label}</Text></Pressable>)}</View>}
         <View style={[designPreviewStyles.preview, { backgroundColor: mode === 'dark' ? '#181F2E' : mode === 'minimal' ? '#F8F5EF' : mode === 'photo' ? '#202020' : previewVisual.background }]}>
-          {mode === 'chic' && <View pointerEvents="none" style={StyleSheet.absoluteFillObject}><ChicPatternDecor pattern={pattern} accent={previewVisual.accent} warm={previewVisual.warm} checkColor={chicCheckColor} /></View>}
+          {mode === 'chic' && <View pointerEvents="none" style={StyleSheet.absoluteFillObject}><ChicPatternDecor pattern={pattern} accent={previewVisual.accent} warm={previewVisual.warm} checkColor={chicCheckColor} previewTopCrop={pattern === 'floralSoft'} /></View>}
           {mode === 'photo' && photoUri ? <Image source={{ uri: photoUri }} resizeMode="cover" style={designPreviewStyles.photoBackground} /> : null}
           <TodayWinStrip
             tasks={[]}
@@ -2368,7 +2377,8 @@ function DesignPreviewModal({ visible, initialPattern, chicCheckColor, photoUri,
         <View style={designPreviewStyles.actions}><Pressable style={designPreviewStyles.secondaryButton} onPress={onClose}><Text style={designPreviewStyles.secondaryButtonText}>閉じる</Text></Pressable><Pressable style={designPreviewStyles.primaryButton} onPress={() => onUse(mode, mode === 'chic' ? pattern : undefined)}><Text style={designPreviewStyles.primaryButtonText}>{mode === 'photo' ? 'この写真を使う' : 'このデザインを使う'}</Text></Pressable></View>
       </Pressable>
     </Pressable>
-  </Modal>;
+    </Modal>
+  </>;
 }
 
 function DesignTrialExpiredModal({ visible, onClose, onPremium, onReward }: { visible: boolean; onClose: () => void; onPremium: () => void; onReward: () => void }) {
@@ -2376,6 +2386,8 @@ function DesignTrialExpiredModal({ visible, onClose, onPremium, onReward }: { vi
 }
 
 const designPreviewStyles = StyleSheet.create({
+  floralPreload: { position: 'absolute', left: 0, top: 0, width: 1, height: 1, opacity: 0.01, overflow: 'hidden' },
+  floralPreloadImage: { width: 1, height: 1 },
   backdrop: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(23,24,28,0.28)', paddingHorizontal: 12, paddingBottom: 14 },
   sheet: { width: '100%', maxWidth: 520, alignSelf: 'center', maxHeight: '92%', borderRadius: 22, backgroundColor: '#FFFFFF', padding: 18 },
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
@@ -2922,11 +2934,41 @@ function isCheckChicPattern(pattern: ChicPattern): boolean {
   return pattern === 'checkLavenderSatin' || pattern === 'checkBeigeNoir' || pattern === 'checkMauveFrame';
 }
 
+function isFloralPattern(pattern: ChicPattern | 'flower' | 'stripe'): pattern is FloralPatternId {
+  return pattern === 'floral' || pattern === 'floralSoft' || pattern === 'floralSeasonal' || pattern === 'floralDark';
+}
+
+const FloralPatternDecor = React.memo(function FloralPatternDecor({ pattern, accent, warm, compact, previewTopCrop }: { pattern: FloralPatternId; accent: string; warm: string; compact: boolean; previewTopCrop: boolean }) {
+  const [status, setStatus] = useState<'loading' | 'loaded' | 'error'>('loading');
+  const asset = designFloralAssets[pattern];
+
+  useEffect(() => {
+    setStatus('loading');
+  }, [asset.source]);
+
+  const showFallback = status !== 'loaded';
+  return <View pointerEvents="none" style={[styles.patternLayer, { width: '100%', height: '100%', backgroundColor: warm }]}>
+    {showFallback && <View style={[StyleSheet.absoluteFillObject, { width: '100%', height: '100%', alignItems: 'center', justifyContent: 'center', backgroundColor: warm }]}>
+      {status === 'loading' ? <ActivityIndicator color={accent} /> : <Text style={{ color: accent, fontSize: compact ? 8 : 11, fontWeight: '800' }}>花柄を表示できません</Text>}
+    </View>}
+    <Image
+      source={asset.source}
+      resizeMode="cover"
+      fadeDuration={0}
+      onLoadStart={() => setStatus('loading')}
+      onLoad={() => setStatus('loaded')}
+      onError={() => setStatus('error')}
+      accessibilityLabel={asset.label}
+      style={[styles.patternImageLayer, compact && styles.patternImageLayerCompact, previewTopCrop && styles.patternImageLayerPreviewTop, showFallback && { opacity: 0 }]}
+    />
+  </View>;
+});
+
 function ChicPatternDecor({ pattern, accent, warm, density = 'regular', checkColor, previewTopCrop = false }: { pattern: ChicPattern | 'flower' | 'stripe'; accent: string; warm: string; density?: 'regular' | 'compact'; checkColor?: ChicCheckColor; previewTopCrop?: boolean }) {
   const compact = density === 'compact';
   if (pattern === 'plain') return null;
-  if (pattern === 'floral' || pattern === 'floralSoft' || pattern === 'floralSeasonal' || pattern === 'floralDark') {
-    return <View pointerEvents="none" style={styles.patternLayer}><Image source={designFloralBackgroundAssets[pattern]} resizeMode="cover" style={[styles.patternImageLayer, compact && styles.patternImageLayerCompact, previewTopCrop && styles.patternImageLayerPreviewTop]} /></View>;
+  if (isFloralPattern(pattern)) {
+    return <FloralPatternDecor key={pattern} pattern={pattern} accent={accent} warm={warm} compact={compact} previewTopCrop={previewTopCrop} />;
   }
   if (pattern === 'checkLavenderSatin' || pattern === 'checkBeigeNoir' || pattern === 'checkMauveFrame') {
     const selectedCheckColor = checkColor ? getChicCheckColor(checkColor) : undefined;
@@ -2966,23 +3008,25 @@ function CompactNumberSetting({ label, value, onChange, isDark = false }: { labe
 function ChicPatternSelector({ designMode, chicPattern, chicCheckColor, planTier, onPattern, onCheckColor, onPremium, onPreview }: { designMode: DesignMode; chicPattern: ChicPattern; chicCheckColor: ChicCheckColor; planTier: PlanTier; onPattern: (pattern: ChicPattern) => void; onCheckColor: (color: ChicCheckColor) => void; onPremium: () => void; onPreview: (pattern: ChicPattern) => void }) {
   const patterns: { id: ChicPattern; label: string; feature?: 'chic_floral' | 'chic_dot' | 'chic_check_lavender_satin' | 'chic_check_beige_noir' | 'chic_check_mauve_frame' }[] = [
     { id: 'plain', label: 'プレーン' },
-    { id: 'floral', label: '花柄1', feature: 'chic_floral' },
-    { id: 'floralSoft', label: '花柄2', feature: 'chic_floral' },
-    { id: 'floralSeasonal', label: '花柄3', feature: 'chic_floral' },
+    { id: 'floral', label: designFloralAssets.floral.label, feature: 'chic_floral' },
+    { id: 'floralSoft', label: designFloralAssets.floralSoft.label, feature: 'chic_floral' },
+    { id: 'floralSeasonal', label: designFloralAssets.floralSeasonal.label, feature: 'chic_floral' },
     { id: 'dot', label: 'ドット', feature: 'chic_dot' },
     { id: 'checkLavenderSatin', label: 'くすみラベンダーチェック', feature: 'chic_check_lavender_satin' },
     { id: 'checkBeigeNoir', label: 'ベージュ×ブラックチェック', feature: 'chic_check_beige_noir' },
     { id: 'checkMauveFrame', label: 'モーブフレームチェック', feature: 'chic_check_mauve_frame' },
   ];
   const displayPatternLabels: Partial<Record<ChicPattern, string>> = {
-    floral: '花柄1', floralSoft: '花柄2', floralSeasonal: '花柄3', floralDark: '花柄3',
-    checkLavenderSatin: 'ギンガムチェック1', checkBeigeNoir: 'ギンガムチェック2', checkMauveFrame: 'ギンガムチェック3',
+    floral: designFloralAssets.floral.label,
+    floralSoft: designFloralAssets.floralSoft.label,
+    floralSeasonal: designFloralAssets.floralSeasonal.label,
+    floralDark: designFloralAssets.floralDark.label,
+    plain: 'プレーン',
+    dot: 'ドット',
+    checkLavenderSatin: 'ギンガムチェック1',
+    checkBeigeNoir: 'ギンガムチェック2',
+    checkMauveFrame: 'ギンガムチェック3',
   };
-  Object.assign(displayPatternLabels, {
-    floral: '\u82b1\u67c41', floralSoft: '\u82b1\u67c42', floralSeasonal: '\u82b1\u67c43', floralDark: '\u82b1\u67c43',
-    plain: '\u30d7\u30ec\u30fc\u30f3', dot: '\u30c9\u30c3\u30c8',
-    checkLavenderSatin: '\u30ae\u30f3\u30ac\u30e0\u30c1\u30a7\u30c3\u30af1', checkBeigeNoir: '\u30ae\u30f3\u30ac\u30e0\u30c1\u30a7\u30c3\u30af2', checkMauveFrame: '\u30ae\u30f3\u30ac\u30e0\u30c1\u30a7\u30c3\u30af3',
-  });
   const visiblePatterns = designMode === 'photo' ? patterns.filter((item) => item.id === 'plain') : patterns;
   const selectedPalette = getChicCheckColor(chicCheckColor);
   return <View style={[styles.patternSelectorNew, designMode === 'dark' && styles.darkSurface, { borderTopColor: selectedPalette.border }]}>
