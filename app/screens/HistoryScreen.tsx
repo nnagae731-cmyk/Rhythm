@@ -189,6 +189,7 @@ export function HistoryScreen({ tasks, wishMonths, calendarMarks, onSetCalendarM
   const [journalSaveMessage, setJournalSaveMessage] = useState('');
   const [monthlyCardPhotoCount, setMonthlyCardPhotoCount] = useState(0);
   const [monthlyCardModel, setMonthlyCardModel] = useState<ReflectionCardModel>();
+  const [monthlyEditorOpen, setMonthlyEditorOpen] = useState(false);
   const [monthlyCardGenerating, setMonthlyCardGenerating] = useState(false);
   const [monthlyCardReady, setMonthlyCardReady] = useState(false);
   const [monthlyCardTemplate, setMonthlyCardTemplate] = useState<ReflectionCardTemplate>('gallery');
@@ -367,6 +368,7 @@ export function HistoryScreen({ tasks, wishMonths, calendarMarks, onSetCalendarM
     const bestTitle = monthEntries.flatMap(([, items]) => items).sort((a, b) => new Date(b.completedAt ?? 0).getTime() - new Date(a.completedAt ?? 0).getTime())[0]?.title ?? '';
     setMonthlyCardPhotoCount(selectedPhotos.length);
     setMonthlyCardReady(false);
+    setMonthlyEditorOpen(false);
     setMonthlyCardModel({ monthKey: monthPrefix, monthLabel: `${year}年${month + 1}月`, photos: selectedPhotos, template: monthlyCardTemplate, palette: monthlyCardPalette, phrase: monthlyWord.trim().slice(0, 30), bestMemory: (bestMemory.trim() || bestTitle).slice(0, 30) });
   };
   const saveMonthlyCardSettings = React.useCallback(() => {
@@ -411,6 +413,13 @@ export function HistoryScreen({ tasks, wishMonths, calendarMarks, onSetCalendarM
   const reflectionTemplates: ReflectionCardTemplate[] = premiumHistory ? ['gallery', 'film', 'scrapbook'] : ['gallery'];
   const reflectionPalettes: ReflectionCardPalette[] = premiumHistory ? ['lavender', 'blue', 'peach', 'green'] : ['lavender'];
   const savedMonthlyCard = normalizeReflectionCard(wishMonths[monthPrefix]?.reflectionCard, monthPrefix);
+  const openMonthlyReflection = () => {
+    if (!premiumHistory) {
+      onPremium('month');
+      return;
+    }
+    setMonthlyEditorOpen(true);
+  };
   const openSavedMonthlyCard = () => {
     if (!savedMonthlyCard?.photoIds?.length) return;
     setMonthlyCardReady(false);
@@ -432,7 +441,12 @@ export function HistoryScreen({ tasks, wishMonths, calendarMarks, onSetCalendarM
       <View style={[styles.calendarCard, designMode === 'minimal' && styles.calendarCardMinimal, isDark && styles.darkCalendarCard, designMode === 'chic' && chicPalette && { backgroundColor: chicPalette.cardSurface, borderColor: chicPalette.border }]}>
         <View style={[styles.calendarHeader, isDark && styles.darkCalendarHeader]}>
           <View style={styles.historyMonthSwitcher}><Pressable onPress={() => moveHistoryMonth(-1)} style={[styles.historyMonthArrow, isDark && styles.darkCalendarNav]}><Text style={[styles.historyMonthArrowText, isDark && styles.darkAccentText]}>‹</Text></Pressable><Text style={[styles.calendarMonth, isDark && styles.darkBodyText]}>{year}年 {month + 1}月</Text><Pressable onPress={() => moveHistoryMonth(1)} style={[styles.historyMonthArrow, isDark && styles.darkCalendarNav]}><Text style={[styles.historyMonthArrowText, isDark && styles.darkAccentText]}>›</Text></Pressable></View>
-          <Text style={[styles.calendarTotal, isDark && styles.darkAccentText]}>{monthlyCount}件完了</Text>
+          <View style={styles.calendarSummaryActions}>
+            <Pressable onPress={openMonthlyReflection} style={[styles.monthlyReflectionTrigger, isDark && styles.darkMonthlyReflectionTrigger, designMode === 'chic' && chicPalette && { borderColor: chicPalette.accent, backgroundColor: chicPalette.accentSoft }]} accessibilityRole="button">
+              <Text style={[styles.monthlyReflectionTriggerText, isDark && styles.darkAccentText, designMode === 'chic' && chicPalette && { color: chicPalette.accentStrong }]}>今月を振り返る</Text>
+            </Pressable>
+            <Text style={[styles.calendarTotal, isDark && styles.darkAccentText]}>{monthlyCount}件完了</Text>
+          </View>
         </View>
         <View style={styles.weekRow}>
           {['日', '月', '火', '水', '木', '金', '土'].map((day) => <Text key={day} style={[styles.weekLabel, isDark && styles.darkWeekLabel]}>{day}</Text>)}
@@ -488,24 +502,6 @@ export function HistoryScreen({ tasks, wishMonths, calendarMarks, onSetCalendarM
         <View><Text style={[styles.guideCardTitle, isDark && styles.darkBodyText]}>今日の記録</Text><Text style={[styles.guideCardCopy, isDark && styles.darkMutedText]}>Premiumで日付ごとの写真・ひとこと・メモを残せます</Text></View><Text style={[styles.guideCardArrow, isDark && styles.darkAccentText]}>›</Text>
       </Pressable>}
 
-      {premiumHistory ? <View style={[styles.journalEditor, designMode === 'minimal' && styles.journalEditorMinimal, isDark && styles.darkJournalEditor, designMode === 'chic' && chicPalette && { backgroundColor: chicPalette.cardSurface, borderColor: chicPalette.border }]}>
-        <View style={styles.journalEditorHeader}>
-          <View><Text style={[styles.journalEditorTitle, isDark && styles.darkBodyText]}>今月を振り返る</Text><Text style={[styles.journalEditorDate, isDark && styles.darkAccentText]}>{monthPrefix.replace('-', '.')} ・ 写真 {Math.min(monthlyPhotoIds.length, monthlyCardLimit)} / {monthlyCardLimit}</Text></View>
-        </View>
-        <Text style={[styles.journalPhotoHint, isDark && styles.darkMutedText]}>今月の記録写真から、1枚のカードにまとめます。</Text>
-        <Text style={[reflectionStyles.controlLabel, { color: isDark ? '#B4C0D4' : chicPalette?.textSecondary ?? '#625D68' }]}>今月の言葉</Text>
-        <TextInput value={monthlyWord} onChangeText={setMonthlyWord} placeholder="今月の自分へひとこと" placeholderTextColor={isDark ? '#8F9BB0' : '#A29DAA'} style={[styles.journalInput, isDark && styles.darkInput]} />
-        <TextInput value={bestMemory} onChangeText={setBestMemory} placeholder="今月のベスト" placeholderTextColor={isDark ? '#8F9BB0' : '#A29DAA'} style={[styles.journalInput, isDark && styles.darkInput]} />
-        <Text style={[reflectionStyles.controlLabel, { color: isDark ? '#B4C0D4' : chicPalette?.textSecondary ?? '#625D68' }]}>テンプレート</Text>
-        <View style={reflectionStyles.choiceRow}>{reflectionTemplates.map((template) => <Pressable key={template} onPress={() => setMonthlyCardTemplate(template)} style={[reflectionStyles.choiceChip, { borderColor: monthlyCardTemplate === template ? (isDark ? '#8EA6FF' : chicPalette?.accent ?? '#7559E8') : (isDark ? '#40506A' : '#DDD7E3'), backgroundColor: monthlyCardTemplate === template ? (isDark ? '#26365F' : chicPalette?.accentSoft ?? '#EEE9FF') : 'transparent' }]}><Text style={{ color: monthlyCardTemplate === template ? (isDark ? '#FFFFFF' : chicPalette?.accentStrong ?? '#5E4BB7') : (isDark ? '#B4C0D4' : '#625D68'), fontSize: 10, fontWeight: '800' }}>{reflectionTemplateLabels[template]}</Text></Pressable>)}</View>
-        <Text style={[reflectionStyles.controlLabel, { color: isDark ? '#B4C0D4' : chicPalette?.textSecondary ?? '#625D68' }]}>カラーパレット</Text>
-        <View style={reflectionStyles.choiceRow}>{reflectionPalettes.map((paletteId) => <Pressable key={paletteId} onPress={() => setMonthlyCardPalette(paletteId)} style={[reflectionStyles.choiceChip, { borderColor: monthlyCardPalette === paletteId ? reflectionCardPalettes[paletteId].accent : (isDark ? '#40506A' : '#DDD7E3'), backgroundColor: monthlyCardPalette === paletteId ? reflectionCardPalettes[paletteId].background : 'transparent' }]}><View style={[reflectionStyles.paletteDot, { backgroundColor: reflectionCardPalettes[paletteId].accent }]} /><Text style={{ color: isDark ? '#B4C0D4' : '#625D68', fontSize: 10, fontWeight: '800' }}>{reflectionPaletteLabels[paletteId]}</Text></Pressable>)}</View>
-        <Pressable style={[styles.journalSaveButton, { marginTop: 12 }]} onPress={createMonthlyCard}><Text style={styles.journalSaveButtonText}>カードをプレビュー</Text></Pressable>
-        {savedMonthlyCard?.photoIds?.length ? <Pressable style={reflectionStyles.savedCardButton} onPress={openSavedMonthlyCard}><Text style={reflectionStyles.savedCardButtonText}>保存済みカードを見る</Text></Pressable> : null}
-      </View> : <Pressable style={[styles.guideCard, isDark && styles.darkSurface]} onPress={() => onPremium('month')}>
-        <View><Text style={[styles.guideCardTitle, isDark && styles.darkBodyText]}>今月を振り返る</Text><Text style={[styles.guideCardCopy, isDark && styles.darkMutedText]}>Premiumで写真と今月の言葉をカードにまとめられます</Text></View><Text style={[styles.guideCardArrow, isDark && styles.darkAccentText]}>›</Text>
-      </Pressable>}
-
       <View style={searchResultsOpen && searchQuery.trim() ? { display: 'none' } : undefined}>
       <View style={styles.historyHeader}>
         <Text style={[styles.sectionTitle, isDark && styles.darkBodyText]}>{premiumHistory ? (searchResultsOpen && searchQuery.trim() ? '検索結果' : selectedKey.replaceAll('-', '.')) : '最近の完了'}</Text>
@@ -555,6 +551,29 @@ export function HistoryScreen({ tasks, wishMonths, calendarMarks, onSetCalendarM
               <Pressable style={[styles.reviewDeleteButton, isDark && styles.darkDangerBorder]} onPress={() => { if (!selectedReviewEntry) return; onDeleteReview(selectedReviewEntry.monthKey, selectedReviewEntry.reviewKey); setSelectedReview(null); }}><Text style={[styles.reviewDeleteButtonText, isDark && styles.darkDangerText]}>削除</Text></Pressable>
             </View>
             <Pressable style={[styles.reviewPhotoModalClose, isDark && styles.darkRestoreButton]} onPress={() => setSelectedReview(null)}><Text style={styles.reviewPhotoModalCloseText}>閉じる</Text></Pressable>
+          </Pressable>
+        </Pressable>
+      </Modal>
+      <Modal visible={monthlyEditorOpen && premiumHistory} transparent animationType="slide" onRequestClose={() => setMonthlyEditorOpen(false)}>
+        <Pressable style={styles.modalBackdrop} onPress={() => setMonthlyEditorOpen(false)}>
+          <Pressable style={[styles.reviewEditModal, isDark && styles.darkReviewModal]} onPress={(event) => event.stopPropagation()}>
+            <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 4 }}>
+              <Text style={[styles.reviewEditTitle, isDark && styles.darkBodyText]}>今月を振り返る</Text>
+              <Text style={[styles.journalPhotoHint, isDark && styles.darkMutedText]}>{monthPrefix.replace('-', '.')} ・ 今月の記録写真からカードを作成します。</Text>
+              <Text style={[reflectionStyles.controlLabel, { color: isDark ? '#B4C0D4' : chicPalette?.textSecondary ?? '#625D68' }]}>今月の言葉</Text>
+              <TextInput value={monthlyWord} onChangeText={setMonthlyWord} placeholder="今月の自分へひとこと" placeholderTextColor={isDark ? '#8F9BB0' : '#A29DAA'} style={[styles.journalInput, isDark && styles.darkInput]} />
+              <TextInput value={bestMemory} onChangeText={setBestMemory} placeholder="今月のベスト" placeholderTextColor={isDark ? '#8F9BB0' : '#A29DAA'} style={[styles.journalInput, isDark && styles.darkInput]} />
+              <Text style={[reflectionStyles.controlLabel, { color: isDark ? '#B4C0D4' : chicPalette?.textSecondary ?? '#625D68' }]}>テンプレート</Text>
+              <View style={reflectionStyles.choiceRow}>{reflectionTemplates.map((template) => <Pressable key={template} onPress={() => setMonthlyCardTemplate(template)} style={[reflectionStyles.choiceChip, { borderColor: monthlyCardTemplate === template ? (isDark ? '#8EA6FF' : chicPalette?.accent ?? '#7559E8') : (isDark ? '#40506A' : '#DDD7E3'), backgroundColor: monthlyCardTemplate === template ? (isDark ? '#26365F' : chicPalette?.accentSoft ?? '#EEE9FF') : 'transparent' }]}><Text style={{ color: monthlyCardTemplate === template ? (isDark ? '#FFFFFF' : chicPalette?.accentStrong ?? '#5E4BB7') : (isDark ? '#B4C0D4' : '#625D68'), fontSize: 10, fontWeight: '800' }}>{reflectionTemplateLabels[template]}</Text></Pressable>)}</View>
+              <Text style={[reflectionStyles.controlLabel, { color: isDark ? '#B4C0D4' : chicPalette?.textSecondary ?? '#625D68' }]}>カラーパレット</Text>
+              <View style={reflectionStyles.choiceRow}>{reflectionPalettes.map((paletteId) => <Pressable key={paletteId} onPress={() => setMonthlyCardPalette(paletteId)} style={[reflectionStyles.choiceChip, { borderColor: monthlyCardPalette === paletteId ? reflectionCardPalettes[paletteId].accent : (isDark ? '#40506A' : '#DDD7E3'), backgroundColor: monthlyCardPalette === paletteId ? reflectionCardPalettes[paletteId].background : 'transparent' }]}><View style={[reflectionStyles.paletteDot, { backgroundColor: reflectionCardPalettes[paletteId].accent }]} /><Text style={{ color: isDark ? '#B4C0D4' : '#625D68', fontSize: 10, fontWeight: '800' }}>{reflectionPaletteLabels[paletteId]}</Text></Pressable>)}</View>
+              <Text style={[styles.journalPhotoHint, isDark && styles.darkMutedText]}>写真 {Math.min(monthlyPhotoIds.length, monthlyCardLimit)} / {monthlyCardLimit}</Text>
+              <View style={styles.reviewEditActions}>
+                <Pressable style={[styles.reviewEditCancel, isDark && styles.darkReviewEditCancel]} onPress={() => setMonthlyEditorOpen(false)}><Text style={[styles.reviewEditCancelText, isDark && styles.darkMutedText]}>閉じる</Text></Pressable>
+                <Pressable style={styles.reviewEditSave} onPress={createMonthlyCard}><Text style={styles.reviewEditSaveText}>カードをプレビュー</Text></Pressable>
+              </View>
+              {savedMonthlyCard?.photoIds?.length ? <Pressable style={reflectionStyles.savedCardButton} onPress={() => { setMonthlyEditorOpen(false); openSavedMonthlyCard(); }}><Text style={reflectionStyles.savedCardButtonText}>保存済みカードを見る</Text></Pressable> : null}
+            </ScrollView>
           </Pressable>
         </Pressable>
       </Modal>
