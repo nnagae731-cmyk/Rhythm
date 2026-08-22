@@ -35,14 +35,11 @@ export function getEffectiveNudgeMode<T extends 'once' | 'repeat' | 'strong'>(ti
 
 export function getEffectiveChicPattern<T extends 'plain' | 'floral' | 'floralSoft' | 'floralSeasonal' | 'floralDark' | 'dot' | 'checkLavenderSatin' | 'checkBeigeNoir' | 'checkMauveFrame'>(tier: PlanTier, pattern: T): T | 'plain' {
   if (pattern === 'plain') return pattern;
-  // Floral backgrounds are available in the free Design preview and can be
-  // selected directly. Patterned dot/check backgrounds remain Premium-only.
-  if (pattern === 'floral' || pattern === 'floralSoft' || pattern === 'floralSeasonal' || pattern === 'floralDark') return pattern;
   return tier === 'premium' ? pattern : 'plain';
 }
 
-export function getChicPatternFeatureId(pattern: 'floral' | 'floralSoft' | 'floralSeasonal' | 'floralDark' | 'dot' | 'checkLavenderSatin' | 'checkBeigeNoir' | 'checkMauveFrame'): PremiumFeature | undefined {
-  if (pattern === 'floral' || pattern === 'floralSoft' || pattern === 'floralSeasonal' || pattern === 'floralDark') return undefined;
+export function getChicPatternFeatureId(pattern: 'floral' | 'floralSoft' | 'floralSeasonal' | 'floralDark' | 'dot' | 'checkLavenderSatin' | 'checkBeigeNoir' | 'checkMauveFrame'): PremiumFeature {
+  if (pattern === 'floral' || pattern === 'floralSoft' || pattern === 'floralSeasonal' || pattern === 'floralDark') return 'chic_floral';
   if (pattern === 'dot') return 'chic_dot';
   if (pattern === 'checkBeigeNoir') return 'chic_check_beige_noir';
   if (pattern === 'checkMauveFrame') return 'chic_check_mauve_frame';
