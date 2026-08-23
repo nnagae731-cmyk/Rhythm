@@ -28,16 +28,14 @@ export type TravelAppSettings = {
 };
 
 const PRESET_APPS: TravelAppConfig[] = [
-  { id: 'go', name: 'GO', category: 'taxi', launchMethod: 'shortcut', enabled: false, supportsDestination: false, isPreset: true },
   { id: 'uber', presetId: 'uber', name: 'Uber', category: 'taxi', launchMethod: 'official_url', enabled: false, supportsDestination: true, launchUrl: 'uber://', destinationUrlTemplate: 'uber://riderequest?pickup=my_location&dropoff[nickname]={destination}&dropoff[formatted_address]={destination}', isPreset: true, isOfficialIntegration: true },
-  { id: 'sride', name: 'S.RIDE', category: 'taxi', launchMethod: 'shortcut', enabled: false, supportsDestination: false, isPreset: true },
-  { id: 'didi', name: 'DiDi', category: 'taxi', launchMethod: 'shortcut', enabled: false, supportsDestination: false, isPreset: true },
   { id: 'apple_maps', presetId: 'apple_maps', name: 'Appleマップ', category: 'transit', launchMethod: 'official_url', enabled: true, isDefault: true, supportsDestination: true, launchUrl: 'http://maps.apple.com/', destinationUrlTemplate: 'http://maps.apple.com/?daddr={destination}&dirflg=r', isPreset: true, isOfficialIntegration: true },
   { id: 'google_maps', presetId: 'google_maps', name: 'Googleマップ', category: 'transit', launchMethod: 'official_url', enabled: false, supportsDestination: true, launchUrl: 'https://www.google.com/maps/', destinationUrlTemplate: 'https://www.google.com/maps/dir/?api=1&destination={destination}&travelmode=transit', isPreset: true, isOfficialIntegration: true },
-  { id: 'yahoo_transit', presetId: 'yahoo_transit', name: 'Yahoo!乗換案内', category: 'transit', launchMethod: 'shortcut', enabled: false, supportsDestination: false, isPreset: true },
-  { id: 'transfer_navitime', presetId: 'transfer_navitime', name: '乗換NAVITIME', category: 'transit', launchMethod: 'shortcut', enabled: false, supportsDestination: false, isPreset: true },
-  { id: 'jorudan', presetId: 'jorudan', name: 'ジョルダン乗換案内', category: 'transit', launchMethod: 'shortcut', enabled: false, supportsDestination: false, isPreset: true },
 ];
+
+// These IDs were part of the development preset list. Keep recognizing them
+// during migration so old saved entries do not reappear as custom apps.
+const LEGACY_PRESET_IDS = new Set(['go', 'sride', 'didi', 'yahoo_transit', 'transfer_navitime', 'jorudan']);
 
 export const DEFAULT_TRAVEL_APP_SETTINGS: TravelAppSettings = {
   apps: PRESET_APPS.map((app) => ({ ...app })),
@@ -54,7 +52,7 @@ export function normalizeTravelAppSettings(input?: Partial<TravelAppSettings> | 
     const saved = byId.get(preset.id);
     return saved ? { ...preset, ...saved, isPreset: true } : clonePreset(preset);
   });
-  const customs: TravelAppConfig[] = savedApps.filter((item) => typeof item?.id === 'string' && !PRESET_APPS.some((preset) => preset.id === item.id)).map((item) => ({
+  const customs: TravelAppConfig[] = savedApps.filter((item) => typeof item?.id === 'string' && !LEGACY_PRESET_IDS.has(item.id) && !PRESET_APPS.some((preset) => preset.id === item.id)).map((item) => ({
     ...item,
     name: String(item.name ?? '').trim() || '移動アプリ',
     category: (item.category === 'taxi' ? 'taxi' : 'transit') as TravelAppCategory,
