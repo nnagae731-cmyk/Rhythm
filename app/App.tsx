@@ -2155,7 +2155,7 @@ export default function App() {
         chicPattern={effectiveChicPattern}
         chicPalette={chicPalette}
         planTier="premium"
-        focusCustomDurationMinutes={47}
+        focusCustomDurationMinutes={25}
         onFocusCustomDurationChange={() => undefined}
         recoveryTargetPlanId={undefined}
         onChange={() => undefined}
