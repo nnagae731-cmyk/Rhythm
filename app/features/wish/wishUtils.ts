@@ -1,6 +1,6 @@
 import { MonthlyReview, MonthlyWishState, WishMonthMap } from '../../types';
 
-const EMPTY_MONTHLY_WISH_STATE: MonthlyWishState = { theme: '', wishes: [], actions: [], review: {} };
+const EMPTY_MONTHLY_WISH_STATE: MonthlyWishState = { theme: '', monthlyGoal: '', wishes: [], actions: [], review: {} };
 
 export function wishMonthKey(now = new Date()) {
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
@@ -13,6 +13,7 @@ export function wishDateKey(now = new Date()) {
 export function createEmptyMonthlyWishState(): MonthlyWishState {
   return {
     theme: '',
+    monthlyGoal: '',
     wishes: [],
     actions: [],
     review: {},

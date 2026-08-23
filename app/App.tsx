@@ -46,7 +46,7 @@ import { TopImageCropModal } from './components/TopImageCropModal';
 import { cropRectToPixels, displayToNormalizedRect, getContainBounds, getInitialCropRect, NormalizedCropRect } from './features/photo/topImageCrop';
 import { deleteManagedPhotoUri, persistPhotoUri } from './features/photo/persistentPhoto';
 import { canUseNotifications, getNotificationPermissionAction, getNotificationPermissionStatus, requestRhythmNotificationPermission } from './features/notifications/notificationPermission';
-import { addCalendarMonths, addHours, canCreateWish, canCreateWishAction, canImportCalendar, canStartPremiumDesignTrial, isPremiumDesignTrialActive, isPremiumDesignUnlocked } from './features/ads/rewardedAccessLogic';
+import { addHours, canCreateWish, canCreateWishAction, canImportCalendar, canStartPremiumDesignTrial, endOfCalendarMonth, isPremiumDesignTrialActive, isPremiumDesignUnlocked, isWishMonthlyGoalUnlocked } from './features/ads/rewardedAccessLogic';
 import { getRequiredAds, RewardedFeatureId } from './features/ads/rewardedAccess';
 import { DEFAULT_REWARDED_ACCESS_STATE, loadRewardedAccessState, RewardedAccessState, saveRewardedAccessState } from './features/ads/rewardedAccessStorage';
 import { cancelFocusCompletionNotification, cancelPendingFocusCompletionNotifications, scheduleFocusCompletionNotification } from './features/focus/focusNotifications';
@@ -624,6 +624,9 @@ export default function App() {
 
   const grantRewarded = React.useCallback(async (featureId: RewardedFeatureId): Promise<RewardedAccessResult> => {
     if (planTier === 'premium') return { success: true, completed: true };
+    if (featureId === 'wishMonthlyGoal' && isWishMonthlyGoalUnlocked(rewardedAccess, new Date())) return { success: true, completed: true };
+    if (featureId === 'routineSkipBonus' && rewardedAccess.routine.skipBonusAdded >= 2) return { success: true, completed: true, message: 'Skip Bonusは最大まで取得済みです。' };
+    if (featureId === 'photoTop' && rewardedAccess.photoCustomization.topExtraSlotsUnlocked >= 5) return { success: true, completed: true, message: '写真枠は最大まで解放済みです。' };
     if (rewardedGenericBusyRef.current) return { success: false, message: '広告を準備しています…' };
     rewardedGenericBusyRef.current = true;
     try {
@@ -642,7 +645,7 @@ export default function App() {
       if (featureId === 'wishMonthlyGoal') {
         const progress = base.wishMonthlyGoal.monthKey === currentWishMonthKey ? base.wishMonthlyGoal.progress : 0;
         const nextProgress = Math.min(required, progress + 1);
-        next = { ...base, wishMonthlyGoal: { progress: nextProgress, monthKey: currentWishMonthKey, unlockedUntil: nextProgress >= required ? addCalendarMonths(new Date(), 1) : null } };
+        next = { ...base, wishMonthlyGoal: { progress: nextProgress, monthKey: currentWishMonthKey, unlockedUntil: nextProgress >= required ? endOfCalendarMonth(new Date()) : null } };
         completed = nextProgress >= required;
       } else if (featureId === 'wishCreate') {
         const progress = Math.min(required, base.wishCreateProgress + 1);
@@ -667,7 +670,7 @@ export default function App() {
       } else if (featureId === 'routineSkipBonus') {
         const progress = Math.min(required, base.routine.skipBonusProgress + 1);
         const reached = progress >= required;
-        next = { ...base, routine: { ...base.routine, skipBonusProgress: reached ? 0 : progress, skipBonusAdded: reached ? Math.min(2, base.routine.skipBonusAdded + 1) : base.routine.skipBonusAdded } };
+        next = { ...base, routine: { ...base.routine, skipBonusProgress: reached ? 0 : progress, skipBonusAdded: reached ? Math.min(2, base.routine.skipBonusAdded + 1) : base.routine.skipBonusAdded, skipStock: reached ? base.routine.skipStock + (base.routine.skipBonusAdded < 2 ? 1 : 0) : base.routine.skipStock } };
         completed = reached;
       }
       setRewardedAccess(next);
@@ -727,6 +730,7 @@ export default function App() {
     });
     void onboarding.complete('wish');
   }, [currentWishMonthKey, onboarding]);
+  const requestMonthlyGoalReward = React.useCallback(() => grantRewarded('wishMonthlyGoal'), [grantRewarded]);
   const updateWishReview = React.useCallback((monthKey: string, reviewKey: string, updates: Partial<MonthlyReview>) => {
     setWishMonths((current) => {
       const monthState = getMonthlyWishState(current, monthKey);
@@ -1302,7 +1306,7 @@ export default function App() {
     }
   }, [recordBehaviorEvent]);
 
-  const applySkipTaskById = React.useCallback((taskId: string) => {
+  const applySkipTaskById = React.useCallback((taskId: string, onApplied?: () => void) => {
     const target = tasksRef.current.find((task) => task.id === taskId);
     if (!target || target.done || getTaskStatus(target) === 'skipped') return;
     Alert.alert('今日はお休みで大丈夫', '今日はお休みで大丈夫。連続記録は途切れません。', [
@@ -1313,6 +1317,7 @@ export default function App() {
         tasksRef.current = next;
         setTasks(next);
         void cancelPendingTaskNotifications(taskId);
+        onApplied?.();
       } },
     ]);
   }, []);
@@ -1323,17 +1328,19 @@ export default function App() {
       return;
     }
     if (rewardedAccess.routine.skipStock > 0) {
-      const next = { ...rewardedAccess, routine: { ...rewardedAccess.routine, skipStock: Math.max(0, rewardedAccess.routine.skipStock - 1) } };
-      setRewardedAccess(next);
-      void saveRewardedAccessState(next);
-      applySkipTaskById(taskId);
+      applySkipTaskById(taskId, () => {
+        const next = { ...rewardedAccess, routine: { ...rewardedAccess.routine, skipStock: Math.max(0, rewardedAccess.routine.skipStock - 1) } };
+        setRewardedAccess(next);
+        void saveRewardedAccessState(next);
+      });
       return;
     }
     openRewardedPrompt('routineSkip', '今日はスキップする', '広告を見ると、今日をスキップしてもルーティンの連続記録を維持できます。', () => {
-      const next = { ...rewardedAccess, routine: { ...rewardedAccess.routine, skipStock: Math.max(0, rewardedAccess.routine.skipStock - 1) } };
-      setRewardedAccess(next);
-      void saveRewardedAccessState(next);
-      applySkipTaskById(taskId);
+      applySkipTaskById(taskId, () => {
+        const next = { ...rewardedAccess, routine: { ...rewardedAccess.routine, skipStock: Math.max(0, rewardedAccess.routine.skipStock - 1) } };
+        setRewardedAccess(next);
+        void saveRewardedAccessState(next);
+      });
     });
   }, [applySkipTaskById, openRewardedPrompt, planTier, rewardedAccess]);
 
@@ -2159,6 +2166,9 @@ export default function App() {
               }}
               onDelete={deleteTaskById}
               onSkip={skipTaskById}
+              onOpenSkipBonusReward={planTier === 'premium' ? undefined : () => openRewardedPrompt('routineSkipBonus', 'Skip Bonus', '広告を2回見ると、ルーティンのスキップ権を1回分追加できます。')}
+              skipBonusAdded={rewardedAccess.routine.skipBonusAdded}
+              skipBonusMax={2}
               onDeleteSelected={() => deleteSelectedTasks(selectedTaskIds)}
               onDuplicate={(task) => {
                 // 通知は複製せず、複製後にユーザーが改めて設定する。
@@ -2216,6 +2226,9 @@ export default function App() {
               wishActionRewardProgress={{ current: rewardedAccess.wishActionCreateProgress, required: 2 }}
               onRequestWishActionReward={requestWishActionReward}
               onWishActionCreated={consumeWishActionReward}
+              monthlyGoalUnlocked={planTier === 'premium' || isWishMonthlyGoalUnlocked(rewardedAccess, now)}
+              monthlyGoalRewardProgress={getRewardedPromptProgress('wishMonthlyGoal')}
+              onRequestMonthlyGoalReward={requestMonthlyGoalReward}
               onPremium={() => openPremiumFeature('wish')}
               onBack={() => setScreen('home')}
             />

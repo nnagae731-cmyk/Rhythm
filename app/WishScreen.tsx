@@ -23,6 +23,9 @@ type WishScreenProps = {
   wishActionRewardProgress?: { current: number; required: number };
   onRequestWishActionReward?: () => Promise<RewardedAccessResult> | RewardedAccessResult;
   onWishActionCreated?: () => void;
+  monthlyGoalUnlocked?: boolean;
+  monthlyGoalRewardProgress?: { current: number; required: number };
+  onRequestMonthlyGoalReward?: () => Promise<RewardedAccessResult> | RewardedAccessResult;
   onPremium?: () => void;
   onBack: () => void;
 };
@@ -59,7 +62,7 @@ function sectionText(mode: DesignMode, chic: string, minimal: string) {
   return mode === 'minimal' ? minimal : chic;
 }
 
-export function WishScreen({ designMode: rawDesignMode, chicPattern, chicPalette, monthLabel, state, onSaveState, onCreateTaskFromAction, canCreateWish = true, wishRewardProgress, onRequestWishReward, onWishCreated, canCreateWishAction = true, wishActionRewardProgress, onRequestWishActionReward, onWishActionCreated, onPremium, onBack }: WishScreenProps) {
+export function WishScreen({ designMode: rawDesignMode, chicPattern, chicPalette, monthLabel, state, onSaveState, onCreateTaskFromAction, canCreateWish = true, wishRewardProgress, onRequestWishReward, onWishCreated, canCreateWishAction = true, wishActionRewardProgress, onRequestWishActionReward, onWishActionCreated, monthlyGoalUnlocked = false, monthlyGoalRewardProgress, onRequestMonthlyGoalReward, onPremium, onBack }: WishScreenProps) {
   // Mono DarkはMono Lightと同じレイアウトを使い、色だけを反転する。
   const designMode: 'minimal' | 'chic' = rawDesignMode === 'dark' || rawDesignMode === 'photo' ? 'minimal' : rawDesignMode;
   const isDark = rawDesignMode === 'dark';
@@ -74,12 +77,16 @@ export function WishScreen({ designMode: rawDesignMode, chicPattern, chicPalette
   const [themeDraft, setThemeDraft] = useState(state.theme ?? '');
   const [themeEditing, setThemeEditing] = useState(!(state.theme ?? '').trim());
   const [editor, setEditor] = useState<EditorState>(emptyEditor);
-  const [rewardPrompt, setRewardPrompt] = useState<'wish' | 'action' | null>(null);
+  const [rewardPrompt, setRewardPrompt] = useState<'wish' | 'action' | 'monthlyGoal' | null>(null);
+  const [monthlyGoalDraft, setMonthlyGoalDraft] = useState(state.monthlyGoal ?? '');
+  const [monthlyGoalEditing, setMonthlyGoalEditing] = useState(!(state.monthlyGoal ?? '').trim());
 
   useEffect(() => {
     setThemeDraft(state.theme ?? '');
     if (!(state.theme ?? '').trim()) setThemeEditing(true);
-  }, [state.theme]);
+    setMonthlyGoalDraft(state.monthlyGoal ?? '');
+    if (!(state.monthlyGoal ?? '').trim()) setMonthlyGoalEditing(true);
+  }, [state.theme, state.monthlyGoal]);
 
   const commit = (updater: (current: MonthlyWishState) => MonthlyWishState) => {
     onSaveState(updater);
@@ -238,6 +245,38 @@ export function WishScreen({ designMode: rawDesignMode, chicPattern, chicPalette
             dark={isDark}
             chicPattern={chicPattern}
             chicPalette={palette}
+            title="今月の目標"
+            subtitle={monthLabel}
+          >
+            {monthlyGoalUnlocked ? (
+              monthlyGoalEditing ? (
+                <View style={[styles.themePanel, designMode === 'minimal' ? styles.themePanelMinimal : styles.themePanelChic, isDark && styles.themePanelDark, designSubtle]}>
+                  <TextInput value={monthlyGoalDraft} onChangeText={setMonthlyGoalDraft} placeholder="今月いちばん意識したいこと" placeholderTextColor={theme.colors.secondaryText} style={[styles.themeInput, designMode === 'minimal' ? styles.themeInputMinimal : styles.themeInputChic, isDark && styles.themeInputDark, designSurface, designText]} multiline />
+                  <View style={styles.rowActions}>
+                    <Pressable style={[styles.secondaryButton, designMode === 'minimal' ? styles.secondaryButtonMinimal : styles.secondaryButtonChic, isDark && styles.secondaryButtonDark, designSubtle]} onPress={() => { setMonthlyGoalDraft(''); commit((current) => ({ ...current, monthlyGoal: '' })); setMonthlyGoalEditing(false); }}><Text style={[styles.secondaryButtonText, { color: theme.colors.secondaryText }]}>削除</Text></Pressable>
+                    <Pressable style={[styles.primaryButton, designMode === 'minimal' ? styles.primaryButtonMinimal : styles.primaryButtonChic, isDark && styles.primaryButtonDark, designAccent]} onPress={() => { const value = monthlyGoalDraft.trim(); commit((current) => ({ ...current, monthlyGoal: value })); setMonthlyGoalDraft(value); setMonthlyGoalEditing(false); Keyboard.dismiss(); Alert.alert('保存しました', '今月の目標を保存しました。'); }}><Text style={styles.primaryButtonText}>保存</Text></Pressable>
+                  </View>
+                </View>
+              ) : (
+                <Pressable style={[styles.savedThemeCard, isDark && styles.savedThemeCardDark]} onPress={() => setMonthlyGoalEditing(true)}>
+                  <Text style={[styles.savedThemeText, { color: rawDesignMode === 'chic' && palette ? palette.textPrimary : theme.colors.primaryText }]}>{state.monthlyGoal}</Text>
+                  <Text style={[styles.savedThemeEdit, { color: rawDesignMode === 'chic' && palette ? palette.accentStrong : theme.colors.primaryAccent }]}>編集</Text>
+                </Pressable>
+              )
+            ) : (
+              <View>
+                <Text style={[styles.emptyText, { color: theme.colors.secondaryText }]}>今月いちばん意識したいことを1つ決めて、毎日の行動につなげます。</Text>
+                <Text style={[styles.itemMeta, { color: theme.colors.secondaryText, marginTop: 8 }]}>広告を5回見ると、今月の目標を設定できます。 {monthlyGoalRewardProgress?.current ?? 0} / {monthlyGoalRewardProgress?.required ?? 5} 回視聴済み</Text>
+                <Pressable style={[styles.addRow, designMode === 'minimal' ? styles.addRowMinimal : styles.addRowChic, isDark && styles.addRowDark, designSubtle]} onPress={() => setRewardPrompt('monthlyGoal')}><Text style={[styles.addRowText, { color: darkAccent }]}>広告を見て取得</Text></Pressable>
+              </View>
+            )}
+          </SectionCard>
+
+          <SectionCard
+            designMode={designMode}
+            dark={isDark}
+            chicPattern={chicPattern}
+            chicPalette={palette}
             title="叶えたいこと"
             subtitle="今月の願い"
           >
@@ -385,16 +424,21 @@ export function WishScreen({ designMode: rawDesignMode, chicPattern, chicPalette
         </ScrollView>
         <RewardedAccessModal
           visible={rewardPrompt !== null}
-          title={rewardPrompt === 'action' ? '行動を追加' : '叶えたいことを追加'}
-          description={rewardPrompt === 'action' ? '広告を2回見ると、叶えたいことにつながる行動を1件追加できます。' : '広告を2回見ると、叶えたいことを1件追加できます。'}
-          current={rewardPrompt === 'action' ? wishActionRewardProgress?.current ?? 0 : wishRewardProgress?.current ?? 0}
-          required={2}
+          title={rewardPrompt === 'action' ? '行動を追加' : rewardPrompt === 'monthlyGoal' ? '今月の目標' : '叶えたいことを追加'}
+          description={rewardPrompt === 'action' ? '広告を2回見ると、叶えたいことにつながる行動を1件追加できます。' : rewardPrompt === 'monthlyGoal' ? '広告を5回見ると、今月の目標を設定できます。' : '広告を2回見ると、叶えたいことを1件追加できます。'}
+          current={rewardPrompt === 'action' ? wishActionRewardProgress?.current ?? 0 : rewardPrompt === 'monthlyGoal' ? monthlyGoalRewardProgress?.current ?? 0 : wishRewardProgress?.current ?? 0}
+          required={rewardPrompt === 'monthlyGoal' ? monthlyGoalRewardProgress?.required ?? 5 : 2}
           designMode={rawDesignMode}
           chicPalette={palette}
           onClose={() => setRewardPrompt(null)}
           onPremium={onPremium}
           onReward={async () => {
             const mode = rewardPrompt;
+            if (mode === 'monthlyGoal') {
+              const result = await onRequestMonthlyGoalReward?.() ?? { success: false, message: '広告を利用できません。' };
+              if (result.completed) { setRewardPrompt(null); setMonthlyGoalEditing(true); }
+              return result;
+            }
             if (mode === 'action') {
               const result = await onRequestWishActionReward?.() ?? { success: false, message: '広告を利用できません。' };
               if (result.completed) {

@@ -119,6 +119,8 @@ export type MonthlyReflectionCard = {
 
 export type MonthlyWishState = {
   theme?: string;
+  /** Optional monthly goal; omitted in older saved months for compatibility. */
+  monthlyGoal?: string;
   wishes: Wish[];
   actions: WishAction[];
   review: MonthlyReview;

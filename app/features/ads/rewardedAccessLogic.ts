@@ -54,10 +54,20 @@ export function addCalendarMonths(
   return result.toISOString();
 }
 
+/** Returns the end of the current calendar month (local calendar, persisted as ISO). */
+export function endOfCalendarMonth(from = new Date()): string {
+  const result = new Date(from);
+  result.setMonth(result.getMonth() + 1, 0);
+  result.setHours(23, 59, 59, 999);
+  return result.toISOString();
+}
+
 export function isWishMonthlyGoalUnlocked(
   state: RewardedAccessState,
   now = new Date(),
 ): boolean {
+  const monthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  if (state.wishMonthlyGoal.monthKey !== monthKey) return false;
   return isUnlockActive(
     state.wishMonthlyGoal.unlockedUntil,
     now,
