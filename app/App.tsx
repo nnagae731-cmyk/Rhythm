@@ -2466,6 +2466,7 @@ export default function App() {
       selectionMode={false}
       selectedTaskIds={[]}
       onAdd={() => undefined}
+      onOpenBulkAdd={() => undefined}
       onOpenFocus={() => undefined}
       onUpdateTaskList={() => undefined}
       onQuickAdd={() => undefined}
@@ -2588,6 +2589,7 @@ export default function App() {
               selectionMode={selectionMode}
               selectedTaskIds={selectedTaskIds}
               onAdd={() => setAddOpen(true)}
+              onOpenBulkAdd={() => setBulkAddOpen(true)}
               onOpenFocus={() => {
                 setTimelineInitialTab('focus');
                 navigateWithinApp('timeline');

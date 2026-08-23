@@ -2,13 +2,13 @@ import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/dat
 import React, { useEffect, useRef, useState } from 'react';
 import { Alert, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, Switch, Text, TextInput, View } from 'react-native';
 import { ChicThemePalette, DesignMode } from '../theme';
-import { Category, NudgeMode, Priority, RepeatRule, Subtask, Task, TaskListItem } from '../types';
+import { Category, NudgeMode, Priority, RepeatRule, Subtask, Task } from '../types';
 import { PlanTier } from '../premiumAccess';
 import { PremiumGuideFeatureId } from '../premiumGuide';
 import { PremiumTaskTemplate } from '../taskTemplates';
 import { categories, priorities, repeatOptions } from '../features/tasks/taskUtils';
 import { parseSmartTaskInput, SmartTaskParseResult } from '../features/tasks/smartTaskInput';
-export function TaskModal({ visible, task, templates, savedTemplates, designMode, chicPalette, planTier, onPremium, onClose, onOpenBulkAdd, onSave, readOnlyPreview = false, styles, helpers, components }: { visible: boolean; task?: Task; templates: string[]; savedTemplates: PremiumTaskTemplate[]; designMode: DesignMode; chicPalette?: ChicThemePalette; planTier: PlanTier; onPremium: (featureId?: PremiumGuideFeatureId) => void; onClose: () => void; onOpenBulkAdd?: () => void; onSave: (title: string, category: Category, priority: Priority, remindDate?: string, remindAt?: string, deadlineDate?: string, deadlineTime?: string, deadlineNotifyBefore?: number, navigationEnabled?: boolean, preparationMinutes?: number, travelMinutes?: number, bufferMinutes?: number, repeatRule?: RepeatRule, nudgeMode?: NudgeMode, scheduledDate?: string, scheduledTime?: string, endAt?: string, isRoutine?: boolean, subtasks?: Subtask[], listItems?: TaskListItem[]) => void; readOnlyPreview?: boolean; styles: any; helpers: any; components: any }) {
+export function TaskModal({ visible, task, templates, savedTemplates, designMode, chicPalette, planTier, onPremium, onClose, onOpenBulkAdd, onSave, readOnlyPreview = false, styles, helpers, components }: { visible: boolean; task?: Task; templates: string[]; savedTemplates: PremiumTaskTemplate[]; designMode: DesignMode; chicPalette?: ChicThemePalette; planTier: PlanTier; onPremium: (featureId?: PremiumGuideFeatureId) => void; onClose: () => void; onOpenBulkAdd?: () => void; onSave: (title: string, category: Category, priority: Priority, remindDate?: string, remindAt?: string, deadlineDate?: string, deadlineTime?: string, deadlineNotifyBefore?: number, navigationEnabled?: boolean, preparationMinutes?: number, travelMinutes?: number, bufferMinutes?: number, repeatRule?: RepeatRule, nudgeMode?: NudgeMode, scheduledDate?: string, scheduledTime?: string, endAt?: string, isRoutine?: boolean, subtasks?: Subtask[]) => void; readOnlyPreview?: boolean; styles: any; helpers: any; components: any }) {
   const { getThemeTokens, todayInputValue, hasPremiumAccess, dateForReminder, dateKey, formatLiveTime, colors, summarizePremiumTaskTemplate } = helpers;
   const { CompactNumberSetting } = components;
   const theme = getThemeTokens(designMode, chicPalette?.id ?? 'cool');
@@ -42,9 +42,6 @@ export function TaskModal({ visible, task, templates, savedTemplates, designMode
   const [smartResult, setSmartResult] = useState<SmartTaskParseResult>({ title: '', matched: [] });
   const [subtasks, setSubtasks] = useState<Subtask[]>([]);
   const [newSubtask, setNewSubtask] = useState('');
-  const [listItems, setListItems] = useState<TaskListItem[]>([]);
-  const [listEditorOpen, setListEditorOpen] = useState(false);
-  const [newListItem, setNewListItem] = useState('');
   const titleInputRef = useRef<TextInput>(null);
   const saveGuardRef = useRef(false);
 
@@ -75,9 +72,6 @@ export function TaskModal({ visible, task, templates, savedTemplates, designMode
     setScheduledEndTime(task?.endAt ?? '');
     setIsRoutine(task?.isRoutine ?? false);
     setSubtasks((task?.subtasks ?? []).map((item, index) => ({ ...item, order: item.order ?? index })));
-    setListItems((task?.listItems ?? []).map((item, index) => ({ ...item, text: item.text ?? '', checked: Boolean(item.checked), order: item.order ?? index })).filter((item) => item.text.trim()));
-    setListEditorOpen(false);
-    setNewListItem('');
     setNewSubtask('');
     setSmartResult({ title: task?.title ?? '', matched: [] });
     setShowScheduledDatePicker(false);
@@ -118,13 +112,13 @@ export function TaskModal({ visible, task, templates, savedTemplates, designMode
     }
     saveGuardRef.current = true;
     const parsedReminder = parsed.remindAt ? true : remind;
-    onSave(parsed.title || clean, category, priority, parsedReminder ? parsed.remindDate ?? remindDate : undefined, parsedReminder ? parsed.remindAt ?? time : undefined, hasDeadline ? deadlineDate : undefined, hasDeadline ? deadlineTime : undefined, hasDeadline && deadlineNotify ? deadlineNotifyBefore : undefined, hasDeadline && navigationEnabled, preparationMinutes, travelMinutes, bufferMinutes, parsed.repeatRule ?? repeatRule, nudgeMode, parsed.scheduledDate ?? scheduledDate, parsed.scheduledTime ?? (scheduledTime || undefined), parsed.endTime ?? (scheduledEndTime || undefined), isRoutine, subtasks.filter((item) => item.title.trim()).map((item, index) => ({ ...item, title: item.title.trim(), order: index })), listItems.filter((item) => item.text.trim()).map((item, index) => ({ ...item, text: item.text.trim(), order: index })));
+    onSave(parsed.title || clean, category, priority, parsedReminder ? parsed.remindDate ?? remindDate : undefined, parsedReminder ? parsed.remindAt ?? time : undefined, hasDeadline ? deadlineDate : undefined, hasDeadline ? deadlineTime : undefined, hasDeadline && deadlineNotify ? deadlineNotifyBefore : undefined, hasDeadline && navigationEnabled, preparationMinutes, travelMinutes, bufferMinutes, parsed.repeatRule ?? repeatRule, nudgeMode, parsed.scheduledDate ?? scheduledDate, parsed.scheduledTime ?? (scheduledTime || undefined), parsed.endTime ?? (scheduledEndTime || undefined), isRoutine, subtasks.filter((item) => item.title.trim()).map((item, index) => ({ ...item, title: item.title.trim(), order: index })));
     requestAnimationFrame(() => { saveGuardRef.current = false; });
   };
 
   const saveTask = (parsed: SmartTaskParseResult) => {
     const clean = title.trim();
-    onSave(parsed.title || clean, category, priority, parsed.remindAt ? parsed.remindDate ?? remindDate : remind ? remindDate : undefined, parsed.remindAt ? parsed.remindAt : remind ? time : undefined, hasDeadline ? deadlineDate : undefined, hasDeadline ? deadlineTime : undefined, hasDeadline && deadlineNotify ? deadlineNotifyBefore : undefined, hasDeadline && navigationEnabled, preparationMinutes, travelMinutes, bufferMinutes, parsed.repeatRule ?? repeatRule, nudgeMode, parsed.scheduledDate ?? scheduledDate, parsed.scheduledTime ?? (scheduledTime || undefined), parsed.endTime ?? (scheduledEndTime || undefined), isRoutine, subtasks.filter((item) => item.title.trim()).map((item, index) => ({ ...item, title: item.title.trim(), order: index })), listItems.filter((item) => item.text.trim()).map((item, index) => ({ ...item, text: item.text.trim(), order: index })));
+    onSave(parsed.title || clean, category, priority, parsed.remindAt ? parsed.remindDate ?? remindDate : remind ? remindDate : undefined, parsed.remindAt ? parsed.remindAt : remind ? time : undefined, hasDeadline ? deadlineDate : undefined, hasDeadline ? deadlineTime : undefined, hasDeadline && deadlineNotify ? deadlineNotifyBefore : undefined, hasDeadline && navigationEnabled, preparationMinutes, travelMinutes, bufferMinutes, parsed.repeatRule ?? repeatRule, nudgeMode, parsed.scheduledDate ?? scheduledDate, parsed.scheduledTime ?? (scheduledTime || undefined), parsed.endTime ?? (scheduledEndTime || undefined), isRoutine, subtasks.filter((item) => item.title.trim()).map((item, index) => ({ ...item, title: item.title.trim(), order: index })));
   };
 
   const addSubtask = () => {
@@ -140,12 +134,6 @@ export function TaskModal({ visible, task, templates, savedTemplates, designMode
     [next[index], next[nextIndex]] = [next[nextIndex]!, next[index]!];
     return next.map((item, itemIndex) => ({ ...item, order: itemIndex }));
   });
-  const addListItem = () => {
-    const text = newListItem.trim();
-    if (!text) return;
-    setListItems((current) => [...current, { id: `${Date.now()}-${Math.random().toString(16).slice(2)}`, text, checked: false, order: current.length }]);
-    setNewListItem('');
-  };
 
   const applySavedTemplate = (template: PremiumTaskTemplate) => {
     setTitle(template.title);
@@ -167,12 +155,6 @@ export function TaskModal({ visible, task, templates, savedTemplates, designMode
     setDeadlineDate(todayInputValue());
     setDeadlineTime('23:59');
     setDeadlineNotify(false);
-    setListItems((template.listItems ?? []).map((item, index) => ({
-      id: `${Date.now()}-template-list-${index}-${Math.random().toString(16).slice(2)}`,
-      text: item.text,
-      checked: false,
-      order: index,
-    })));
   };
 
   const closeForm = () => {
@@ -277,7 +259,6 @@ export function TaskModal({ visible, task, templates, savedTemplates, designMode
           </View>
           <Pressable style={styles.routineToggleRow} onPress={() => setIsRoutine((value) => !value)}><View style={[styles.routineToggleBox, isRoutine && styles.routineToggleBoxActive]}><Text style={styles.routineToggleCheck}>{isRoutine ? '✓' : ''}</Text></View><View><Text style={[styles.routineToggleTitle, designMode === 'dark' && styles.routineToggleTitleDark]}>ルーティンにする</Text><Text style={[styles.routineToggleCopy, designMode === 'dark' && styles.routineToggleCopyDark]}>継続率と連続日数を分析に表示</Text></View></Pressable>
           <View style={{ marginTop: 14 }}><Text style={[styles.fieldLabel, designMode === 'dark' && styles.fieldLabelDark]}>サブタスク</Text>{subtasks.map((item, index) => <View key={item.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 6 }}><TextInput value={item.title} onChangeText={(value) => setSubtasks((current) => current.map((entry) => entry.id === item.id ? { ...entry, title: value } : entry))} style={[styles.modalInput, { flex: 1, minHeight: 42 }]} placeholder="サブタスク" /><Pressable onPress={() => moveSubtask(index, -1)}><Text>↑</Text></Pressable><Pressable onPress={() => moveSubtask(index, 1)}><Text>↓</Text></Pressable><Pressable onPress={() => setSubtasks((current) => current.filter((entry) => entry.id !== item.id))}><Text style={styles.taskActionDeleteText}>削除</Text></Pressable></View>)}<View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}><TextInput value={newSubtask} onChangeText={setNewSubtask} onSubmitEditing={addSubtask} placeholder="サブタスクを追加" style={[styles.modalInput, { flex: 1, minHeight: 42 }]} /><Pressable style={styles.taskTemplateSaveAction} onPress={addSubtask}><Text style={styles.taskTemplateSaveTitle}>追加</Text></Pressable></View></View>
-          <Pressable style={{ marginTop: 14, paddingVertical: 12, paddingHorizontal: 12, borderRadius: 12, borderWidth: 1, borderColor: isChic && chicPalette ? chicPalette.border : theme.colors.border, backgroundColor: isChic && chicPalette ? chicPalette.cardTint : theme.colors.secondarySurface }} onPress={() => setListEditorOpen(true)}><Text style={[styles.fieldLabel, designMode === 'dark' && styles.fieldLabelDark]}>リスト {listItems.length}件　編集 ›</Text></Pressable>
           <View style={styles.switchRow}>
             <View>
               <Text style={[styles.switchTitle, designMode === 'dark' && styles.switchTitleDark]}>追加リマインド</Text>
@@ -360,7 +341,6 @@ export function TaskModal({ visible, task, templates, savedTemplates, designMode
           <Pressable style={[styles.primaryButton, { backgroundColor: theme.colors.primaryAccent, borderRadius: theme.radius.button }]} onPress={save}><Text style={styles.primaryButtonText}>{task ? '変更を保存' : '登録する'}</Text></Pressable>
           <Pressable onPress={closeForm}><Text style={styles.cancelText}>キャンセル</Text></Pressable>
           </ScrollView>
-          {listEditorOpen && <View style={{ position: 'absolute', left: 12, right: 12, bottom: 12, maxHeight: '82%', borderRadius: 18, padding: 16, backgroundColor: theme.colors.screenBackground, borderWidth: 1, borderColor: isChic && chicPalette ? chicPalette.border : theme.colors.border }}><View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}><Text style={[styles.modalTitle, designMode === 'dark' && styles.modalTitleDark]}>リスト</Text><Pressable onPress={() => setListEditorOpen(false)}><Text style={{ color: isChic && chicPalette ? chicPalette.accent : theme.colors.primaryAccent, fontWeight: '700' }}>閉じる</Text></Pressable></View><ScrollView style={{ marginTop: 10 }} keyboardShouldPersistTaps="handled">{listItems.map((item, index) => <View key={item.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 6 }}><Pressable onPress={() => setListItems((current) => current.map((entry) => entry.id === item.id ? { ...entry, checked: !entry.checked } : entry))} style={{ width: 24, height: 24, borderRadius: 12, borderWidth: 1, borderColor: isChic && chicPalette ? chicPalette.accent : theme.colors.border, alignItems: 'center', justifyContent: 'center' }}><Text>{item.checked ? '✓' : ''}</Text></Pressable><TextInput value={item.text} onChangeText={(value) => setListItems((current) => current.map((entry) => entry.id === item.id ? { ...entry, text: value } : entry))} style={[styles.modalInput, { flex: 1, minHeight: 40 }]} /><Pressable onPress={() => setListItems((current) => current.filter((entry) => entry.id !== item.id).map((entry, itemIndex) => ({ ...entry, order: itemIndex })))}><Text style={styles.taskActionDeleteText}>削除</Text></Pressable></View>)}<View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}><TextInput value={newListItem} onChangeText={setNewListItem} onSubmitEditing={addListItem} placeholder="項目を追加" style={[styles.modalInput, { flex: 1, minHeight: 42 }]} /><Pressable style={styles.taskTemplateSaveAction} onPress={addListItem}><Text style={styles.taskTemplateSaveTitle}>追加</Text></Pressable></View></ScrollView></View>}
         </Pressable>
       </Pressable>
       </KeyboardAvoidingView>
