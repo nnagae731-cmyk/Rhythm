@@ -20,6 +20,8 @@ type Props = {
   onDismiss: () => void;
   /** The final CTA opens the real design selector instead of ending on Today. */
   onFinalAction?: () => void;
+  /** Production screen renderer used by the app and Capture Studio. */
+  renderStep?: (id: IntroCard['id']) => React.ReactNode;
   showSkip?: boolean;
   finalActionLabel?: string;
 };
@@ -49,6 +51,7 @@ export function OnboardingCarousel({
   visible,
   onDismiss,
   onFinalAction,
+  renderStep,
   showSkip = true,
   finalActionLabel = 'デザインを選ぶ',
 }: Props) {
@@ -160,7 +163,7 @@ export function OnboardingCarousel({
               ]}
             >
               <View style={styles.card}>
-                <IntroPreview card={item} />
+                {renderStep ? <View style={styles.productionPreview}>{renderStep(item.id)}</View> : <IntroPreview card={item} />}
 
                 <Text style={styles.title}>
                   {item.title}
@@ -292,6 +295,13 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'stretch',
     marginBottom: 28,
+  },
+
+  productionPreview: {
+    minHeight: 250,
+    maxHeight: 340,
+    overflow: 'hidden',
+    borderRadius: 14,
   },
 
   previewHeader: { color: theme.colors.primaryText, fontSize: 13, fontWeight: '900', marginBottom: 10 },

@@ -27,6 +27,7 @@ import { PremiumModal } from './components/PremiumModal';
 import { RewardedAccessModal, RewardedAccessResult } from './components/RewardedAccessModal';
 import { BottomNav } from './components/BottomNav';
 import { OnboardingCarousel } from './features/onboarding/OnboardingCarousel';
+import { OnboardingCaptureStudio } from './features/onboarding/OnboardingCaptureStudio';
 import { OnboardingHint } from './features/onboarding/OnboardingHint';
 import { useOnboarding } from './features/onboarding/useOnboarding';
 import { RecoveryModal } from './components/RecoveryModal';
@@ -569,6 +570,7 @@ export default function App() {
   const [premiumOpen, setPremiumOpen] = useState(false);
   const [premiumTargetFeature, setPremiumTargetFeature] = useState<PremiumGuideFeatureId>(DEFAULT_PREMIUM_GUIDE_FEATURE);
   const [designPreviewPattern, setDesignPreviewPattern] = useState<ChicPattern>();
+  const [captureStudioOpen, setCaptureStudioOpen] = useState(false);
   const [onboardingDesignSelectionPending, setOnboardingDesignSelectionPending] = useState(false);
   const [designTrialNoticeOpen, setDesignTrialNoticeOpen] = useState(false);
   const designTrialExpirySeenRef = React.useRef<string | null>(null);
@@ -2125,7 +2127,13 @@ export default function App() {
     ];
     const previewPlans: DeparturePlan[] = [{ id: 'premium-preview-plan', title: '資料提出', destination: '天神○○ビル', date: previewDate, arrival: '14:00', endAt: '15:00', travelMinutes: 30, preparationMinutes: 15, bufferMinutes: 10, planMode: 'calendar_only' }];
     const readonly = (node: React.ReactNode) => <View style={[styles.premiumPreview, { minHeight: 220, maxHeight: 360, overflow: 'hidden' }]}>{node}</View>;
-    if (kind === 'calendar' || kind === 'route' || kind === 'nudge' || kind === 'month' || kind === 'recovery' || kind === 'templates' || kind === 'focus_custom_duration') {
+    // Settings-backed Premium features use the production settings surface as
+    // their read-only preview.  The capture/preview callbacks are no-ops, so
+    // this cannot persist settings, request permissions, or start ads.
+    if (kind === 'affirmation' || kind === 'photo_design' || kind === 'templates') {
+      return readonly(<View pointerEvents="none">{renderOnboardingCaptureStep('customize')}</View>);
+    }
+    if (kind === 'calendar' || kind === 'route' || kind === 'nudge' || kind === 'month' || kind === 'recovery' || kind === 'focus_custom_duration') {
       const initialTab: TimeTab = kind === 'calendar' ? 'calendar' : kind === 'focus_custom_duration' ? 'focus' : 'deadline';
       return readonly(<TimelineScreen
         plan={previewPlans[0]}
@@ -2209,6 +2217,103 @@ export default function App() {
         onBack={() => undefined}
       />);
     }
+    return undefined;
+  };
+
+  const renderOnboardingCaptureStep = (id: 'quickTodo' | 'today' | 'schedule' | 'focus' | 'records' | 'wish' | 'customize'): React.ReactNode => {
+    if (id === 'schedule') return renderPremiumReadOnlyPreview('calendar');
+    if (id === 'focus') return renderPremiumReadOnlyPreview('focus_custom_duration');
+    if (id === 'records') return renderPremiumReadOnlyPreview('records');
+    if (id === 'wish') return renderPremiumReadOnlyPreview('wish');
+    const previewDate = dateKey(now);
+    const captureTasks: Task[] = [
+      { id: 'capture-task-1', title: '資料をまとめる', done: false, category: '仕事', priority: '中', scheduledDate: previewDate, scheduledTime: '09:00', bucket: 'now' },
+      { id: 'capture-task-2', title: 'スーパーに寄る', done: false, category: '家事', priority: '低', scheduledDate: previewDate, bucket: 'later' },
+      { id: 'capture-task-3', title: '美容室を予約する', done: true, status: 'completed', category: '予定', priority: '高', scheduledDate: previewDate, completedAt: new Date().toISOString(), bucket: 'waiting' },
+    ];
+    if (id === 'quickTodo' || id === 'today') return <HomeScreen
+      tasks={captureTasks}
+      allTasks={captureTasks}
+      remaining={2}
+      now={now}
+      designMode="minimal"
+      chicPalette={chicPalette}
+      completionIcon="✓"
+      selectionMode={false}
+      selectedTaskIds={[]}
+      onAdd={() => undefined}
+      onOpenFocus={() => undefined}
+      onQuickAdd={() => undefined}
+      onToggle={() => undefined}
+      onToggleSubtask={() => undefined}
+      onCompleteParent={() => undefined}
+      onEdit={() => undefined}
+      onToggleSelection={() => undefined}
+      onSelectionMode={() => undefined}
+      onCompleteSelected={() => undefined}
+      onDeleteSelected={() => undefined}
+      onDelete={() => undefined}
+      onSkip={() => undefined}
+      onDuplicate={() => undefined}
+      onSaveTemplate={() => undefined}
+      onPostpone={() => undefined}
+      onBucket={() => undefined}
+      styles={styles}
+      renderTodayWinStrip={(todayTasks) => <TodayWinStrip tasks={todayTasks} designMode="minimal" chicPattern="plain" chicPalette={chicPalette} onRestore={() => undefined} />}
+      showTodoOnboarding={false}
+      showTodoCompleteOnboarding={false}
+      showCompletedTasksOnboarding={false}
+      showTaskBucketsOnboarding={false}
+      showTaskDetailsOnboarding={false}
+      helpers={{ deadlineLabel, getUrgencyStatus, getLateRiskMessage, dateForReminder, dateKey, formatLiveTime, isCheckChicPattern, todayInputValue, getThemeTokens: getThemedThemeTokens }}
+    />;
+    if (id === 'customize') return <SettingsScreen
+      tasks={captureTasks}
+      timeline={displayTimeline}
+      now={now}
+      dangerousTask={undefined}
+      size="medium"
+      showCompleted
+      completionIcon="✓"
+      designMode="minimal"
+      selectedDesignMode="minimal"
+      monoAppearance="auto"
+      hapticsEnabled
+      chicPalette={chicPalette}
+      chicPattern="plain"
+      chicCheckColor={chicCheckColor}
+      affirmations={[{ id: 'capture-affirmation', text: '私は、自分のペースで進める', time: '08:30', enabled: true, createdAt: '2026-01-01T00:00:00.000Z' }]}
+      affirmationCustomTexts={[]}
+      photoTheme={{ placement: 'background' }}
+      onSize={() => undefined}
+      onShowCompleted={() => undefined}
+      onCompletionIcon={() => undefined}
+      onDesignMode={() => undefined}
+      onMonoAppearance={() => undefined}
+      onHapticsEnabled={() => undefined}
+      onReview={() => undefined}
+      onChicPattern={() => undefined}
+      onDesignPreview={() => undefined}
+      onChicCheckColor={() => undefined}
+      onSaveAffirmation={() => undefined}
+      onDeleteAffirmation={() => undefined}
+      onSaveAffirmationCustomText={() => undefined}
+      onDeleteAffirmationCustomText={() => undefined}
+      onPickPhotoTheme={() => undefined}
+      onAdjustPhotoTheme={() => undefined}
+      onClearPhotoTheme={() => undefined}
+      templates={[]}
+      savedTemplates={[]}
+      onAddTemplate={() => undefined}
+      onDeleteTemplate={() => undefined}
+      onGuide={() => undefined}
+      onPremium={() => undefined}
+      onDeleteSavedTemplate={() => undefined}
+      planTier="premium"
+      styles={styles}
+      helpers={{ colors: themedColors, getThemeTokens: getThemedThemeTokens, getChicPatternVisual, hasPremiumAccess, getChicCheckColor, chicCheckColorChoices, countdownToClock, getUrgencyStatus, getNextBestAction, designModes, completionIcons, summarizePremiumTaskTemplate }}
+      components={{ BThemeRibbonDecoration, CThemeRibbonDecoration, ChicPatternDecor, ChicPatternSelector, SettingsDisclosure, NotificationManagerCard }}
+    />;
     return undefined;
   };
 
@@ -2489,6 +2594,7 @@ export default function App() {
               onGuide={onboarding.openIntro}
               onPremium={openPremiumFeature}
               onDeleteSavedTemplate={deleteSavedTaskTemplate}
+              onOpenCaptureStudio={__DEV__ ? () => setCaptureStudioOpen(true) : undefined}
                           styles={styles}
               helpers={{ colors, getThemeTokens: getThemedThemeTokens, getChicPatternVisual, hasPremiumAccess, getChicCheckColor, chicCheckColorChoices, countdownToClock, getUrgencyStatus, getNextBestAction, designModes, completionIcons, summarizePremiumTaskTemplate }}
               components={{ BThemeRibbonDecoration, CThemeRibbonDecoration, ChicPatternDecor, ChicPatternSelector, SettingsDisclosure, NotificationManagerCard }}
@@ -2593,6 +2699,7 @@ export default function App() {
         components={{ CompactNumberSetting }}
       />
       <PremiumModal visible={premiumOpen} initialFeatureId={premiumTargetFeature} designMode={uiDesignMode} chicPalette={chicPalette} planTier={planTier} isDevelopment={__DEV__} onMockPlanTier={setDevPlanTierOverride} onClose={() => setPremiumOpen(false)} styles={styles} helpers={{ getThemeTokens: getThemedThemeTokens }} renderReadOnlyPreview={renderPremiumReadOnlyPreview} />
+      {__DEV__ && <OnboardingCaptureStudio visible={captureStudioOpen} onClose={() => setCaptureStudioOpen(false)} renderStep={renderOnboardingCaptureStep} colors={{ background: theme.colors.screenBackground, surface: theme.colors.surface, border: theme.colors.border, text: theme.colors.primaryText, muted: theme.colors.secondaryText, accent: theme.colors.primaryAccent, onAccent: uiDesignMode === 'dark' ? theme.colors.screenBackground : '#FFFFFF' }} />}
       <DesignPreviewModal visible={Boolean(designPreviewPattern)} initialPattern={designPreviewPattern} chicCheckColor={chicCheckColor} planTier={planTier} photoUri={photoTheme.imageUri} onClose={() => setDesignPreviewPattern(undefined)} onUse={(mode, pattern) => {
         if (mode === 'photo') {
           if (planTier !== 'premium') { openPremiumFeature('photo_design'); return; }
@@ -2629,11 +2736,12 @@ export default function App() {
       ? onboarding.closeIntro
       : onboarding.finishIntro
   }
-  onFinalAction={() => {
+      onFinalAction={() => {
     void onboarding.finishIntro();
     setOnboardingDesignSelectionPending(true);
     setScreen('settings');
   }}
+  renderStep={renderOnboardingCaptureStep}
 />
     </SafeAreaView>
   );
