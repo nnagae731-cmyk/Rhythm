@@ -2127,6 +2127,10 @@ export default function App() {
       { id: 'premium-preview-task-2', title: '病院へ連絡する', done: true, status: 'completed', category: '予定', priority: '高', scheduledDate: previewDate, scheduledTime: '14:00', completedAt: new Date().toISOString(), bucket: 'later' },
     ];
     const previewPlans: DeparturePlan[] = [{ id: 'premium-preview-plan', title: '資料提出', destination: '天神○○ビル', date: previewDate, arrival: '14:00', endAt: '15:00', travelMinutes: 30, preparationMinutes: 15, bufferMinutes: 10, planMode: 'calendar_only' }];
+    const previewEvents: BehaviorEvent[] = [
+      { id: 'premium-preview-complete', eventKey: 'premium-preview-complete', type: 'task_completed', occurredAt: new Date().toISOString(), source: 'manual', version: 1, taskId: previewTasks[1]!.id, taskTitleSnapshot: previewTasks[1]!.title, actualAt: new Date().toISOString(), taskCompletionDate: previewDate },
+      { id: 'premium-preview-focus', eventKey: 'premium-preview-focus', type: 'focus_completed', occurredAt: new Date().toISOString(), source: 'manual', version: 1, taskId: previewTasks[0]!.id, taskTitleSnapshot: previewTasks[0]!.title, focusSessionId: 'premium-preview-focus-session', plannedDurationMinutes: 25, actualDurationMinutes: 25, focusStartedAt: new Date(Date.now() - 25 * 60_000).toISOString() },
+    ];
     const readonly = (node: React.ReactNode) => <View style={[styles.premiumPreview, { minHeight: 220, maxHeight: 360, overflow: 'hidden' }]}>{node}</View>;
     // Settings-backed Premium features use the production settings surface as
     // their read-only preview.  The capture/preview callbacks are no-ops, so
@@ -2188,7 +2192,7 @@ export default function App() {
     }
     if (kind === 'time' || kind === 'behavior' || kind === 'history' || kind === 'records' || kind === 'reflection') {
       return readonly(<AnalysisScreen
-        events={[]}
+        events={previewEvents}
         tasks={previewTasks}
         onRemoveRoutine={() => undefined}
         designMode={uiDesignMode}
