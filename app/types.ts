@@ -215,6 +215,8 @@ export type PersistedState = {
   chicCheckColor?: ChicCheckColor;
   recoveryHistory?: RecoveryRecord[];
   focusSessions?: FocusSession[];
+  /** Last custom Focus duration in minutes. Kept optional for older saves. */
+  focusCustomDurationMinutes?: number;
   departureCheckIns?: DepartureCheckIn[];
   devPremiumPreview?: boolean;
   devPlanTier?: PlanTier;

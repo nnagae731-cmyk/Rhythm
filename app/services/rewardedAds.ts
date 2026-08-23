@@ -6,6 +6,7 @@ import mobileAds, {
 } from 'react-native-google-mobile-ads';
 
 let initialized = false;
+let rewardedRequestActive = false;
 
 export async function initializeMobileAds() {
   if (initialized) {
@@ -80,27 +81,50 @@ export function loadTestRewardedAd() {
  * Closing or failing the ad never grants access.
  */
 export function showTestRewardedAd(): Promise<boolean> {
+  if (rewardedRequestActive) {
+    return Promise.resolve(false);
+  }
+  rewardedRequestActive = true;
   return new Promise((resolve) => {
-    const rewardedAd = createTestRewardedAd();
+    let rewardedAd: ReturnType<typeof createTestRewardedAd>;
+    try {
+      rewardedAd = createTestRewardedAd();
+    } catch {
+      rewardedRequestActive = false;
+      resolve(false);
+      return;
+    }
     let settled = false;
     let earned = false;
+    let unsubscribeLoaded: () => void = () => undefined;
+    let unsubscribeReward: () => void = () => undefined;
+    let unsubscribeClosed: () => void = () => undefined;
+    let unsubscribeError: () => void = () => undefined;
+    let timeoutId: ReturnType<typeof setTimeout> | undefined;
     const finish = (value: boolean) => {
       if (settled) return;
       settled = true;
+      if (timeoutId) clearTimeout(timeoutId);
       unsubscribeLoaded();
       unsubscribeReward();
       unsubscribeClosed();
       unsubscribeError();
+      rewardedRequestActive = false;
       resolve(value);
     };
-    const unsubscribeLoaded = rewardedAd.addAdEventListener(RewardedAdEventType.LOADED, () => {
-      void rewardedAd.show().catch(() => finish(false));
-    });
-    const unsubscribeReward = rewardedAd.addAdEventListener(RewardedAdEventType.EARNED_REWARD, () => {
-      earned = true;
-    });
-    const unsubscribeClosed = rewardedAd.addAdEventListener(AdEventType.CLOSED, () => finish(earned));
-    const unsubscribeError = rewardedAd.addAdEventListener(AdEventType.ERROR, () => finish(false));
-    rewardedAd.load();
+    try {
+      unsubscribeLoaded = rewardedAd.addAdEventListener(RewardedAdEventType.LOADED, () => {
+        void rewardedAd.show().catch(() => finish(false));
+      });
+      unsubscribeReward = rewardedAd.addAdEventListener(RewardedAdEventType.EARNED_REWARD, () => {
+        earned = true;
+      });
+      unsubscribeClosed = rewardedAd.addAdEventListener(AdEventType.CLOSED, () => finish(earned));
+      unsubscribeError = rewardedAd.addAdEventListener(AdEventType.ERROR, () => finish(false));
+      timeoutId = setTimeout(() => finish(false), 30_000);
+      rewardedAd.load();
+    } catch {
+      finish(false);
+    }
   });
 }

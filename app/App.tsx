@@ -65,6 +65,7 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View,
   Vibration,
 } from 'react-native';
@@ -111,14 +112,16 @@ type FloralPatternId = 'floral' | 'floralSoft' | 'floralSeasonal' | 'floralDark'
 
 // Keep the template id, display name, and bundled image together. These are
 // static require() values so React Native can cache and reuse the same image
-// in the app background, settings swatches, and the design preview.
-const designFloralAssets: Record<FloralPatternId, { source: number; label: string; previewSource?: number }> = {
-  floral: { source: require('./assets/themes/floral/vintage-bloom.jpg'), label: '花柄1' },
-  floralSoft: { source: require('./assets/themes/floral/botanical-line.jpg'), previewSource: require('./assets/themes/floral/floral-soft-preview.png'), label: '花柄2' },
-  floralSeasonal: { source: require('./assets/themes/floral/sheer-floral.jpg'), label: '花柄3' },
+// in the app background, settings swatches, and the design preview. Preview
+// thumbnails are kept separate so the settings sheet never decodes the full
+// screen background assets.
+const designFloralAssets: Record<FloralPatternId, { source: number; label: string; previewSource?: number; thumbnailSource?: number }> = {
+  floral: { source: require('./assets/themes/floral/vintage-bloom.jpg'), thumbnailSource: require('./assets/themes/floral/vintage-bloom-preview.jpg'), label: '花柄1' },
+  floralSoft: { source: require('./assets/themes/floral/botanical-line.jpg'), previewSource: require('./assets/themes/floral/floral-soft-preview.png'), thumbnailSource: require('./assets/themes/floral/floral-soft-thumbnail.jpg'), label: '花柄2' },
+  floralSeasonal: { source: require('./assets/themes/floral/sheer-floral.jpg'), thumbnailSource: require('./assets/themes/floral/sheer-floral-preview.jpg'), label: '花柄3' },
   // Legacy id kept for saved-data compatibility. It uses the same formal name
   // as the third floral preview and is not shown as a separate option.
-  floralDark: { source: require('./assets/themes/floral/sheer-floral.jpg'), label: '花柄3' },
+  floralDark: { source: require('./assets/themes/floral/sheer-floral.jpg'), thumbnailSource: require('./assets/themes/floral/sheer-floral-preview.jpg'), label: '花柄3' },
 };
 
 // PREPARED is retained only to safely receive actions from notifications that
@@ -467,6 +470,7 @@ export default function App() {
   const [focusTimerActive, setFocusTimerActive] = useState(false);
   const [rewardedAccess, setRewardedAccess] = useState<RewardedAccessState>(DEFAULT_REWARDED_ACCESS_STATE);
   const rewardedWishBusyRef = React.useRef(false);
+  const rewardedDesignBusyRef = React.useRef(false);
   const tasksRef = React.useRef<Task[]>([]);
   const scheduleTaskNotificationsRef = React.useRef<(task: Task) => Promise<void>>(async () => undefined);
   const hydratedRef = React.useRef(false);
@@ -521,6 +525,7 @@ export default function App() {
   const [pendingTopPhoto, setPendingTopPhoto] = useState<{ target: Exclude<PhotoThemePhotoTarget, 'background' | 'focus'>; originalUri: string; sourceWidth: number; sourceHeight: number; cropRect?: NormalizedCropRect }>();
   const [recoveryHistory, setRecoveryHistory] = useState<RecoveryRecord[]>([]);
   const [focusSessions, setFocusSessions] = useState<FocusSession[]>([]);
+  const [focusCustomDurationMinutes, setFocusCustomDurationMinutes] = useState<number | undefined>();
   const [behaviorEvents, setBehaviorEvents] = useState<BehaviorEvent[]>([]);
   const behaviorEventsRef = React.useRef<BehaviorEvent[]>([]);
   const pendingBehaviorEventsRef = React.useRef<BehaviorEvent[]>([]);
@@ -702,6 +707,8 @@ export default function App() {
   }, [onboarding, planTier, rewardedAccess]);
   const requestDesignReward = React.useCallback(async () => {
     if (planTier === 'premium' || rewardedAccess.premiumDesignTrial.designId == null) return false;
+    if (rewardedDesignBusyRef.current) return false;
+    rewardedDesignBusyRef.current = true;
     try {
       let showTestRewardedAd: typeof import('./services/rewardedAds').showTestRewardedAd;
       try {
@@ -723,6 +730,8 @@ export default function App() {
     } catch {
       Alert.alert('広告を利用できません', '広告の確認にはDevelopment Buildが必要です。');
       return false;
+    } finally {
+      rewardedDesignBusyRef.current = false;
     }
   }, [planTier, rewardedAccess]);
   const openWish = React.useCallback(() => {
@@ -1301,10 +1310,21 @@ export default function App() {
         });
         setRecoveryHistory(saved.recoveryHistory ?? []);
         setFocusSessions(saved.focusSessions ?? []);
+        if (typeof saved.focusCustomDurationMinutes === 'number' && Number.isSafeInteger(saved.focusCustomDurationMinutes) && saved.focusCustomDurationMinutes > 0) {
+          setFocusCustomDurationMinutes(saved.focusCustomDurationMinutes);
+        }
+        // Build the compatibility lookup once while hydrating. Older events
+        // may not have routineId, but resolving them with repeated array
+        // scans made cold start cost grow quadratically with task history.
+        const taskById = new Map(loadedTasks.map((task) => [task.id, task]));
+        const routineTaskByTitle = new Map<string, Task>();
+        loadedTasks.forEach((task) => {
+          if (task.routineId && !routineTaskByTitle.has(task.title.trim())) routineTaskByTitle.set(task.title.trim(), task);
+        });
         const loadedBehaviorEvents = (saved.behaviorEvents ?? []).map((event) => {
           if ((event.type !== 'task_completed' && event.type !== 'task_completion_reverted') || event.routineId) return event;
-          const matchedTask = loadedTasks.find((task) => task.id === event.taskId)
-            ?? loadedTasks.find((task) => Boolean(task.routineId) && task.title.trim() === event.taskTitleSnapshot?.trim());
+          const matchedTask = (event.taskId ? taskById.get(event.taskId) : undefined)
+            ?? (event.taskTitleSnapshot ? routineTaskByTitle.get(event.taskTitleSnapshot.trim()) : undefined);
           if (!matchedTask?.routineId) return event;
           return {
             ...event,
@@ -1451,7 +1471,7 @@ export default function App() {
 
   useEffect(() => {
     if (!hydrated) return;
-    const state: PersistedState = { tasks, plan, departurePlans, widgetSize, showCompleted, completionIcon, designMode, monoAppearance, hapticsEnabled, reviewPromptedAt, taskTemplates, savedTaskTemplates, chicPattern, chicCheckColor, recoveryHistory, focusSessions, departureCheckIns, behaviorEvents, wishMonths, calendarMarks, sharedEvents, sharedParticipantIdsByToken, sharedParticipantPrefsByToken, departurePreparationStatuses, affirmations, affirmationCustomTexts, photoTheme };
+    const state: PersistedState = { tasks, plan, departurePlans, widgetSize, showCompleted, completionIcon, designMode, monoAppearance, hapticsEnabled, reviewPromptedAt, taskTemplates, savedTaskTemplates, chicPattern, chicCheckColor, recoveryHistory, focusSessions, focusCustomDurationMinutes, departureCheckIns, behaviorEvents, wishMonths, calendarMarks, sharedEvents, sharedParticipantIdsByToken, sharedParticipantPrefsByToken, departurePreparationStatuses, affirmations, affirmationCustomTexts, photoTheme };
     if (persistenceDisabledRef.current) return;
     saveRhythmState(state).catch((error) => {
       console.warn('Rhythm state save failed.', error);
@@ -1460,7 +1480,7 @@ export default function App() {
         Alert.alert('保存できませんでした', '空き容量や端末の設定を確認して、もう一度お試しください。');
       }
     });
-  }, [tasks, plan, departurePlans, widgetSize, showCompleted, completionIcon, designMode, monoAppearance, hapticsEnabled, reviewPromptedAt, taskTemplates, savedTaskTemplates, chicPattern, chicCheckColor, recoveryHistory, focusSessions, departureCheckIns, behaviorEvents, wishMonths, calendarMarks, sharedEvents, sharedParticipantIdsByToken, sharedParticipantPrefsByToken, departurePreparationStatuses, affirmations, affirmationCustomTexts, photoTheme, hydrated]);
+  }, [tasks, plan, departurePlans, widgetSize, showCompleted, completionIcon, designMode, monoAppearance, hapticsEnabled, reviewPromptedAt, taskTemplates, savedTaskTemplates, chicPattern, chicCheckColor, recoveryHistory, focusSessions, focusCustomDurationMinutes, departureCheckIns, behaviorEvents, wishMonths, calendarMarks, sharedEvents, sharedParticipantIdsByToken, sharedParticipantPrefsByToken, departurePreparationStatuses, affirmations, affirmationCustomTexts, photoTheme, hydrated]);
 
   const requestAppReview = React.useCallback(async () => {
     try {
@@ -2096,6 +2116,8 @@ export default function App() {
               onFocusStarted={() => void onboarding.complete('focus')}
               onFocusNotificationPermission={ensureNotifications}
               onFocusRunningChange={setFocusTimerActive}
+              focusCustomDurationMinutes={focusCustomDurationMinutes}
+              onFocusCustomDurationChange={setFocusCustomDurationMinutes}
               focusTimerActive={focusTimerActive}
               onFocusNavigationBlocked={() => setFocusNavigationNotice(true)}
               onBehaviorEvent={recordBehaviorEvent}
@@ -2369,11 +2391,9 @@ function DesignPreviewModal({ visible, initialPattern, chicCheckColor, planTier,
     { id: 'checkBeigeNoir', label: 'ギンガム2' },
     { id: 'checkMauveFrame', label: 'ギンガム3' },
   ];
+  if (!visible) return null;
   return <>
-    {visible && <View pointerEvents="none" style={designPreviewStyles.floralPreload}>
-      {(['floral', 'floralSoft', 'floralSeasonal'] as FloralPatternId[]).map((floralPattern) => <Image key={floralPattern} source={designFloralAssets[floralPattern].source} resizeMode="cover" style={designPreviewStyles.floralPreloadImage} />)}
-    </View>}
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+    <Modal visible transparent animationType="slide" onRequestClose={onClose}>
     <Pressable style={designPreviewStyles.backdrop} onPress={onClose}>
       <Pressable style={designPreviewStyles.sheet} onPress={(event) => event.stopPropagation()}>
         <View style={designPreviewStyles.header}><View><Text style={designPreviewStyles.eyebrow}>DESIGN PREVIEW</Text><Text style={designPreviewStyles.title}>見た目を試してみよう</Text></View><Pressable onPress={onClose} hitSlop={10}><Text style={designPreviewStyles.close}>×</Text></Pressable></View>
@@ -2412,8 +2432,6 @@ function DesignTrialExpiredModal({ visible, onClose, onPremium, onReward }: { vi
 }
 
 const designPreviewStyles = StyleSheet.create({
-  floralPreload: { position: 'absolute', left: 0, top: 0, width: 1, height: 1, opacity: 0.01, overflow: 'hidden' },
-  floralPreloadImage: { width: 1, height: 1 },
   backdrop: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(23,24,28,0.28)', paddingHorizontal: 12, paddingBottom: 14 },
   sheet: { width: '100%', maxWidth: 520, alignSelf: 'center', maxHeight: '92%', borderRadius: 22, backgroundColor: '#FFFFFF', padding: 18 },
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
@@ -2458,7 +2476,7 @@ function TimeTabButton({ tab, active, designMode, chicPattern, chicPalette, them
      return <Pressable style={[styles.timeTab, styles.timeTabMinimal, isDark && styles.darkSurface, active && styles.timeTabActive, active && { backgroundColor: isDark ? '#26365F' : themeAccent, borderColor: isDark ? '#6F8DFF' : themeAccent }]} onPress={onPress}><Text numberOfLines={1} style={[styles.timeTabText, { color: isDark ? '#F4F7FC' : secondaryText }, active && styles.timeTabTextActive, active && styles.timeTabTextActiveMinimal]}>{label}</Text></Pressable>;
 }
 
-function FocusMode({ tasks, designMode, chicPalette, backgroundImageUri, onFocusCompleted, onFocusStarted, onFocusNotificationPermission, onFocusRunningChange, onBehaviorEvent, hapticsEnabled = true }: { tasks: Task[]; designMode: DesignMode; chicPalette?: ChicThemePalette; backgroundImageUri?: string; onFocusCompleted: (session: FocusSession) => void; onFocusStarted?: () => void; onFocusNotificationPermission?: () => Promise<boolean>; onFocusRunningChange?: (running: boolean) => void; onBehaviorEvent: (event: BehaviorEvent) => void; hapticsEnabled?: boolean }) {
+function FocusMode({ tasks, designMode, chicPalette, backgroundImageUri, planTier, onPremium, customDurationMinutes, onCustomDurationChange, onFocusCompleted, onFocusStarted, onFocusNotificationPermission, onFocusRunningChange, onBehaviorEvent, hapticsEnabled = true }: { tasks: Task[]; designMode: DesignMode; chicPalette?: ChicThemePalette; backgroundImageUri?: string; planTier: PlanTier; onPremium?: (featureId?: PremiumGuideFeatureId) => void; customDurationMinutes?: number; onCustomDurationChange?: (minutes: number) => void; onFocusCompleted: (session: FocusSession) => void; onFocusStarted?: () => void; onFocusNotificationPermission?: () => Promise<boolean>; onFocusRunningChange?: (running: boolean) => void; onBehaviorEvent: (event: BehaviorEvent) => void; hapticsEnabled?: boolean }) {
   const availableTasks = React.useMemo(() => {
     const today = dateKey();
     const seenTitles = new Set<string>();
@@ -2476,6 +2494,8 @@ function FocusMode({ tasks, designMode, chicPalette, backgroundImageUri, onFocus
   const [duration, setDuration] = useState(25);
   const [secondsLeft, setSecondsLeft] = useState(25 * 60);
   const [running, setRunning] = useState(false);
+  const [customEditorOpen, setCustomEditorOpen] = useState(false);
+  const [customDraft, setCustomDraft] = useState('');
   const pausedSecondsRef = React.useRef(25 * 60);
   const selectedTask = availableTasks.find((task) => task.id === selectedTaskId);
   const sessionRef = React.useRef<{ id: string; startedAt: Date; taskId?: string; taskTitle?: string; plannedDurationMinutes: number } | undefined>(undefined);
@@ -2551,6 +2571,33 @@ function FocusMode({ tasks, designMode, chicPalette, backgroundImageUri, onFocus
     setRunning(false);
     sessionRef.current = undefined;
     endAtRef.current = undefined;
+  };
+  useEffect(() => {
+    // A saved custom value remains in storage for a future Premium upgrade,
+    // but a Free user must never start it. Keep the existing default fixed
+    // duration when access is lost while the timer is idle.
+    if (planTier !== 'premium' && !running && ![5, 15, 25, 45].includes(duration)) {
+      chooseDuration(25);
+      setCustomEditorOpen(false);
+    }
+  }, [duration, planTier, running]);
+  const openCustomDurationEditor = () => {
+    if (planTier !== 'premium') {
+      onPremium?.('focus_custom_duration');
+      return;
+    }
+    setCustomDraft(String(customDurationMinutes ?? 30));
+    setCustomEditorOpen(true);
+  };
+  const applyCustomDuration = () => {
+    const value = Number(customDraft.trim());
+    if (!Number.isSafeInteger(value) || value < 1) {
+      Alert.alert('集中時間を確認してください', '1分以上の整数で入力してください。');
+      return;
+    }
+    chooseDuration(value);
+    onCustomDurationChange?.(value);
+    setCustomEditorOpen(false);
   };
   const reset = () => {
     if (sessionRef.current) stopActiveSession();
@@ -2633,7 +2680,8 @@ function FocusMode({ tasks, designMode, chicPalette, backgroundImageUri, onFocus
       </View>
     </View>
     <Text style={[styles.focusSectionTitle, isMinimal && styles.focusSectionTitleMinimal, isDark && styles.focusSectionTitleDark, isChic && chicPalette && { color: chicPalette.textPrimary }]}>集中時間</Text>
-    <View style={styles.focusDurationRow}>{[5, 15, 25, 45].map((minutesValue) => <Pressable key={minutesValue} style={[styles.focusDurationChip, duration === minutesValue && styles.focusDurationChipActive, duration === minutesValue && isMinimal && styles.focusDurationChipActiveMinimal, duration === minutesValue && isDark && styles.focusDurationChipActiveDark, designMode === 'chic' && chicPalette && { backgroundColor: duration === minutesValue ? chicPalette.accent : chicPalette.cardSurface, borderColor: duration === minutesValue ? chicPalette.accent : chicPalette.border }]} onPress={() => chooseDuration(minutesValue)}><Text style={[styles.focusDurationText, duration === minutesValue && styles.focusDurationTextActive, designMode === 'chic' && chicPalette && { color: duration === minutesValue ? chicPalette.onAccent : chicPalette.textSecondary }]}>{minutesValue}分</Text></Pressable>)}</View>
+    <View style={styles.focusDurationRow}>{[5, 15, 25, 45].map((minutesValue) => <Pressable key={minutesValue} style={[styles.focusDurationChip, duration === minutesValue && styles.focusDurationChipActive, duration === minutesValue && isMinimal && styles.focusDurationChipActiveMinimal, duration === minutesValue && isDark && styles.focusDurationChipActiveDark, designMode === 'chic' && chicPalette && { backgroundColor: duration === minutesValue ? chicPalette.accent : chicPalette.cardSurface, borderColor: duration === minutesValue ? chicPalette.accent : chicPalette.border }]} onPress={() => chooseDuration(minutesValue)}><Text style={[styles.focusDurationText, duration === minutesValue && styles.focusDurationTextActive, designMode === 'chic' && chicPalette && { color: duration === minutesValue ? chicPalette.onAccent : chicPalette.textSecondary }]}>{minutesValue}分</Text></Pressable>)}<Pressable style={[styles.focusDurationChip, customDurationMinutes != null && duration === customDurationMinutes && ![5, 15, 25, 45].includes(duration) && styles.focusDurationChipActive, designMode === 'chic' && chicPalette && { backgroundColor: customDurationMinutes != null && duration === customDurationMinutes && ![5, 15, 25, 45].includes(duration) ? chicPalette.accent : chicPalette.cardSurface, borderColor: customDurationMinutes != null && duration === customDurationMinutes && ![5, 15, 25, 45].includes(duration) ? chicPalette.accent : chicPalette.border }]} onPress={openCustomDurationEditor}><Text style={[styles.focusDurationText, customDurationMinutes != null && duration === customDurationMinutes && ![5, 15, 25, 45].includes(duration) && styles.focusDurationTextActive, designMode === 'chic' && chicPalette && { color: customDurationMinutes != null && duration === customDurationMinutes && ![5, 15, 25, 45].includes(duration) ? chicPalette.onAccent : chicPalette.textSecondary }]}>{customDurationMinutes != null ? `好きな時間（${customDurationMinutes}分）` : '好きな時間'}</Text></Pressable></View>
+    {customEditorOpen && <View style={[{ marginHorizontal: 2, marginBottom: 12, padding: 12, borderRadius: 12, borderWidth: 1 }, isDark ? { backgroundColor: '#20293A', borderColor: '#40506A' } : isChic && chicPalette ? { backgroundColor: chicPalette.cardSurface, borderColor: chicPalette.border } : { backgroundColor: '#FFFFFF', borderColor: '#DDD7E3' }]}><Text style={[{ fontSize: 12, fontWeight: '800', marginBottom: 8 }, isDark ? { color: '#F4F7FC' } : isChic && chicPalette ? { color: chicPalette.textPrimary } : { color: '#282538' }]}>好きな集中時間（分）</Text><TextInput value={customDraft} onChangeText={(value) => setCustomDraft(value.replace(/[^0-9]/g, ''))} keyboardType="number-pad" returnKeyType="done" placeholder="例：47" placeholderTextColor={isDark ? '#8F9BB0' : '#777285'} style={[{ minHeight: 44, borderWidth: 1, borderRadius: 10, paddingHorizontal: 12, fontSize: 16 }, isDark ? { backgroundColor: '#181F2E', borderColor: '#40506A', color: '#F4F7FC' } : isChic && chicPalette ? { backgroundColor: chicPalette.surface, borderColor: chicPalette.border, color: chicPalette.textPrimary } : { backgroundColor: '#FFFFFF', borderColor: '#DDD7E3', color: '#282538' }]} /><View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}><Pressable style={[{ flex: 1, minHeight: 42, borderRadius: 10, alignItems: 'center', justifyContent: 'center', borderWidth: 1 }, isDark ? { borderColor: '#40506A' } : isChic && chicPalette ? { borderColor: chicPalette.border } : { borderColor: '#DDD7E3' }]} onPress={() => setCustomEditorOpen(false)}><Text style={[{ fontWeight: '800' }, isDark ? { color: '#B4C0D4' } : isChic && chicPalette ? { color: chicPalette.textSecondary } : { color: '#777285' }]}>キャンセル</Text></Pressable><Pressable style={[{ flex: 1, minHeight: 42, borderRadius: 10, alignItems: 'center', justifyContent: 'center' }, isDark ? { backgroundColor: '#8EA6FF' } : isChic && chicPalette ? { backgroundColor: chicPalette.accent } : { backgroundColor: getThemeTokens(designMode).colors.primaryAccent }]} onPress={applyCustomDuration}><Text style={{ color: isDark || isChic ? '#FFFFFF' : '#FFFFFF', fontWeight: '800' }}>決定</Text></Pressable></View></View>}
     {availableTasks.length === 0 ? <View style={styles.departureEmpty}><Text style={[styles.emptyCopy, isChic && chicPalette && { color: chicPalette.textSecondary }]}>未完了タスクはありません。今日はゆっくりしよう。</Text></View> : taskGroups.map((group) => <View key={group.bucket}>
       <Text style={[styles.focusSectionTitle, isMinimal && styles.focusSectionTitleMinimal, isDark && styles.focusSectionTitleDark, isChic && chicPalette && { color: chicPalette.textPrimary }]}>{group.label}</Text>
       {group.tasks.map((task) => { const nextSubtask = task.subtasks?.find((item) => !item.done); return <Pressable key={task.id} style={[styles.focusTaskRow, selectedTaskId === task.id && styles.focusTaskRowActive, designMode === 'chic' && chicPalette && { backgroundColor: selectedTaskId === task.id ? chicPalette.accentSoft : chicPalette.taskBackground, borderColor: selectedTaskId === task.id ? chicPalette.accent : chicPalette.border }]} onPress={() => { setSelectedTaskId(task.id); reset(); }}><View style={[styles.scheduleAgendaDot, { backgroundColor: categoryColors[task.category] }]} /><View style={{ flex: 1 }}><Text style={[styles.focusTaskTitle, designMode === 'chic' && chicPalette && { color: chicPalette.textPrimary }]}>{nextSubtask ? `${nextSubtask.title}（${task.title}）` : task.title}</Text><Text style={[styles.focusTaskMeta, designMode === 'chic' && chicPalette && { color: chicPalette.taskMeta }]}>{task.category} ・ 優先度 {task.priority}</Text></View><Text style={[styles.focusTaskCheck, designMode === 'chic' && chicPalette && { color: chicPalette.accent }]}>{selectedTaskId === task.id ? '●' : '○'}</Text></Pressable>; })}
@@ -2975,6 +3023,10 @@ function isFloralPattern(pattern: ChicPattern | 'flower' | 'stripe'): pattern is
 const FloralPatternDecor = React.memo(function FloralPatternDecor({ pattern, accent, warm, compact, previewTopCrop, preview = false, fallbackBackground }: { pattern: FloralPatternId; accent: string; warm: string; compact: boolean; previewTopCrop: boolean; preview?: boolean; fallbackBackground?: string }) {
   const [status, setStatus] = useState<'idle' | 'loading' | 'loaded' | 'error'>(preview ? 'idle' : 'loaded');
   const asset = designFloralAssets[pattern];
+  // Preview rendering is intentionally decoupled from the full-screen
+  // background. It uses the lightweight thumbnail when one exists and never
+  // changes the persisted pattern when a thumbnail is still loading.
+  const imageSource = preview ? (asset.thumbnailSource ?? asset.source) : asset.source;
 
   useEffect(() => {
     if (!preview) return;
@@ -2983,7 +3035,7 @@ const FloralPatternDecor = React.memo(function FloralPatternDecor({ pattern, acc
       setStatus((current) => current === 'loaded' ? current : 'error');
     }, 2500);
     return () => clearTimeout(timeout);
-  }, [asset.source, preview]);
+  }, [imageSource, preview]);
 
   const showPreviewFallback = preview && status !== 'loaded';
   const fallbackColor = fallbackBackground ?? warm;
@@ -2992,7 +3044,7 @@ const FloralPatternDecor = React.memo(function FloralPatternDecor({ pattern, acc
       {status === 'error' ? <Text style={{ color: accent, fontSize: compact ? 8 : 11, fontWeight: '800' }}>花柄を表示できません</Text> : <ActivityIndicator color={accent} />}
     </View>}
     <Image
-      source={asset.source}
+      source={imageSource}
       resizeMode="cover"
       fadeDuration={0}
       onLoadStart={preview ? () => setStatus('loading') : undefined}

@@ -7,6 +7,7 @@ import { PlanTier } from '../premiumAccess';
 type PremiumPreviewKind = PremiumGuideFeatureId;
 
 const PREMIUM_GUIDE_FEATURES: Array<{ id: PremiumGuideFeatureId; kind: PremiumPreviewKind; title: string; description: string }> = [
+  { id: 'focus_custom_duration', kind: 'focus_custom_duration', title: '集中時間を自由に設定', description: '決まった時間だけでなく、その日に合わせて好きな集中時間を設定できます。' },
   { id: 'records', kind: 'records', title: '今日の記録', description: '写真・ひとこと・メモを日付ごとに保存。カレンダーから記録済みの日を確認し、登録後の編集・削除もできます。' },
   { id: 'reflection', kind: 'reflection', title: '今月を振り返る', description: 'カレンダー上部のボタンから開く独立機能。今月の写真・言葉・ベストをテンプレートやレイアウトでまとめ、画像保存・共有できます。' },
   { id: 'calendar', kind: 'calendar', title: 'カレンダー連携', description: '普段使っているカレンダーの予定も、Rhythmの予定表にまとめて表示できます。' },
@@ -90,7 +91,11 @@ export function PremiumModal({ visible, initialFeatureId, designMode, chicPalett
   }, [visible]);
   const selectedFeature = PREMIUM_GUIDE_FEATURES.find((feature) => feature.id === selectedFeatureId) ?? PREMIUM_GUIDE_FEATURES[initialIndex] ?? PREMIUM_GUIDE_FEATURES[0]!;
   const selectedIndex = Math.max(0, PREMIUM_GUIDE_FEATURES.findIndex((feature) => feature.id === selectedFeature.id));
-  return <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+  // Do not keep the feature previews mounted while the modal is closed. This
+  // avoids rendering all preview cards during app startup and while navigating
+  // unrelated screens, while preserving the existing modal state on reopen.
+  if (!visible) return null;
+  return <Modal visible transparent animationType="fade" onRequestClose={onClose}>
     <Pressable style={styles.modalBackdrop} onPress={onClose}>
       <Pressable style={[styles.modalSheet, styles.premiumModalSheet, { backgroundColor: theme.colors.screenBackground }, designSurface]} onPress={(event) => event.stopPropagation()}>
         <View style={styles.modalHandle} />
