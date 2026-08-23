@@ -3830,7 +3830,13 @@ function NotificationManagerCard({ designMode, readOnly = false }: { designMode?
     try { setPending(await Notifications.getAllScheduledNotificationsAsync()); }
     finally { setLoading(false); }
   }, []);
-  useEffect(() => { void refresh(); }, [refresh]);
+  useEffect(() => {
+    // Premium previews are read-only and must not inspect or touch the
+    // user's scheduled notifications. The production card refreshes only
+    // when it is actually shown in Settings.
+    if (readOnly) return;
+    void refresh();
+  }, [readOnly, refresh]);
   const stopAll = () => Alert.alert('予約通知をすべて停止しますか？', 'タスクと出発の予約通知が停止されます。', [
     { text: 'キャンセル', style: 'cancel' },
     { text: '停止する', style: 'destructive', onPress: () => { void Notifications.cancelAllScheduledNotificationsAsync().then(refresh); } },
