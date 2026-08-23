@@ -2131,6 +2131,32 @@ export default function App() {
       { id: 'premium-preview-complete', eventKey: 'premium-preview-complete', type: 'task_completed', occurredAt: new Date().toISOString(), source: 'manual', version: 1, taskId: previewTasks[1]!.id, taskTitleSnapshot: previewTasks[1]!.title, actualAt: new Date().toISOString(), taskCompletionDate: previewDate },
       { id: 'premium-preview-focus', eventKey: 'premium-preview-focus', type: 'focus_completed', occurredAt: new Date().toISOString(), source: 'manual', version: 1, taskId: previewTasks[0]!.id, taskTitleSnapshot: previewTasks[0]!.title, focusSessionId: 'premium-preview-focus-session', plannedDurationMinutes: 25, actualDurationMinutes: 25, focusStartedAt: new Date(Date.now() - 25 * 60_000).toISOString() },
     ];
+    const previewHistory = <HistoryScreen
+      tasks={previewTasks}
+      wishMonths={{} as WishMonthMap}
+      calendarMarks={{ [previewDate]: '記録' }}
+      onSetCalendarMark={() => undefined}
+      recoveryHistory={[]}
+      focusSessions={[{ id: 'premium-preview-focus-session', taskId: previewTasks[0]!.id, taskTitle: previewTasks[0]!.title, durationMinutes: 25, startedAt: new Date(Date.now() - 25 * 60_000).toISOString(), completedAt: new Date().toISOString() }]}
+      departureCheckIns={[]}
+      departurePlans={previewPlans}
+      behaviorEvents={previewEvents}
+      completionIcon="✓"
+      designMode={uiDesignMode}
+      chicPattern={effectiveChicPattern}
+      chicPalette={chicPalette}
+      planTier="premium"
+      onPremium={() => undefined}
+      onSaveTemplate={() => undefined}
+      onRestore={() => undefined}
+      onSaveDailyReview={() => undefined}
+      onSaveMonthlyReflectionCard={() => undefined}
+      onUpdateReview={() => undefined}
+      onDeleteReview={() => undefined}
+      styles={styles}
+      helpers={{ dateKey, formatLiveTime, getThemeTokens: getThemedThemeTokens }}
+      components={{ AchievementVessel, CalendarMarkPicker }}
+    />;
     const readonly = (node: React.ReactNode) => <View style={[styles.premiumPreview, { minHeight: 220, maxHeight: 360, overflow: 'hidden' }]}>{node}</View>;
     // Settings-backed Premium features use the production settings surface as
     // their read-only preview.  The capture/preview callbacks are no-ops, so
@@ -2200,7 +2226,7 @@ export default function App() {
         chicPalette={chicPalette}
         chicPattern={effectiveChicPattern}
         PatternDecor={ChicPatternDecor}
-        recordContent={<View />}
+        recordContent={<View pointerEvents="none">{previewHistory}</View>}
         onPremium={() => undefined}
         departurePlans={previewPlans}
         onApplySuggestion={() => undefined}
@@ -2213,11 +2239,12 @@ export default function App() {
         chicPattern={effectiveChicPattern}
         chicPalette={chicPalette}
         monthLabel="2026年8月"
-        state={{ theme: '自分のペースを整える', wishes: [{ id: 'preview-wish', title: '週に1冊、本を読む', completed: false, createdAt: new Date().toISOString() }], actions: [{ id: 'preview-action', wishId: 'preview-wish', title: '10分読む', completed: false }], review: {} }}
+        state={{ theme: '自分のペースを整える', monthlyGoal: '毎月1つ、新しい習慣を続ける', wishes: [{ id: 'preview-wish', title: '週に1冊、本を読む', completed: false, createdAt: new Date().toISOString() }], actions: [{ id: 'preview-action', wishId: 'preview-wish', title: '10分読む', completed: false }], review: {} }}
         onSaveState={() => undefined}
         onCreateTaskFromAction={() => undefined}
         canCreateWish={false}
         canCreateWishAction={false}
+        monthlyGoalUnlocked
         onPremium={() => undefined}
         onBack={() => undefined}
       />);
@@ -2318,6 +2345,7 @@ export default function App() {
       onPremium={() => undefined}
       onDeleteSavedTemplate={() => undefined}
       planTier="premium"
+      captureDesignOnly
       styles={styles}
       helpers={{ colors: themedColors, getThemeTokens: getThemedThemeTokens, getChicPatternVisual, hasPremiumAccess, getChicCheckColor, chicCheckColorChoices, countdownToClock, getUrgencyStatus, getNextBestAction, designModes, completionIcons, summarizePremiumTaskTemplate }}
       components={{ BThemeRibbonDecoration, CThemeRibbonDecoration, ChicPatternDecor, ChicPatternSelector, SettingsDisclosure, NotificationManagerCard }}

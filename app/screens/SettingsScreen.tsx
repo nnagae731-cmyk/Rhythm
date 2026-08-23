@@ -50,6 +50,7 @@ export function SettingsScreen({
   onPremium,
   onDeleteSavedTemplate,
   onOpenCaptureStudio,
+  captureDesignOnly = false,
   planTier,
   styles,
   helpers,
@@ -98,6 +99,8 @@ export function SettingsScreen({
   onPremium: (featureId?: PremiumGuideFeatureId) => void;
   onDeleteSavedTemplate: (template: PremiumTaskTemplate) => void;
   onOpenCaptureStudio?: () => void;
+  /** Development capture only: stop after the production design selector. */
+  captureDesignOnly?: boolean;
   planTier: PlanTier;
   styles: any;
   helpers: any;
@@ -132,7 +135,7 @@ export function SettingsScreen({
   };
   return (
     <>
-      {__DEV__ && <View style={[styles.settingsCard, isDark && styles.darkSurface]}><Text style={[styles.settingsTitle, isDark && styles.darkBodyText]}>Expo Go 確認環境</Text><Text style={[styles.switchCopy, isDark && styles.darkAccentText]}>このQRコードは、利用プランが固定された確認用環境です。</Text><Text style={[styles.devPlanCurrent, isDark && styles.darkAccentText]}>現在：{planTier === 'premium' ? 'Premium版' : '無料版'}</Text>{onOpenCaptureStudio ? <Pressable onPress={onOpenCaptureStudio} style={{ minHeight: 42, marginTop: 10, borderRadius: 11, backgroundColor: isDark ? '#40506A' : '#EEF1F7', alignItems: 'center', justifyContent: 'center' }}><Text style={{ color: isDark ? '#F4F7FC' : '#33415D', fontSize: 12, fontWeight: '800' }}>Onboarding Capture Studio</Text></Pressable> : null}</View>}
+      {__DEV__ && !captureDesignOnly && <View style={[styles.settingsCard, isDark && styles.darkSurface]}><Text style={[styles.settingsTitle, isDark && styles.darkBodyText]}>Expo Go 確認環境</Text><Text style={[styles.switchCopy, isDark && styles.darkAccentText]}>このQRコードは、利用プランが固定された確認用環境です。</Text><Text style={[styles.devPlanCurrent, isDark && styles.darkAccentText]}>現在：{planTier === 'premium' ? 'Premium版' : '無料版'}</Text>{onOpenCaptureStudio ? <Pressable onPress={onOpenCaptureStudio} style={{ minHeight: 42, marginTop: 10, borderRadius: 11, backgroundColor: isDark ? '#40506A' : '#EEF1F7', alignItems: 'center', justifyContent: 'center' }}><Text style={{ color: isDark ? '#F4F7FC' : '#33415D', fontSize: 12, fontWeight: '800' }}>Onboarding Capture Studio</Text></Pressable> : null}</View>}
       <SettingsDisclosure designMode={designMode} title="デザインモード" subtitle="Mono / Design / 写真を選ぶ" expanded={expandedSetting === 'design'} onPress={() => setExpandedSetting((current) => current === 'design' ? null : 'design')}>
       <View accessibilityLabel={isDesign ? `Design ${checkColorLabel}` : 'Mono'} style={[styles.modeCard, isDark && styles.darkSurface, isDesign && chicPalette && { backgroundColor: chicPalette.cardSurface, borderColor: chicPalette.border }]}>
         {selectedMode === 'chic' && chicPattern === 'checkLavenderSatin' && <BThemeRibbonDecoration compact />}
@@ -163,6 +166,7 @@ export function SettingsScreen({
         {(selectedMode === 'minimal' || selectedMode === 'dark') && <View style={styles.monoInlinePreview}><Text style={[styles.fieldLabel, isDark && styles.darkAccentText]}>Monoの表示</Text><View style={styles.monoInlineChoices}><Pressable style={[styles.monoInlineChoice, styles.monoInlineLight, selectedMode === 'minimal' && styles.monoInlineChoiceActive]} onPress={() => onDesignMode('minimal')}><Text style={styles.monoInlineLightEyebrow}>LIGHT</Text><Text style={styles.monoInlineLightBrand}>Rhythm</Text><View style={styles.monoInlineLightLine} /><Text style={styles.monoInlineLightMeta}>白・黒・余白</Text><Text style={styles.monoInlineSelect}>{selectedMode === 'minimal' ? '選択中' : '選ぶ'}</Text></Pressable><Pressable style={[styles.monoInlineChoice, styles.monoInlineDark, selectedMode === 'dark' && styles.monoInlineChoiceActiveDark]} onPress={() => onDesignMode('dark')}><Text style={styles.monoInlineDarkEyebrow}>DARK</Text><Text style={styles.monoInlineDarkBrand}>Rhythm</Text><View style={styles.monoInlineDarkLine} /><Text style={styles.monoInlineDarkMeta}>黒・白・紫</Text><Text style={styles.monoInlineDarkSelect}>{selectedMode === 'dark' ? '選択中' : '選ぶ'}</Text></Pressable></View></View>}
       </View>
       </SettingsDisclosure>
+      {!captureDesignOnly && <>
       <AffirmationSettingsCard affirmations={affirmations} customTexts={affirmationCustomTexts} designMode={designMode} chicPalette={chicPalette} planTier={planTier} onPremium={onPremium} onSave={onSaveAffirmation} onDelete={onDeleteAffirmation} onSaveCustomText={onSaveAffirmationCustomText} onDeleteCustomText={onDeleteAffirmationCustomText} styles={styles} />
       <SettingsDisclosure designMode={designMode} title="通知管理" subtitle="予約中の通知を確認・停止" expanded={expandedSetting === 'notifications'} onPress={() => setExpandedSetting((current) => current === 'notifications' ? null : 'notifications')}>
         <NotificationManagerCard designMode={designMode} />
@@ -253,6 +257,7 @@ export function SettingsScreen({
       </SettingsDisclosure>
       <Pressable style={[styles.guideCard, { backgroundColor: guideColors.surface, borderColor: guideColors.border, borderWidth: 1 }]} onPress={onGuide}><View><Text style={[styles.guideCardTitle, { color: guideColors.textPrimary }]}>Rhythmの使い方</Text><Text style={[styles.guideCardCopy, { color: guideColors.textSecondary }]}>登録・振り分け・出発・集中の流れを見る</Text></View><Text style={[styles.guideCardArrow, { color: guideColors.accent }]}>›</Text></Pressable>
       <Pressable style={[styles.settingsCard, isDark && styles.darkSurface]} onPress={onReview}><Text style={[styles.settingsTitle, isDark && styles.darkBodyText]}>アプリを評価する</Text><Text style={[styles.switchCopy, isDark && styles.darkMutedText]}>短いレビューでRhythmの改善を応援できます</Text></Pressable>
+      </>}
     </>
   );
 }
