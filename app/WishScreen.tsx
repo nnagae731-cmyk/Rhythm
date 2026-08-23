@@ -74,19 +74,15 @@ export function WishScreen({ designMode: rawDesignMode, chicPattern, chicPalette
   const designText = rawDesignMode === 'chic' && palette ? { color: palette.textPrimary } : undefined;
   const darkAccent = rawDesignMode === 'dark' ? '#8EA6FF' : theme.colors.primaryAccent;
   const progress = useMemo(() => calculateWishProgress(state), [state]);
-  const [themeDraft, setThemeDraft] = useState(state.theme ?? '');
-  const [themeEditing, setThemeEditing] = useState(!(state.theme ?? '').trim());
   const [editor, setEditor] = useState<EditorState>(emptyEditor);
   const [rewardPrompt, setRewardPrompt] = useState<'wish' | 'action' | 'monthlyGoal' | null>(null);
   const [monthlyGoalDraft, setMonthlyGoalDraft] = useState(state.monthlyGoal ?? '');
   const [monthlyGoalEditing, setMonthlyGoalEditing] = useState(!(state.monthlyGoal ?? '').trim());
 
   useEffect(() => {
-    setThemeDraft(state.theme ?? '');
-    if (!(state.theme ?? '').trim()) setThemeEditing(true);
     setMonthlyGoalDraft(state.monthlyGoal ?? '');
     if (!(state.monthlyGoal ?? '').trim()) setMonthlyGoalEditing(true);
-  }, [state.theme, state.monthlyGoal]);
+  }, [state.monthlyGoal]);
 
   const commit = (updater: (current: MonthlyWishState) => MonthlyWishState) => {
     onSaveState(updater);
@@ -216,29 +212,6 @@ export function WishScreen({ designMode: rawDesignMode, chicPattern, chicPalette
           <Pressable style={[styles.backButton, designMode === 'minimal' ? styles.backButtonMinimal : styles.backButtonChic, isDark && styles.backButtonDark, rawDesignMode === 'chic' && palette && { backgroundColor: palette.cardTint, borderColor: palette.border }]} onPress={onBack}>
             <Text style={[styles.backButtonText, { color: rawDesignMode === 'chic' && palette ? palette.accentStrong : darkAccent }]}>ホームへ戻る</Text>
           </Pressable>
-
-          <SectionCard
-            designMode={designMode}
-            dark={isDark}
-            chicPattern={chicPattern}
-            chicPalette={palette}
-            showBRibbon={designMode === 'chic' && chicPattern === 'checkLavenderSatin'}
-            showCRibbon={designMode === 'chic' && chicPattern === 'checkBeigeNoir'}
-            title="今月のテーマ"
-            subtitle={monthLabel}
-          >
-            {themeEditing ? <View style={[styles.themePanel, designMode === 'minimal' ? styles.themePanelMinimal : styles.themePanelChic, isDark && styles.themePanelDark, designSubtle]}>
-              <TextInput value={themeDraft} onChangeText={setThemeDraft} placeholder="今月は、どんな自分でいたい？" placeholderTextColor={theme.colors.secondaryText} style={[styles.themeInput, designMode === 'minimal' ? styles.themeInputMinimal : styles.themeInputChic, isDark && styles.themeInputDark, designSurface, designText]} multiline />
-              <View style={styles.rowActions}>
-                <Pressable style={[styles.secondaryButton, designMode === 'minimal' ? styles.secondaryButtonMinimal : styles.secondaryButtonChic, isDark && styles.secondaryButtonDark, designSubtle]} onPress={() => { setThemeDraft(''); commit((current) => ({ ...current, theme: '' })); setThemeEditing(false); }}><Text style={[styles.secondaryButtonText, { color: theme.colors.secondaryText }]}>削除</Text></Pressable>
-                <Pressable style={[styles.primaryButton, designMode === 'minimal' ? styles.primaryButtonMinimal : styles.primaryButtonChic, isDark && styles.primaryButtonDark, designAccent]} onPress={() => { const value = themeDraft.trim(); commit((current) => ({ ...current, theme: value })); setThemeDraft(value); setThemeEditing(false); Keyboard.dismiss(); Alert.alert('保存しました', '今月のテーマを保存しました。'); }}><Text style={styles.primaryButtonText}>保存</Text></Pressable>
-              </View>
-            </View> : <Pressable style={[styles.savedThemeCard, isDark && styles.savedThemeCardDark]} onPress={() => setThemeEditing(true)}>
-              <Text style={[styles.savedThemeHint, { color: theme.colors.secondaryText }]}>今月のテーマ</Text>
-              <Text style={[styles.savedThemeText, { color: rawDesignMode === 'chic' && palette ? palette.textPrimary : theme.colors.primaryText }]}>{state.theme}</Text>
-              <Text style={[styles.savedThemeEdit, { color: rawDesignMode === 'chic' && palette ? palette.accentStrong : theme.colors.primaryAccent }]}>編集</Text>
-            </Pressable>}
-          </SectionCard>
 
           <SectionCard
             designMode={designMode}
