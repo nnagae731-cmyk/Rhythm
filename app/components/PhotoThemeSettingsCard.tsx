@@ -29,13 +29,8 @@ function PhotoPreview({ uri, label }: { uri?: string; label: string }) {
 
 export function PhotoThemeSettingsCard({ photoTheme, designMode, planTier, onPremium, onPick, onAdjust, onClear, styles }: Props) {
   const isDark = designMode === 'dark';
-  if (planTier !== 'premium') return <Pressable style={styles.savedTemplateLocked} onPress={() => onPremium('photo_design')}>
-    <View style={{ flex: 1 }}><Text style={styles.savedTemplateLockedTitle}>写真デザイン</Text><Text style={styles.savedTemplateLockedCopy}>好きな写真を背景やトップ画像に使えます</Text></View>
-    <Text style={styles.taskTemplateSavePremium}>Premium</Text>
-  </Pressable>;
-
   return <View style={[styles.settingsCard, isDark && styles.darkSurface]}>
-    <View style={styles.historyHeader}><View><Text style={[styles.settingsTitle, isDark && styles.darkBodyText]}>写真デザイン</Text><Text style={[styles.switchCopy, isDark && styles.darkAccentText]}>Designの雰囲気はそのままに、好きな一枚を添えます</Text></View><Text style={styles.taskTemplateSavePremium}>Premium</Text></View>
+    <View style={styles.historyHeader}><View><Text style={[styles.settingsTitle, isDark && styles.darkBodyText]}>写真デザイン</Text><Text style={[styles.switchCopy, isDark && styles.darkAccentText]}>Designの雰囲気はそのままに、好きな一枚を添えます</Text></View><Text style={styles.taskTemplateSavePremium}>{planTier === 'premium' ? 'Premium' : '広告で解放'}</Text></View>
 
     <Text style={[styles.fieldLabel, isDark && styles.darkAccentText]}>背景写真</Text>
     <PhotoPreview uri={photoTheme.imageUri} label="背景にしたい写真を選ぶ" />

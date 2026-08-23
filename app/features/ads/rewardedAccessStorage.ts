@@ -8,6 +8,7 @@ export type RewardedAccessState = {
 
   wishMonthlyGoal: {
     progress: number;
+    monthKey: string | null;
     unlockedUntil: string | null;
   };
 
@@ -48,6 +49,7 @@ export const DEFAULT_REWARDED_ACCESS_STATE: RewardedAccessState = {
 
   wishMonthlyGoal: {
     progress: 0,
+    monthKey: null,
     unlockedUntil: null,
   },
 
@@ -145,6 +147,7 @@ export function normalizeRewardedAccessState(
         ),
         5,
       ),
+      monthKey: typeof raw.wishMonthlyGoal?.monthKey === 'string' ? raw.wishMonthlyGoal.monthKey : null,
       unlockedUntil: normalizeNullableString(
         raw.wishMonthlyGoal?.unlockedUntil,
       ),

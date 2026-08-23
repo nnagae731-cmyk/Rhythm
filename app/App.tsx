@@ -24,6 +24,7 @@ import { SettingsScreen } from './screens/SettingsScreen';
 import { HistoryScreen } from './screens/HistoryScreen';
 import { TaskModal } from './components/TaskModal';
 import { PremiumModal } from './components/PremiumModal';
+import { RewardedAccessModal, RewardedAccessResult } from './components/RewardedAccessModal';
 import { BottomNav } from './components/BottomNav';
 import { OnboardingCarousel } from './features/onboarding/OnboardingCarousel';
 import { OnboardingHint } from './features/onboarding/OnboardingHint';
@@ -45,7 +46,8 @@ import { TopImageCropModal } from './components/TopImageCropModal';
 import { cropRectToPixels, displayToNormalizedRect, getContainBounds, getInitialCropRect, NormalizedCropRect } from './features/photo/topImageCrop';
 import { deleteManagedPhotoUri, persistPhotoUri } from './features/photo/persistentPhoto';
 import { canUseNotifications, getNotificationPermissionAction, getNotificationPermissionStatus, requestRhythmNotificationPermission } from './features/notifications/notificationPermission';
-import { addHours, canCreateWish, canStartPremiumDesignTrial, isPremiumDesignTrialActive, isPremiumDesignUnlocked } from './features/ads/rewardedAccessLogic';
+import { addCalendarMonths, addHours, canCreateWish, canCreateWishAction, canImportCalendar, canStartPremiumDesignTrial, isPremiumDesignTrialActive, isPremiumDesignUnlocked } from './features/ads/rewardedAccessLogic';
+import { getRequiredAds, RewardedFeatureId } from './features/ads/rewardedAccess';
 import { DEFAULT_REWARDED_ACCESS_STATE, loadRewardedAccessState, RewardedAccessState, saveRewardedAccessState } from './features/ads/rewardedAccessStorage';
 import { cancelFocusCompletionNotification, cancelPendingFocusCompletionNotifications, scheduleFocusCompletionNotification } from './features/focus/focusNotifications';
 import { FOCUS_NAVIGATION_GUARD_COPY, getFocusNavigationDecision } from './features/focus/focusUsagePolicy';
@@ -469,6 +471,9 @@ export default function App() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [focusTimerActive, setFocusTimerActive] = useState(false);
   const [rewardedAccess, setRewardedAccess] = useState<RewardedAccessState>(DEFAULT_REWARDED_ACCESS_STATE);
+  const [rewardedPrompt, setRewardedPrompt] = useState<{ featureId: RewardedFeatureId; title: string; description: string } | null>(null);
+  const rewardedPromptCompletionRef = React.useRef<(() => void) | undefined>(undefined);
+  const rewardedGenericBusyRef = React.useRef(false);
   const rewardedWishBusyRef = React.useRef(false);
   const rewardedDesignBusyRef = React.useRef(false);
   const tasksRef = React.useRef<Task[]>([]);
@@ -574,13 +579,13 @@ export default function App() {
   const [devPlanTierOverride, setDevPlanTierOverride] = useState<PlanTier | null>(null);
   const planTier: PlanTier = devPlanTierOverride ?? configuredPlanTier;
   const planTierRef = React.useRef<PlanTier>(planTier);
-  const photoThemeEnabled = designMode === 'photo' && hasPremiumAccess(planTier, 'photo_design');
+  const photoThemeEnabled = designMode === 'photo' && (hasPremiumAccess(planTier, 'photo_design') || rewardedAccess.photoCustomization.backgroundUnlocked || rewardedAccess.photoCustomization.focusUnlocked || rewardedAccess.photoCustomization.topExtraSlotsUnlocked > 0);
   const uiDesignMode: Exclude<DesignMode, 'photo'> = designMode === 'photo'
     ? 'chic'
     : isMonoDesign ? resolvedMonoMode : designMode;
-  const photoBackgroundUri = photoThemeEnabled && photoTheme.placement !== 'top' ? photoTheme.imageUri : undefined;
-  const photoTopImageUri = photoThemeEnabled ? photoTheme.topImageUris?.[screen] ?? photoTheme.topImageOriginalUris?.[screen] ?? (photoTheme.placement === 'top' ? photoTheme.imageUri : undefined) : undefined;
-  const focusBackgroundUri = photoThemeEnabled ? photoTheme.focusBackgroundUri : undefined;
+  const photoBackgroundUri = photoThemeEnabled && (planTier === 'premium' || rewardedAccess.photoCustomization.backgroundUnlocked) && photoTheme.placement !== 'top' ? photoTheme.imageUri : undefined;
+  const photoTopImageUri = photoThemeEnabled && (planTier === 'premium' || rewardedAccess.photoCustomization.topExtraSlotsUnlocked > 0) ? photoTheme.topImageUris?.[screen] ?? photoTheme.topImageOriginalUris?.[screen] ?? (photoTheme.placement === 'top' ? photoTheme.imageUri : undefined) : undefined;
+  const focusBackgroundUri = photoThemeEnabled && (planTier === 'premium' || rewardedAccess.photoCustomization.focusUnlocked) ? photoTheme.focusBackgroundUri : undefined;
   const activeDesignTrial = planTier !== 'premium' && (isPremiumDesignTrialActive(rewardedAccess, now) || isPremiumDesignUnlocked(rewardedAccess, now))
     ? rewardedAccess.premiumDesignTrial.designId as ChicPattern | null
     : null;
@@ -608,6 +613,91 @@ export default function App() {
     line: chicPalette.border,
   } : colors, [uiDesignMode, chicPalette]);
   const currentWishMonthKey = wishMonthKey(now);
+  const getRewardedPromptProgress = React.useCallback((featureId: RewardedFeatureId) => {
+    const required = getRequiredAds(featureId);
+    if (featureId === 'wishMonthlyGoal') return { current: rewardedAccess.wishMonthlyGoal.monthKey === currentWishMonthKey ? rewardedAccess.wishMonthlyGoal.progress : 0, required };
+    if (featureId === 'wishCreate') return { current: rewardedAccess.wishCreateProgress, required };
+    if (featureId === 'wishActionCreate') return { current: rewardedAccess.wishActionCreateProgress, required };
+    if (featureId === 'routineSkipBonus') return { current: rewardedAccess.routine.skipBonusProgress, required };
+    return { current: 0, required };
+  }, [currentWishMonthKey, rewardedAccess]);
+
+  const grantRewarded = React.useCallback(async (featureId: RewardedFeatureId): Promise<RewardedAccessResult> => {
+    if (planTier === 'premium') return { success: true, completed: true };
+    if (rewardedGenericBusyRef.current) return { success: false, message: '広告を準備しています…' };
+    rewardedGenericBusyRef.current = true;
+    try {
+      let showTestRewardedAd: typeof import('./services/rewardedAds').showTestRewardedAd;
+      try {
+        ({ showTestRewardedAd } = require('./services/rewardedAds') as typeof import('./services/rewardedAds'));
+      } catch {
+        return { success: false, message: '広告の確認にはDevelopment Buildが必要です。' };
+      }
+      const earned = await showTestRewardedAd().catch(() => false);
+      if (!earned) return { success: false, message: '広告を読み込めませんでした。もう一度お試しください。' };
+      const required = getRequiredAds(featureId);
+      const base = rewardedAccess;
+      let next: RewardedAccessState = base;
+      let completed = true;
+      if (featureId === 'wishMonthlyGoal') {
+        const progress = base.wishMonthlyGoal.monthKey === currentWishMonthKey ? base.wishMonthlyGoal.progress : 0;
+        const nextProgress = Math.min(required, progress + 1);
+        next = { ...base, wishMonthlyGoal: { progress: nextProgress, monthKey: currentWishMonthKey, unlockedUntil: nextProgress >= required ? addCalendarMonths(new Date(), 1) : null } };
+        completed = nextProgress >= required;
+      } else if (featureId === 'wishCreate') {
+        const progress = Math.min(required, base.wishCreateProgress + 1);
+        next = { ...base, wishCreateProgress: progress };
+        completed = progress >= required;
+      } else if (featureId === 'wishActionCreate') {
+        const progress = Math.min(required, base.wishActionCreateProgress + 1);
+        next = { ...base, wishActionCreateProgress: progress };
+        completed = progress >= required;
+      } else if (featureId === 'premiumDesign' || featureId === 'premiumDesignTrialExpired') {
+        next = { ...base, premiumDesign: { unlockedUntil: addHours(new Date(), 12) } };
+      } else if (featureId === 'calendarImport') {
+        next = { ...base, calendarImportCredits: base.calendarImportCredits + 1 };
+      } else if (featureId === 'photoTop') {
+        next = { ...base, photoCustomization: { ...base.photoCustomization, topExtraSlotsUnlocked: Math.min(5, base.photoCustomization.topExtraSlotsUnlocked + 1) } };
+      } else if (featureId === 'photoBackground') {
+        next = { ...base, photoCustomization: { ...base.photoCustomization, backgroundUnlocked: true } };
+      } else if (featureId === 'photoFocus') {
+        next = { ...base, photoCustomization: { ...base.photoCustomization, focusUnlocked: true } };
+      } else if (featureId === 'routineSkip') {
+        next = { ...base, routine: { ...base.routine, skipStock: base.routine.skipStock + 1 } };
+      } else if (featureId === 'routineSkipBonus') {
+        const progress = Math.min(required, base.routine.skipBonusProgress + 1);
+        const reached = progress >= required;
+        next = { ...base, routine: { ...base.routine, skipBonusProgress: reached ? 0 : progress, skipBonusAdded: reached ? Math.min(2, base.routine.skipBonusAdded + 1) : base.routine.skipBonusAdded } };
+        completed = reached;
+      }
+      setRewardedAccess(next);
+      await saveRewardedAccessState(next);
+      const nextProgress = getRewardedPromptProgress(featureId).current + 1;
+      return { success: true, completed, message: completed ? '取得しました' : `広告を1回確認しました。あと${Math.max(0, required - nextProgress)}回です。` };
+    } finally {
+      rewardedGenericBusyRef.current = false;
+    }
+  }, [currentWishMonthKey, getRewardedPromptProgress, planTier, rewardedAccess]);
+
+  const openRewardedPrompt = React.useCallback((featureId: RewardedFeatureId, title: string, description: string, onCompleted?: () => void) => {
+    if (planTier === 'premium') {
+      onCompleted?.();
+      return;
+    }
+    rewardedPromptCompletionRef.current = onCompleted;
+    setRewardedPrompt({ featureId, title, description });
+  }, [planTier]);
+
+  const handleRewardedPromptReward = React.useCallback(async () => {
+    if (!rewardedPrompt) return { success: false, message: '広告を利用できません。' };
+    const result = await grantRewarded(rewardedPrompt.featureId);
+    if (result.completed) {
+      const continuation = rewardedPromptCompletionRef.current;
+      rewardedPromptCompletionRef.current = undefined;
+      continuation?.();
+    }
+    return result;
+  }, [grantRewarded, rewardedPrompt]);
   const showCompletionAffirmation = React.useCallback((kind: CompletionFeedbackKind = 'task', withHaptic = false) => {
     const configured = [...affirmations.map((item) => item.text.trim()), ...affirmationCustomTexts.map((item) => item.text.trim())].filter(Boolean);
     const fallback = kind === 'focus' ? focusCompletionMessages : taskCompletionMessages;
@@ -738,48 +828,32 @@ export default function App() {
     setScreen('wish');
   }, []);
   const requestWishReward = React.useCallback(async () => {
-    if (hasPremiumAccess(planTier, 'wish_planning')) return true;
-    if (canCreateWish(rewardedAccess)) return true;
-    if (rewardedWishBusyRef.current) return false;
+    if (hasPremiumAccess(planTier, 'wish_planning')) return { success: true, completed: true } as RewardedAccessResult;
+    if (canCreateWish(rewardedAccess)) return { success: true, completed: true } as RewardedAccessResult;
+    if (rewardedWishBusyRef.current) return { success: false, message: '広告を準備しています…' } as RewardedAccessResult;
     rewardedWishBusyRef.current = true;
     try {
-      // Google Mobile Ads is a native module and is loaded only when the user
-      // explicitly requests a rewarded ad, keeping Expo Go startup safe.
-      let showTestRewardedAd: typeof import('./services/rewardedAds').showTestRewardedAd;
-      try {
-        // Keep the native module lazy so Expo Go can start safely. The require
-        // itself can also fail in environments without a Development Build.
-        ({ showTestRewardedAd } = require('./services/rewardedAds') as typeof import('./services/rewardedAds'));
-      } catch {
-        Alert.alert('広告を利用できません', '広告の確認にはDevelopment Buildが必要です。');
-        return false;
-      }
-      let earned = false;
-      try {
-        earned = await showTestRewardedAd();
-      } catch {
-        Alert.alert('広告を利用できません', '広告の確認にはDevelopment Buildが必要です。');
-        return false;
-      }
-      if (!earned) {
-        Alert.alert('広告を完了できませんでした', '報酬を受け取れなかったため、追加権は増えていません。');
-        return false;
-      }
-      const next: RewardedAccessState = { ...rewardedAccess, wishCreateProgress: Math.min(2, rewardedAccess.wishCreateProgress + 1) };
-      setRewardedAccess(next);
-      await saveRewardedAccessState(next);
-      if (next.wishCreateProgress < 2) {
-        Alert.alert('広告を1回確認しました', `あと${2 - next.wishCreateProgress}回で1件追加できます。`);
-        return false;
-      }
-      return true;
+      const result = await grantRewarded('wishCreate');
+      return result;
     } finally {
       rewardedWishBusyRef.current = false;
     }
-  }, [planTier, rewardedAccess]);
+  }, [grantRewarded, planTier, rewardedAccess]);
+  const requestWishActionReward = React.useCallback(async () => {
+    if (hasPremiumAccess(planTier, 'wish_planning')) return { success: true, completed: true } as RewardedAccessResult;
+    if (canCreateWishAction(rewardedAccess)) return { success: true, completed: true } as RewardedAccessResult;
+    const result = await grantRewarded('wishActionCreate');
+    return result;
+  }, [grantRewarded, planTier, rewardedAccess]);
   const consumeWishReward = React.useCallback(() => {
     if (hasPremiumAccess(planTier, 'wish_planning') || rewardedAccess.wishCreateProgress <= 0) return;
     const next: RewardedAccessState = { ...rewardedAccess, wishCreateProgress: Math.max(0, rewardedAccess.wishCreateProgress - 2) };
+    setRewardedAccess(next);
+    void saveRewardedAccessState(next);
+  }, [planTier, rewardedAccess]);
+  const consumeWishActionReward = React.useCallback(() => {
+    if (hasPremiumAccess(planTier, 'wish_planning') || rewardedAccess.wishActionCreateProgress <= 0) return;
+    const next: RewardedAccessState = { ...rewardedAccess, wishActionCreateProgress: Math.max(0, rewardedAccess.wishActionCreateProgress - 2) };
     setRewardedAccess(next);
     void saveRewardedAccessState(next);
   }, [planTier, rewardedAccess]);
@@ -824,9 +898,24 @@ export default function App() {
     setAffirmations((current) => current.filter((item) => item.id !== affirmation.id));
   }, []);
   const pickPhotoTheme = React.useCallback(async (target: PhotoThemePhotoTarget) => {
-    if (!hasPremiumAccess(planTier, 'photo_design')) {
-      openPremiumFeature('photo_design');
-      return;
+    if (planTier !== 'premium') {
+      if (target === 'background' && !rewardedAccess.photoCustomization.backgroundUnlocked) {
+        openRewardedPrompt('photoBackground', '背景に写真を使う', '広告を見ると、好きな写真をRhythmの背景に設定できます。', () => { void pickPhotoTheme(target); });
+        return;
+      }
+      if (target === 'focus' && !rewardedAccess.photoCustomization.focusUnlocked) {
+        openRewardedPrompt('photoFocus', '集中画面に写真を使う', '広告を見ると、集中タイムの背景に好きな写真を設定できます。', () => { void pickPhotoTheme(target); });
+        return;
+      }
+      if (target !== 'background' && target !== 'focus') {
+        const currentUri = photoTheme.topImageUris?.[target] ?? photoTheme.topImageOriginalUris?.[target];
+        const usedSlots = Object.values(photoTheme.topImageUris ?? {}).filter(Boolean).length;
+        const allowedSlots = Math.min(5, 1 + rewardedAccess.photoCustomization.topExtraSlotsUnlocked);
+        if (!currentUri && usedSlots >= allowedSlots) {
+          openRewardedPrompt('photoTop', '写真枠を追加', '広告を見ると、画面ごとのトップ写真枠を1つ追加できます。', () => { void pickPhotoTheme(target); });
+          return;
+        }
+      }
     }
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!permission.granted) {
@@ -864,7 +953,7 @@ export default function App() {
         return { ...current, focusBackgroundUri: persistentUri };
       });
     }
-  }, [openPremiumFeature, planTier]);
+  }, [openRewardedPrompt, photoTheme, planTier, rewardedAccess]);
 
   const adjustTopPhoto = React.useCallback((target: Exclude<PhotoThemePhotoTarget, 'background' | 'focus'>) => {
     const originalUri = photoTheme.topImageOriginalUris?.[target] ?? photoTheme.topImageUris?.[target];
@@ -1213,7 +1302,7 @@ export default function App() {
     }
   }, [recordBehaviorEvent]);
 
-  const skipTaskById = React.useCallback((taskId: string) => {
+  const applySkipTaskById = React.useCallback((taskId: string) => {
     const target = tasksRef.current.find((task) => task.id === taskId);
     if (!target || target.done || getTaskStatus(target) === 'skipped') return;
     Alert.alert('今日はお休みで大丈夫', '今日はお休みで大丈夫。連続記録は途切れません。', [
@@ -1227,6 +1316,26 @@ export default function App() {
       } },
     ]);
   }, []);
+  const skipTaskById = React.useCallback((taskId: string) => {
+    const target = tasksRef.current.find((task) => task.id === taskId);
+    if (!target || !target.isRoutine || planTier === 'premium') {
+      applySkipTaskById(taskId);
+      return;
+    }
+    if (rewardedAccess.routine.skipStock > 0) {
+      const next = { ...rewardedAccess, routine: { ...rewardedAccess.routine, skipStock: Math.max(0, rewardedAccess.routine.skipStock - 1) } };
+      setRewardedAccess(next);
+      void saveRewardedAccessState(next);
+      applySkipTaskById(taskId);
+      return;
+    }
+    openRewardedPrompt('routineSkip', '今日はスキップする', '広告を見ると、今日をスキップしてもルーティンの連続記録を維持できます。', () => {
+      const next = { ...rewardedAccess, routine: { ...rewardedAccess.routine, skipStock: Math.max(0, rewardedAccess.routine.skipStock - 1) } };
+      setRewardedAccess(next);
+      void saveRewardedAccessState(next);
+      applySkipTaskById(taskId);
+    });
+  }, [applySkipTaskById, openRewardedPrompt, planTier, rewardedAccess]);
 
   const deleteTaskById = React.useCallback((taskId: string) => {
     const target = tasksRef.current.find((task) => task.id === taskId);
@@ -1859,7 +1968,7 @@ export default function App() {
     return true;
   };
 
-  const importCalendarEventAsPlan = (event: Calendar.Event) => {
+  const performImportCalendarEventAsPlan = (event: Calendar.Event) => {
     const start = new Date(event.startDate);
     if (Number.isNaN(start.getTime())) {
       Alert.alert('予定を追加できませんでした', '日時を読み取れませんでした。');
@@ -1888,6 +1997,28 @@ export default function App() {
     setDeparturePlans(nextPlans);
     void onboarding.complete('calendarImport');
     return true;
+  };
+
+  const importCalendarEventAsPlan = (event: Calendar.Event) => {
+    if (planTier === 'premium') return performImportCalendarEventAsPlan(event);
+    if (canImportCalendar(rewardedAccess)) {
+      const imported = performImportCalendarEventAsPlan(event);
+      if (imported) {
+        const next = { ...rewardedAccess, calendarImportCredits: Math.max(0, rewardedAccess.calendarImportCredits - 1) };
+        setRewardedAccess(next);
+        void saveRewardedAccessState(next);
+      }
+      return imported;
+    }
+    openRewardedPrompt('calendarImport', 'カレンダーから取り込む', '広告を見ると、カレンダーの予定を1回Rhythmへ取り込めます。', () => {
+      const imported = performImportCalendarEventAsPlan(event);
+      if (imported) {
+        const next = { ...rewardedAccess, calendarImportCredits: Math.max(0, rewardedAccess.calendarImportCredits - 1) };
+        setRewardedAccess(next);
+        void saveRewardedAccessState(next);
+      }
+    });
+    return false;
   };
 
   const deleteDeparturePlan = (id: string) => {
@@ -2081,6 +2212,11 @@ export default function App() {
               wishRewardProgress={{ current: rewardedAccess.wishCreateProgress, required: 2 }}
               onRequestWishReward={requestWishReward}
               onWishCreated={consumeWishReward}
+              canCreateWishAction={hasPremiumAccess(planTier, 'wish_planning') || canCreateWishAction(rewardedAccess)}
+              wishActionRewardProgress={{ current: rewardedAccess.wishActionCreateProgress, required: 2 }}
+              onRequestWishActionReward={requestWishActionReward}
+              onWishActionCreated={consumeWishActionReward}
+              onPremium={() => openPremiumFeature('wish')}
               onBack={() => setScreen('home')}
             />
           )}
@@ -2166,7 +2302,9 @@ export default function App() {
               onShowCompleted={setShowCompleted}
               onCompletionIcon={setCompletionIcon}
                onDesignMode={(mode) => {
-                 if (mode === 'photo' && !hasPremiumAccess(planTier, 'photo_design')) { openPremiumFeature('photo_design'); return; }
+                 // Free users can open the photo settings to preview each entry point;
+                 // the individual background/top/focus actions request their own
+                 // Rewarded entitlement before persisting an image.
                  if (mode === 'minimal' || mode === 'dark') {
                    setDesignMode('minimal');
                    setMonoAppearance(mode === 'dark' ? 'dark' : 'light');
@@ -2275,6 +2413,19 @@ export default function App() {
 
         <BottomNav screen={screen} designMode={uiDesignMode} chicPalette={chicPalette} onChange={navigateWithinApp} />
       </View>
+
+      {rewardedPrompt && <RewardedAccessModal
+        visible
+        title={rewardedPrompt.title}
+        description={rewardedPrompt.description}
+        current={getRewardedPromptProgress(rewardedPrompt.featureId).current}
+        required={getRewardedPromptProgress(rewardedPrompt.featureId).required}
+        designMode={uiDesignMode}
+        chicPalette={chicPalette}
+        onReward={handleRewardedPromptReward}
+        onClose={() => { rewardedPromptCompletionRef.current = undefined; setRewardedPrompt(null); }}
+        onPremium={() => { setRewardedPrompt(null); openPremiumFeature(); }}
+      />}
 
       <Modal visible={focusNavigationNotice} transparent animationType="fade" onRequestClose={() => setFocusNavigationNotice(false)}>
         <Pressable style={styles.modalBackdrop} onPress={() => setFocusNavigationNotice(false)}>

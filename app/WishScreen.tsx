@@ -5,6 +5,7 @@ import { MonthlyWishState, Wish, WishAction } from './types';
 import { calculateWishProgress } from './features/wish/wishUtils';
 import { BThemeRibbonDecoration } from './components/BThemeRibbonDecoration';
 import { CThemeRibbonDecoration } from './components/CThemeRibbonDecoration';
+import { RewardedAccessModal, RewardedAccessResult } from './components/RewardedAccessModal';
 
 type WishScreenProps = {
   designMode: DesignMode;
@@ -16,8 +17,13 @@ type WishScreenProps = {
   onCreateTaskFromAction?: (action: WishAction) => void;
   canCreateWish?: boolean;
   wishRewardProgress?: { current: number; required: number };
-  onRequestWishReward?: () => Promise<boolean> | boolean;
+  onRequestWishReward?: () => Promise<RewardedAccessResult> | RewardedAccessResult;
   onWishCreated?: () => void;
+  canCreateWishAction?: boolean;
+  wishActionRewardProgress?: { current: number; required: number };
+  onRequestWishActionReward?: () => Promise<RewardedAccessResult> | RewardedAccessResult;
+  onWishActionCreated?: () => void;
+  onPremium?: () => void;
   onBack: () => void;
 };
 
@@ -53,7 +59,7 @@ function sectionText(mode: DesignMode, chic: string, minimal: string) {
   return mode === 'minimal' ? minimal : chic;
 }
 
-export function WishScreen({ designMode: rawDesignMode, chicPattern, chicPalette, monthLabel, state, onSaveState, onCreateTaskFromAction, canCreateWish = true, wishRewardProgress, onRequestWishReward, onWishCreated, onBack }: WishScreenProps) {
+export function WishScreen({ designMode: rawDesignMode, chicPattern, chicPalette, monthLabel, state, onSaveState, onCreateTaskFromAction, canCreateWish = true, wishRewardProgress, onRequestWishReward, onWishCreated, canCreateWishAction = true, wishActionRewardProgress, onRequestWishActionReward, onWishActionCreated, onPremium, onBack }: WishScreenProps) {
   // Mono DarkはMono Lightと同じレイアウトを使い、色だけを反転する。
   const designMode: 'minimal' | 'chic' = rawDesignMode === 'dark' || rawDesignMode === 'photo' ? 'minimal' : rawDesignMode;
   const isDark = rawDesignMode === 'dark';
@@ -68,6 +74,7 @@ export function WishScreen({ designMode: rawDesignMode, chicPattern, chicPalette
   const [themeDraft, setThemeDraft] = useState(state.theme ?? '');
   const [themeEditing, setThemeEditing] = useState(!(state.theme ?? '').trim());
   const [editor, setEditor] = useState<EditorState>(emptyEditor);
+  const [rewardPrompt, setRewardPrompt] = useState<'wish' | 'action' | null>(null);
 
   useEffect(() => {
     setThemeDraft(state.theme ?? '');
@@ -78,10 +85,10 @@ export function WishScreen({ designMode: rawDesignMode, chicPattern, chicPalette
     onSaveState(updater);
   };
 
-  const openWishEditor = async (wish?: Wish) => {
+  const openWishEditor = (wish?: Wish) => {
     if (!wish && !canCreateWish) {
-      const granted = await onRequestWishReward?.();
-      if (!granted) return;
+      setRewardPrompt('wish');
+      return;
     }
     setEditor({
       visible: true,
@@ -94,6 +101,10 @@ export function WishScreen({ designMode: rawDesignMode, chicPattern, chicPalette
   };
 
   const openActionEditor = (action?: WishAction) => {
+    if (!action && !canCreateWishAction) {
+      setRewardPrompt('action');
+      return;
+    }
     setEditor({
       visible: true,
       mode: 'action',
@@ -142,6 +153,7 @@ export function WishScreen({ designMode: rawDesignMode, chicPattern, chicPalette
           ? current.actions.map((item) => (item.id === action.id ? action : item))
           : [action, ...current.actions],
       }));
+      if (!isEditing) onWishActionCreated?.();
     }
 
     if (isEditing) {
@@ -336,6 +348,7 @@ export function WishScreen({ designMode: rawDesignMode, chicPattern, chicPalette
             >
               <Text style={[styles.addRowText, { color: rawDesignMode === 'dark' ? darkAccent : wishes.length ? theme.colors.primaryAccent : theme.colors.secondaryText }]}>＋ 行動を追加</Text>
             </Pressable>
+            {!canCreateWishAction && wishActionRewardProgress && <Text style={[styles.itemMeta, { color: theme.colors.secondaryText, marginTop: 8 }]}>広告を2回見ると、行動を1件追加できます。 {wishActionRewardProgress.current} / {wishActionRewardProgress.required}</Text>}
           </SectionCard>
 
           <SectionCard
@@ -370,6 +383,34 @@ export function WishScreen({ designMode: rawDesignMode, chicPattern, chicPalette
           </SectionCard>
 
         </ScrollView>
+        <RewardedAccessModal
+          visible={rewardPrompt !== null}
+          title={rewardPrompt === 'action' ? '行動を追加' : '叶えたいことを追加'}
+          description={rewardPrompt === 'action' ? '広告を2回見ると、叶えたいことにつながる行動を1件追加できます。' : '広告を2回見ると、叶えたいことを1件追加できます。'}
+          current={rewardPrompt === 'action' ? wishActionRewardProgress?.current ?? 0 : wishRewardProgress?.current ?? 0}
+          required={2}
+          designMode={rawDesignMode}
+          chicPalette={palette}
+          onClose={() => setRewardPrompt(null)}
+          onPremium={onPremium}
+          onReward={async () => {
+            const mode = rewardPrompt;
+            if (mode === 'action') {
+              const result = await onRequestWishActionReward?.() ?? { success: false, message: '広告を利用できません。' };
+              if (result.completed) {
+                setRewardPrompt(null);
+                setEditor({ visible: true, mode: 'action', id: undefined, title: '', wishId: state.wishes[0]?.id, completed: false });
+              }
+              return result;
+            }
+            const result = await onRequestWishReward?.() ?? { success: false, message: '広告を利用できません。' };
+            if (result.completed) {
+              setRewardPrompt(null);
+              setEditor({ visible: true, mode: 'wish', id: undefined, title: '', wishId: undefined, completed: false });
+            }
+            return result;
+          }}
+        />
       </KeyboardAvoidingView>
 
       <Modal visible={editor.visible} transparent animationType="fade" onRequestClose={() => setEditor(emptyEditor)}>
