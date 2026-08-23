@@ -6,8 +6,10 @@ import { getDeparturePlanMode, getPlanScheduledTime, isArrivalReversePlan, isDep
 import { recommendPreparationMinutes } from '../features/departure/preparationLearning';
 import { PlanTier } from '../premiumAccess';
 import { PremiumGuideFeatureId } from '../premiumGuide';
-import { ChicPattern, DesignMode, getThemeTokens } from '../theme';
+import { ChicPattern, ChicThemePalette, DesignMode, getThemeTokens } from '../theme';
 import { DeparturePlan } from '../types';
+import { TravelAppLaunchActions } from './TravelAppLaunchActions';
+import { TravelAppSettings } from '../features/travel/travelApps';
 
 type DurationField = 'preparationMinutes' | 'travelMinutes' | 'bufferMinutes';
 type DurationEditor = { field: DurationField; label: string; values: number[] };
@@ -18,6 +20,7 @@ type Props = {
   behaviorEvents: BehaviorEvent[];
   designMode: DesignMode;
   chicPattern: ChicPattern;
+  chicPalette?: ChicThemePalette;
   planTier: PlanTier;
   onChange: (plan: DeparturePlan) => void;
   onSubmit: () => Promise<boolean> | boolean | void;
@@ -30,6 +33,8 @@ type Props = {
   getDepartureMoments: (plan: DeparturePlan) => { prepare: Date; leave: Date; arrival: Date };
   getMapSearchTarget: (plan: DeparturePlan) => string;
   openMapSearch: (query: string) => Promise<void> | void;
+  travelApps?: TravelAppSettings;
+  onOpenTravelAppSettings?: () => void;
 };
 
 const DEFAULT_PREPARATION_MINUTES = 30;
@@ -50,6 +55,7 @@ export function DeparturePlanForm({
   behaviorEvents,
   designMode,
   chicPattern: _chicPattern,
+  chicPalette,
   planTier,
   onChange,
   onSubmit,
@@ -62,6 +68,8 @@ export function DeparturePlanForm({
   getDepartureMoments,
   getMapSearchTarget,
   openMapSearch,
+  travelApps,
+  onOpenTravelAppSettings,
 }: Props) {
   const theme = getThemeTokens(designMode);
   const isDark = designMode === 'dark';
@@ -317,6 +325,7 @@ export function DeparturePlanForm({
         <Text style={[styles.mapButtonText, { color: theme.colors.primaryAccent }]}>地図で確認</Text>
         <Text style={[styles.mapChevron, { color: theme.colors.primaryAccent }]}>〉</Text>
       </Pressable>
+      {plan.destination?.trim() ? <TravelAppLaunchActions settings={travelApps} category="transit" destination={plan.destination} planTier={planTier} designMode={designMode} chicPalette={chicPalette} onPremium={onPremium} onOpenSettings={onOpenTravelAppSettings} /> : null}
       <Text style={[styles.destinationNote, secondaryText]}>地図アプリで目的地を確認できます</Text>
     </View>
 
