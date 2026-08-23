@@ -65,6 +65,11 @@ export type DeparturePlan = {
   destination?: string;
   /** 端末カレンダーから取り込んだ予定を重複登録しないための端末内ID。 */
   externalCalendarEventId?: string;
+  /** Occurrence-aware identity for recurring external calendar events. */
+  externalCalendarEventKey?: string;
+  externalCalendarEventCalendarId?: string;
+  externalCalendarEventStartDate?: string;
+  externalCalendarEventEndDate?: string;
   /** false の予定は予定表だけへ表示し、出発の逆算・通知・カウントダウンを行わない。 */
   countdownEnabled?: boolean;
   /** Explicit schedule mode for newly saved plans. */
@@ -75,6 +80,8 @@ export type DeparturePlan = {
   arrival: string;
   /** True for imported all-day calendar events; arrival remains empty for compatibility. */
   allDay?: boolean;
+  /** Local date for the end of a multi-day all-day event. */
+  endDate?: string;
   /** Optional local HH:mm end time for schedule display. */
   endAt?: string | null;
   travelMinutes: number;

@@ -20,6 +20,7 @@ export function BulkTaskModal({ visible, designMode, chicPalette, styles, today,
   const save = () => {
     if (saving) return;
     if (titles.length === 0) { Alert.alert('タスクを入力してください', '1行に1件ずつ入力してください。'); return; }
+    if (titles.length > 50) { Alert.alert('追加件数を確認してください', '一度に追加できるのは50件までです。空行は件数に含みません。'); return; }
     setSaving(true);
     onSave(titles, scheduledDate);
   };

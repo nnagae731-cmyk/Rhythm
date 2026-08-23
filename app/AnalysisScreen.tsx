@@ -257,6 +257,7 @@ export function AnalysisScreen({
   PatternDecor,
   onApplySuggestion,
   onAnalysisUsed,
+  initialTab,
 }: {
   events: BehaviorEvent[];
   tasks: Task[];
@@ -271,8 +272,9 @@ export function AnalysisScreen({
   PatternDecor?: (props: { pattern: ChicPattern; accent: string; warm: string; checkColor?: ChicCheckColor }) => ReactNode;
   onApplySuggestion: (suggestion: InsightSuggestion) => void;
   onAnalysisUsed?: () => void;
+  initialTab?: AnalysisTab;
 }) {
-  const [tab, setTab] = useState<AnalysisTab>('records');
+  const [tab, setTab] = useState<AnalysisTab>(initialTab ?? 'records');
   const departureActivity = useMemo(() => {
     const preparationEvents = events.filter((item) => item.type === 'departure_preparation_started');
     const departureEvents = events.filter((item) => item.type === 'departure_started');

@@ -8,7 +8,7 @@ import { PremiumGuideFeatureId } from '../premiumGuide';
 import { PremiumTaskTemplate } from '../taskTemplates';
 import { categories, priorities, repeatOptions } from '../features/tasks/taskUtils';
 import { parseSmartTaskInput, SmartTaskParseResult } from '../features/tasks/smartTaskInput';
-export function TaskModal({ visible, task, templates, savedTemplates, designMode, chicPalette, planTier, onPremium, onClose, onOpenBulkAdd, onSave, styles, helpers, components }: { visible: boolean; task?: Task; templates: string[]; savedTemplates: PremiumTaskTemplate[]; designMode: DesignMode; chicPalette?: ChicThemePalette; planTier: PlanTier; onPremium: (featureId?: PremiumGuideFeatureId) => void; onClose: () => void; onOpenBulkAdd?: () => void; onSave: (title: string, category: Category, priority: Priority, remindDate?: string, remindAt?: string, deadlineDate?: string, deadlineTime?: string, deadlineNotifyBefore?: number, navigationEnabled?: boolean, preparationMinutes?: number, travelMinutes?: number, bufferMinutes?: number, repeatRule?: RepeatRule, nudgeMode?: NudgeMode, scheduledDate?: string, scheduledTime?: string, endAt?: string, isRoutine?: boolean, subtasks?: Subtask[], listItems?: TaskListItem[]) => void; styles: any; helpers: any; components: any }) {
+export function TaskModal({ visible, task, templates, savedTemplates, designMode, chicPalette, planTier, onPremium, onClose, onOpenBulkAdd, onSave, readOnlyPreview = false, styles, helpers, components }: { visible: boolean; task?: Task; templates: string[]; savedTemplates: PremiumTaskTemplate[]; designMode: DesignMode; chicPalette?: ChicThemePalette; planTier: PlanTier; onPremium: (featureId?: PremiumGuideFeatureId) => void; onClose: () => void; onOpenBulkAdd?: () => void; onSave: (title: string, category: Category, priority: Priority, remindDate?: string, remindAt?: string, deadlineDate?: string, deadlineTime?: string, deadlineNotifyBefore?: number, navigationEnabled?: boolean, preparationMinutes?: number, travelMinutes?: number, bufferMinutes?: number, repeatRule?: RepeatRule, nudgeMode?: NudgeMode, scheduledDate?: string, scheduledTime?: string, endAt?: string, isRoutine?: boolean, subtasks?: Subtask[], listItems?: TaskListItem[]) => void; readOnlyPreview?: boolean; styles: any; helpers: any; components: any }) {
   const { getThemeTokens, todayInputValue, hasPremiumAccess, dateForReminder, dateKey, formatLiveTime, colors, summarizePremiumTaskTemplate } = helpers;
   const { CompactNumberSetting } = components;
   const theme = getThemeTokens(designMode, chicPalette?.id ?? 'cool');
@@ -82,9 +82,9 @@ export function TaskModal({ visible, task, templates, savedTemplates, designMode
     setSmartResult({ title: task?.title ?? '', matched: [] });
     setShowScheduledDatePicker(false);
     setShowScheduledTimePicker(false);
-    const focusTimer = setTimeout(() => titleInputRef.current?.focus(), 120);
+    const focusTimer = setTimeout(() => { if (!readOnlyPreview) titleInputRef.current?.focus(); }, 120);
     return () => clearTimeout(focusTimer);
-  }, [visible, task]);
+  }, [readOnlyPreview, visible, task]);
 
   useEffect(() => {
     if (!visible) return;
@@ -167,6 +167,12 @@ export function TaskModal({ visible, task, templates, savedTemplates, designMode
     setDeadlineDate(todayInputValue());
     setDeadlineTime('23:59');
     setDeadlineNotify(false);
+    setListItems((template.listItems ?? []).map((item, index) => ({
+      id: `${Date.now()}-template-list-${index}-${Math.random().toString(16).slice(2)}`,
+      text: item.text,
+      checked: false,
+      order: index,
+    })));
   };
 
   const closeForm = () => {
@@ -206,8 +212,7 @@ export function TaskModal({ visible, task, templates, savedTemplates, designMode
     setShowDeadlineTimePicker((value) => !value);
   };
 
-  return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={closeForm}>
+  const modalContent = (
       <KeyboardAvoidingView style={styles.keyboardView} behavior={Platform.OS === 'ios' ? 'padding' : 'height'} keyboardVerticalOffset={8}>
       <Pressable style={styles.modalBackdrop} onPress={closeForm}>
         <Pressable style={[styles.modalSheet, { backgroundColor: theme.colors.screenBackground, borderRadius: theme.radius.modal }]} onPress={(event) => event.stopPropagation()}>
@@ -359,6 +364,6 @@ export function TaskModal({ visible, task, templates, savedTemplates, designMode
         </Pressable>
       </Pressable>
       </KeyboardAvoidingView>
-    </Modal>
   );
+  return readOnlyPreview ? <View style={{ width: '100%' }} pointerEvents="none">{modalContent}</View> : <Modal visible={visible} transparent animationType="slide" onRequestClose={closeForm}>{modalContent}</Modal>;
 }

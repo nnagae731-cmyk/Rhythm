@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Modal, Pressable, ScrollView, Text, View } from 'react-native';
 import { ChicThemePalette, DesignMode } from '../theme';
 import { PremiumGuideFeatureId } from '../premiumGuide';
@@ -43,9 +43,13 @@ function LegacyPreviewFallback({ kind, styles }: { kind: PremiumPreviewKind; sty
   return <View style={styles.premiumPreview}><Text style={styles.previewImageLabel}>立て直しの表示イメージ</Text><View style={styles.previewDanger}><Text style={styles.previewDangerText}>予定どおりは厳しい</Text></View><View style={styles.previewRecoveryGrid}>{['今から出発', '到着予定を変更', '遅れる連絡', '予定を組み直す'].map((label) => <View key={label} style={styles.previewRecoveryOption}><Text style={styles.previewRecoveryText}>{label}</Text></View>)}</View></View>;
 }
 
+function PremiumPreviewViewport({ children, styles }: { children: React.ReactNode; styles: any }) {
+  return <View style={styles.premiumPreviewViewport} pointerEvents="none"><View style={styles.premiumPreviewViewportContent}>{children}</View></View>;
+}
+
 function PremiumFeatureEntryCard({ number, title, active, designMode, chicPalette, onPress, styles }: { number: string; title: string; active: boolean; designMode: DesignMode; chicPalette?: ChicThemePalette; onPress: () => void; styles: any }) {
   const isMono = designMode !== 'chic';
-  return <Pressable onPress={onPress} style={[styles.premiumEntryCard, active && styles.premiumEntryCardActive, isMono && styles.premiumEntryCardMinimal, designMode === 'dark' && styles.premiumEntryCardDark, designMode === 'chic' && styles.premiumEntryCardChic, designMode === 'chic' && chicPalette && { backgroundColor: active ? chicPalette.accentSoft : chicPalette.cardSurface, borderColor: active ? chicPalette.accent : chicPalette.border }]}>
+  return <Pressable onPress={onPress} style={[styles.premiumEntryCard, { width: 132, minHeight: 58 }, active && styles.premiumEntryCardActive, isMono && styles.premiumEntryCardMinimal, designMode === 'dark' && styles.premiumEntryCardDark, designMode === 'chic' && styles.premiumEntryCardChic, designMode === 'chic' && chicPalette && { backgroundColor: active ? chicPalette.accentSoft : chicPalette.cardSurface, borderColor: active ? chicPalette.accent : chicPalette.border }]}>
     <Text style={[styles.premiumEntryNumber, active && styles.premiumEntryNumberActive, designMode === 'dark' && styles.premiumEntryNumberDark, designMode === 'chic' && chicPalette && { color: active ? chicPalette.accentStrong : chicPalette.textMuted }]}>{number}</Text>
     <Text numberOfLines={2} style={[styles.premiumEntryTitle, active && styles.premiumEntryTitleActive, designMode === 'dark' && styles.premiumEntryTitleDark, designMode === 'chic' && chicPalette && { color: chicPalette.textPrimary }]}>{title}</Text>
   </Pressable>;
@@ -56,7 +60,7 @@ function PremiumFeatureDetail({ number, kind, title, description, designMode, ch
   return <View style={[styles.premiumFeatureBlock, isMono && styles.premiumFeatureMinimal, designMode === 'dark' && styles.premiumFeatureDark, designMode === 'chic' && styles.premiumFeatureChic, designMode === 'chic' && chicPalette && { backgroundColor: chicPalette.cardSurface, borderColor: chicPalette.border }]}>
     <View style={styles.premiumFeatureInner}>
       <View style={styles.premiumFeatureTop}><Text style={[styles.premiumFeatureNumber, designMode === 'minimal' && styles.premiumFeatureNumberMinimal, designMode === 'dark' && styles.premiumFeatureNumberDark, designMode === 'chic' && chicPalette && { color: chicPalette.accentStrong }]}>{number}</Text><View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}><Text style={[styles.premiumFeatureLabel, designMode === 'chic' && chicPalette && { color: chicPalette.accent }]}>Premium機能</Text><Text style={[styles.premiumFeatureLabel, { color: designMode === 'chic' && chicPalette ? chicPalette.textMuted : designMode === 'dark' ? '#8F9BB0' : '#777772' }]}>READ ONLY</Text></View></View>
-      {renderReadOnlyPreview?.(kind) ?? <LegacyPreviewFallback kind={kind} styles={styles} />}
+      <PremiumPreviewViewport styles={styles}>{renderReadOnlyPreview?.(kind) ?? <LegacyPreviewFallback kind={kind} styles={styles} />}</PremiumPreviewViewport>
       <View style={[styles.premiumFeatureTextPlate, isMono && styles.premiumFeatureTextMinimal, designMode === 'dark' && styles.premiumFeatureTextDark, designMode === 'chic' && styles.premiumFeatureTextChic, designMode === 'chic' && chicPalette && { backgroundColor: chicPalette.surfaceSubtle, borderColor: chicPalette.border }]}><Text style={[styles.premiumFeatureTitle, isMono && styles.premiumFeatureTitleMinimal, designMode === 'dark' && styles.premiumFeatureTitleDark, designMode === 'chic' && chicPalette && { color: chicPalette.textPrimary }]}>{title}</Text><Text style={[styles.premiumFeatureDescription, isMono && styles.premiumFeatureDescriptionMinimal, designMode === 'dark' && styles.premiumFeatureDescriptionDark, designMode === 'chic' && chicPalette && { color: chicPalette.textSecondary }]}>{description}</Text></View>
     </View>
   </View>;
@@ -75,6 +79,9 @@ export function PremiumModal({ visible, initialFeatureId, designMode, chicPalett
   const accentText = designMode === 'chic' && chicPalette ? chicPalette.onAccent : designMode === 'dark' ? theme.colors.screenBackground : '#FFFFFF';
   const initialIndex = Math.max(0, PREMIUM_GUIDE_FEATURES.findIndex((feature) => feature.id === initialFeatureId));
   const [selectedFeatureId, setSelectedFeatureId] = useState<PremiumGuideFeatureId>(initialFeatureId);
+  const featurePickerRef = useRef<ScrollView>(null);
+  const selectedFeature = PREMIUM_GUIDE_FEATURES.find((feature) => feature.id === selectedFeatureId) ?? PREMIUM_GUIDE_FEATURES[initialIndex] ?? PREMIUM_GUIDE_FEATURES[0]!;
+  const selectedIndex = Math.max(0, PREMIUM_GUIDE_FEATURES.findIndex((feature) => feature.id === selectedFeature.id));
   const [purchaseOpen, setPurchaseOpen] = useState(false);
   const [purchaseStatus, setPurchaseStatus] = useState<'idle' | 'processing' | 'success' | 'unavailable'>('idle');
   useEffect(() => {
@@ -89,8 +96,9 @@ export function PremiumModal({ visible, initialFeatureId, designMode, chicPalett
       setPurchaseStatus('idle');
     }
   }, [visible]);
-  const selectedFeature = PREMIUM_GUIDE_FEATURES.find((feature) => feature.id === selectedFeatureId) ?? PREMIUM_GUIDE_FEATURES[initialIndex] ?? PREMIUM_GUIDE_FEATURES[0]!;
-  const selectedIndex = Math.max(0, PREMIUM_GUIDE_FEATURES.findIndex((feature) => feature.id === selectedFeature.id));
+  useEffect(() => {
+    if (visible) featurePickerRef.current?.scrollTo({ x: Math.max(0, selectedIndex * 140 - 70), animated: false });
+  }, [selectedIndex, visible]);
   // Do not keep the feature previews mounted while the modal is closed. This
   // avoids rendering all preview cards during app startup and while navigating
   // unrelated screens, while preserving the existing modal state on reopen.
@@ -134,9 +142,9 @@ export function PremiumModal({ visible, initialFeatureId, designMode, chicPalett
           </View>
           <Pressable style={[styles.premiumCloseButton, { borderColor: accent, backgroundColor: surface }]} onPress={onClose}><Text style={[styles.premiumCloseButtonText, { color: accentStrong }]}>閉じる</Text></Pressable>
         </ScrollView> : <ScrollView style={styles.premiumCarouselArea} contentContainerStyle={styles.premiumModalScroll} showsVerticalScrollIndicator={false}>
-          <View style={styles.premiumFeaturePicker}>
+          <ScrollView ref={featurePickerRef} horizontal showsHorizontalScrollIndicator={false} style={styles.premiumFeaturePicker} contentContainerStyle={styles.premiumFeaturePickerContent}>
             {PREMIUM_GUIDE_FEATURES.map((feature, index) => <PremiumFeatureEntryCard key={feature.id} number={String(index + 1).padStart(2, '0')} title={feature.title} active={feature.id === selectedFeature.id} designMode={designMode} chicPalette={chicPalette} onPress={() => setSelectedFeatureId(feature.id)} styles={styles} />)}
-          </View>
+          </ScrollView>
           <View style={styles.premiumFeatureStage}>
             <PremiumFeatureDetail number={String(selectedIndex + 1).padStart(2, '0')} kind={selectedFeature.kind} title={selectedFeature.title} description={selectedFeature.description} designMode={designMode} chicPalette={chicPalette} styles={styles} renderReadOnlyPreview={renderReadOnlyPreview} />
             {selectedFeature.id === 'month' && <View style={styles.premiumHistoryNote}><Text style={styles.premiumHistoryTitle}>月表示と過去の記録</Text><Text style={styles.premiumHistoryCopy}>7日を超えた予定や完了・集中・出発の記録も確認できます。</Text></View>}

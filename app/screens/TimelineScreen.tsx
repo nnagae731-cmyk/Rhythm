@@ -116,6 +116,7 @@ export function TimelineScreen({
   const [calendarSelectorOpen, setCalendarSelectorOpen] = useState(false);
   const [calendarLoading, setCalendarLoading] = useState(false);
   const [calendarLoaded, setCalendarLoaded] = useState(false);
+  const [calendarExcludedCount, setCalendarExcludedCount] = useState(0);
   const [calendarFocusDate, setCalendarFocusDate] = useState<string>();
   const [recoveryPlan, setRecoveryPlan] = useState<DeparturePlan>();
   useEffect(() => setTimeTab(initialTab), [initialTab]);
@@ -150,6 +151,28 @@ export function TimelineScreen({
 
   const isBirthdayCalendar = (calendar: Calendar.Calendar) => String(calendar.type ?? '').toLowerCase() === 'birthdays' || String(calendar.source?.type ?? '').toLowerCase() === 'birthdays';
   const isSubscribedCalendar = (calendar: Calendar.Calendar) => String(calendar.type ?? '').toLowerCase() === 'subscribed' || String(calendar.source?.type ?? '').toLowerCase() === 'subscribed';
+  const calendarEventOccurrenceKey = (event: Calendar.Event) => {
+    const calendarId = String((event as Calendar.Event & { calendarId?: string }).calendarId ?? '');
+    const start = new Date(event.startDate).toISOString();
+    const end = event.endDate ? new Date(event.endDate).toISOString() : '';
+    return `${calendarId}:${String(event.id)}:${start}:${end}`;
+  };
+  const normalizeCalendarTitle = (value: string | undefined) => (value ?? '').trim().replace(/\s+/gu, ' ').toLocaleLowerCase();
+  const isAlreadyRegistered = (event: Calendar.Event) => {
+    const start = new Date(event.startDate);
+    const end = event.endDate ? new Date(event.endDate) : undefined;
+    const endDate = end && !Number.isNaN(end.getTime()) ? dateKey(end) : '';
+    const key = calendarEventOccurrenceKey(event);
+    return plans.some((item: DeparturePlan) => {
+      if (item.externalCalendarEventKey) return item.externalCalendarEventKey === key;
+      if (item.externalCalendarEventId && item.externalCalendarEventId === event.id && !item.externalCalendarEventStartDate) return true;
+      if (normalizeCalendarTitle(item.title) !== normalizeCalendarTitle(event.title)) return false;
+      if (item.date !== dateKey(start) || Boolean(item.allDay) !== Boolean(event.allDay)) return false;
+      if (!event.allDay && item.arrival !== formatLiveTime(start)) return false;
+      const knownEndDate = item.endDate ?? item.externalCalendarEventEndDate;
+      return !knownEndDate || knownEndDate === endDate;
+    });
+  };
   const resolveCalendarSelection = (calendars: Calendar.Calendar[]) => {
     const savedIds = Array.isArray(calendarImportCalendarIds) ? new Set(calendarImportCalendarIds) : undefined;
     const knownIds = new Set(calendarImportKnownCalendarIds ?? []);
@@ -163,7 +186,9 @@ export function TimelineScreen({
     const end = new Date(start);
     end.setDate(end.getDate() + 30);
     const events = selectedIds.length > 0 ? await Calendar.getEventsAsync(selectedIds, start, end) : [];
-    setCalendarEvents(events.sort((a, b) => new Date(a.startDate).getTime() - new Date(b.startDate).getTime()));
+    const available = events.filter((event) => !isAlreadyRegistered(event));
+    setCalendarExcludedCount(events.length - available.length);
+    setCalendarEvents(available.sort((a, b) => new Date(a.startDate).getTime() - new Date(b.startDate).getTime()));
     setCalendarLoaded(true);
   };
   const importCalendarEvents = async () => {
@@ -191,7 +216,8 @@ export function TimelineScreen({
   const selectCalendarEvent = (event: Calendar.Event) => {
     const start = new Date(event.startDate);
     if (!onImportCalendarEvent(event)) return;
-    setCalendarEvents((current) => current.filter((item) => item.id !== event.id));
+    const key = calendarEventOccurrenceKey(event);
+    setCalendarEvents((current) => current.filter((item) => calendarEventOccurrenceKey(item) !== key));
     setCalendarFocusDate(dateKey(start));
     setTimeTab('calendar');
   };
@@ -210,8 +236,8 @@ export function TimelineScreen({
       <Pressable style={[styles.calendarImportButton, designMode === 'minimal' && styles.calendarImportButtonMinimal, isDark && styles.calendarImportButtonDark, designMode === 'chic' && chicPalette && { backgroundColor: chicPalette.cardSurface, borderColor: chicPalette.border }]} onPress={importCalendarEvents}><Text style={[styles.calendarImportIcon, designMode !== 'chic' && styles.calendarImportIconMono, isDark && styles.calendarImportIconDark, designMode === 'chic' && chicPalette && { color: chicPalette.accent }]}>▣</Text><View style={{ flex: 1 }}><Text style={[styles.calendarImportTitle, isDark && styles.darkBodyText, designMode === 'chic' && chicPalette && { color: chicPalette.textPrimary }]}>{calendarLoading ? '読み込み中…' : 'いつものカレンダーとつなぐ'}</Text><Text style={[styles.calendarImportCopy, isDark && styles.darkMutedText, designMode === 'chic' && chicPalette && { color: chicPalette.textSecondary }]}>{hasPremiumAccess(planTier, 'external_calendar') ? '今日から30日先までの予定を選べます' : '今日から30日先まで表示・取り込みは広告で1回'}</Text></View><Text style={[styles.calendarImportArrow, designMode !== 'chic' && styles.calendarImportArrowMono, isDark && styles.calendarImportArrowDark, designMode === 'chic' && chicPalette && { color: chicPalette.accent }]}>›</Text></Pressable>
       {calendarLoaded && calendarOptions.filter((item) => !isBirthdayCalendar(item)).length > 0 && <Pressable style={[styles.calendarEventPicker, { paddingVertical: 11 }, designMode === 'chic' && chicPalette && { backgroundColor: chicPalette.cardSurface, borderColor: chicPalette.border }]} onPress={() => setCalendarSelectorOpen(true)}><Text style={[styles.calendarEventPickerTitle, designMode === 'chic' && chicPalette && { color: chicPalette.textPrimary }]}>取り込むカレンダー {calendarImportCalendarIds?.length ?? 0}件　変更する ›</Text></Pressable>}
       <Modal visible={calendarSelectorOpen} transparent animationType="slide" onRequestClose={() => setCalendarSelectorOpen(false)}><Pressable style={styles.modalBackdrop} onPress={() => setCalendarSelectorOpen(false)}><Pressable style={[styles.modalSheet, { backgroundColor: theme.colors.screenBackground, maxHeight: '72%' }]} onPress={(event) => event.stopPropagation()}><View style={styles.modalHandle} /><View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}><Text style={[styles.modalTitle, isDark && styles.modalTitleDark]}>取り込むカレンダー</Text><Pressable onPress={() => setCalendarSelectorOpen(false)}><Text style={[styles.calendarImportArrow, { color: theme.colors.primaryAccent }]}>閉じる</Text></Pressable></View><Text style={[styles.calendarImportCopy, isDark && styles.darkMutedText]}>通常のカレンダーは初期選択、購読カレンダーは必要な場合だけ選択できます。</Text><ScrollView style={{ marginTop: 10 }}>{calendarOptions.filter((item) => !isBirthdayCalendar(item)).map((calendar) => { const selected = calendarImportCalendarIds?.includes(calendar.id) ?? false; const subscribed = isSubscribedCalendar(calendar); return <Pressable key={calendar.id} style={{ paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: isDark ? '#303B50' : '#E5E0E5', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }} onPress={() => void toggleCalendarSelection(calendar)}><View style={{ flex: 1, paddingRight: 12 }}><Text style={[styles.calendarEventTitle, isDark && styles.darkBodyText]}>{calendar.title}</Text><Text style={[styles.calendarEventDate, isDark && styles.darkMutedText]}>{subscribed ? '購読カレンダー' : '通常カレンダー'}</Text></View><Text style={{ color: selected ? theme.colors.primaryAccent : (isDark ? '#8F9BB0' : '#9AA3B3'), fontSize: 20 }}>{selected ? '✓' : '○'}</Text></Pressable>; })}</ScrollView></Pressable></Pressable></Modal>
-      {calendarLoaded && calendarEvents.length === 0 && <View style={[styles.calendarEventPicker, designMode === 'chic' && chicPalette && { backgroundColor: chicPalette.cardSurface, borderColor: chicPalette.border }]}><Text style={[styles.calendarEventPickerTitle, designMode === 'chic' && chicPalette && { color: chicPalette.textPrimary }]}>取り込める予定がありません</Text><Text style={[styles.calendarEventDate, designMode === 'chic' && chicPalette && { color: chicPalette.textSecondary }]}>今日から30日以内のカレンダー予定がありません。</Text></View>}
-      {calendarLoaded && calendarEvents.length > 0 && <View style={[styles.calendarEventPicker, designMode === 'chic' && chicPalette && { backgroundColor: chicPalette.cardSurface, borderColor: chicPalette.border }]}><Text style={[styles.calendarEventPickerTitle, designMode === 'chic' && chicPalette && { color: chicPalette.textPrimary }]}>取り込む予定を選択（{calendarEvents.length}件）</Text>{calendarEvents.map((event) => { const eventStart = new Date(event.startDate); return <Pressable key={event.id} style={[styles.calendarEventRow, designMode === 'chic' && chicPalette && { borderBottomColor: chicPalette.border }]} onPress={() => selectCalendarEvent(event)}><View><Text style={[styles.calendarEventTitle, designMode === 'chic' && chicPalette && { color: chicPalette.textPrimary }]}>{event.title || '名称なし'}</Text><Text style={[styles.calendarEventDate, designMode === 'chic' && chicPalette && { color: chicPalette.textSecondary }]}>{formatLiveDate(eventStart)} ・ {event.allDay ? '終日' : formatLiveTime(eventStart)}</Text></View><Text style={[styles.calendarImportArrow, designMode === 'chic' && chicPalette && { color: chicPalette.accent }]}>＋</Text></Pressable>; })}</View>}
+      {calendarLoaded && calendarEvents.length === 0 && <View style={[styles.calendarEventPicker, designMode === 'chic' && chicPalette && { backgroundColor: chicPalette.cardSurface, borderColor: chicPalette.border }]}><Text style={[styles.calendarEventPickerTitle, designMode === 'chic' && chicPalette && { color: chicPalette.textPrimary }]}>新しく取り込める予定はありません</Text><Text style={[styles.calendarEventDate, designMode === 'chic' && chicPalette && { color: chicPalette.textSecondary }]}>{calendarExcludedCount > 0 ? '登録済みの予定は一覧から除外しています。' : '今日から30日以内のカレンダー予定がありません。'}</Text></View>}
+      {calendarLoaded && calendarEvents.length > 0 && <View style={[styles.calendarEventPicker, designMode === 'chic' && chicPalette && { backgroundColor: chicPalette.cardSurface, borderColor: chicPalette.border }]}><Text style={[styles.calendarEventPickerTitle, designMode === 'chic' && chicPalette && { color: chicPalette.textPrimary }]}>取り込む予定を選択（{calendarEvents.length}件）</Text><Text style={[styles.calendarEventDate, designMode === 'chic' && chicPalette && { color: chicPalette.textSecondary }]}>登録済みの予定は表示されません。</Text>{calendarEvents.map((event) => { const eventStart = new Date(event.startDate); return <Pressable key={calendarEventOccurrenceKey(event)} style={[styles.calendarEventRow, designMode === 'chic' && chicPalette && { borderBottomColor: chicPalette.border }]} onPress={() => selectCalendarEvent(event)}><View style={{ flex: 1 }}><Text style={[styles.calendarEventTitle, designMode === 'chic' && chicPalette && { color: chicPalette.textPrimary }]}>{event.title || '名称なし'}</Text><Text style={[styles.calendarEventDate, designMode === 'chic' && chicPalette && { color: chicPalette.textSecondary }]}>{formatLiveDate(eventStart)} ・ {event.allDay ? '終日' : formatLiveTime(eventStart)}</Text></View><Text style={[styles.calendarImportArrow, designMode === 'chic' && chicPalette && { color: chicPalette.accent }]}>＋</Text></Pressable>; })}</View>}
       <View style={[styles.departureListHeader, isDark && styles.darkPanel]}><Text style={[styles.sectionTitle, isDark && styles.darkBodyText]}>カウントダウン</Text><Text style={[styles.sectionSub, isDark && styles.darkMutedText]}>{countdownPlans.length}件の予定</Text></View>
       {countdownPlans.length === 0 ? <View style={[styles.departureEmpty, isDark && styles.departureEmptyDark]}><Text style={[styles.emptyCopy, isDark && styles.darkMutedText]}>出発時刻を登録した予定が、ここに表示されます。</Text></View> : countdownPlans.map((item: DeparturePlan) => {
         const key = `${item.id}:${planDateKey(item)}`;

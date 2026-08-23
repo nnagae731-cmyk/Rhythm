@@ -254,6 +254,17 @@ function advanceDateValue(value: string | undefined, rule: RepeatRule) {
   return dateKey(base);
 }
 
+function calendarEventOccurrenceKey(event: Calendar.Event) {
+  const calendarId = String((event as Calendar.Event & { calendarId?: string }).calendarId ?? '');
+  const start = new Date(event.startDate).toISOString();
+  const end = event.endDate ? new Date(event.endDate).toISOString() : '';
+  return `${calendarId}:${String(event.id)}:${start}:${end}`;
+}
+
+function normalizeCalendarTitle(value: string | undefined) {
+  return (value ?? '').trim().replace(/\s+/gu, ' ').toLocaleLowerCase();
+}
+
 function completeTasksWithRepeats(current: Task[], ids: string[]) {
   const completedAt = new Date().toISOString();
   const nextTasks: Task[] = [];
@@ -276,6 +287,7 @@ function completeTasksWithRepeats(current: Task[], ids: string[]) {
         isRoutine: task.isRoutine,
         routineId: task.routineId ?? (task.isRoutine ? task.id : undefined),
         subtasks: task.subtasks?.map((item, index) => ({ ...item, order: index, done: false })),
+        listItems: task.listItems?.map((item, index) => ({ ...item, id: `${Date.now()}-${task.id}-list-${index}-${Math.random().toString(16).slice(2)}`, order: index, checked: false })),
       });
     }
     return { ...task, done: true, status: 'completed' as const, skippedAt: undefined, completedAt, subtasks: task.subtasks?.map((item) => ({ ...item, done: true })) };
@@ -2107,13 +2119,30 @@ export default function App() {
       return false;
     }
     const externalCalendarEventId = typeof event.id === 'string' ? event.id : undefined;
-    if (externalCalendarEventId && departurePlansRef.current.some((item) => item.externalCalendarEventId === externalCalendarEventId)) {
+    const calendarId = (event as Calendar.Event & { calendarId?: string }).calendarId;
+    const externalCalendarEventKey = calendarEventOccurrenceKey(event);
+    const eventEnd = event.endDate ? new Date(event.endDate) : undefined;
+    const eventEndDate = eventEnd && !Number.isNaN(eventEnd.getTime()) ? dateKey(eventEnd) : undefined;
+    const alreadyImported = departurePlansRef.current.some((item) => {
+      if (item.externalCalendarEventKey) return item.externalCalendarEventKey === externalCalendarEventKey;
+      if (externalCalendarEventId && item.externalCalendarEventId === externalCalendarEventId && !item.externalCalendarEventStartDate) return true;
+      if (normalizeCalendarTitle(item.title) !== normalizeCalendarTitle(event.title)) return false;
+      if (item.date !== dateKey(start) || Boolean(item.allDay) !== Boolean(event.allDay)) return false;
+      if (!event.allDay && item.arrival !== formatLiveTime(start)) return false;
+      const knownEndDate = item.endDate ?? item.externalCalendarEventEndDate;
+      return !knownEndDate || knownEndDate === (eventEndDate ?? '');
+    });
+    if (alreadyImported) {
       Alert.alert('登録済みです', 'この予定はすでにRhythmの予定表にあります。');
       return false;
     }
     const imported: DeparturePlan = {
       id: `${Date.now()}-${Math.random().toString(16).slice(2)}-calendar`,
       externalCalendarEventId,
+      externalCalendarEventKey,
+      externalCalendarEventCalendarId: calendarId,
+      externalCalendarEventStartDate: start.toISOString(),
+      externalCalendarEventEndDate: eventEndDate,
       title: event.title?.trim() || 'カレンダーの予定',
       destination: event.location?.trim() || undefined,
       countdownEnabled: false,
@@ -2121,6 +2150,7 @@ export default function App() {
       date: dateKey(start),
       arrival: event.allDay ? '' : formatLiveTime(start),
       allDay: Boolean(event.allDay),
+      endDate: eventEndDate,
       travelMinutes: initialPlan.travelMinutes,
       preparationMinutes: initialPlan.preparationMinutes,
       bufferMinutes: initialPlan.bufferMinutes,
@@ -2273,15 +2303,16 @@ export default function App() {
       helpers={{ dateKey, formatLiveTime, getThemeTokens: getThemedThemeTokens }}
       components={{ AchievementVessel, CalendarMarkPicker }}
     />;
-    const readonly = (node: React.ReactNode, maxHeight = 360) => <View style={[styles.premiumPreview, { minHeight: 220, maxHeight, overflow: 'hidden' }]}>{node}</View>;
+    const readonly = (node: React.ReactNode, maxHeight = 430) => <View style={[styles.premiumPreview, { minHeight: 300, maxHeight, overflow: 'hidden' }]}>{node}</View>;
     // Settings-backed Premium features use the production settings surface as
     // their read-only preview.  The capture/preview callbacks are no-ops, so
     // this cannot persist settings, request permissions, or start ads.
-    if (kind === 'affirmation' || kind === 'photo_design' || kind === 'templates') {
+    if (kind === 'photo_design') {
       return readonly(<View pointerEvents="none">{renderOnboardingCaptureStep('customize')}</View>);
     }
-    if (kind === 'calendar' || kind === 'route' || kind === 'nudge' || kind === 'month' || kind === 'recovery' || kind === 'focus_custom_duration') {
-      const initialTab: TimeTab = kind === 'calendar' ? 'calendar' : kind === 'focus_custom_duration' ? 'focus' : 'deadline';
+    if (kind === 'nudge') return readonly(<NotificationManagerCard designMode={uiDesignMode} readOnly />);
+    if (kind === 'calendar' || kind === 'route' || kind === 'month' || kind === 'recovery' || kind === 'focus_custom_duration') {
+      const initialTab: TimeTab = kind === 'calendar' || kind === 'month' ? 'calendar' : kind === 'route' ? 'departure' : kind === 'focus_custom_duration' ? 'focus' : 'deadline';
       return readonly(<TimelineScreen
         plan={previewPlans[0]}
         plans={previewPlans}
@@ -2299,7 +2330,7 @@ export default function App() {
         planTier="premium"
         focusCustomDurationMinutes={25}
         onFocusCustomDurationChange={() => undefined}
-        recoveryTargetPlanId={undefined}
+        recoveryTargetPlanId={kind === 'recovery' ? previewPlans[0]!.id : undefined}
         onChange={() => undefined}
         onSchedule={() => undefined}
         onScheduleUsed={() => undefined}
@@ -2345,11 +2376,29 @@ export default function App() {
         recordContent={<View pointerEvents="none">{previewHistory}</View>}
         onPremium={() => undefined}
         departurePlans={previewPlans}
-        onApplySuggestion={() => undefined}
-        onAnalysisUsed={() => undefined}
+         onApplySuggestion={() => undefined}
+         onAnalysisUsed={() => undefined}
+         initialTab={kind === 'time' ? 'insights' : kind === 'behavior' ? 'routine' : 'records'}
+       />);
+    }
+    if (kind === 'templates') {
+      return readonly(<TaskModal
+        visible
+        readOnlyPreview
+        templates={[]}
+        savedTemplates={[{ id: 'premium-preview-template', version: 1, createdAt: '2026-01-01T00:00:00.000Z', title: '病院訪問の準備', category: '予定', priority: '高', repeatRule: 'none', nudgeMode: 'once', navigationEnabled: true, preparationMinutes: 30, travelMinutes: 40, bufferMinutes: 15, listItems: [{ id: 'preview-template-list', text: '診察券を入れる', checked: false, order: 0 }] }]}
+        designMode={uiDesignMode}
+        chicPalette={chicPalette}
+        planTier="premium"
+        onPremium={() => undefined}
+        onClose={() => undefined}
+        onSave={() => undefined}
+        styles={styles}
+        helpers={{ getThemeTokens: getThemedThemeTokens, todayInputValue, hasPremiumAccess, dateForReminder, dateKey, formatLiveTime, colors: themedColors, summarizePremiumTaskTemplate }}
+        components={{ CompactNumberSetting }}
       />);
     }
-    if (kind === 'wish') {
+    if (kind === 'wish' || kind === 'affirmation') {
       return readonly(<WishScreen
         designMode={uiDesignMode}
         chicPattern={effectiveChicPattern}
@@ -2358,7 +2407,7 @@ export default function App() {
         state={{ monthlyGoal: '毎月1つ、新しい習慣を続ける', wishes: [{ id: 'preview-wish', title: '週に1冊、本を読む', completed: false, createdAt: new Date().toISOString() }], actions: [{ id: 'preview-action', wishId: 'preview-wish', title: '10分読む', completed: false }], review: {} }}
         onSaveState={() => undefined}
         onCreateTaskFromAction={() => undefined}
-        affirmations={[]}
+        affirmations={kind === 'affirmation' ? [{ id: 'preview-affirmation', text: '私は、自分のペースで進める', time: '08:30', enabled: true, createdAt: '2026-01-01T00:00:00.000Z' }] : []}
         affirmationCustomTexts={[]}
         planTier="premium"
         onSaveAffirmation={() => undefined}
@@ -2366,7 +2415,7 @@ export default function App() {
         onSaveAffirmationCustomText={() => undefined}
         onDeleteAffirmationCustomText={() => undefined}
         canCreateWish={false}
-        canCreateWishAction={wishPremium}
+        canCreateWishAction={true}
         monthlyGoalUnlocked
         onPremium={() => undefined}
         onBack={() => undefined}
@@ -2558,7 +2607,8 @@ export default function App() {
               onDuplicate={(task) => {
                 // 通知は複製せず、複製後にユーザーが改めて設定する。
                 // 過去のルーティンIDも引き継がない独立したタスクにする。
-                const duplicate = { ...task, id: `${Date.now()}-copy`, title: `${task.title}（コピー）`, done: false, status: 'active' as const, skippedAt: undefined, completedAt: undefined, isRoutine: false, routineId: undefined, routineEndedAt: undefined, remindDate: undefined, remindAt: undefined, deadlineNotifyBefore: undefined, nudgeMode: 'once' as NudgeMode };
+                 const duplicateId = `${Date.now()}-${Math.random().toString(16).slice(2)}-copy`;
+                 const duplicate = { ...task, id: duplicateId, title: `${task.title}（コピー）`, done: false, status: 'active' as const, skippedAt: undefined, completedAt: undefined, isRoutine: false, routineId: undefined, routineEndedAt: undefined, remindDate: undefined, remindAt: undefined, deadlineNotifyBefore: undefined, nudgeMode: 'once' as NudgeMode, subtasks: task.subtasks?.map((item, index) => ({ ...item, id: `${duplicateId}-subtask-${index}-${Math.random().toString(16).slice(2)}`, done: false, order: index })), listItems: task.listItems?.map((item, index) => ({ ...item, id: `${duplicateId}-list-${index}-${Math.random().toString(16).slice(2)}`, checked: false, order: index })) };
                 tasksRef.current = [duplicate, ...tasksRef.current];
                 setTasks(tasksRef.current);
               }}
@@ -3771,7 +3821,7 @@ function SettingsDisclosure({ title, subtitle, expanded, onPress, children, desi
   </View>;
 }
 
-function NotificationManagerCard({ designMode }: { designMode?: DesignMode }) {
+function NotificationManagerCard({ designMode, readOnly = false }: { designMode?: DesignMode; readOnly?: boolean }) {
   const isDark = designMode === 'dark';
   const [pending, setPending] = useState<Notifications.NotificationRequest[]>([]);
   const [loading, setLoading] = useState(false);
@@ -3785,6 +3835,7 @@ function NotificationManagerCard({ designMode }: { designMode?: DesignMode }) {
     { text: 'キャンセル', style: 'cancel' },
     { text: '停止する', style: 'destructive', onPress: () => { void Notifications.cancelAllScheduledNotificationsAsync().then(refresh); } },
   ]);
+  if (readOnly) return <View style={[styles.notificationManagerCard, isDark && styles.darkSurface]}><View style={styles.notificationManagerHeader}><View><Text style={[styles.settingsTitle, isDark && styles.darkBodyText]}>高度な通知</Text><Text style={[styles.switchCopy, isDark && styles.darkAccentText]}>段階的な通知を設定できます</Text></View><Text style={[styles.notificationRefreshText, isDark && styles.darkAccentText]}>Premium</Text></View>{[['09:00', 'そろそろ始められそう？'], ['09:05', 'もう一度確認しよう'], ['09:08', '今からできることを選ぶ']].map(([time, copy]) => <View key={time} style={styles.notificationPendingRow}><View style={styles.notificationPendingDot} /><View style={{ flex: 1 }}><Text style={[styles.notificationPendingTitle, isDark && styles.darkBodyText]}>{time}</Text><Text style={[styles.notificationPendingBody, isDark && styles.darkAccentText]}>{copy}</Text></View></View>)}</View>;
   return <View style={[styles.notificationManagerCard, isDark && styles.darkSurface]}>
     <View style={styles.notificationManagerHeader}><View><Text style={[styles.settingsTitle, isDark && styles.darkBodyText]}>通知管理</Text><Text style={[styles.switchCopy, isDark && styles.darkAccentText]}>{loading ? '確認中…' : `${pending.length}件の通知を予約中`}</Text></View><Pressable style={styles.notificationRefresh} onPress={() => void refresh()}><Text style={styles.notificationRefreshText}>更新</Text></Pressable></View>
     {pending.slice(0, 4).map((request) => <View key={request.identifier} style={styles.notificationPendingRow}><View style={styles.notificationPendingDot} /><View style={{ flex: 1 }}><Text numberOfLines={1} style={[styles.notificationPendingTitle, isDark && styles.darkBodyText]}>{request.content.title ?? '通知'}</Text><Text numberOfLines={1} style={[styles.notificationPendingBody, isDark && styles.darkAccentText]}>{request.content.body ?? ''}</Text></View></View>)}

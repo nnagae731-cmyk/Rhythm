@@ -1,3 +1,5 @@
+import { TaskListItem } from './types';
+
 export type PremiumTaskTemplate = {
   id: string;
   version: 1;
@@ -13,6 +15,7 @@ export type PremiumTaskTemplate = {
   preparationMinutes?: number;
   travelMinutes?: number;
   bufferMinutes?: number;
+  listItems?: TaskListItem[];
 };
 
 export type TaskTemplateSource = Omit<PremiumTaskTemplate, 'id' | 'version' | 'sourceTaskId' | 'createdAt' | 'repeatRule' | 'nudgeMode' | 'navigationEnabled'> & { id?: string; repeatRule?: PremiumTaskTemplate['repeatRule']; nudgeMode?: PremiumTaskTemplate['nudgeMode']; navigationEnabled?: boolean };
@@ -33,6 +36,12 @@ export function createPremiumTaskTemplate(source: TaskTemplateSource, id: string
     preparationMinutes: source.preparationMinutes,
     travelMinutes: source.travelMinutes,
     bufferMinutes: source.bufferMinutes,
+    listItems: (source.listItems ?? []).map((item, index) => ({
+      id: `${id}:list:${index}:${Math.random().toString(36).slice(2, 8)}`,
+      text: item.text,
+      checked: false,
+      order: index,
+    })),
   };
 }
 
@@ -46,7 +55,8 @@ export function hasSameTemplateSettings(left: PremiumTaskTemplate, right: Premiu
     && left.navigationEnabled === right.navigationEnabled
     && left.preparationMinutes === right.preparationMinutes
     && left.travelMinutes === right.travelMinutes
-    && left.bufferMinutes === right.bufferMinutes;
+    && left.bufferMinutes === right.bufferMinutes
+    && JSON.stringify((left.listItems ?? []).map((item) => item.text)) === JSON.stringify((right.listItems ?? []).map((item) => item.text));
 }
 
 export function summarizePremiumTaskTemplate(template: PremiumTaskTemplate): string {
@@ -54,5 +64,6 @@ export function summarizePremiumTaskTemplate(template: PremiumTaskTemplate): str
   if (template.remindAt) parts.push(`通知 ${template.remindAt}`);
   if (template.navigationEnabled) parts.push(`準備${template.preparationMinutes ?? 0} / 移動${template.travelMinutes ?? 0} / 余裕${template.bufferMinutes ?? 0}`);
   if (template.repeatRule !== 'none') parts.push(template.repeatRule === 'daily' ? '毎日' : template.repeatRule === 'weekdays' ? '平日' : template.repeatRule === 'monthly' ? '毎月' : '毎週');
+  if (template.listItems?.length) parts.push(`リスト${template.listItems.length}件`);
   return parts.join('　');
 }
