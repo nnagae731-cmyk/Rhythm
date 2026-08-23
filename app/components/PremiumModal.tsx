@@ -6,6 +6,53 @@ import { PlanTier } from '../premiumAccess';
 
 type PremiumPreviewKind = PremiumGuideFeatureId;
 
+const darkPreviewStyleOverrides: Record<string, any> = {
+  premiumPreview: { backgroundColor: '#181F2E', borderColor: '#40506A' },
+  previewImageLabel: { color: '#8F9BB0' },
+  previewScheduleRow: { borderBottomColor: '#303B50' },
+  previewTime: { color: '#F4F7FC' },
+  previewScheduleTitle: { color: '#F4F7FC' },
+  previewSource: { color: '#F4F7FC', backgroundColor: '#26365F' },
+  previewSourceRhythm: { color: '#F4F7FC', backgroundColor: '#26365F' },
+  previewFlowText: { color: '#B4C0D4' },
+  previewArrow: { color: '#8F9BB0' },
+  previewFlowButton: { color: '#101522', backgroundColor: '#8EA6FF' },
+  previewRouteMap: { backgroundColor: '#20293A', borderColor: '#40506A' },
+  previewRouteMapTitle: { color: '#8EA6FF' },
+  previewRouteMapPlace: { color: '#F4F7FC' },
+  previewRouteCopy: { color: '#B4C0D4' },
+  previewNotification: { backgroundColor: '#20293A', borderColor: '#40506A' },
+  previewNotificationTime: { color: '#F4F7FC' },
+  previewNotificationTitle: { color: '#F4F7FC' },
+  previewNotificationCopy: { color: '#B4C0D4' },
+  previewMetricLabel: { color: '#B4C0D4' },
+  previewCompareLabel: { color: '#8F9BB0' },
+  previewCompareValue: { color: '#F4F7FC' },
+  previewCompareArrow: { color: '#8F9BB0' },
+  previewMetricBig: { color: '#8EA6FF' },
+  previewRecordCount: { color: '#B4C0D4' },
+  previewInsightRow: { borderTopColor: '#303B50' },
+  previewInsightLabel: { color: '#B4C0D4' },
+  previewInsightValue: { color: '#F4F7FC' },
+  previewCompareTag: { color: '#B4C0D4' },
+  previewWeekDay: { color: '#F4F7FC', borderColor: '#40506A' },
+  previewMonth: { backgroundColor: '#20293A' },
+  previewMonthTitle: { color: '#F4F7FC' },
+  previewMonthWeek: { color: '#B4C0D4' },
+  previewMonthDays: { color: '#F4F7FC' },
+  previewTemplateSource: { borderColor: '#40506A' },
+  previewTemplateTitle: { color: '#F4F7FC' },
+  previewTemplateMeta: { color: '#B4C0D4' },
+  previewTemplateSave: { color: '#101522', backgroundColor: '#8EA6FF' },
+  previewTemplateSaved: { backgroundColor: '#20293A' },
+  previewTemplateChoose: { color: '#8EA6FF' },
+  previewTemplateReady: { color: '#B4C0D4' },
+  previewDanger: { backgroundColor: '#4A2835' },
+  previewDangerText: { color: '#FF8F9C' },
+  previewRecoveryOption: { backgroundColor: '#20293A' },
+  previewRecoveryText: { color: '#B4C0D4' },
+};
+
 const PREMIUM_GUIDE_FEATURES: Array<{ id: PremiumGuideFeatureId; kind: PremiumPreviewKind; title: string; description: string }> = [
   { id: 'focus_custom_duration', kind: 'focus_custom_duration', title: '集中時間を自由に設定', description: '決まった時間だけでなく、その日に合わせて好きな集中時間を設定できます。' },
   { id: 'records', kind: 'records', title: '今日の記録', description: '写真・ひとこと・メモを日付ごとに保存。カレンダーから記録済みの日を確認し、登録後の編集・削除もできます。' },
@@ -43,8 +90,8 @@ function LegacyPreviewFallback({ kind, styles }: { kind: PremiumPreviewKind; sty
   return <View style={styles.premiumPreview}><Text style={styles.previewImageLabel}>立て直しの表示イメージ</Text><View style={styles.previewDanger}><Text style={styles.previewDangerText}>予定どおりは厳しい</Text></View><View style={styles.previewRecoveryGrid}>{['今から出発', '到着予定を変更', '遅れる連絡', '予定を組み直す'].map((label) => <View key={label} style={styles.previewRecoveryOption}><Text style={styles.previewRecoveryText}>{label}</Text></View>)}</View></View>;
 }
 
-function PremiumPreviewViewport({ children, styles }: { children: React.ReactNode; styles: any }) {
-  return <View style={styles.premiumPreviewViewport} pointerEvents="none"><View style={styles.premiumPreviewViewportContent}>{children}</View></View>;
+function PremiumPreviewViewport({ children, styles, dark }: { children: React.ReactNode; styles: any; dark: boolean }) {
+  return <View style={[styles.premiumPreviewViewport, dark && { backgroundColor: '#181F2E', borderColor: '#40506A' }]} pointerEvents="none"><View style={styles.premiumPreviewViewportContent}>{children}</View></View>;
 }
 
 function PremiumFeatureEntryCard({ number, title, active, designMode, chicPalette, onPress, styles }: { number: string; title: string; active: boolean; designMode: DesignMode; chicPalette?: ChicThemePalette; onPress: () => void; styles: any }) {
@@ -57,10 +104,11 @@ function PremiumFeatureEntryCard({ number, title, active, designMode, chicPalett
 
 function PremiumFeatureDetail({ number, kind, title, description, designMode, chicPalette, styles, renderReadOnlyPreview }: { number: string; kind: PremiumPreviewKind; title: string; description: string; designMode: DesignMode; chicPalette?: ChicThemePalette; styles: any; renderReadOnlyPreview?: (kind: PremiumPreviewKind) => React.ReactNode }) {
   const isMono = designMode !== 'chic';
+  const previewStyles = designMode === 'dark' ? { ...styles, ...darkPreviewStyleOverrides } : styles;
   return <View style={[styles.premiumFeatureBlock, isMono && styles.premiumFeatureMinimal, designMode === 'dark' && styles.premiumFeatureDark, designMode === 'chic' && styles.premiumFeatureChic, designMode === 'chic' && chicPalette && { backgroundColor: chicPalette.cardSurface, borderColor: chicPalette.border }]}>
     <View style={styles.premiumFeatureInner}>
-      <View style={styles.premiumFeatureTop}><Text style={[styles.premiumFeatureNumber, designMode === 'minimal' && styles.premiumFeatureNumberMinimal, designMode === 'dark' && styles.premiumFeatureNumberDark, designMode === 'chic' && chicPalette && { color: chicPalette.accentStrong }]}>{number}</Text><View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}><Text style={[styles.premiumFeatureLabel, designMode === 'chic' && chicPalette && { color: chicPalette.accent }]}>Premium機能</Text><Text style={[styles.premiumFeatureLabel, { color: designMode === 'chic' && chicPalette ? chicPalette.textMuted : designMode === 'dark' ? '#8F9BB0' : '#777772' }]}>READ ONLY</Text></View></View>
-      <PremiumPreviewViewport styles={styles}>{renderReadOnlyPreview?.(kind) ?? <LegacyPreviewFallback kind={kind} styles={styles} />}</PremiumPreviewViewport>
+      <View style={styles.premiumFeatureTop}><Text style={[styles.premiumFeatureNumber, designMode === 'minimal' && styles.premiumFeatureNumberMinimal, designMode === 'dark' && styles.premiumFeatureNumberDark, designMode === 'chic' && chicPalette && { color: chicPalette.accentStrong }]}>{number}</Text><View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}><Text style={[styles.premiumFeatureLabel, designMode === 'dark' && { color: '#8EA6FF', backgroundColor: '#20293A' }, designMode === 'chic' && chicPalette && { color: chicPalette.accent }]}>Premium機能</Text><Text style={[styles.premiumFeatureLabel, { color: designMode === 'chic' && chicPalette ? chicPalette.textMuted : designMode === 'dark' ? '#8F9BB0' : '#777772' }, designMode === 'dark' && { backgroundColor: '#20293A' }]}>READ ONLY</Text></View></View>
+      <PremiumPreviewViewport styles={styles} dark={designMode === 'dark'}>{renderReadOnlyPreview?.(kind) ?? <LegacyPreviewFallback kind={kind} styles={previewStyles} />}</PremiumPreviewViewport>
       <View style={[styles.premiumFeatureTextPlate, isMono && styles.premiumFeatureTextMinimal, designMode === 'dark' && styles.premiumFeatureTextDark, designMode === 'chic' && styles.premiumFeatureTextChic, designMode === 'chic' && chicPalette && { backgroundColor: chicPalette.surfaceSubtle, borderColor: chicPalette.border }]}><Text style={[styles.premiumFeatureTitle, isMono && styles.premiumFeatureTitleMinimal, designMode === 'dark' && styles.premiumFeatureTitleDark, designMode === 'chic' && chicPalette && { color: chicPalette.textPrimary }]}>{title}</Text><Text style={[styles.premiumFeatureDescription, isMono && styles.premiumFeatureDescriptionMinimal, designMode === 'dark' && styles.premiumFeatureDescriptionDark, designMode === 'chic' && chicPalette && { color: chicPalette.textSecondary }]}>{description}</Text></View>
     </View>
   </View>;

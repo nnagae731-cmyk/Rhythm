@@ -8,7 +8,7 @@ import { PremiumGuideFeatureId } from '../premiumGuide';
 import { PremiumTaskTemplate } from '../taskTemplates';
 import { categories, priorities, repeatOptions } from '../features/tasks/taskUtils';
 import { parseSmartTaskInput, SmartTaskParseResult } from '../features/tasks/smartTaskInput';
-export function TaskModal({ visible, task, templates, savedTemplates, designMode, chicPalette, planTier, onPremium, onClose, onOpenBulkAdd, onSave, readOnlyPreview = false, styles, helpers, components }: { visible: boolean; task?: Task; templates: string[]; savedTemplates: PremiumTaskTemplate[]; designMode: DesignMode; chicPalette?: ChicThemePalette; planTier: PlanTier; onPremium: (featureId?: PremiumGuideFeatureId) => void; onClose: () => void; onOpenBulkAdd?: () => void; onSave: (title: string, category: Category, priority: Priority, remindDate?: string, remindAt?: string, deadlineDate?: string, deadlineTime?: string, deadlineNotifyBefore?: number, navigationEnabled?: boolean, preparationMinutes?: number, travelMinutes?: number, bufferMinutes?: number, repeatRule?: RepeatRule, nudgeMode?: NudgeMode, scheduledDate?: string, scheduledTime?: string, endAt?: string, isRoutine?: boolean, subtasks?: Subtask[]) => void; readOnlyPreview?: boolean; styles: any; helpers: any; components: any }) {
+export function TaskModal({ visible, task, templates, savedTemplates, designMode, chicPalette, planTier, onPremium, onClose, onOpenBulkAdd, onSave, readOnlyPreview = false, previewSection, styles, helpers, components }: { visible: boolean; task?: Task; templates: string[]; savedTemplates: PremiumTaskTemplate[]; designMode: DesignMode; chicPalette?: ChicThemePalette; planTier: PlanTier; onPremium: (featureId?: PremiumGuideFeatureId) => void; onClose: () => void; onOpenBulkAdd?: () => void; onSave: (title: string, category: Category, priority: Priority, remindDate?: string, remindAt?: string, deadlineDate?: string, deadlineTime?: string, deadlineNotifyBefore?: number, navigationEnabled?: boolean, preparationMinutes?: number, travelMinutes?: number, bufferMinutes?: number, repeatRule?: RepeatRule, nudgeMode?: NudgeMode, scheduledDate?: string, scheduledTime?: string, endAt?: string, isRoutine?: boolean, subtasks?: Subtask[]) => void; readOnlyPreview?: boolean; previewSection?: 'savedTemplates'; styles: any; helpers: any; components: any }) {
   const { getThemeTokens, todayInputValue, hasPremiumAccess, dateForReminder, dateKey, formatLiveTime, colors, summarizePremiumTaskTemplate } = helpers;
   const { CompactNumberSetting } = components;
   const theme = getThemeTokens(designMode, chicPalette?.id ?? 'cool');
@@ -157,6 +157,8 @@ export function TaskModal({ visible, task, templates, savedTemplates, designMode
     setDeadlineNotify(false);
   };
 
+  const savedTemplateContent = !task && (hasPremiumAccess(planTier, 'saved_task_templates') ? <View style={styles.savedTemplatePicker}><Text style={styles.templateGroupLabel}>マイひな型</Text>{savedTemplates.length === 0 ? <Text style={styles.savedTemplateEmpty}>タスクの「•••」から設定ごと保存できます。</Text> : <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.savedTemplateChips}>{savedTemplates.map((template) => <Pressable key={template.id} style={styles.savedTemplateChip} onPress={() => applySavedTemplate(template)}><Text numberOfLines={1} style={styles.savedTemplateChipTitle}>{template.title}</Text><Text numberOfLines={2} style={styles.savedTemplateChipCopy}>{summarizePremiumTaskTemplate(template)}</Text><Text style={styles.savedTemplateChoose}>選ぶ ›</Text></Pressable>)}</ScrollView>}</View> : <Pressable style={styles.savedTemplateLocked} onPress={() => onPremium('templates')}><View style={{ flex: 1 }}><Text style={styles.savedTemplateLockedTitle}>マイひな型</Text><Text style={styles.savedTemplateLockedCopy}>一度作った設定を、次からそのまま使う</Text></View><Text style={styles.taskTemplateSavePremium}>Premium機能</Text></Pressable>);
+
   const closeForm = () => {
     setShowScheduledDatePicker(false);
     setShowScheduledTimePicker(false);
@@ -194,6 +196,8 @@ export function TaskModal({ visible, task, templates, savedTemplates, designMode
     setShowDeadlineTimePicker((value) => !value);
   };
 
+  if (readOnlyPreview && previewSection === 'savedTemplates') return <View style={[styles.premiumPreview, { backgroundColor: theme.colors.surface, padding: 14 }]} pointerEvents="none"><Text style={[styles.modalTitle, designMode === 'dark' && styles.modalTitleDark]}>マイひな型</Text>{savedTemplateContent}</View>;
+
   const modalContent = (
       <KeyboardAvoidingView style={styles.keyboardView} behavior={Platform.OS === 'ios' ? 'padding' : 'height'} keyboardVerticalOffset={8}>
       <Pressable style={styles.modalBackdrop} onPress={closeForm}>
@@ -203,7 +207,7 @@ export function TaskModal({ visible, task, templates, savedTemplates, designMode
           <Text style={[styles.modalTitle, designMode === 'dark' && styles.modalTitleDark]}>{task ? 'タスクを編集' : '新しいタスク'}</Text>
           {!task && onOpenBulkAdd && <Pressable style={{ alignSelf: 'flex-start', marginTop: 8, marginBottom: 2 }} onPress={() => { closeForm(); onOpenBulkAdd(); }}><Text style={{ color: isChic && chicPalette ? chicPalette.accent : theme.colors.primaryAccent, fontWeight: '700' }}>複数まとめて追加 ›</Text></Pressable>}
           {!task && templates.length > 0 && <><Text style={styles.templateGroupLabel}>クイックひな型</Text><ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.taskTemplates}>{templates.map((item) => <Pressable key={item} style={styles.taskTemplateChip} onPress={() => setTitle(item)}><Text style={styles.taskTemplateText}>＋ {item}</Text></Pressable>)}</ScrollView></>}
-          {!task && (hasPremiumAccess(planTier, 'saved_task_templates') ? <View style={styles.savedTemplatePicker}><Text style={styles.templateGroupLabel}>マイひな型</Text>{savedTemplates.length === 0 ? <Text style={styles.savedTemplateEmpty}>タスクの「•••」から設定ごと保存できます。</Text> : <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.savedTemplateChips}>{savedTemplates.map((template) => <Pressable key={template.id} style={styles.savedTemplateChip} onPress={() => applySavedTemplate(template)}><Text numberOfLines={1} style={styles.savedTemplateChipTitle}>{template.title}</Text><Text numberOfLines={2} style={styles.savedTemplateChipCopy}>{summarizePremiumTaskTemplate(template)}</Text><Text style={styles.savedTemplateChoose}>選ぶ ›</Text></Pressable>)}</ScrollView>}</View> : <Pressable style={styles.savedTemplateLocked} onPress={() => onPremium('templates')}><View style={{ flex: 1 }}><Text style={styles.savedTemplateLockedTitle}>マイひな型</Text><Text style={styles.savedTemplateLockedCopy}>一度作った設定を、次からそのまま使う</Text></View><Text style={styles.taskTemplateSavePremium}>Premium機能</Text></Pressable>)}
+          {savedTemplateContent}
           <Text style={[styles.fieldLabel, designMode === 'dark' && styles.fieldLabelDark]}>やること・忘れたくないこと</Text>
           <View style={styles.voiceAddInputRow}>
           <TextInput

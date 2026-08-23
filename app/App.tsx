@@ -24,6 +24,7 @@ import { SettingsScreen } from './screens/SettingsScreen';
 import { HistoryScreen, MonthlyReflectionCardView, ReflectionCardModel } from './screens/HistoryScreen';
 import { TaskModal } from './components/TaskModal';
 import { BulkTaskModal } from './components/BulkTaskModal';
+import { AffirmationSettingsCard } from './components/AffirmationSettingsCard';
 import { PremiumModal } from './components/PremiumModal';
 import { RewardedAccessModal, RewardedAccessResult } from './components/RewardedAccessModal';
 import { BottomNav } from './components/BottomNav';
@@ -2303,7 +2304,7 @@ export default function App() {
       helpers={{ dateKey, formatLiveTime, getThemeTokens: getThemedThemeTokens }}
       components={{ AchievementVessel, CalendarMarkPicker }}
     />;
-    const readonly = (node: React.ReactNode, maxHeight = 430) => <View style={[styles.premiumPreview, { minHeight: 300, maxHeight, overflow: 'hidden' }]}>{node}</View>;
+    const readonly = (node: React.ReactNode, maxHeight = 430) => <View style={[styles.premiumPreview, { minHeight: 300, maxHeight, overflow: 'hidden' }, uiDesignMode === 'dark' && { backgroundColor: '#181F2E', borderColor: '#40506A' }]}>{node}</View>;
     // Settings-backed Premium features use the production settings surface as
     // their read-only preview.  The capture/preview callbacks are no-ops, so
     // this cannot persist settings, request permissions, or start ads.
@@ -2403,6 +2404,7 @@ export default function App() {
       return readonly(<TaskModal
         visible
         readOnlyPreview
+        previewSection="savedTemplates"
         templates={[]}
         savedTemplates={[{ id: 'premium-preview-template', version: 1, createdAt: '2026-01-01T00:00:00.000Z', title: '病院訪問の準備', category: '予定', priority: '高', repeatRule: 'none', nudgeMode: 'once', navigationEnabled: true, preparationMinutes: 30, travelMinutes: 40, bufferMinutes: 15, listItems: [{ id: 'preview-template-list', text: '診察券を入れる', checked: false, order: 0 }] }]}
         designMode={uiDesignMode}
@@ -2416,7 +2418,23 @@ export default function App() {
         components={{ CompactNumberSetting }}
       />);
     }
-    if (kind === 'wish' || kind === 'affirmation') {
+    if (kind === 'affirmation') {
+      return readonly(<AffirmationSettingsCard
+        affirmations={[{ id: 'preview-affirmation', text: '私は、自分のペースで進める', time: '08:30', enabled: true, createdAt: '2026-01-01T00:00:00.000Z' }]}
+        customTexts={[{ id: 'preview-custom-affirmation', text: '今日も自分らしく進める', createdAt: '2026-01-01T00:00:00.000Z' }]}
+        designMode={uiDesignMode}
+        chicPalette={chicPalette}
+        planTier="premium"
+        onPremium={() => undefined}
+        onSave={() => undefined}
+        onDelete={() => undefined}
+        onSaveCustomText={() => undefined}
+        onDeleteCustomText={() => undefined}
+        styles={styles}
+        previewMode
+      />, 560);
+    }
+    if (kind === 'wish') {
       return readonly(<WishScreen
         designMode={uiDesignMode}
         chicPattern={effectiveChicPattern}
@@ -2425,7 +2443,7 @@ export default function App() {
         state={{ monthlyGoal: '毎月1つ、新しい習慣を続ける', wishes: [{ id: 'preview-wish', title: '週に1冊、本を読む', completed: false, createdAt: new Date().toISOString() }], actions: [{ id: 'preview-action', wishId: 'preview-wish', title: '10分読む', completed: false }], review: {} }}
         onSaveState={() => undefined}
         onCreateTaskFromAction={() => undefined}
-        affirmations={kind === 'affirmation' ? [{ id: 'preview-affirmation', text: '私は、自分のペースで進める', time: '08:30', enabled: true, createdAt: '2026-01-01T00:00:00.000Z' }] : []}
+        affirmations={[]}
         affirmationCustomTexts={[]}
         planTier="premium"
         onSaveAffirmation={() => undefined}
