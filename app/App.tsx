@@ -2586,7 +2586,7 @@ function FocusMode({ tasks, designMode, chicPalette, backgroundImageUri, planTie
       onPremium?.('focus_custom_duration');
       return;
     }
-    setCustomDraft(String(customDurationMinutes ?? 30));
+    setCustomDraft(String(customDurationMinutes ?? duration));
     setCustomEditorOpen(true);
   };
   const applyCustomDuration = () => {
