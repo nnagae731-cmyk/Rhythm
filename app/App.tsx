@@ -488,6 +488,7 @@ export default function App() {
   }, []);
   const persistenceDisabledRef = React.useRef(false);
   const saveFailureNotifiedRef = React.useRef(false);
+  const persistenceTimerRef = React.useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const pendingNotificationCompletionIdsRef = React.useRef<string[]>([]);
   const pendingDepartureNotificationActionsRef = React.useRef<Array<{
     planId: string;
@@ -1637,13 +1638,19 @@ export default function App() {
     if (!hydrated) return;
     const state: PersistedState = { tasks, plan, departurePlans, widgetSize, showCompleted, completionIcon, designMode, monoAppearance, hapticsEnabled, reviewPromptedAt, taskTemplates, savedTaskTemplates, chicPattern, chicCheckColor, recoveryHistory, focusSessions, focusCustomDurationMinutes, departureCheckIns, behaviorEvents, wishMonths, calendarMarks, sharedEvents, sharedParticipantIdsByToken, sharedParticipantPrefsByToken, departurePreparationStatuses, affirmations, affirmationCustomTexts, photoTheme };
     if (persistenceDisabledRef.current) return;
-    saveRhythmState(state).catch((error) => {
-      console.warn('Rhythm state save failed.', error);
-      if (!saveFailureNotifiedRef.current) {
-        saveFailureNotifiedRef.current = true;
-        Alert.alert('保存できませんでした', '空き容量や端末の設定を確認して、もう一度お試しください。');
-      }
-    });
+    if (persistenceTimerRef.current) clearTimeout(persistenceTimerRef.current);
+    persistenceTimerRef.current = setTimeout(() => {
+      void saveRhythmState(state).catch((error) => {
+        console.warn('Rhythm state save failed.', error);
+        if (!saveFailureNotifiedRef.current) {
+          saveFailureNotifiedRef.current = true;
+          Alert.alert('保存できませんでした', '空き容量や端末の設定を確認して、もう一度お試しください。');
+        }
+      });
+    }, 80);
+    return () => {
+      if (persistenceTimerRef.current) clearTimeout(persistenceTimerRef.current);
+    };
   }, [tasks, plan, departurePlans, widgetSize, showCompleted, completionIcon, designMode, monoAppearance, hapticsEnabled, reviewPromptedAt, taskTemplates, savedTaskTemplates, chicPattern, chicCheckColor, recoveryHistory, focusSessions, focusCustomDurationMinutes, departureCheckIns, behaviorEvents, wishMonths, calendarMarks, sharedEvents, sharedParticipantIdsByToken, sharedParticipantPrefsByToken, departurePreparationStatuses, affirmations, affirmationCustomTexts, photoTheme, hydrated]);
 
   const requestAppReview = React.useCallback(async () => {
@@ -2281,6 +2288,13 @@ export default function App() {
         state={{ monthlyGoal: '毎月1つ、新しい習慣を続ける', wishes: [{ id: 'preview-wish', title: '週に1冊、本を読む', completed: false, createdAt: new Date().toISOString() }], actions: [{ id: 'preview-action', wishId: 'preview-wish', title: '10分読む', completed: false }], review: {} }}
         onSaveState={() => undefined}
         onCreateTaskFromAction={() => undefined}
+        affirmations={[]}
+        affirmationCustomTexts={[]}
+        planTier="premium"
+        onSaveAffirmation={() => undefined}
+        onDeleteAffirmation={() => undefined}
+        onSaveAffirmationCustomText={() => undefined}
+        onDeleteAffirmationCustomText={() => undefined}
         canCreateWish={false}
         canCreateWishAction={wishPremium}
         monthlyGoalUnlocked
@@ -2517,6 +2531,13 @@ export default function App() {
               state={currentWishState}
               onSaveState={saveCurrentWishState}
               onCreateTaskFromAction={createTaskFromWishAction}
+              affirmations={affirmations}
+              affirmationCustomTexts={affirmationCustomTexts}
+              planTier={planTier}
+              onSaveAffirmation={saveAffirmation}
+              onDeleteAffirmation={deleteAffirmation}
+              onSaveAffirmationCustomText={saveAffirmationCustomText}
+              onDeleteAffirmationCustomText={deleteAffirmationCustomText}
               canCreateWish={hasPremiumAccess(planTier, 'wish_planning') || canCreateWish(rewardedAccess)}
               wishRewardProgress={{ current: rewardedAccess.wishCreateProgress, required: 2 }}
               onRequestWishReward={requestWishReward}
@@ -2772,10 +2793,10 @@ export default function App() {
         onShareCurrentEvent={shareCurrentSharedEvent}
       />
 
-      <TaskModal visible={addOpen} templates={taskTemplates} savedTemplates={savedTaskTemplates} designMode={uiDesignMode} chicPalette={chicPalette} planTier={planTier} onPremium={openPremiumFeature} onClose={() => setAddOpen(false)} onSave={addTask} styles={styles} helpers={{ getThemeTokens: getThemedThemeTokens, todayInputValue, hasPremiumAccess, dateForReminder, dateKey, formatLiveTime, colors: themedColors, summarizePremiumTaskTemplate }} components={{ CompactNumberSetting }} />
-      <TaskModal
-        visible={editingTask !== null}
-        task={editingTask ?? undefined}
+      {addOpen && <TaskModal visible templates={taskTemplates} savedTemplates={savedTaskTemplates} designMode={uiDesignMode} chicPalette={chicPalette} planTier={planTier} onPremium={openPremiumFeature} onClose={() => setAddOpen(false)} onSave={addTask} styles={styles} helpers={{ getThemeTokens: getThemedThemeTokens, todayInputValue, hasPremiumAccess, dateForReminder, dateKey, formatLiveTime, colors: themedColors, summarizePremiumTaskTemplate }} components={{ CompactNumberSetting }} />}
+      {editingTask !== null && <TaskModal
+        visible
+        task={editingTask}
         templates={taskTemplates}
         savedTemplates={savedTaskTemplates}
         designMode={uiDesignMode}
@@ -2787,7 +2808,7 @@ export default function App() {
         styles={styles}
         helpers={{ getThemeTokens: getThemedThemeTokens, todayInputValue, hasPremiumAccess, dateForReminder, dateKey, formatLiveTime, colors: themedColors, summarizePremiumTaskTemplate }}
         components={{ CompactNumberSetting }}
-      />
+      />}
       <PremiumModal visible={premiumOpen} initialFeatureId={premiumTargetFeature} designMode={uiDesignMode} chicPalette={chicPalette} planTier={planTier} isDevelopment={__DEV__} onMockPlanTier={setDevPlanTierOverride} onClose={() => setPremiumOpen(false)} styles={styles} helpers={{ getThemeTokens: getThemedThemeTokens }} renderReadOnlyPreview={renderPremiumReadOnlyPreview} />
       {__DEV__ && <OnboardingCaptureStudio visible={captureStudioOpen} onClose={() => setCaptureStudioOpen(false)} renderStep={renderOnboardingCaptureStep} renderGuideStep={renderGuideCaptureStep} renderPremiumStep={renderPremiumReadOnlyPreview} colors={{ background: theme.colors.screenBackground, surface: theme.colors.surface, border: theme.colors.border, text: theme.colors.primaryText, muted: theme.colors.secondaryText, accent: theme.colors.primaryAccent, onAccent: uiDesignMode === 'dark' ? theme.colors.screenBackground : '#FFFFFF' }} />}
       <DesignPreviewModal visible={Boolean(designPreviewPattern)} initialPattern={designPreviewPattern} initialMode={designPreviewMode} chicCheckColor={chicCheckColor} planTier={planTier} photoUri={designPreviewPhotoUri} onPickPhoto={() => void pickPhotoForDesignPreview()} onClose={() => { setDesignPreviewPattern(undefined); setDesignPreviewPhotoUri(undefined); setDesignPreviewMode('chic'); }} onUse={(mode, pattern) => {

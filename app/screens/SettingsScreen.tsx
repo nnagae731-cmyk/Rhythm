@@ -5,7 +5,6 @@ import { Affirmation, AffirmationCustomText, PhotoThemePhotoTarget, PhotoThemeSe
 import { PlanTier } from '../premiumAccess';
 import { PremiumGuideFeatureId } from '../premiumGuide';
 import { PremiumTaskTemplate } from '../taskTemplates';
-import { AffirmationSettingsCard } from '../components/AffirmationSettingsCard';
 import { PhotoThemeSettingsCard } from '../components/PhotoThemeSettingsCard';
 export function SettingsScreen({
   tasks,
@@ -112,7 +111,7 @@ export function SettingsScreen({
   const selectedMode = selectedDesignMode ?? designMode;
   const isDark = designMode === 'dark';
   const isDesign = selectedMode === 'chic' || selectedMode === 'photo';
-  const [expandedSetting, setExpandedSetting] = useState<'design' | 'notifications' | 'affirmations' | 'quick' | 'templates' | 'widget' | null>('design');
+  const [expandedSetting, setExpandedSetting] = useState<'appearance' | 'notifications' | 'taskDisplay' | 'quick' | 'widget' | 'premium' | 'about' | null>(captureDesignOnly ? 'appearance' : null);
   const previewTasks = tasks.filter((task) => showCompleted || !task.done).slice(0, size === 'small' ? 2 : 3);
   const isCheckPattern = chicPattern === 'checkLavenderSatin' || chicPattern === 'checkBeigeNoir' || chicPattern === 'checkMauveFrame';
   const patternVisual = isCheckPattern ? getChicCheckColor(chicCheckColor) : getChicPatternVisual(chicPattern, chicPalette);
@@ -136,7 +135,7 @@ export function SettingsScreen({
   return (
     <>
       {__DEV__ && !captureDesignOnly && <View style={[styles.settingsCard, isDark && styles.darkSurface]}><Text style={[styles.settingsTitle, isDark && styles.darkBodyText]}>Expo Go 確認環境</Text><Text style={[styles.switchCopy, isDark && styles.darkAccentText]}>このQRコードは、利用プランが固定された確認用環境です。</Text><Text style={[styles.devPlanCurrent, isDark && styles.darkAccentText]}>現在：{planTier === 'premium' ? 'Premium版' : '無料版'}</Text>{onOpenCaptureStudio ? <Pressable onPress={onOpenCaptureStudio} style={{ minHeight: 42, marginTop: 10, borderRadius: 11, backgroundColor: isDark ? '#40506A' : '#EEF1F7', alignItems: 'center', justifyContent: 'center' }}><Text style={{ color: isDark ? '#F4F7FC' : '#33415D', fontSize: 12, fontWeight: '800' }}>Onboarding Capture Studio</Text></Pressable> : null}</View>}
-      <SettingsDisclosure designMode={designMode} title="デザインモード" subtitle="Mono / Design / 写真を選ぶ" expanded={expandedSetting === 'design'} onPress={() => setExpandedSetting((current) => current === 'design' ? null : 'design')}>
+      <SettingsDisclosure designMode={designMode} title="見た目" subtitle="Mono / Design / 写真を選ぶ" expanded={expandedSetting === 'appearance'} onPress={() => setExpandedSetting((current) => current === 'appearance' ? null : 'appearance')}>
       <View accessibilityLabel={isDesign ? `Design ${checkColorLabel}` : 'Mono'} style={[styles.modeCard, isDark && styles.darkSurface, isDesign && chicPalette && { backgroundColor: chicPalette.cardSurface, borderColor: chicPalette.border }]}>
         {selectedMode === 'chic' && chicPattern === 'checkLavenderSatin' && <BThemeRibbonDecoration compact />}
         {selectedMode === 'chic' && chicPattern === 'checkBeigeNoir' && <CThemeRibbonDecoration compact />}
@@ -167,25 +166,31 @@ export function SettingsScreen({
       </View>
       </SettingsDisclosure>
       {!captureDesignOnly && <>
-      <AffirmationSettingsCard affirmations={affirmations} customTexts={affirmationCustomTexts} designMode={designMode} chicPalette={chicPalette} planTier={planTier} onPremium={onPremium} onSave={onSaveAffirmation} onDelete={onDeleteAffirmation} onSaveCustomText={onSaveAffirmationCustomText} onDeleteCustomText={onDeleteAffirmationCustomText} styles={styles} />
-      <SettingsDisclosure designMode={designMode} title="通知管理" subtitle="予約中の通知を確認・停止" expanded={expandedSetting === 'notifications'} onPress={() => setExpandedSetting((current) => current === 'notifications' ? null : 'notifications')}>
-        <NotificationManagerCard designMode={designMode} />
-      </SettingsDisclosure>
-      <View style={[styles.settingsCard, isDark && styles.darkSurface]}><View style={styles.switchRow}><View style={{ flex: 1 }}><Text style={[styles.switchTitle, isDark && styles.darkBodyText]}>触覚フィードバック</Text><Text style={[styles.switchCopy, isDark && styles.darkMutedText]}>完了や集中開始を振動で知らせます</Text></View><Switch value={hapticsEnabled} onValueChange={(value) => onHapticsEnabled(value)} trackColor={{ false: isDark ? '#40506A' : '#D8D3DE', true: isDesign && chicPalette ? chicPalette.accent : colors.violet }} thumbColor={hapticsEnabled ? (isDesign && chicPalette ? chicPalette.onAccent : '#FFFFFF') : (isDark ? '#8F9BB0' : '#FFFFFF')} /></View></View>
-      <SettingsDisclosure designMode={designMode} title="クイック雛形" subtitle="よく使うタスクを保存" expanded={expandedSetting === 'quick'} onPress={() => setExpandedSetting((current) => current === 'quick' ? null : 'quick')}>
+       <SettingsDisclosure designMode={designMode} title="通知・フィードバック" subtitle="通知管理・触覚フィードバック" expanded={expandedSetting === 'notifications'} onPress={() => setExpandedSetting((current) => current === 'notifications' ? null : 'notifications')}>
+         <NotificationManagerCard designMode={designMode} />
+       <View style={[styles.settingsCard, isDark && styles.darkSurface]}><View style={styles.switchRow}><View style={{ flex: 1 }}><Text style={[styles.switchTitle, isDark && styles.darkBodyText]}>触覚フィードバック</Text><Text style={[styles.switchCopy, isDark && styles.darkMutedText]}>完了や集中開始を振動で知らせます</Text></View><Switch value={hapticsEnabled} onValueChange={(value) => onHapticsEnabled(value)} trackColor={{ false: isDark ? '#40506A' : '#D8D3DE', true: isDesign && chicPalette ? chicPalette.accent : colors.violet }} thumbColor={hapticsEnabled ? (isDesign && chicPalette ? chicPalette.onAccent : '#FFFFFF') : (isDark ? '#8F9BB0' : '#FFFFFF')} /></View></View>
+       </SettingsDisclosure>
+        <SettingsDisclosure designMode={designMode} title="タスク・表示" subtitle="完了表示・アイコン・ウィジェット" expanded={expandedSetting === 'taskDisplay'} onPress={() => setExpandedSetting((current) => current === 'taskDisplay' ? null : 'taskDisplay')}>
+        <View style={[styles.settingsCard, isDark && styles.darkSurface]}>
+          <Text style={[styles.settingsTitle, isDark && styles.darkBodyText]}>タスク・表示</Text>
+          <View style={styles.switchRow}><View><Text style={[styles.switchTitle, isDark && styles.darkBodyText]}>完了したタスクも表示</Text><Text style={[styles.switchCopy, isDark && styles.darkAccentText]}>チェック済みの項目を残します</Text></View><Switch value={showCompleted} onValueChange={onShowCompleted} trackColor={{ true: selectedMode === 'chic' && chicPalette ? chicPalette.accent : colors.violet }} /></View>
+          <Text style={[styles.fieldLabel, { marginTop: 20 }, isDark && styles.darkAccentText]}>完了アイコン</Text>
+          <View style={styles.iconChoices}>{completionIcons.map((icon: string) => <Pressable key={icon} style={[styles.iconChoice, completionIcon === icon && styles.iconChoiceActive]} onPress={() => onCompletionIcon(icon)}><Text style={[styles.iconChoiceText, completionIcon === icon && styles.iconChoiceTextActive]}>{icon}</Text></Pressable>)}</View>
+        </View>
+        </SettingsDisclosure>
+        <SettingsDisclosure designMode={designMode} title="クイックひな型" subtitle="登録済みタスクと設定を呼び出す" expanded={expandedSetting === 'quick'} onPress={() => setExpandedSetting((current) => current === 'quick' ? null : 'quick')}>
       <View style={[styles.settingsCard, isDark && styles.darkSurface]}>
         <Text style={[styles.switchCopy, isDark && styles.darkMutedText]}>よく登録するタスクを自分用に保存できます</Text>
         <View style={styles.templateAddRow}><TextInput value={newTemplate} onChangeText={setNewTemplate} placeholder="例：水筒をバッグに入れる" placeholderTextColor="#A29DAA" style={styles.templateInput} /><Pressable style={styles.templateAddButton} onPress={() => { const clean = newTemplate.trim(); if (!clean) return; onAddTemplate(clean); setNewTemplate(''); }}><Text style={styles.templateAddButtonText}>追加</Text></Pressable></View>
         <View style={styles.templateList}>{templates.map((item) => <View key={item} style={[styles.templateRow, isDark && styles.darkSurface]}><Text style={[styles.templateRowText, isDark && styles.darkBodyText]}>{item}</Text><Pressable onPress={() => onDeleteTemplate(item)}><Text style={[styles.templateDelete, isDark && styles.darkAccentText]}>×</Text></Pressable></View>)}</View>
       </View>
-      </SettingsDisclosure>
-      <SettingsDisclosure designMode={designMode} title="マイひな型" subtitle="設定ごと保存して次回呼び出す" expanded={expandedSetting === 'templates'} onPress={() => setExpandedSetting((current) => current === 'templates' ? null : 'templates')}>
       <View style={[styles.settingsCard, isDark && styles.darkSurface]}>
         <View style={styles.historyHeader}><View><Text style={[styles.settingsTitle, isDark && styles.darkBodyText]}>マイひな型</Text><Text style={[styles.switchCopy, isDark && styles.darkAccentText]}>設定ごと保存して、次回そのまま呼び出す</Text></View><Text style={styles.taskTemplateSavePremium}>Premium</Text></View>
-        {hasPremiumAccess(planTier, 'saved_task_templates') ? savedTemplates.length === 0 ? <Text style={[styles.savedTemplateEmpty, isDark && styles.darkMutedText]}>タスクの「•••」から「設定ごとひな型に保存」を選べます。</Text> : savedTemplates.map((template) => <View key={template.id} style={[styles.savedTemplateSettingRow, isDark && styles.darkSurface]}><View style={{ flex: 1 }}><Text style={[styles.savedTemplateSettingTitle, isDark && styles.darkBodyText]}>{template.title}</Text><Text style={[styles.savedTemplateSettingCopy, isDark && styles.darkMutedText]}>{summarizePremiumTaskTemplate(template)}</Text></View><Pressable onPress={() => onDeleteSavedTemplate(template)}><Text style={[styles.templateDelete, isDark && styles.darkAccentText]}>削除</Text></Pressable></View>) : <Pressable style={[styles.savedTemplateLocked, isDark && styles.darkSurface]} onPress={() => onPremium('templates')}><View style={{ flex: 1 }}><Text style={[styles.savedTemplateLockedTitle, isDark && styles.darkBodyText]}>この機能を見る</Text><Text style={[styles.savedTemplateLockedCopy, isDark && styles.darkMutedText]}>保存済みデータは無料へ戻っても消えません</Text></View><Text style={[styles.guideCardArrow, isDark && styles.darkAccentText]}>›</Text></Pressable>}
-      </View>
-      </SettingsDisclosure>
-      <Text style={[styles.settingsSectionLabel, isDark && styles.darkBodyText]}>ウィジェット設定</Text>
+       {hasPremiumAccess(planTier, 'saved_task_templates') ? savedTemplates.length === 0 ? <Text style={[styles.savedTemplateEmpty, isDark && styles.darkMutedText]}>タスクの「•••」から「設定ごとひな型に保存」を選べます。</Text> : savedTemplates.map((template) => <View key={template.id} style={[styles.savedTemplateSettingRow, isDark && styles.darkSurface]}><View style={{ flex: 1 }}><Text style={[styles.savedTemplateSettingTitle, isDark && styles.darkBodyText]}>{template.title}</Text><Text style={[styles.savedTemplateSettingCopy, isDark && styles.darkMutedText]}>{summarizePremiumTaskTemplate(template)}</Text></View><Pressable onPress={() => onDeleteSavedTemplate(template)}><Text style={[styles.templateDelete, isDark && styles.darkAccentText]}>削除</Text></Pressable></View>) : <Pressable style={[styles.savedTemplateLocked, isDark && styles.darkSurface]} onPress={() => onPremium('templates')}><View style={{ flex: 1 }}><Text style={[styles.savedTemplateLockedTitle, isDark && styles.darkBodyText]}>この機能を見る</Text><Text style={[styles.savedTemplateLockedCopy, isDark && styles.darkMutedText]}>保存済みデータは無料へ戻っても消えません</Text></View><Text style={[styles.guideCardArrow, isDark && styles.darkAccentText]}>›</Text></Pressable>}
+       </View>
+       </SettingsDisclosure>
+       <SettingsDisclosure designMode={designMode} title="ウィジェット" subtitle="サイズと表示内容" expanded={expandedSetting === 'widget'} onPress={() => setExpandedSetting((current) => current === 'widget' ? null : 'widget')}>
+       <Text style={[styles.settingsSectionLabel, isDark && styles.darkBodyText]}>ウィジェット設定</Text>
       <Text style={[styles.previewLabel, isDark && styles.darkAccentText]}>WIDGET PREVIEW</Text>
 
       <View style={[styles.phonePreview, selectedMode === 'minimal' && styles.phonePreviewMinimal, selectedMode === 'chic' && { backgroundColor: chicPalette?.accent ?? patternVisual.accent }, ]}>
@@ -219,9 +224,8 @@ export function SettingsScreen({
         </View>
       </View>
 
-      <SettingsDisclosure designMode={designMode} title="ウィジェット設定" subtitle="サイズ・完了表示・アイコン" expanded={expandedSetting === 'widget'} onPress={() => setExpandedSetting((current) => current === 'widget' ? null : 'widget')}>
-      <View style={[styles.settingsCard, isDark && styles.darkSurface]}>
-        <Text style={[styles.settingsTitle, isDark && styles.darkBodyText]}>ウィジェット設定</Text>
+       <View style={[styles.settingsCard, isDark && styles.darkSurface]}>
+         <Text style={[styles.settingsTitle, isDark && styles.darkBodyText]}>ウィジェット設定</Text>
         <Text style={[styles.fieldLabel, isDark && styles.darkAccentText]}>サイズ</Text>
         <View style={styles.segment}>
           <Pressable style={[styles.segmentButton, size === 'small' && styles.segmentActive]} onPress={() => onSize('small')}>
@@ -230,21 +234,6 @@ export function SettingsScreen({
           <Pressable style={[styles.segmentButton, size === 'medium' && styles.segmentActive]} onPress={() => onSize('medium')}>
             <Text style={[styles.segmentText, size === 'medium' && styles.segmentTextActive]}>中</Text>
           </Pressable>
-        </View>
-        <View style={styles.switchRow}>
-          <View>
-            <Text style={[styles.switchTitle, isDark && styles.darkBodyText]}>完了したタスクも表示</Text>
-            <Text style={[styles.switchCopy, isDark && styles.darkAccentText]}>チェック済みの項目を残します</Text>
-          </View>
-          <Switch value={showCompleted} onValueChange={onShowCompleted} trackColor={{ true: selectedMode === 'chic' && chicPalette ? chicPalette.accent : colors.violet }} />
-        </View>
-        <Text style={[styles.fieldLabel, { marginTop: 20 }, isDark && styles.darkAccentText]}>完了アイコン</Text>
-        <View style={styles.iconChoices}>
-          {completionIcons.map((icon: string) => (
-            <Pressable key={icon} style={[styles.iconChoice, completionIcon === icon && styles.iconChoiceActive]} onPress={() => onCompletionIcon(icon)}>
-              <Text style={[styles.iconChoiceText, completionIcon === icon && styles.iconChoiceTextActive]}>{icon}</Text>
-            </Pressable>
-          ))}
         </View>
         <Pressable style={styles.lockedSetting} onPress={() => onPremium()}>
           <View>
@@ -255,8 +244,13 @@ export function SettingsScreen({
         </Pressable>
       </View>
       </SettingsDisclosure>
-      <Pressable style={[styles.guideCard, { backgroundColor: guideColors.surface, borderColor: guideColors.border, borderWidth: 1 }]} onPress={onGuide}><View><Text style={[styles.guideCardTitle, { color: guideColors.textPrimary }]}>Rhythmの使い方</Text><Text style={[styles.guideCardCopy, { color: guideColors.textSecondary }]}>登録・振り分け・出発・集中の流れを見る</Text></View><Text style={[styles.guideCardArrow, { color: guideColors.accent }]}>›</Text></Pressable>
-      <Pressable style={[styles.settingsCard, isDark && styles.darkSurface]} onPress={onReview}><Text style={[styles.settingsTitle, isDark && styles.darkBodyText]}>アプリを評価する</Text><Text style={[styles.switchCopy, isDark && styles.darkMutedText]}>短いレビューでRhythmの改善を応援できます</Text></Pressable>
+       <SettingsDisclosure designMode={designMode} title="Premium" subtitle="Premium機能と登録情報" expanded={expandedSetting === 'premium'} onPress={() => setExpandedSetting((current) => current === 'premium' ? null : 'premium')}>
+         <Pressable style={[styles.settingsCard, isDark && styles.darkSurface]} onPress={() => onPremium()}><Text style={[styles.settingsTitle, isDark && styles.darkBodyText]}>Premium機能を見る</Text><Text style={[styles.switchCopy, isDark && styles.darkMutedText]}>記録・分析・デザインなどを広げます</Text></Pressable>
+       </SettingsDisclosure>
+       <SettingsDisclosure designMode={designMode} title="アプリについて" subtitle="使い方・レビュー" expanded={expandedSetting === 'about'} onPress={() => setExpandedSetting((current) => current === 'about' ? null : 'about')}>
+         <Pressable style={[styles.guideCard, { backgroundColor: guideColors.surface, borderColor: guideColors.border, borderWidth: 1 }]} onPress={onGuide}><View><Text style={[styles.guideCardTitle, { color: guideColors.textPrimary }]}>使い方を見る</Text><Text style={[styles.guideCardCopy, { color: guideColors.textSecondary }]}>登録・振り分け・出発・集中の流れを見る</Text></View><Text style={[styles.guideCardArrow, { color: guideColors.accent }]}>›</Text></Pressable>
+         <Pressable style={[styles.settingsCard, isDark && styles.darkSurface]} onPress={onReview}><Text style={[styles.settingsTitle, isDark && styles.darkBodyText]}>アプリを評価する</Text><Text style={[styles.switchCopy, isDark && styles.darkMutedText]}>短いレビューでRhythmの改善を応援できます</Text></Pressable>
+       </SettingsDisclosure>
       </>}
     </>
   );

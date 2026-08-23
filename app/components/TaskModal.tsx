@@ -1,5 +1,5 @@
 import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Alert, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, Switch, Text, TextInput, View } from 'react-native';
 import { ChicThemePalette, DesignMode } from '../theme';
 import { Category, NudgeMode, Priority, RepeatRule, Subtask, Task } from '../types';
@@ -42,10 +42,12 @@ export function TaskModal({ visible, task, templates, savedTemplates, designMode
   const [smartResult, setSmartResult] = useState<SmartTaskParseResult>({ title: '', matched: [] });
   const [subtasks, setSubtasks] = useState<Subtask[]>([]);
   const [newSubtask, setNewSubtask] = useState('');
-  const titleInputRef = React.useRef<TextInput>(null);
+  const titleInputRef = useRef<TextInput>(null);
+  const saveGuardRef = useRef(false);
 
   useEffect(() => {
     if (!visible) return;
+    saveGuardRef.current = false;
     setTitle(task?.title ?? '');
     setRemind(Boolean(task?.remindAt));
     setTime(task?.remindAt ?? '09:00');
@@ -74,20 +76,30 @@ export function TaskModal({ visible, task, templates, savedTemplates, designMode
     setSmartResult({ title: task?.title ?? '', matched: [] });
     setShowScheduledDatePicker(false);
     setShowScheduledTimePicker(false);
+    const focusTimer = setTimeout(() => titleInputRef.current?.focus(), 120);
+    return () => clearTimeout(focusTimer);
   }, [visible, task]);
+
+  useEffect(() => {
+    if (!visible) return;
+    const timer = setTimeout(() => setSmartResult(parseSmartTaskInput(title, new Date(), dateKey)), 120);
+    return () => clearTimeout(timer);
+  }, [dateKey, title, visible]);
 
   const updateTitle = (value: string) => {
     setTitle(value);
-    setSmartResult(parseSmartTaskInput(value, new Date(), dateKey));
   };
 
   const save = () => {
+    if (saveGuardRef.current) return;
     const clean = title.trim();
     if (!clean) {
       Alert.alert('タスクを入力してください');
       return;
     }
-    const parsed = smartResult;
+    // Parse once on submit so quick templates and pasted text are always
+    // reflected, while the input path itself remains debounced.
+    const parsed = parseSmartTaskInput(title, new Date(), dateKey);
     const startForRange = parsed.scheduledTime ?? scheduledTime;
     const endForRange = parsed.endTime ?? scheduledEndTime;
     if (startForRange && endForRange && /^\d{2}:\d{2}$/.test(endForRange) && endForRange <= startForRange) {
@@ -98,8 +110,10 @@ export function TaskModal({ visible, task, templates, savedTemplates, designMode
       Alert.alert('日時を確認してください', '指定した日時が過去になっています。保存しますか？', [{ text: '修正する', style: 'cancel' }, { text: '保存する', onPress: () => saveTask(parsed) }]);
       return;
     }
+    saveGuardRef.current = true;
     const parsedReminder = parsed.remindAt ? true : remind;
     onSave(parsed.title || clean, category, priority, parsedReminder ? parsed.remindDate ?? remindDate : undefined, parsedReminder ? parsed.remindAt ?? time : undefined, hasDeadline ? deadlineDate : undefined, hasDeadline ? deadlineTime : undefined, hasDeadline && deadlineNotify ? deadlineNotifyBefore : undefined, hasDeadline && navigationEnabled, preparationMinutes, travelMinutes, bufferMinutes, parsed.repeatRule ?? repeatRule, nudgeMode, parsed.scheduledDate ?? scheduledDate, parsed.scheduledTime ?? (scheduledTime || undefined), parsed.endTime ?? (scheduledEndTime || undefined), isRoutine, subtasks.filter((item) => item.title.trim()).map((item, index) => ({ ...item, title: item.title.trim(), order: index })));
+    requestAnimationFrame(() => { saveGuardRef.current = false; });
   };
 
   const saveTask = (parsed: SmartTaskParseResult) => {
@@ -194,7 +208,6 @@ export function TaskModal({ visible, task, templates, savedTemplates, designMode
           <View style={styles.voiceAddInputRow}>
           <TextInput
             ref={titleInputRef}
-            autoFocus
             value={title}
             onChangeText={updateTitle}
             placeholder="例：資料をバッグに入れる"

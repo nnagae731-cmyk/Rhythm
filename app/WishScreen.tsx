@@ -1,11 +1,13 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Alert, Image, Keyboard, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { ChicPattern, ChicThemePalette, DesignMode, getThemeTokens } from './theme';
-import { MonthlyWishState, Wish, WishAction } from './types';
+import { Affirmation, AffirmationCustomText, MonthlyWishState, Wish, WishAction } from './types';
+import { PlanTier } from './premiumAccess';
 import { calculateWishProgress } from './features/wish/wishUtils';
 import { BThemeRibbonDecoration } from './components/BThemeRibbonDecoration';
 import { CThemeRibbonDecoration } from './components/CThemeRibbonDecoration';
 import { RewardedAccessModal, RewardedAccessResult } from './components/RewardedAccessModal';
+import { AffirmationSettingsCard } from './components/AffirmationSettingsCard';
 
 type WishScreenProps = {
   designMode: DesignMode;
@@ -19,6 +21,13 @@ type WishScreenProps = {
   wishRewardProgress?: { current: number; required: number };
   onRequestWishReward?: () => Promise<RewardedAccessResult> | RewardedAccessResult;
   onWishCreated?: () => void;
+  affirmations: Affirmation[];
+  affirmationCustomTexts: AffirmationCustomText[];
+  planTier: PlanTier;
+  onSaveAffirmation: (affirmation: Affirmation) => Promise<void> | void;
+  onDeleteAffirmation: (affirmation: Affirmation) => Promise<void> | void;
+  onSaveAffirmationCustomText: (text: AffirmationCustomText) => void;
+  onDeleteAffirmationCustomText: (id: string) => void;
   canCreateWishAction?: boolean;
   monthlyGoalUnlocked?: boolean;
   monthlyGoalRewardProgress?: { current: number; required: number };
@@ -59,7 +68,7 @@ function sectionText(mode: DesignMode, chic: string, minimal: string) {
   return mode === 'minimal' ? minimal : chic;
 }
 
-export function WishScreen({ designMode: rawDesignMode, chicPattern, chicPalette, monthLabel, state, onSaveState, onCreateTaskFromAction, canCreateWish = true, wishRewardProgress, onRequestWishReward, onWishCreated, canCreateWishAction = true, monthlyGoalUnlocked = false, monthlyGoalRewardProgress, onRequestMonthlyGoalReward, onPremium, onBack }: WishScreenProps) {
+export function WishScreen({ designMode: rawDesignMode, chicPattern, chicPalette, monthLabel, state, onSaveState, onCreateTaskFromAction, canCreateWish = true, wishRewardProgress, onRequestWishReward, onWishCreated, affirmations, affirmationCustomTexts, planTier, onSaveAffirmation, onDeleteAffirmation, onSaveAffirmationCustomText, onDeleteAffirmationCustomText, canCreateWishAction = true, monthlyGoalUnlocked = false, monthlyGoalRewardProgress, onRequestMonthlyGoalReward, onPremium, onBack }: WishScreenProps) {
   // Mono DarkはMono Lightと同じレイアウトを使い、色だけを反転する。
   const designMode: 'minimal' | 'chic' = rawDesignMode === 'dark' || rawDesignMode === 'photo' ? 'minimal' : rawDesignMode;
   const isDark = rawDesignMode === 'dark';
@@ -239,6 +248,20 @@ export function WishScreen({ designMode: rawDesignMode, chicPattern, chicPalette
               </View>
             )}
           </SectionCard>
+
+          <AffirmationSettingsCard
+            affirmations={affirmations}
+            customTexts={affirmationCustomTexts}
+            designMode={rawDesignMode}
+            chicPalette={palette}
+            planTier={planTier}
+            onPremium={onPremium ?? (() => undefined)}
+            onSave={onSaveAffirmation}
+            onDelete={onDeleteAffirmation}
+            onSaveCustomText={onSaveAffirmationCustomText}
+            onDeleteCustomText={onDeleteAffirmationCustomText}
+            styles={styles}
+          />
 
           <SectionCard
             designMode={designMode}
