@@ -20,6 +20,7 @@ type Props = {
   onSaveCustomText: (text: AffirmationCustomText) => void;
   onDeleteCustomText: (id: string) => void;
   styles: any;
+  compact?: boolean;
 };
 
 function clockToDate(time: string) {
@@ -29,7 +30,7 @@ function clockToDate(time: string) {
   return value;
 }
 
-export function AffirmationSettingsCard({ affirmations, customTexts, designMode, chicPalette, planTier, onPremium, onSave, onDelete, onSaveCustomText, onDeleteCustomText, styles }: Props) {
+export function AffirmationSettingsCard({ affirmations, customTexts, designMode, chicPalette, planTier, onPremium, onSave, onDelete, onSaveCustomText, onDeleteCustomText, styles, compact = false }: Props) {
   const [sheetOpen, setSheetOpen] = useState(false);
   const [text, setText] = useState('');
   const [time, setTime] = useState('09:00');
@@ -73,12 +74,12 @@ export function AffirmationSettingsCard({ affirmations, customTexts, designMode,
   };
   const beginEdit = (item: Affirmation) => { setEditingId(item.id); setText(item.text); setTime(item.time); setEnabled(item.enabled); setTemplateId(item.templateId); setEditingCustomId(item.customTextId); setSheetOpen(true); };
 
-  if (!canUse) return <Pressable style={[styles.settingsCard, isDark && styles.darkSurface]} onPress={() => onPremium('affirmation')}><Text style={[styles.settingsTitle, isDark && styles.darkBodyText]}>アファメーション</Text><Text style={[styles.switchCopy, isDark && styles.darkMutedText]}>好きな言葉を、選んだ時間に届けます</Text><Text style={styles.taskTemplateSavePremium}>Premium</Text></Pressable>;
+  if (!canUse) return compact
+    ? <Pressable style={[styles.lockedFeatureCard, isDark && styles.lockedFeatureCardDark, isChic && { backgroundColor: chicPalette?.surfaceSubtle, borderColor: chicPalette?.border }]} onPress={() => onPremium('affirmation')}><Text style={[styles.lockedFeatureTitle, isDark && styles.lockedFeatureTitleDark, isChic && { color: chicPalette?.textPrimary }]}>🔒 アファメーション</Text><Text style={[styles.lockedFeatureText, isDark && styles.lockedFeatureTextDark, isChic && { color: chicPalette?.textSecondary }]}>好きな言葉を、選んだ時間に届けます。</Text><Text style={[styles.lockedFeatureCta, { color: isChic ? chicPalette?.accent : accent }]}>Premiumで利用できます</Text></Pressable>
+    : <Pressable style={[styles.settingsCard, isDark && styles.darkSurface]} onPress={() => onPremium('affirmation')}><Text style={[styles.settingsTitle, isDark && styles.darkBodyText]}>アファメーション</Text><Text style={[styles.switchCopy, isDark && styles.darkMutedText]}>好きな言葉を、選んだ時間に届けます</Text><Text style={styles.taskTemplateSavePremium}>Premium</Text></Pressable>;
 
   return <>
-    <Pressable style={[styles.settingsCard, isDark && styles.darkSurface, isChic && { backgroundColor: surface, borderColor: border }]} onPress={() => setSheetOpen(true)}>
-      <View style={{ flex: 1 }}><Text style={[styles.settingsTitle, { color: primary }]}>アファメーション</Text><Text style={[styles.switchCopy, { color: secondary }]}>{affirmations.length}/5件を設定中 ・ タップして管理</Text></View><Text style={{ color: accent, fontSize: 22 }}>›</Text>
-    </Pressable>
+    {compact ? <Pressable style={{ flexDirection: 'row', alignItems: 'center', minHeight: 48 }} onPress={() => setSheetOpen(true)}><View style={{ flex: 1 }}><Text style={[styles.itemMeta, { color: primary, fontSize: 13, marginTop: 0 }]}>{affirmations.length}/5件を設定中</Text><Text style={[styles.itemMeta, { color: secondary, marginTop: 4 }]}>好きな言葉を、選んだ時間に届ける</Text></View><Text style={{ color: accent, fontSize: 13, fontWeight: '900' }}>管理する ›</Text></Pressable> : <Pressable style={[styles.settingsCard, isDark && styles.darkSurface, isChic && { backgroundColor: surface, borderColor: border }]} onPress={() => setSheetOpen(true)}><View style={{ flex: 1 }}><Text style={[styles.settingsTitle, { color: primary }]}>アファメーション</Text><Text style={[styles.switchCopy, { color: secondary }]}>{affirmations.length}/5件を設定中 ・ タップして管理</Text></View><Text style={{ color: accent, fontSize: 22 }}>›</Text></Pressable>}
     <Modal visible={sheetOpen} transparent animationType="slide" onRequestClose={closeSheet}>
       <Pressable style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.35)' }} onPress={closeSheet}>
         <View onStartShouldSetResponder={() => true} style={{ maxHeight: '92%', borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 18, backgroundColor: surface, borderColor: border, borderWidth: 1 }}>

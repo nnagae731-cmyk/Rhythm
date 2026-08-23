@@ -261,6 +261,7 @@ export function WishScreen({ designMode: rawDesignMode, chicPattern, chicPalette
             onSaveCustomText={onSaveAffirmationCustomText}
             onDeleteCustomText={onDeleteAffirmationCustomText}
             styles={styles}
+            compact
           />
 
           <SectionCard
