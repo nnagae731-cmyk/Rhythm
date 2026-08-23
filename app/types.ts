@@ -15,6 +15,7 @@ export type Priority = '高' | '中' | '低';
 export type RepeatRule = 'none' | 'daily' | 'weekdays' | 'weekly' | 'monthly';
 export type TaskBucket = 'now' | 'later' | 'waiting';
 export type Subtask = { id: string; title: string; done: boolean; order: number };
+export type TaskListItem = { id: string; text: string; checked: boolean; order: number };
 export type TaskStatus = 'active' | 'completed' | 'skipped';
 export type NudgeMode = 'once' | 'repeat' | 'strong';
 export type ThemeMode = DesignMode;
@@ -54,6 +55,8 @@ export type Task = {
   completedAt?: string;
   /** One-level child tasks. Absent on legacy tasks. */
   subtasks?: Subtask[];
+  /** Optional checklist attached to the task (separate from one-level subtasks). */
+  listItems?: TaskListItem[];
 };
 
 export type DeparturePlan = {
@@ -70,6 +73,8 @@ export type DeparturePlan = {
   departureTime?: string;
   date: string;
   arrival: string;
+  /** True for imported all-day calendar events; arrival remains empty for compatibility. */
+  allDay?: boolean;
   /** Optional local HH:mm end time for schedule display. */
   endAt?: string | null;
   travelMinutes: number;
@@ -226,6 +231,10 @@ export type PersistedState = {
   savedTaskTemplates?: PremiumTaskTemplate[];
   wishMonths?: WishMonthMap;
   calendarMarks?: CalendarMarks;
+  /** Selected device calendar IDs for import. Optional for older saves. */
+  calendarImportCalendarIds?: string[];
+  /** Calendar IDs known when selection was last saved; used to default newly-added normal calendars on. */
+  calendarImportKnownCalendarIds?: string[];
   sharedEvents?: SharedEvent[];
   sharedParticipantIdsByToken?: Record<string, string>;
   sharedParticipantPrefsByToken?: Record<string, SharedParticipantPrefs>;

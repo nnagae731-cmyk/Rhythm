@@ -2,11 +2,12 @@ import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/dat
 import React, { useState } from 'react';
 import { Modal, Platform, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 import { ChicThemePalette, DesignMode } from '../theme';
-import { Category, Priority, RepeatRule, Subtask, Task, TaskBucket } from '../types';
+import { Category, Priority, RepeatRule, Subtask, Task, TaskBucket, TaskListItem } from '../types';
 import { categories, categoryColors, priorities, repeatOptions } from '../features/tasks/taskUtils';
 import { TaskDateTimePickerSheet } from '../components/TaskDateTimePickerSheet';
 import { parseSmartTaskInput, SmartTaskParseResult } from '../features/tasks/smartTaskInput';
 import { OnboardingHint } from '../features/onboarding/OnboardingHint';
+import { TaskListSheet } from '../components/TaskListSheet';
 const HomeRuntimeContext = React.createContext<any>(null);
 
 function useHomeRuntime() {
@@ -29,6 +30,7 @@ export function HomeScreen({
   onQuickAdd,
   onToggle,
   onToggleSubtask,
+  onUpdateTaskList,
   onCompleteParent,
   onEdit,
   onToggleSelection,
@@ -69,6 +71,7 @@ export function HomeScreen({
   onQuickAdd: (title: string, category: Category, priority: Priority, scheduledDate?: string, scheduledTime?: string, endAt?: string, isRoutine?: boolean, deadlineDate?: string, deadlineTime?: string, deadlineNotifyBefore?: number, remindDate?: string, remindAt?: string, repeatRule?: RepeatRule, subtasks?: Subtask[]) => void;
   onToggle: (id: string) => void;
   onToggleSubtask: (taskId: string, subtaskId: string) => void;
+  onUpdateTaskList: (taskId: string, items: TaskListItem[]) => void;
   onCompleteParent: (taskId: string) => void;
   onEdit: (task: Task) => void;
   onToggleSelection: (id: string) => void;
@@ -105,6 +108,7 @@ export function HomeScreen({
   const [actionTask, setActionTask] = useState<Task | null>(null);
   const [tomorrowOpen, setTomorrowOpen] = useState(false);
   const [expandedSubtasks, setExpandedSubtasks] = useState<Record<string, boolean>>({});
+  const [listTask, setListTask] = useState<Task | undefined>();
   const bucketTasks = tasks.filter((task) => (task.bucket ?? 'now') === bucketFilter);
   const categoryTasks = categoryFilter === 'すべて' ? bucketTasks : bucketTasks.filter((task) => task.category === categoryFilter);
   const displayTasks = [...categoryTasks].sort((a, b) => priorityOrder[a.priority] - priorityOrder[b.priority]);
@@ -240,6 +244,7 @@ export function HomeScreen({
               {task.deadlineDate && (() => { const status = deadlineLabel(task); return <Text style={[styles.deadlineMeta, status?.overdue && styles.deadlineOverdue]}>⌛ {task.deadlineDate.slice(5).replace('-', '/')} {task.deadlineTime ?? '23:59'} · {status?.text}</Text>; })()}
             </View>
             {hasSubtasks && <Pressable accessibilityRole="button" style={[{ minHeight: 40, marginTop: 8, paddingHorizontal: 10, borderRadius: 10, borderWidth: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }, isDark ? styles.darkSurface : styles.filterChip, designMode === 'chic' && { backgroundColor: chicPalette.accentSoft, borderColor: chicPalette.border }]} onPress={(event) => { event.stopPropagation(); setExpandedSubtasks((current) => ({ ...current, [task.id]: !isSubtasksExpanded })); }}><Text style={[styles.taskMeta, isDark && styles.darkBodyText, designMode === 'chic' && { color: chicPalette.accentStrong }]}>サブタスク {taskSubtasks.length}件 ・ 完了 {completedSubtaskCount}件</Text><Text style={[styles.taskMeta, isDark && styles.darkAccentText, designMode === 'chic' && { color: chicPalette.accent }]}>{isSubtasksExpanded ? '閉じる' : '開く'}⌄</Text></Pressable>}
+            {task.listItems && task.listItems.length > 0 && <Pressable accessibilityRole="button" onStartShouldSetResponder={() => true} style={[{ marginTop: 8, minHeight: 34, paddingHorizontal: 10, borderRadius: 10, borderWidth: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }, isDark ? styles.darkSurface : styles.filterChip, designMode === 'chic' && { backgroundColor: chicPalette.cardTint, borderColor: chicPalette.border }]} onPress={(event) => { event.stopPropagation(); setListTask(task); }}><Text style={[styles.taskMeta, isDark && styles.darkBodyText, designMode === 'chic' && { color: chicPalette.accentStrong }]}>リスト {task.listItems.filter((item) => item.checked).length} / {task.listItems.length}</Text><Text style={[styles.taskMeta, isDark && styles.darkAccentText, designMode === 'chic' && { color: chicPalette.accent }]}>›</Text></Pressable>}
           </View>
           {!selectionMode && <Pressable style={styles.taskBucketButton} onPress={() => setBucketTask(task)}><Text style={styles.taskBucketButtonText}>{(task.bucket ?? 'now') === 'now' ? '今やる' : task.bucket === 'later' ? 'あとで' : '待ち'}⌄</Text></Pressable>}
           {!selectionMode && <Pressable style={styles.taskMoreButton} onPress={() => setActionTask(task)} hitSlop={8}><Text style={styles.taskMoreText}>•••</Text></Pressable>}
@@ -274,6 +279,7 @@ export function HomeScreen({
           </View>
         </Pressable>
       </Modal>
+      <TaskListSheet visible={Boolean(listTask)} task={listTask} designMode={designMode} chicPalette={chicPalette} styles={styles} onClose={() => setListTask(undefined)} onSave={onUpdateTaskList} />
       <Modal visible={tomorrowOpen} transparent animationType="fade" onRequestClose={() => setTomorrowOpen(false)}>
         <Pressable style={styles.bucketModalBackdrop} onPress={() => setTomorrowOpen(false)}>
           <View style={[styles.bucketModalCard, isDark && styles.darkSurface, designMode === 'chic' && { backgroundColor: chicPalette.cardSurface, borderColor: chicPalette.border }]}>

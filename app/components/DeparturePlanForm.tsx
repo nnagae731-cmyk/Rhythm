@@ -148,6 +148,8 @@ export function DeparturePlanForm({
     setShowOtherDuration(false);
   };
   const selectedTime = getPlanScheduledTime(plan);
+  const pickerTime = selectedTime || '12:00';
+  const isAllDay = Boolean(plan.allDay);
   const currentDuration = durationEditor ? plan[durationEditor.field] : 0;
   const durationChoiceValues = durationEditor?.field === 'preparationMinutes'
     ? [...new Set([...(durationEditor.values ?? []), recommendation.minutes])].sort((left, right) => left - right)
@@ -183,11 +185,11 @@ export function DeparturePlanForm({
       Alert.alert('予定名を入力してください');
       return;
     }
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(plan.date) || !isClock(selectedTime)) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(plan.date) || (!isAllDay && !isClock(selectedTime))) {
       Alert.alert('日付と時刻を確認してください');
       return;
     }
-    if (plan.endAt && (!isClock(plan.endAt) || plan.endAt <= selectedTime)) {
+    if (!isAllDay && plan.endAt && (!isClock(plan.endAt) || plan.endAt <= selectedTime)) {
       Alert.alert('終了時間を確認してください', '終了時間は開始時間より後にしてください。');
       return;
     }
@@ -241,19 +243,19 @@ export function DeparturePlanForm({
           <View style={styles.labelRow}><Text style={[styles.fieldLabel, fieldText]}>日付</Text><Text style={[styles.required, { color: theme.colors.primaryAccent }]}>必須</Text></View>
           <Pressable style={[styles.dateTimeButton, input]} onPress={() => setShowDatePicker((current) => !current)}>
             <Text style={[styles.dateTimeIcon, { color: theme.colors.primaryAccent }]}>□</Text>
-            <Text numberOfLines={1} style={[styles.dateTimeValue, fieldText]}>{formatLiveDate(dateForReminder(plan.date, selectedTime))}</Text>
+            <Text numberOfLines={1} style={[styles.dateTimeValue, fieldText]}>{formatLiveDate(dateForReminder(plan.date, pickerTime))}</Text>
           </Pressable>
         </View>
         <View style={styles.dateTimeField}>
           <View style={styles.labelRow}><Text style={[styles.fieldLabel, fieldText]}>{canUseReverse ? '到着時刻' : isDirectDeparture ? '出発時刻' : '予定時刻'}</Text><Text style={[styles.required, { color: theme.colors.primaryAccent }]}>必須</Text></View>
-          <Pressable style={[styles.dateTimeButton, input]} onPress={() => setShowTimePicker((current) => !current)}>
+          <Pressable disabled={isAllDay} style={[styles.dateTimeButton, input, isAllDay && { opacity: 0.7 }]} onPress={() => setShowTimePicker((current) => !current)}>
             <Text style={[styles.dateTimeIcon, { color: theme.colors.primaryAccent }]}>◷</Text>
-            <Text numberOfLines={1} style={[styles.dateTimeValue, fieldText]}>{formatLiveTime(dateForReminder(plan.date, selectedTime))}{canUseReverse ? ' 到着' : ''}</Text>
+            <Text numberOfLines={1} style={[styles.dateTimeValue, fieldText]}>{isAllDay ? '終日' : `${formatLiveTime(dateForReminder(plan.date, pickerTime))}${canUseReverse ? ' 到着' : ''}`}</Text>
           </Pressable>
         </View>
       </View>
       {showDatePicker && <DateTimePicker
-        value={dateForReminder(plan.date, selectedTime)}
+        value={dateForReminder(plan.date, pickerTime)}
         mode="date"
         minimumDate={new Date()}
         display={Platform.OS === 'ios' ? 'inline' : 'default'}
@@ -264,7 +266,7 @@ export function DeparturePlanForm({
         }}
       />}
       {showTimePicker && <DateTimePicker
-        value={dateForReminder(plan.date, selectedTime)}
+        value={dateForReminder(plan.date, pickerTime)}
         mode="time"
         display={Platform.OS === 'ios' ? 'spinner' : 'default'}
         themeVariant={isDark ? 'dark' : 'light'}
@@ -283,7 +285,7 @@ export function DeparturePlanForm({
         </Pressable>
       </View>
       {showEndTimePicker && <DateTimePicker
-        value={dateForReminder(plan.date, plan.endAt ?? selectedTime)}
+        value={dateForReminder(plan.date, plan.endAt ?? pickerTime)}
         mode="time"
         display={Platform.OS === 'ios' ? 'spinner' : 'default'}
         themeVariant={isDark ? 'dark' : 'light'}

@@ -22,6 +22,7 @@ export function isArrivalReversePlan(plan: DeparturePlan) {
 
 /** The one time shown in calendar and direct-departure cards. */
 export function getPlanScheduledTime(plan: DeparturePlan) {
+  if (plan.allDay) return '';
   return isDepartureReminderPlan(plan) ? plan.departureTime ?? plan.arrival : plan.arrival;
 }
 

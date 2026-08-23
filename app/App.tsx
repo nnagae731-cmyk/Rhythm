@@ -23,6 +23,7 @@ import { TimelineScreen } from './screens/TimelineScreen';
 import { SettingsScreen } from './screens/SettingsScreen';
 import { HistoryScreen } from './screens/HistoryScreen';
 import { TaskModal } from './components/TaskModal';
+import { BulkTaskModal } from './components/BulkTaskModal';
 import { PremiumModal } from './components/PremiumModal';
 import { RewardedAccessModal, RewardedAccessResult } from './components/RewardedAccessModal';
 import { BottomNav } from './components/BottomNav';
@@ -33,7 +34,7 @@ import type { OnboardingFeatureId } from './features/onboarding/onboardingSteps'
 import { useOnboarding } from './features/onboarding/useOnboarding';
 import { RecoveryModal } from './components/RecoveryModal';
 import { styles } from './styles/appStyles';
-import { Affirmation, AffirmationCustomText, CalendarMarks, Category, DeparturePlan, DeparturePreparationStatus, MonthlyReflectionCard, MonthlyReview, MonthlyWishState, NudgeMode, PersistedState, PhotoThemePhotoTarget, PhotoThemeSettings, Priority, RepeatRule, Screen, SharedEvent, SharedParticipantPrefs, Subtask, Task, TaskBucket, ThemeMode, TimeTab, UrgencyStatus, WidgetSize, WishAction, WishMonthMap } from './types';
+import { Affirmation, AffirmationCustomText, CalendarMarks, Category, DeparturePlan, DeparturePreparationStatus, MonthlyReflectionCard, MonthlyReview, MonthlyWishState, NudgeMode, PersistedState, PhotoThemePhotoTarget, PhotoThemeSettings, Priority, RepeatRule, Screen, SharedEvent, SharedParticipantPrefs, Subtask, Task, TaskBucket, TaskListItem, ThemeMode, TimeTab, UrgencyStatus, WidgetSize, WishAction, WishMonthMap } from './types';
 import { initialPlan } from './storage/rhythmState';
 import { loadRhythmState, saveRhythmState } from './storage/rhythmStorage';
 import { categories, priorities, completionIcons, categoryColors as baseCategoryColors, designModes, getLateRiskMessage, getNextBestAction, getUrgencyStatus, urgencyLevel } from './features/tasks/taskUtils';
@@ -56,6 +57,7 @@ import { FOCUS_NAVIGATION_GUARD_COPY, getFocusNavigationDecision } from './featu
 import {
   Alert,
   ActivityIndicator,
+  AppState,
   Animated,
   useColorScheme,
   Easing,
@@ -489,6 +491,7 @@ export default function App() {
   const persistenceDisabledRef = React.useRef(false);
   const saveFailureNotifiedRef = React.useRef(false);
   const persistenceTimerRef = React.useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const latestPersistedStateRef = React.useRef<PersistedState | undefined>(undefined);
   const pendingNotificationCompletionIdsRef = React.useRef<string[]>([]);
   const pendingDepartureNotificationActionsRef = React.useRef<Array<{
     planId: string;
@@ -543,6 +546,8 @@ export default function App() {
   const pendingSharedEventTokensRef = React.useRef<string[]>([]);
   const [wishMonths, setWishMonths] = useState<WishMonthMap>({});
   const [calendarMarks, setCalendarMarks] = useState<CalendarMarks>({});
+  const [calendarImportCalendarIds, setCalendarImportCalendarIds] = useState<string[] | undefined>();
+  const [calendarImportKnownCalendarIds, setCalendarImportKnownCalendarIds] = useState<string[] | undefined>();
   const [sharedEvents, setSharedEvents] = useState<SharedEvent[]>([]);
   const sharedEventsRef = React.useRef<SharedEvent[]>([]);
   const [sharedParticipantIdsByToken, setSharedParticipantIdsByToken] = useState<Record<string, string>>({});
@@ -565,6 +570,7 @@ export default function App() {
       : systemColorScheme === 'dark' ? 'dark' : 'minimal';
   const theme = useMemo(() => getThemeTokens(isMonoDesign ? resolvedMonoMode : designMode, appDesignPaletteId), [designMode, isMonoDesign, resolvedMonoMode, appDesignPaletteId]);
   const [addOpen, setAddOpen] = useState(false);
+  const [bulkAddOpen, setBulkAddOpen] = useState(false);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedTaskIds, setSelectedTaskIds] = useState<string[]>([]);
@@ -1504,6 +1510,8 @@ export default function App() {
         setSavedTaskTemplates(saved.savedTaskTemplates ?? []);
         setWishMonths(saved.wishMonths ?? {});
         setCalendarMarks(saved.calendarMarks ?? {});
+        setCalendarImportCalendarIds(saved.calendarImportCalendarIds);
+        setCalendarImportKnownCalendarIds(saved.calendarImportKnownCalendarIds);
         const loadedSharedEvents = (saved.sharedEvents ?? []).map((item) => normalizeSharedEvent(item));
         sharedEventsRef.current = loadedSharedEvents;
         setSharedEvents(loadedSharedEvents);
@@ -1636,7 +1644,8 @@ export default function App() {
 
   useEffect(() => {
     if (!hydrated) return;
-    const state: PersistedState = { tasks, plan, departurePlans, widgetSize, showCompleted, completionIcon, designMode, monoAppearance, hapticsEnabled, reviewPromptedAt, taskTemplates, savedTaskTemplates, chicPattern, chicCheckColor, recoveryHistory, focusSessions, focusCustomDurationMinutes, departureCheckIns, behaviorEvents, wishMonths, calendarMarks, sharedEvents, sharedParticipantIdsByToken, sharedParticipantPrefsByToken, departurePreparationStatuses, affirmations, affirmationCustomTexts, photoTheme };
+    const state: PersistedState = { tasks, plan, departurePlans, widgetSize, showCompleted, completionIcon, designMode, monoAppearance, hapticsEnabled, reviewPromptedAt, taskTemplates, savedTaskTemplates, chicPattern, chicCheckColor, recoveryHistory, focusSessions, focusCustomDurationMinutes, departureCheckIns, behaviorEvents, wishMonths, calendarMarks, calendarImportCalendarIds, calendarImportKnownCalendarIds, sharedEvents, sharedParticipantIdsByToken, sharedParticipantPrefsByToken, departurePreparationStatuses, affirmations, affirmationCustomTexts, photoTheme };
+    latestPersistedStateRef.current = state;
     if (persistenceDisabledRef.current) return;
     if (persistenceTimerRef.current) clearTimeout(persistenceTimerRef.current);
     persistenceTimerRef.current = setTimeout(() => {
@@ -1651,7 +1660,23 @@ export default function App() {
     return () => {
       if (persistenceTimerRef.current) clearTimeout(persistenceTimerRef.current);
     };
-  }, [tasks, plan, departurePlans, widgetSize, showCompleted, completionIcon, designMode, monoAppearance, hapticsEnabled, reviewPromptedAt, taskTemplates, savedTaskTemplates, chicPattern, chicCheckColor, recoveryHistory, focusSessions, focusCustomDurationMinutes, departureCheckIns, behaviorEvents, wishMonths, calendarMarks, sharedEvents, sharedParticipantIdsByToken, sharedParticipantPrefsByToken, departurePreparationStatuses, affirmations, affirmationCustomTexts, photoTheme, hydrated]);
+  }, [tasks, plan, departurePlans, widgetSize, showCompleted, completionIcon, designMode, monoAppearance, hapticsEnabled, reviewPromptedAt, taskTemplates, savedTaskTemplates, chicPattern, chicCheckColor, recoveryHistory, focusSessions, focusCustomDurationMinutes, departureCheckIns, behaviorEvents, wishMonths, calendarMarks, calendarImportCalendarIds, calendarImportKnownCalendarIds, sharedEvents, sharedParticipantIdsByToken, sharedParticipantPrefsByToken, departurePreparationStatuses, affirmations, affirmationCustomTexts, photoTheme, hydrated]);
+
+  useEffect(() => {
+    if (!hydrated) return;
+    const subscription = AppState.addEventListener('change', (nextState) => {
+      if (nextState !== 'inactive' && nextState !== 'background') return;
+      if (persistenceTimerRef.current) {
+        clearTimeout(persistenceTimerRef.current);
+        persistenceTimerRef.current = undefined;
+      }
+      const pending = latestPersistedStateRef.current;
+      if (pending && !persistenceDisabledRef.current) {
+        void saveRhythmState(pending).catch((error) => console.warn('Rhythm background save failed.', error));
+      }
+    });
+    return () => subscription.remove();
+  }, [hydrated]);
 
   const requestAppReview = React.useCallback(async () => {
     try {
@@ -1747,7 +1772,7 @@ export default function App() {
     .filter((task) => !task.done && !isTaskSkippedOnDate(task, todayTaskDate) && task.navigationEnabled && task.deadlineDate)
     .sort((a, b) => urgencyLevel(getUrgencyStatus(b, now)) - urgencyLevel(getUrgencyStatus(a, now)))[0];
 
-  const addTask = (title: string, category: Category, priority: Priority, remindDate?: string, remindAt?: string, deadlineDate?: string, deadlineTime?: string, deadlineNotifyBefore?: number, navigationEnabled?: boolean, preparationMinutes?: number, travelMinutes?: number, bufferMinutes?: number, repeatRule: RepeatRule = 'none', nudgeMode: NudgeMode = 'once', scheduledDate?: string, scheduledTime?: string, endAt?: string, isRoutine = false, subtasks: Subtask[] = []) => {
+  const addTask = (title: string, category: Category, priority: Priority, remindDate?: string, remindAt?: string, deadlineDate?: string, deadlineTime?: string, deadlineNotifyBefore?: number, navigationEnabled?: boolean, preparationMinutes?: number, travelMinutes?: number, bufferMinutes?: number, repeatRule: RepeatRule = 'none', nudgeMode: NudgeMode = 'once', scheduledDate?: string, scheduledTime?: string, endAt?: string, isRoutine = false, subtasks: Subtask[] = [], listItems: TaskListItem[] = []) => {
     if (scheduledTime && endAt && endAt <= scheduledTime) {
       Alert.alert('終了時間を確認してください', '終了時間は開始時間より後にしてください。');
       return;
@@ -1784,6 +1809,7 @@ export default function App() {
       scheduledTime,
       endAt: endAt && /^\d{2}:\d{2}$/.test(endAt) ? endAt : undefined,
       subtasks: subtasks.map((item, index) => ({ ...item, order: index, done: Boolean(item.done) })),
+      listItems: listItems.map((item, index) => ({ ...item, order: index, checked: Boolean(item.checked), text: item.text.trim() })).filter((item) => item.text),
     };
     const nextTasks = [task, ...tasksRef.current];
     tasksRef.current = nextTasks;
@@ -1794,7 +1820,7 @@ export default function App() {
     if (remindAt || (deadlineDate && deadlineTime && deadlineNotifyBefore !== undefined)) void scheduleAllTaskNotifications(task);
   };
 
-  const updateTask = (title: string, category: Category, priority: Priority, remindDate?: string, remindAt?: string, deadlineDate?: string, deadlineTime?: string, deadlineNotifyBefore?: number, navigationEnabled?: boolean, preparationMinutes?: number, travelMinutes?: number, bufferMinutes?: number, repeatRule: RepeatRule = 'none', nudgeMode: NudgeMode = 'once', scheduledDate?: string, scheduledTime?: string, endAt?: string, isRoutine = false, subtasks: Subtask[] = []) => {
+  const updateTask = (title: string, category: Category, priority: Priority, remindDate?: string, remindAt?: string, deadlineDate?: string, deadlineTime?: string, deadlineNotifyBefore?: number, navigationEnabled?: boolean, preparationMinutes?: number, travelMinutes?: number, bufferMinutes?: number, repeatRule: RepeatRule = 'none', nudgeMode: NudgeMode = 'once', scheduledDate?: string, scheduledTime?: string, endAt?: string, isRoutine = false, subtasks: Subtask[] = [], listItems?: TaskListItem[]) => {
     if (!editingTask) return;
     if (scheduledTime && endAt && endAt <= scheduledTime) {
       Alert.alert('終了時間を確認してください', '終了時間は開始時間より後にしてください。');
@@ -1809,7 +1835,7 @@ export default function App() {
     }
     const reactivatesRoutine = isRoutine && !editingTask.isRoutine && Boolean(editingTask.routineId);
     const endedAt = editingTask.isRoutine && !isRoutine ? new Date().toISOString() : editingTask.routineEndedAt;
-    const updated = { ...editingTask, title, category, priority, remindDate, remindAt, deadlineDate, deadlineTime, deadlineNotifyBefore, navigationEnabled, preparationMinutes, travelMinutes, bufferMinutes, repeatRule, isRoutine, routineId: isRoutine ? editingTask.routineId ?? editingTask.id : editingTask.routineId, routineEndedAt: isRoutine ? undefined : endedAt, nudgeMode, scheduledDate: scheduledDate ?? editingTask.scheduledDate ?? dateKey(now), scheduledTime, endAt: endAt && /^\d{2}:\d{2}$/.test(endAt) ? endAt : undefined, status: 'active' as const, skippedAt: undefined, subtasks: subtasks.map((item, index) => ({ ...item, order: index, done: Boolean(item.done) })) };
+    const updated = { ...editingTask, title, category, priority, remindDate, remindAt, deadlineDate, deadlineTime, deadlineNotifyBefore, navigationEnabled, preparationMinutes, travelMinutes, bufferMinutes, repeatRule, isRoutine, routineId: isRoutine ? editingTask.routineId ?? editingTask.id : editingTask.routineId, routineEndedAt: isRoutine ? undefined : endedAt, nudgeMode, scheduledDate: scheduledDate ?? editingTask.scheduledDate ?? dateKey(now), scheduledTime, endAt: endAt && /^\d{2}:\d{2}$/.test(endAt) ? endAt : undefined, status: 'active' as const, skippedAt: undefined, subtasks: subtasks.map((item, index) => ({ ...item, order: index, done: Boolean(item.done) })), listItems: (listItems ?? editingTask.listItems ?? []).map((item, index) => ({ ...item, text: item.text.trim(), order: index, checked: Boolean(item.checked) })).filter((item) => item.text) };
     const nextTasks = tasksRef.current.map((task) => {
       if (task.id === editingTask.id) return updated;
       if (editingTask.isRoutine && !isRoutine && (task.routineId ?? task.id) === existingRoutineId) {
@@ -1829,6 +1855,29 @@ export default function App() {
     }
     void scheduleAllTaskNotifications(updated);
   };
+
+  const updateTaskList = React.useCallback((taskId: string, items: TaskListItem[]) => {
+    const next = tasksRef.current.map((task) => task.id === taskId
+      ? { ...task, listItems: items.map((item, index) => ({ ...item, text: item.text.trim(), order: index, checked: Boolean(item.checked) })).filter((item) => item.text) }
+      : task);
+    tasksRef.current = next;
+    setTasks(next);
+  }, []);
+
+  const addBulkTasks = React.useCallback((titles: string[], scheduledDate: string) => {
+    const uniqueTitles = titles.map((title) => title.trim()).filter(Boolean);
+    if (!uniqueTitles.length) return;
+    const createdAt = new Date().toISOString();
+    const newTasks: Task[] = uniqueTitles.map((title, index) => {
+      const id = `${Date.now()}-${index}-${Math.random().toString(16).slice(2)}`;
+      return { id, title, createdAt, done: false, status: 'active', category: 'その他', priority: '中', repeatRule: 'none', nudgeMode: 'once', scheduledDate: scheduledDate || dateKey(now) };
+    });
+    const next = [...newTasks, ...tasksRef.current];
+    tasksRef.current = next;
+    setTasks(next);
+    setBulkAddOpen(false);
+    void onboarding.complete('todo');
+  }, [dateKey, now, onboarding]);
 
   const scheduleAllTaskNotifications = async (task: Task) => {
     await cancelPendingTaskNotifications(task.id);
@@ -1897,11 +1946,11 @@ export default function App() {
     }
   };
 
-  const scheduleDeparture = async (targetPlan = plan) => {
+  const scheduleDeparture = async (targetPlan = plan, options?: { silent?: boolean }) => {
     const mode = getDeparturePlanMode(targetPlan);
     if (mode === 'calendar_only') return;
     if (!await ensureNotifications()) {
-      Alert.alert('通知がオフです', '端末設定からRhythmの通知を許可してください。');
+      if (!options?.silent) Alert.alert('通知がオフです', '端末設定からRhythmの通知を許可してください。');
       return;
     }
     if (mode === 'departure_reminder') {
@@ -1916,7 +1965,7 @@ export default function App() {
         },
         trigger: { type: Notifications.SchedulableTriggerInputTypes.DATE, date: departureAt },
       });
-      Alert.alert('出発通知を設定しました', `${formatLiveTime(departureAt)}に1回お知らせします。`);
+      if (!options?.silent) Alert.alert('出発通知を設定しました', `${formatLiveTime(departureAt)}に1回お知らせします。`);
       return;
     }
     // Existing arrival_reverse plans remain readable on a free device, but new
@@ -1970,8 +2019,28 @@ export default function App() {
       });
       count += 1;
     }
-    Alert.alert('出発サポートを設定しました', `${formatLiveTime(moments.prepare)}から${count}段階でお知らせします。`);
+    if (!options?.silent) Alert.alert('出発サポートを設定しました', `${formatLiveTime(moments.prepare)}から${count}段階でお知らせします。`);
   };
+  useEffect(() => {
+    if (!hydrated || planTier !== 'premium') return;
+    let active = true;
+    void (async () => {
+      const pending = await Notifications.getAllScheduledNotificationsAsync().catch(() => []);
+      for (const affirmation of affirmations.filter((item) => item.enabled)) {
+        if (affirmation.notificationId) await Notifications.cancelScheduledNotificationAsync(affirmation.notificationId).catch(() => undefined);
+        const matches = pending.filter((request) => request.content.data?.affirmationId === affirmation.id);
+        await Promise.all(matches.map((request) => Notifications.cancelScheduledNotificationAsync(request.identifier).catch(() => undefined)));
+        if (active) await scheduleAffirmationNotification(affirmation).catch(() => undefined);
+      }
+      if (!active) return;
+      for (const item of departurePlans) {
+        if (!item.id || getDeparturePlanMode(item) === 'calendar_only' || planDateKey(item) < dateKey()) continue;
+        await cancelPendingDepartureNotifications(item.id).catch(() => undefined);
+        await scheduleDeparture(item, { silent: true });
+      }
+    })();
+    return () => { active = false; };
+  }, [hydrated, planTier]);
   scheduleTaskNotificationsRef.current = scheduleAllTaskNotifications;
 
   const createTaskFromWishAction = (action: WishAction) => {
@@ -2051,6 +2120,7 @@ export default function App() {
       planMode: 'calendar_only',
       date: dateKey(start),
       arrival: event.allDay ? '' : formatLiveTime(start),
+      allDay: Boolean(event.allDay),
       travelMinutes: initialPlan.travelMinutes,
       preparationMinutes: initialPlan.preparationMinutes,
       bufferMinutes: initialPlan.bufferMinutes,
@@ -2330,6 +2400,7 @@ export default function App() {
       selectedTaskIds={[]}
       onAdd={() => undefined}
       onOpenFocus={() => undefined}
+      onUpdateTaskList={() => undefined}
       onQuickAdd={() => undefined}
       onToggle={() => undefined}
       onToggleSubtask={() => undefined}
@@ -2454,6 +2525,7 @@ export default function App() {
                 setTimelineInitialTab('focus');
                 navigateWithinApp('timeline');
               }}
+              onUpdateTaskList={updateTaskList}
                 onQuickAdd={(title, category, priority, scheduledDate, scheduledTime, endAt, isRoutine, deadlineDate, deadlineTime, deadlineNotifyBefore, remindDate, remindAt, repeatRule, subtasks) => addTask(title, category, priority, remindDate, remindAt, deadlineDate, deadlineTime, deadlineNotifyBefore, undefined, undefined, undefined, undefined, repeatRule ?? 'none', 'once', scheduledDate, scheduledTime, endAt, isRoutine, subtasks)}
               onToggle={(id) => {
                 const task = tasksRef.current.find((item) => item.id === id);
@@ -2598,6 +2670,10 @@ export default function App() {
                 if (target) handleDepartureStill(target, phase);
               }}
               calendarMarks={calendarMarks}
+              calendarImportCalendarIds={calendarImportCalendarIds}
+              calendarImportKnownCalendarIds={calendarImportKnownCalendarIds}
+              onCalendarImportCalendarIdsChange={setCalendarImportCalendarIds}
+              onCalendarImportKnownCalendarIdsChange={setCalendarImportKnownCalendarIds}
               onSetCalendarMark={(date: string, mark?: string) => setCalendarMarks((current) => { const next = { ...current }; if (mark) next[date] = mark; else delete next[date]; return next; })}
               hapticsEnabled={hapticsEnabled}
               styles={styles}
@@ -2793,7 +2869,8 @@ export default function App() {
         onShareCurrentEvent={shareCurrentSharedEvent}
       />
 
-      {addOpen && <TaskModal visible templates={taskTemplates} savedTemplates={savedTaskTemplates} designMode={uiDesignMode} chicPalette={chicPalette} planTier={planTier} onPremium={openPremiumFeature} onClose={() => setAddOpen(false)} onSave={addTask} styles={styles} helpers={{ getThemeTokens: getThemedThemeTokens, todayInputValue, hasPremiumAccess, dateForReminder, dateKey, formatLiveTime, colors: themedColors, summarizePremiumTaskTemplate }} components={{ CompactNumberSetting }} />}
+      {addOpen && <TaskModal visible templates={taskTemplates} savedTemplates={savedTaskTemplates} designMode={uiDesignMode} chicPalette={chicPalette} planTier={planTier} onPremium={openPremiumFeature} onClose={() => setAddOpen(false)} onOpenBulkAdd={() => { setAddOpen(false); setBulkAddOpen(true); }} onSave={addTask} styles={styles} helpers={{ getThemeTokens: getThemedThemeTokens, todayInputValue, hasPremiumAccess, dateForReminder, dateKey, formatLiveTime, colors: themedColors, summarizePremiumTaskTemplate }} components={{ CompactNumberSetting }} />}
+      <BulkTaskModal visible={bulkAddOpen} designMode={uiDesignMode} chicPalette={chicPalette} styles={styles} today={todayInputValue()} onClose={() => setBulkAddOpen(false)} onSave={addBulkTasks} />
       {editingTask !== null && <TaskModal
         visible
         task={editingTask}
@@ -3402,7 +3479,7 @@ function TaskScheduleCalendar({ tasks, plans, externalEvents, now, designMode, c
     const canUseReversePlan = isArrivalReversePlan(item) && planTier === 'premium';
     const endSuffix = item.endAt ? ` 〜 ${item.endAt}` : '';
     const scheduledTime = getPlanScheduledTime(item);
-    const timeLabel = scheduledTime ? `${scheduledTime}${endSuffix}` : '終日';
+    const timeLabel = item.allDay ? '終日' : scheduledTime ? `${scheduledTime}${endSuffix}` : '終日';
     const meta = mode === 'calendar_only'
       ? `予定表の予定 ・ ${timeLabel}`
       : mode === 'departure_reminder'
