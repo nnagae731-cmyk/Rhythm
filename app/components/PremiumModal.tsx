@@ -19,7 +19,7 @@ const PREMIUM_GUIDE_FEATURES: Array<{ id: PremiumGuideFeatureId; kind: PremiumPr
   { id: 'templates', kind: 'templates', title: 'タスクひな型', description: '一度作ったタスクのカテゴリ・優先度・通知設定をひな型として保存し、次回の登録を簡単にします。' },
   { id: 'wish', kind: 'wish', title: '叶えたいことを、今月の行動へつなげる', description: '今月のテーマ、叶えたいこと、今日につながる行動をひとつの画面で整理。叶えた日や月の振り返りも残せます。' },
   { id: 'affirmation', kind: 'affirmation', title: '好きな言葉を、選んだ時間に届ける', description: '自分で書いたアファメーションを毎日指定時刻に通知。忙しい日も、自分の軸へ静かに戻れます。' },
-  { id: 'photo_design', kind: 'photo_design', title: 'Design', description: '花柄1〜3、ドット、チェックデザイン、写真背景をPremium限定で利用できます。選択中のデザインカラーと組み合わせて、Rhythm全体を自分らしく整えられます。' },
+  { id: 'photo_design', kind: 'photo_design', title: '選べるデザイン', description: '花柄1〜3、ドット、チェックデザイン、写真背景をPremium限定で利用できます。選択中のデザインカラーと組み合わせて、Rhythm全体を自分らしく整えられます。' },
 ];
 
 function PremiumMiniPreview({ kind, designMode, styles }: { kind: PremiumPreviewKind; designMode: DesignMode; styles: any }) {
