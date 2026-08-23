@@ -562,7 +562,12 @@ export default function App() {
   const [designTrialNoticeOpen, setDesignTrialNoticeOpen] = useState(false);
   const designTrialExpirySeenRef = React.useRef<string | null>(null);
   const [hydrated, setHydrated] = useState(false);
-  const planTier: PlanTier = process.env.EXPO_PUBLIC_RHYTHM_PLAN === 'premium' ? 'premium' : 'free';
+  const configuredPlanTier: PlanTier = process.env.EXPO_PUBLIC_RHYTHM_PLAN === 'premium' ? 'premium' : 'free';
+  // Development-only override for validating both purchase states before the
+  // App Store product is configured. It is intentionally session-scoped and
+  // never persisted over the user's saved data.
+  const [devPlanTierOverride, setDevPlanTierOverride] = useState<PlanTier | null>(null);
+  const planTier: PlanTier = devPlanTierOverride ?? configuredPlanTier;
   const planTierRef = React.useRef<PlanTier>(planTier);
   const photoThemeEnabled = designMode === 'photo' && hasPremiumAccess(planTier, 'photo_design');
   const uiDesignMode: Exclude<DesignMode, 'photo'> = designMode === 'photo'
@@ -2286,7 +2291,7 @@ export default function App() {
         helpers={{ getThemeTokens: getThemedThemeTokens, todayInputValue, hasPremiumAccess, dateForReminder, dateKey, formatLiveTime, colors: themedColors, summarizePremiumTaskTemplate }}
         components={{ CompactNumberSetting }}
       />
-      <PremiumModal visible={premiumOpen} initialFeatureId={premiumTargetFeature} designMode={uiDesignMode} chicPalette={chicPalette} onClose={() => setPremiumOpen(false)} styles={styles} helpers={{ getThemeTokens: getThemedThemeTokens }} />
+      <PremiumModal visible={premiumOpen} initialFeatureId={premiumTargetFeature} designMode={uiDesignMode} chicPalette={chicPalette} planTier={planTier} isDevelopment={__DEV__} onMockPlanTier={setDevPlanTierOverride} onClose={() => setPremiumOpen(false)} styles={styles} helpers={{ getThemeTokens: getThemedThemeTokens }} />
       <DesignPreviewModal visible={Boolean(designPreviewPattern)} initialPattern={designPreviewPattern} chicCheckColor={chicCheckColor} planTier={planTier} photoUri={photoTheme.imageUri} onClose={() => setDesignPreviewPattern(undefined)} onUse={(mode, pattern) => {
         if (mode === 'photo') {
           if (planTier !== 'premium') { openPremiumFeature('photo_design'); return; }

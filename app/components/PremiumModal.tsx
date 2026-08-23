@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Modal, Pressable, ScrollView, Text, View } from 'react-native';
 import { ChicThemePalette, DesignMode } from '../theme';
 import { PremiumGuideFeatureId } from '../premiumGuide';
+import { PlanTier } from '../premiumAccess';
 
 type PremiumPreviewKind = PremiumGuideFeatureId;
 
@@ -60,16 +61,33 @@ function PremiumFeatureDetail({ number, kind, title, description, designMode, ch
   </View>;
 }
 
-export function PremiumModal({ visible, initialFeatureId, designMode, chicPalette, onClose, styles, helpers }: { visible: boolean; initialFeatureId: PremiumGuideFeatureId; designMode: DesignMode; chicPalette?: ChicThemePalette; onClose: () => void; styles: any; helpers: any }) {
+export function PremiumModal({ visible, initialFeatureId, designMode, chicPalette, planTier, isDevelopment = false, onMockPlanTier, onClose, styles, helpers }: { visible: boolean; initialFeatureId: PremiumGuideFeatureId; designMode: DesignMode; chicPalette?: ChicThemePalette; planTier: PlanTier; isDevelopment?: boolean; onMockPlanTier?: (tier: PlanTier | null) => void; onClose: () => void; styles: any; helpers: any }) {
   const { getThemeTokens } = helpers;
   const theme = getThemeTokens(designMode);
   const designSurface = designMode === 'chic' && chicPalette ? { backgroundColor: chicPalette.cardSurface, borderColor: chicPalette.border } : undefined;
+  const accent = designMode === 'chic' && chicPalette ? chicPalette.accent : theme.colors.primaryAccent;
+  const accentStrong = designMode === 'chic' && chicPalette ? chicPalette.accentStrong : theme.colors.primaryAccent;
+  const surface = designMode === 'chic' && chicPalette ? chicPalette.cardSurface : theme.colors.surface;
+  const surfaceSoft = designMode === 'chic' && chicPalette ? chicPalette.cardTint : theme.colors.secondarySurface;
+  const primaryText = designMode === 'chic' && chicPalette ? chicPalette.textPrimary : theme.colors.primaryText;
+  const secondaryText = designMode === 'chic' && chicPalette ? chicPalette.textSecondary : theme.colors.secondaryText;
+  const accentText = designMode === 'chic' && chicPalette ? chicPalette.onAccent : designMode === 'dark' ? theme.colors.screenBackground : '#FFFFFF';
   const initialIndex = Math.max(0, PREMIUM_GUIDE_FEATURES.findIndex((feature) => feature.id === initialFeatureId));
   const [selectedFeatureId, setSelectedFeatureId] = useState<PremiumGuideFeatureId>(initialFeatureId);
+  const [purchaseOpen, setPurchaseOpen] = useState(false);
+  const [purchaseStatus, setPurchaseStatus] = useState<'idle' | 'processing' | 'success' | 'unavailable'>('idle');
   useEffect(() => {
     if (!visible) return;
     setSelectedFeatureId(initialFeatureId);
+    setPurchaseOpen(false);
+    setPurchaseStatus('idle');
   }, [initialFeatureId, visible]);
+  useEffect(() => {
+    if (!visible) {
+      setPurchaseOpen(false);
+      setPurchaseStatus('idle');
+    }
+  }, [visible]);
   const selectedFeature = PREMIUM_GUIDE_FEATURES.find((feature) => feature.id === selectedFeatureId) ?? PREMIUM_GUIDE_FEATURES[initialIndex] ?? PREMIUM_GUIDE_FEATURES[0]!;
   const selectedIndex = Math.max(0, PREMIUM_GUIDE_FEATURES.findIndex((feature) => feature.id === selectedFeature.id));
   return <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
@@ -78,22 +96,48 @@ export function PremiumModal({ visible, initialFeatureId, designMode, chicPalett
         <View style={styles.modalHandle} />
         <View style={styles.premiumCarouselHeader}>
           <View style={{ flex: 1 }}>
-            <Text style={[styles.premiumCarouselBrand, designMode === 'dark' && styles.darkText, designMode === 'chic' && chicPalette && { color: chicPalette.textPrimary }]}>Rhythm Premium</Text>
-            <Text style={[styles.premiumCarouselCopy, designMode === 'dark' && styles.darkSubText, designMode === 'chic' && chicPalette && { color: chicPalette.textSecondary }]}>Rhythmが、あなたより少し先に動く。</Text>
-            <Text style={[styles.premiumCarouselCopy, designMode === 'dark' && styles.darkSubText, designMode === 'chic' && chicPalette && { color: chicPalette.textSecondary }, { marginTop: 5, fontSize: 10 }]}>無料版に加えて、記録・分析・デザイン・共有を広げます。</Text>
+            <Text style={[styles.premiumCarouselBrand, { color: primaryText }]}>Rhythm Premium</Text>
+            <Text style={[styles.premiumCarouselCopy, { color: secondaryText }]}>Rhythmが、あなたより少し先に動く。</Text>
+            <Text style={[styles.premiumCarouselCopy, { color: secondaryText }, { marginTop: 5, fontSize: 10 }]}>{purchaseOpen ? '登録・購入の準備をしています。' : '無料版に加えて、記録・分析・デザイン・共有を広げます。'}</Text>
           </View>
-          <Pressable style={[styles.premiumHeaderClose, { borderColor: theme.colors.primaryAccent }]} onPress={onClose}><Text style={[styles.premiumCloseButtonText, { color: designMode === 'chic' && chicPalette ? chicPalette.accentStrong : theme.colors.primaryAccent }]}>閉じる</Text></Pressable>
+          {purchaseOpen ? <Pressable style={[styles.premiumHeaderClose, { borderColor: accent }]} onPress={() => { setPurchaseOpen(false); setPurchaseStatus('idle'); }}><Text style={[styles.premiumCloseButtonText, { color: accentStrong }]}>戻る</Text></Pressable> : <Pressable style={[styles.premiumHeaderClose, { borderColor: accent }]} onPress={onClose}><Text style={[styles.premiumCloseButtonText, { color: accentStrong }]}>閉じる</Text></Pressable>}
         </View>
-        <ScrollView style={styles.premiumCarouselArea} contentContainerStyle={styles.premiumModalScroll} showsVerticalScrollIndicator={false}>
-        <View style={styles.premiumFeaturePicker}>
-          {PREMIUM_GUIDE_FEATURES.map((feature, index) => <PremiumFeatureEntryCard key={feature.id} number={String(index + 1).padStart(2, '0')} title={feature.title} active={feature.id === selectedFeature.id} designMode={designMode} chicPalette={chicPalette} onPress={() => setSelectedFeatureId(feature.id)} styles={styles} />)}
-        </View>
-        <View style={styles.premiumFeatureStage}>
-          <PremiumFeatureDetail number={String(selectedIndex + 1).padStart(2, '0')} kind={selectedFeature.kind} title={selectedFeature.title} description={selectedFeature.description} designMode={designMode} chicPalette={chicPalette} styles={styles} />
-          {selectedFeature.id === 'month' && <View style={styles.premiumHistoryNote}><Text style={styles.premiumHistoryTitle}>月表示と過去の記録</Text><Text style={styles.premiumHistoryCopy}>7日を超えた予定や完了・集中・出発の記録も確認できます。</Text></View>}
-        </View>
-        <Pressable style={[styles.premiumCloseButton, { borderColor: designMode === 'chic' && chicPalette ? chicPalette.accent : theme.colors.primaryAccent, backgroundColor: designMode === 'chic' && chicPalette ? chicPalette.cardSurface : undefined }]} onPress={onClose}><Text style={[styles.premiumCloseButtonText, { color: designMode === 'chic' && chicPalette ? chicPalette.accentStrong : theme.colors.primaryAccent }]}>Rhythmに戻る</Text></Pressable>
-        </ScrollView>
+        {!purchaseOpen && <Pressable style={[styles.premiumCloseButton, { borderColor: accent, backgroundColor: surfaceSoft, marginHorizontal: 8, marginTop: 0, marginBottom: 8 }]} onPress={() => setPurchaseOpen(true)}><Text style={[styles.premiumCloseButtonText, { color: accentStrong }]}>{planTier === 'premium' ? 'Premiumの状態を確認' : 'Premiumに登録・購入する'}</Text></Pressable>}
+        {purchaseOpen ? <ScrollView style={styles.premiumCarouselArea} contentContainerStyle={styles.premiumModalScroll} showsVerticalScrollIndicator={false}>
+          <View style={{ backgroundColor: surface, borderColor: accent, borderWidth: 1, borderRadius: 18, padding: 16, marginBottom: 12 }}>
+            <Text style={{ color: primaryText, fontSize: 20, fontWeight: '900' }}>Premiumを始める</Text>
+            <Text style={{ color: secondaryText, fontSize: 12, lineHeight: 19, marginTop: 8 }}>今日の記録、今月を振り返る、花柄1〜3、行動分析、詳細な履歴・検索、地図・共有などを利用できます。</Text>
+            <View style={{ backgroundColor: surfaceSoft, borderRadius: 12, padding: 12, marginTop: 14 }}>
+              <Text style={{ color: primaryText, fontSize: 12, fontWeight: '900' }}>App Store課金について</Text>
+              <Text style={{ color: secondaryText, fontSize: 11, lineHeight: 17, marginTop: 4 }}>Apple Developer登録後にStoreKitへ接続します。現在は画面と状態管理を確認するための開発用モックです。</Text>
+            </View>
+            {purchaseStatus === 'success' && <View style={{ borderWidth: 1, borderColor: accent, borderRadius: 12, padding: 12, marginTop: 14 }}><Text style={{ color: accentStrong, fontSize: 13, fontWeight: '900' }}>開発用Premiumを有効にしました</Text><Text style={{ color: secondaryText, fontSize: 11, marginTop: 4 }}>アプリを再起動すると環境設定へ戻ります。</Text></View>}
+            {purchaseStatus === 'unavailable' && <View style={{ borderWidth: 1, borderColor: theme.colors.border, borderRadius: 12, padding: 12, marginTop: 14 }}><Text style={{ color: primaryText, fontSize: 12, fontWeight: '900' }}>購入処理は準備中です</Text><Text style={{ color: secondaryText, fontSize: 11, lineHeight: 17, marginTop: 4 }}>Apple Developer登録後にApp Storeの購入処理を接続できます。</Text></View>}
+            <Pressable disabled={purchaseStatus === 'processing' || planTier === 'premium'} onPress={() => {
+              if (isDevelopment && onMockPlanTier) {
+                setPurchaseStatus('processing');
+                onMockPlanTier('premium');
+                setPurchaseStatus('success');
+              } else {
+                setPurchaseStatus('unavailable');
+              }
+            }} style={{ minHeight: 48, borderRadius: 13, backgroundColor: planTier === 'premium' ? surfaceSoft : accent, alignItems: 'center', justifyContent: 'center', marginTop: 16 }}><Text style={{ color: planTier === 'premium' ? secondaryText : accentText, fontSize: 13, fontWeight: '900' }}>{planTier === 'premium' ? 'Premium有効中' : purchaseStatus === 'processing' ? '確認中…' : 'Premiumに登録する'}</Text></Pressable>
+            {isDevelopment && onMockPlanTier && <View style={{ flexDirection: 'row', gap: 8, marginTop: 10 }}>
+              <Pressable onPress={() => { onMockPlanTier('free'); setPurchaseStatus('idle'); }} style={{ flex: 1, minHeight: 44, borderRadius: 11, borderWidth: 1, borderColor: theme.colors.border, alignItems: 'center', justifyContent: 'center' }}><Text style={{ color: secondaryText, fontSize: 11, fontWeight: '800' }}>無料版で確認</Text></Pressable>
+              <Pressable onPress={() => { onMockPlanTier(null); setPurchaseStatus('idle'); }} style={{ flex: 1, minHeight: 44, borderRadius: 11, borderWidth: 1, borderColor: theme.colors.border, alignItems: 'center', justifyContent: 'center' }}><Text style={{ color: secondaryText, fontSize: 11, fontWeight: '800' }}>環境設定へ戻す</Text></Pressable>
+            </View>}
+          </View>
+          <Pressable style={[styles.premiumCloseButton, { borderColor: accent, backgroundColor: surface }]} onPress={onClose}><Text style={[styles.premiumCloseButtonText, { color: accentStrong }]}>閉じる</Text></Pressable>
+        </ScrollView> : <ScrollView style={styles.premiumCarouselArea} contentContainerStyle={styles.premiumModalScroll} showsVerticalScrollIndicator={false}>
+          <View style={styles.premiumFeaturePicker}>
+            {PREMIUM_GUIDE_FEATURES.map((feature, index) => <PremiumFeatureEntryCard key={feature.id} number={String(index + 1).padStart(2, '0')} title={feature.title} active={feature.id === selectedFeature.id} designMode={designMode} chicPalette={chicPalette} onPress={() => setSelectedFeatureId(feature.id)} styles={styles} />)}
+          </View>
+          <View style={styles.premiumFeatureStage}>
+            <PremiumFeatureDetail number={String(selectedIndex + 1).padStart(2, '0')} kind={selectedFeature.kind} title={selectedFeature.title} description={selectedFeature.description} designMode={designMode} chicPalette={chicPalette} styles={styles} />
+            {selectedFeature.id === 'month' && <View style={styles.premiumHistoryNote}><Text style={styles.premiumHistoryTitle}>月表示と過去の記録</Text><Text style={styles.premiumHistoryCopy}>7日を超えた予定や完了・集中・出発の記録も確認できます。</Text></View>}
+          </View>
+          <Pressable style={[styles.premiumCloseButton, { borderColor: accent, backgroundColor: surface }]} onPress={onClose}><Text style={[styles.premiumCloseButtonText, { color: accentStrong }]}>Rhythmに戻る</Text></Pressable>
+        </ScrollView>}
       </Pressable>
     </Pressable>
   </Modal>;
