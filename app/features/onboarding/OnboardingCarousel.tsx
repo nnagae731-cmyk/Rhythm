@@ -18,89 +18,29 @@ import {
 type Props = {
   visible: boolean;
   onDismiss: () => void;
+  /** The final CTA opens the real design selector instead of ending on Today. */
+  onFinalAction?: () => void;
   showSkip?: boolean;
   finalActionLabel?: string;
 };
 
 const theme = getThemeTokens(ONBOARDING_DESIGN_MODE);
 
-const previewContent: Record<
-  IntroCard['id'],
-  {
-    symbol: string;
-    main: string;
-    sub?: string;
-  }
-> = {
-  quickTodo: {
-    symbol: '＋',
-    main: '明日15時に美容院',
-    sub: '日時を自動で設定',
-  },
-
-  today: {
-    symbol: '✓',
-    main: '今やる　あとで　待ち',
-    sub: '今日できたことも確認',
-  },
-
-  schedule: {
-    symbol: '↗',
-    main: '09:00 → 14:00 → 18:30',
-    sub: '予定を時間の流れで確認',
-  },
-
-  focus: {
-    symbol: '◷',
-    main: '25:00',
-    sub: '今やる1つに集中',
-  },
-
-  records: {
-    symbol: '▦',
-    main: '✓ 3件　▧ 写真',
-    sub: '今日のできたことを記録',
-  },
-
-  wish: {
-    symbol: '✿',
-    main: 'テーマ → 叶えたいこと',
-    sub: '→ 今日の行動へ',
-  },
-
-  customize: {
-    symbol: 'Aa',
-    main: 'Mono　Design　Photo',
-    sub: '自分らしいRhythmに',
-  },
-};
-
 function IntroPreview({
   card,
 }: {
   card: IntroCard;
 }) {
-  const preview = previewContent[card.id];
-
   return (
     <View style={styles.preview}>
-      <View style={styles.previewSymbol}>
-        <Text style={styles.previewSymbolText}>
-          {preview.symbol}
-        </Text>
-      </View>
-
-      <View style={styles.previewContent}>
-        <Text style={styles.previewMain}>
-          {preview.main}
-        </Text>
-
-        {preview.sub ? (
-          <Text style={styles.previewSub}>
-            {preview.sub}
-          </Text>
-        ) : null}
-      </View>
+      <Text style={styles.previewHeader}>{card.id === 'quickTodo' ? 'やること追加' : card.id === 'today' ? '今日' : card.id === 'schedule' ? '予定' : card.id === 'focus' ? '集中' : card.id === 'records' ? '記録' : card.id === 'wish' ? '叶えたいこと' : 'デザイン'}</Text>
+      {card.id === 'quickTodo' && <><View style={styles.previewInput}><Text style={styles.previewInputText}>明日15時に美容院</Text><Text style={styles.previewInputHint}>日時を読み取りました</Text></View><View style={styles.previewButton}><Text style={styles.previewButtonText}>追加する</Text></View></>}
+      {card.id === 'today' && <><View style={styles.previewHero}><Text style={styles.previewLabel}>今はこれ</Text><Text style={styles.previewTask}>資料をまとめる</Text><Text style={styles.previewMeta}>完了 2　残り 1</Text></View><View style={styles.previewTabs}><Text style={styles.previewTabActive}>今やる 1</Text><Text style={styles.previewTab}>あとで 2</Text><Text style={styles.previewTab}>待ち 0</Text></View></>}
+      {card.id === 'schedule' && <View style={styles.previewTimeline}>{[['09:00', '朝会'], ['14:00', '資料提出'], ['18:30', '帰宅']].map(([time, title]) => <View key={time} style={styles.previewTimelineRow}><Text style={styles.previewTime}>{time}</Text><View style={styles.previewTimelineCard}><Text style={styles.previewTimelineTitle}>{title}</Text><Text style={styles.previewTimelineMeta}>予定表の予定</Text></View></View>)}</View>}
+      {card.id === 'focus' && <><View style={styles.previewFocus}><Text style={styles.previewFocusTime}>25:00</Text><Text style={styles.previewFocusTask}>資料をまとめる</Text><View style={styles.previewButton}><Text style={styles.previewButtonText}>スタート</Text></View></View></>}
+      {card.id === 'records' && <><View style={styles.previewCalendar}><Text style={styles.previewCalendarTitle}>2026年 8月</Text><View style={styles.previewCalendarRow}>{['18', '19', '20', '21', '22', '23'].map((day) => <Text key={day} style={day === '23' ? styles.previewCalendarDayActive : styles.previewCalendarDay}>{day}</Text>)}</View></View><View style={styles.previewRecord}><Text style={styles.previewRecordTitle}>今日できたこと</Text><Text style={styles.previewRecordText}>写真・ひとこと・メモ</Text></View></>}
+      {card.id === 'wish' && <><View style={styles.previewWish}><Text style={styles.previewLabel}>今月のテーマ</Text><Text style={styles.previewWishTitle}>自分のペースを整える</Text></View><View style={styles.previewWish}><Text style={styles.previewLabel}>叶えたいこと</Text><Text style={styles.previewWishTitle}>週に1冊、本を読む</Text><Text style={styles.previewWishMeta}>今日の行動　10分読む</Text></View></>}
+      {card.id === 'customize' && <><View style={styles.previewDesignOptions}>{['Mono', 'Design', 'Photo'].map((label, index) => <View key={label} style={[styles.previewDesignOption, index === 1 && styles.previewDesignOptionActive]}><Text style={styles.previewDesignText}>{label}</Text></View>)}</View><Text style={styles.previewSub}>好きな見た目を選択</Text></>}
     </View>
   );
 }
@@ -108,8 +48,9 @@ function IntroPreview({
 export function OnboardingCarousel({
   visible,
   onDismiss,
+  onFinalAction,
   showSkip = true,
-  finalActionLabel = 'Rhythmをはじめる',
+  finalActionLabel = 'デザインを選ぶ',
 }: Props) {
   const { width } = useWindowDimensions();
 
@@ -136,7 +77,7 @@ export function OnboardingCarousel({
 
   const goNext = () => {
     if (isLast) {
-      onDismiss();
+      (onFinalAction ?? onDismiss)();
       return;
     }
 
@@ -343,43 +284,53 @@ const styles = StyleSheet.create({
   },
 
   preview: {
-    minHeight: 150,
+    minHeight: 190,
     borderRadius: theme.radius.large,
     backgroundColor:
       theme.colors.secondarySurface,
     padding: 18,
     justifyContent: 'center',
-    alignItems: 'center',
+    alignItems: 'stretch',
     marginBottom: 28,
   },
 
-  previewSymbol: {
-    width: 58,
-    height: 58,
-    borderRadius: 29,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor:
-      theme.colors.softAccent,
-    marginBottom: 14,
-  },
-
-  previewSymbolText: {
-    color: theme.colors.primaryAccent,
-    fontSize: 24,
-    fontWeight: '900',
-  },
-
-  previewContent: {
-    alignItems: 'center',
-  },
-
-  previewMain: {
-    color: theme.colors.primaryText,
-    fontSize: 16,
-    fontWeight: '800',
-    textAlign: 'center',
-  },
+  previewHeader: { color: theme.colors.primaryText, fontSize: 13, fontWeight: '900', marginBottom: 10 },
+  previewInput: { minHeight: 52, borderRadius: 12, borderWidth: 1, borderColor: theme.colors.border, backgroundColor: theme.colors.surface, paddingHorizontal: 12, paddingVertical: 9 },
+  previewInputText: { color: theme.colors.primaryText, fontSize: 13, fontWeight: '800' },
+  previewInputHint: { color: theme.colors.secondaryText, fontSize: 10, marginTop: 4 },
+  previewButton: { minHeight: 34, marginTop: 10, borderRadius: 10, backgroundColor: theme.colors.primaryAccent, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 12 },
+  previewButtonText: { color: '#FFFFFF', fontSize: 11, fontWeight: '900' },
+  previewHero: { borderRadius: 14, backgroundColor: theme.colors.surface, borderWidth: 1, borderColor: theme.colors.border, padding: 12 },
+  previewLabel: { color: theme.colors.secondaryText, fontSize: 10, fontWeight: '800' },
+  previewTask: { color: theme.colors.primaryText, fontSize: 17, fontWeight: '900', marginTop: 5 },
+  previewMeta: { color: theme.colors.secondaryText, fontSize: 11, marginTop: 9 },
+  previewTabs: { flexDirection: 'row', gap: 6, marginTop: 9 },
+  previewTab: { flex: 1, borderRadius: 9, borderWidth: 1, borderColor: theme.colors.border, color: theme.colors.secondaryText, fontSize: 10, paddingVertical: 7, textAlign: 'center' },
+  previewTabActive: { flex: 1, borderRadius: 9, borderWidth: 1, borderColor: theme.colors.primaryAccent, backgroundColor: theme.colors.softAccent, color: theme.colors.primaryAccent, fontSize: 10, fontWeight: '800', paddingVertical: 7, textAlign: 'center' },
+  previewTimeline: { gap: 6 },
+  previewTimelineRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  previewTime: { width: 42, color: theme.colors.secondaryText, fontSize: 10, fontWeight: '800' },
+  previewTimelineCard: { flex: 1, borderLeftWidth: 3, borderLeftColor: theme.colors.primaryAccent, borderRadius: 9, backgroundColor: theme.colors.surface, borderWidth: 1, borderColor: theme.colors.border, paddingHorizontal: 10, paddingVertical: 7 },
+  previewTimelineTitle: { color: theme.colors.primaryText, fontSize: 12, fontWeight: '800' },
+  previewTimelineMeta: { color: theme.colors.secondaryText, fontSize: 9, marginTop: 2 },
+  previewFocus: { alignItems: 'center', borderRadius: 15, backgroundColor: theme.colors.surface, borderWidth: 1, borderColor: theme.colors.border, padding: 13 },
+  previewFocusTime: { color: theme.colors.primaryText, fontSize: 30, fontWeight: '900', letterSpacing: -1 },
+  previewFocusTask: { color: theme.colors.secondaryText, fontSize: 11, marginTop: 2 },
+  previewCalendar: { borderRadius: 12, borderWidth: 1, borderColor: theme.colors.border, backgroundColor: theme.colors.surface, padding: 11 },
+  previewCalendarTitle: { color: theme.colors.primaryText, fontSize: 12, fontWeight: '900' },
+  previewCalendarRow: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 10 },
+  previewCalendarDay: { color: theme.colors.secondaryText, fontSize: 11, padding: 4 },
+  previewCalendarDayActive: { color: '#FFFFFF', backgroundColor: theme.colors.primaryAccent, borderRadius: 9, fontSize: 11, padding: 4 },
+  previewRecord: { borderRadius: 12, borderWidth: 1, borderColor: theme.colors.border, backgroundColor: theme.colors.surface, padding: 10, marginTop: 8 },
+  previewRecordTitle: { color: theme.colors.primaryText, fontSize: 12, fontWeight: '900' },
+  previewRecordText: { color: theme.colors.secondaryText, fontSize: 10, marginTop: 4 },
+  previewWish: { borderRadius: 11, borderWidth: 1, borderColor: theme.colors.border, backgroundColor: theme.colors.surface, padding: 10, marginBottom: 7 },
+  previewWishTitle: { color: theme.colors.primaryText, fontSize: 13, fontWeight: '900', marginTop: 4 },
+  previewWishMeta: { color: theme.colors.secondaryText, fontSize: 10, marginTop: 5 },
+  previewDesignOptions: { flexDirection: 'row', gap: 6 },
+  previewDesignOption: { flex: 1, minHeight: 58, borderRadius: 10, borderWidth: 1, borderColor: theme.colors.border, backgroundColor: theme.colors.surface, alignItems: 'center', justifyContent: 'center' },
+  previewDesignOptionActive: { borderColor: theme.colors.primaryAccent, backgroundColor: theme.colors.softAccent },
+  previewDesignText: { color: theme.colors.primaryText, fontSize: 11, fontWeight: '800' },
 
   previewSub: {
     color: theme.colors.secondaryText,

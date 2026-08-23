@@ -10,7 +10,7 @@ const PREMIUM_GUIDE_FEATURES: Array<{ id: PremiumGuideFeatureId; kind: PremiumPr
   { id: 'focus_custom_duration', kind: 'focus_custom_duration', title: '集中時間を自由に設定', description: '決まった時間だけでなく、その日に合わせて好きな集中時間を設定できます。' },
   { id: 'records', kind: 'records', title: '今日の記録', description: '写真・ひとこと・メモを日付ごとに保存。カレンダーから記録済みの日を確認し、登録後の編集・削除もできます。' },
   { id: 'reflection', kind: 'reflection', title: '今月を振り返る', description: 'カレンダー上部のボタンから開く独立機能。今月の写真・言葉・ベストをテンプレートやレイアウトでまとめ、画像保存・共有できます。' },
-  { id: 'calendar', kind: 'calendar', title: 'カレンダー連携', description: '普段使っているカレンダーの予定も、Rhythmの予定表にまとめて表示できます。' },
+  { id: 'calendar', kind: 'calendar', title: 'カレンダー連携', description: '予定の閲覧は無料。Freeは広告1回で1予定をRhythmへ取り込め、Premiumなら広告なしで取り込めます。' },
   { id: 'route', kind: 'route', title: '地図・共有', description: '予定の場所を地図で確認し、予定内容をPremiumの共有機能で届けられます。' },
   { id: 'nudge', kind: 'nudge', title: '高度な通知', description: '段階的な通知や反応に応じた再通知で、大切な予定を忘れにくくします。' },
   { id: 'time', kind: 'time', title: '行動分析', description: '通知・準備・出発・集中など、実際の行動記録から自分の傾向を振り返れます。' },
@@ -19,12 +19,12 @@ const PREMIUM_GUIDE_FEATURES: Array<{ id: PremiumGuideFeatureId; kind: PremiumPr
   { id: 'history', kind: 'history', title: '詳細な履歴・検索', description: '過去の完了タスクや記録を、検索とカレンダーから詳しく確認できます。' },
   { id: 'recovery', kind: 'recovery', title: '遅れた時も、ここから立て直す', description: '遅れたことを責めるのではなく、今からできる行動を表示。予定が崩れても、すぐに戻れる形を考えます。' },
   { id: 'templates', kind: 'templates', title: 'タスクひな型', description: '一度作ったタスクのカテゴリ・優先度・通知設定をひな型として保存し、次回の登録を簡単にします。' },
-  { id: 'wish', kind: 'wish', title: '叶えたいことを、今月の行動へつなげる', description: '今月のテーマ、叶えたいこと、今日につながる行動をひとつの画面で整理。叶えた日や月の振り返りも残せます。' },
+  { id: 'wish', kind: 'wish', title: '叶えたいことを、今月の行動へつなげる', description: '画面はFreeでも利用できます。叶えたいこと・行動の追加は広告2回で1件、Premiumなら広告なしで使えます。' },
   { id: 'affirmation', kind: 'affirmation', title: '好きな言葉を、選んだ時間に届ける', description: '自分で書いたアファメーションを毎日指定時刻に通知。忙しい日も、自分の軸へ静かに戻れます。' },
-  { id: 'photo_design', kind: 'photo_design', title: '選べるデザイン', description: '花柄1〜3、ドット、チェックデザイン、写真背景をPremium限定で利用できます。選択中のデザインカラーと組み合わせて、Rhythm全体を自分らしく整えられます。' },
+  { id: 'photo_design', kind: 'photo_design', title: '選べるデザイン', description: '花柄1〜3、ドット、チェックデザイン、写真背景はPremium対象です。通常プレビューは無料、初回24時間Trial後は広告で12時間、Premiumなら常時利用できます。' },
 ];
 
-function PremiumMiniPreview({ kind, designMode, styles }: { kind: PremiumPreviewKind; designMode: DesignMode; styles: any }) {
+function LegacyPreviewFallback({ kind, styles }: { kind: PremiumPreviewKind; styles: any }) {
   if (kind === 'calendar') return <View style={styles.premiumPreview}><Text style={styles.previewImageLabel}>予定表の表示イメージ</Text>{[['09:00', '朝会', '外部予定'], ['11:00', '資料提出', 'Rhythm'], ['14:00', '病院訪問', '外部予定'], ['18:30', 'ピラティス', '外部予定']].map(([time, title, source]) => <View key={`${time}-${title}`} style={styles.previewScheduleRow}><Text style={styles.previewTime}>{time}</Text><Text style={styles.previewScheduleTitle}>{title}</Text><Text style={[styles.previewSource, source === 'Rhythm' && styles.previewSourceRhythm]}>{source}</Text></View>)}<View style={styles.previewFlow}><Text style={styles.previewFlowText}>14:00 病院訪問</Text><Text style={styles.previewArrow}>↓</Text><Text style={styles.previewFlowButton}>出発を考える</Text></View></View>;
   if (kind === 'records') return <View style={styles.premiumPreview}><Text style={styles.previewImageLabel}>今日の記録</Text><View style={styles.previewTemplateSource}><Text style={styles.previewCompareTag}>8月23日</Text><Text style={styles.previewTemplateTitle}>写真・ひとこと・メモ</Text><Text style={styles.previewTemplateMeta}>カレンダーから記録済みの日を確認</Text></View><Text style={styles.previewTemplateReady}>登録後も編集・削除できます</Text></View>;
   if (kind === 'reflection') return <View style={styles.premiumPreview}><Text style={styles.previewImageLabel}>今月を振り返る</Text><View style={styles.previewTemplateSaved}><View><Text style={styles.previewCompareTag}>今月の言葉</Text><Text style={styles.previewTemplateTitle}>自分のペースで進む</Text></View><Text style={styles.previewTemplateChoose}>写真 3枚</Text></View><Text style={styles.previewTemplateReady}>テンプレートで画像保存・共有</Text></View>;
@@ -51,18 +51,18 @@ function PremiumFeatureEntryCard({ number, title, active, designMode, chicPalett
   </Pressable>;
 }
 
-function PremiumFeatureDetail({ number, kind, title, description, designMode, chicPalette, styles }: { number: string; kind: PremiumPreviewKind; title: string; description: string; designMode: DesignMode; chicPalette?: ChicThemePalette; styles: any }) {
+function PremiumFeatureDetail({ number, kind, title, description, designMode, chicPalette, styles, renderReadOnlyPreview }: { number: string; kind: PremiumPreviewKind; title: string; description: string; designMode: DesignMode; chicPalette?: ChicThemePalette; styles: any; renderReadOnlyPreview?: (kind: PremiumPreviewKind) => React.ReactNode }) {
   const isMono = designMode !== 'chic';
   return <View style={[styles.premiumFeatureBlock, isMono && styles.premiumFeatureMinimal, designMode === 'dark' && styles.premiumFeatureDark, designMode === 'chic' && styles.premiumFeatureChic, designMode === 'chic' && chicPalette && { backgroundColor: chicPalette.cardSurface, borderColor: chicPalette.border }]}>
     <View style={styles.premiumFeatureInner}>
-      <View style={styles.premiumFeatureTop}><Text style={[styles.premiumFeatureNumber, designMode === 'minimal' && styles.premiumFeatureNumberMinimal, designMode === 'dark' && styles.premiumFeatureNumberDark, designMode === 'chic' && chicPalette && { color: chicPalette.accentStrong }]}>{number}</Text><Text style={[styles.premiumFeatureLabel, designMode === 'chic' && chicPalette && { color: chicPalette.accent }]}>Premium機能</Text></View>
-      <PremiumMiniPreview kind={kind} designMode={designMode} styles={styles} />
+      <View style={styles.premiumFeatureTop}><Text style={[styles.premiumFeatureNumber, designMode === 'minimal' && styles.premiumFeatureNumberMinimal, designMode === 'dark' && styles.premiumFeatureNumberDark, designMode === 'chic' && chicPalette && { color: chicPalette.accentStrong }]}>{number}</Text><View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}><Text style={[styles.premiumFeatureLabel, designMode === 'chic' && chicPalette && { color: chicPalette.accent }]}>Premium機能</Text><Text style={[styles.premiumFeatureLabel, { color: designMode === 'chic' && chicPalette ? chicPalette.textMuted : designMode === 'dark' ? '#8F9BB0' : '#777772' }]}>READ ONLY</Text></View></View>
+      {renderReadOnlyPreview?.(kind) ?? <LegacyPreviewFallback kind={kind} styles={styles} />}
       <View style={[styles.premiumFeatureTextPlate, isMono && styles.premiumFeatureTextMinimal, designMode === 'dark' && styles.premiumFeatureTextDark, designMode === 'chic' && styles.premiumFeatureTextChic, designMode === 'chic' && chicPalette && { backgroundColor: chicPalette.surfaceSubtle, borderColor: chicPalette.border }]}><Text style={[styles.premiumFeatureTitle, isMono && styles.premiumFeatureTitleMinimal, designMode === 'dark' && styles.premiumFeatureTitleDark, designMode === 'chic' && chicPalette && { color: chicPalette.textPrimary }]}>{title}</Text><Text style={[styles.premiumFeatureDescription, isMono && styles.premiumFeatureDescriptionMinimal, designMode === 'dark' && styles.premiumFeatureDescriptionDark, designMode === 'chic' && chicPalette && { color: chicPalette.textSecondary }]}>{description}</Text></View>
     </View>
   </View>;
 }
 
-export function PremiumModal({ visible, initialFeatureId, designMode, chicPalette, planTier, isDevelopment = false, onMockPlanTier, onClose, styles, helpers }: { visible: boolean; initialFeatureId: PremiumGuideFeatureId; designMode: DesignMode; chicPalette?: ChicThemePalette; planTier: PlanTier; isDevelopment?: boolean; onMockPlanTier?: (tier: PlanTier | null) => void; onClose: () => void; styles: any; helpers: any }) {
+export function PremiumModal({ visible, initialFeatureId, designMode, chicPalette, planTier, isDevelopment = false, onMockPlanTier, onClose, styles, helpers, renderReadOnlyPreview }: { visible: boolean; initialFeatureId: PremiumGuideFeatureId; designMode: DesignMode; chicPalette?: ChicThemePalette; planTier: PlanTier; isDevelopment?: boolean; onMockPlanTier?: (tier: PlanTier | null) => void; onClose: () => void; styles: any; helpers: any; renderReadOnlyPreview?: (kind: PremiumPreviewKind) => React.ReactNode }) {
   const { getThemeTokens } = helpers;
   const theme = getThemeTokens(designMode);
   const designSurface = designMode === 'chic' && chicPalette ? { backgroundColor: chicPalette.cardSurface, borderColor: chicPalette.border } : undefined;
@@ -138,7 +138,7 @@ export function PremiumModal({ visible, initialFeatureId, designMode, chicPalett
             {PREMIUM_GUIDE_FEATURES.map((feature, index) => <PremiumFeatureEntryCard key={feature.id} number={String(index + 1).padStart(2, '0')} title={feature.title} active={feature.id === selectedFeature.id} designMode={designMode} chicPalette={chicPalette} onPress={() => setSelectedFeatureId(feature.id)} styles={styles} />)}
           </View>
           <View style={styles.premiumFeatureStage}>
-            <PremiumFeatureDetail number={String(selectedIndex + 1).padStart(2, '0')} kind={selectedFeature.kind} title={selectedFeature.title} description={selectedFeature.description} designMode={designMode} chicPalette={chicPalette} styles={styles} />
+            <PremiumFeatureDetail number={String(selectedIndex + 1).padStart(2, '0')} kind={selectedFeature.kind} title={selectedFeature.title} description={selectedFeature.description} designMode={designMode} chicPalette={chicPalette} styles={styles} renderReadOnlyPreview={renderReadOnlyPreview} />
             {selectedFeature.id === 'month' && <View style={styles.premiumHistoryNote}><Text style={styles.premiumHistoryTitle}>月表示と過去の記録</Text><Text style={styles.premiumHistoryCopy}>7日を超えた予定や完了・集中・出発の記録も確認できます。</Text></View>}
           </View>
           <Pressable style={[styles.premiumCloseButton, { borderColor: accent, backgroundColor: surface }]} onPress={onClose}><Text style={[styles.premiumCloseButtonText, { color: accentStrong }]}>Rhythmに戻る</Text></Pressable>

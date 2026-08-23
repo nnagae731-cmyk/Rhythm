@@ -52,57 +52,44 @@ export type IntroCard = {
 export const INTRO_CARDS: IntroCard[] = [
   {
     id: 'quickTodo',
-    title: 'やることを、そのまま入力',
-    description:
-      '「明日15時に美容院」のように入力すると、日時も自動で設定できます。マイクから話して入力してもOK。',
+    title: '思いついたら、すぐ追加',
+    description: 'やることを、まず1つ残してみましょう。細かい使い方は、実際に使う時に案内します。',
   },
 
   {
     id: 'today',
-    title: '今日やることを整理しよう',
-    description:
-      '「今やる・あとで・待ち」に分けて整理。終わったら○をタップ。完了したこともあとから確認できます。',
+    title: '今日やることが、ひと目でわかる',
+    description: '「今はこれ」から、次にやることを確認できます。',
   },
 
   {
     id: 'schedule',
-    title: '予定と1日の流れをひとつに',
-    description:
-      'Todoや予定を時間の流れで確認。出発時刻を決めたり、到着時刻から逆算することもできます。',
-    premiumNote:
-      `到着から逆算は${PREMIUM_SUBSCRIPTION_LABEL}の機能です`,
+    title: '予定には、間に合うように',
+    description: '準備や移動も含めて、次に動くタイミングを確認できます。',
   },
 
   {
     id: 'focus',
-    title: '今やる1つに集中',
-    description:
-      'Todoを選んで集中タイマーをスタート。他のアプリを開いている間も、時間はそのまま進みます。',
+    title: '今やるひとつに集中',
+    description: 'やることが決まったら、そのまま集中タイムへ。',
   },
 
   {
     id: 'records',
-    title: 'できたことを残そう',
-    description:
-      '完了したTodoや集中の記録を振り返れます。写真と一言・メモで、その日の記録も残せます。',
+    title: 'できたことを残せる',
+    description: '行動や写真、ひとことをあとから振り返れます。',
   },
 
   {
     id: 'wish',
-    title: '叶えたいことを、行動へ',
-    description:
-      '今月のテーマ、叶えたいこと、そのための行動を整理できます。',
-    premiumNote:
-      `${PREMIUM_SUBSCRIPTION_LABEL}。${WISH_FREE_ACCESS_COPY}`,
+    title: 'やりたいことを、今日の一歩へ',
+    description: '目標だけで終わらず、叶えるための行動につなげられます。',
   },
 
   {
     id: 'customize',
     title: 'Rhythmを、自分らしく',
-    description:
-      'Mono・Design・Photoから好きな見た目を選べます。Premiumでは、好きな言葉を指定時刻に届けるアファメーションも使えます。',
-    premiumNote:
-      `一部の機能・デザインは${PREMIUM_SUBSCRIPTION_LABEL}です`,
+    description: '次に、あなたの好きな見た目を選びましょう。',
   },
 ];
 
@@ -112,17 +99,15 @@ export const ONBOARDING_STEPS: Record<
 > = {
   todo: {
     id: 'todo',
-    title: 'やることを、そのまま入力',
-    description:
-      '「明日15時に美容院」のように入力すると、日時も自動で設定できます。マイクから話して入力してもOK。',
+    title: 'まずは1つ追加してみよう',
+    description: 'ここから、やることをすぐ登録できます。',
     actionLabel: 'やることを追加',
   },
 
   todoComplete: {
     id: 'todoComplete',
     title: '終わったら○をタップ',
-    description:
-      'できたTodoは、左の○をタップすると完了できます。',
+    description: 'できたTodoはここから完了できます。',
   },
 
   completedTasks: {
@@ -158,15 +143,14 @@ export const ONBOARDING_STEPS: Record<
     id: 'planRegistration',
     title: '予定に合わせて登録方法を選ぶ',
     description:
-      `「予定表だけ」「出発時刻」「到着から逆算」から選べます。到着から逆算は${PREMIUM_SUBSCRIPTION_LABEL}の機能です。`,
+      '時間を入れると、その日の流れを確認できます。',
     actionLabel: '予定を登録',
   },
 
   calendarImport: {
     id: 'calendarImport',
     title: 'いつもの予定もRhythmへ',
-    description:
-      `端末のカレンダー予定をRhythmへ取り込めます。この機能は${PREMIUM_SUBSCRIPTION_LABEL}です。`,
+    description: '閲覧は無料。広告1回で予定をRhythmへ取り込めます。Premiumなら広告なしで使えます。',
   },
 
   focus: {
@@ -210,8 +194,7 @@ export const ONBOARDING_STEPS: Record<
   wish: {
     id: 'wish',
     title: '叶えたいことを、行動へ',
-    description:
-      `「叶えたいこと」は${PREMIUM_SUBSCRIPTION_LABEL}の機能です。${WISH_FREE_ACCESS_COPY}。今月のテーマから、叶えたいこと、そのための行動へつなげられます。`,
+    description: '画面はFreeでも利用できます。追加操作は広告2回で1件、Premiumなら広告なしで使えます。',
     actionLabel: '叶えたいことを見る',
   },
 

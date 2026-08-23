@@ -6,7 +6,7 @@ import {
   Text,
   View,
 } from 'react-native';
-import { getThemeTokens } from '../../theme';
+import { ChicThemePalette, DesignMode, getThemeTokens } from '../../theme';
 import {
   getOnboardingStep,
   OnboardingFeatureId,
@@ -40,6 +40,9 @@ type Props = {
    * 画面ごとに一時的に変えたい場合だけ指定する。
    */
   actionLabel?: string;
+  /** Current persisted/effective design; the GUIDE must follow it. */
+  designMode?: DesignMode;
+  chicPalette?: ChicThemePalette;
 };
 
 const theme = getThemeTokens(
@@ -52,12 +55,30 @@ export function OnboardingHint({
   onDismiss,
   onAction,
   actionLabel,
+  designMode = ONBOARDING_DESIGN_MODE,
+  chicPalette,
 }: Props) {
   const [open, setOpen] = React.useState(visible);
   React.useEffect(() => setOpen(visible), [visible]);
   if (!visible || !open) return null;
 
   const step = getOnboardingStep(featureId);
+  const theme = getThemeTokens(designMode, chicPalette?.id ?? 'cool');
+  const colors = designMode === 'chic' && chicPalette ? {
+    surface: chicPalette.cardSurface,
+    border: chicPalette.border,
+    text: chicPalette.textPrimary,
+    muted: chicPalette.textSecondary,
+    accent: chicPalette.accent,
+    soft: chicPalette.accentSoft,
+  } : {
+    surface: theme.colors.surface,
+    border: theme.colors.border,
+    text: theme.colors.primaryText,
+    muted: theme.colors.secondaryText,
+    accent: theme.colors.primaryAccent,
+    soft: theme.colors.softAccent,
+  };
   const buttonLabel =
     actionLabel ?? step.actionLabel;
 
@@ -67,10 +88,10 @@ export function OnboardingHint({
     <Modal visible transparent animationType="fade" onRequestClose={dismiss}>
       <Pressable style={styles.backdrop} onPress={dismiss}>
       <Pressable style={styles.sheet} onPress={(event) => event.stopPropagation()}>
-      <View style={styles.card} accessibilityRole="summary">
+      <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]} accessibilityRole="summary">
       <View style={styles.topRow}>
         <View style={styles.badge}>
-          <Text style={styles.badgeText}>
+          <Text style={[styles.badgeText, { color: colors.accent }]}>
             GUIDE
           </Text>
         </View>
@@ -86,17 +107,17 @@ export function OnboardingHint({
                 styles.closeButtonPressed,
             ]}
           >
-            <Text style={styles.closeText}>
+            <Text style={[styles.closeText, { color: colors.muted }]}>
               ×
             </Text>
           </Pressable>
       </View>
 
-      <Text style={styles.title}>
+      <Text style={[styles.title, { color: colors.text }]}>
         {step.title}
       </Text>
 
-      <Text style={styles.description}>
+      <Text style={[styles.description, { color: colors.muted }]}>
         {step.description}
       </Text>
 
@@ -107,6 +128,7 @@ export function OnboardingHint({
           onPress={action}
           style={({ pressed }) => [
             styles.actionButton,
+            { backgroundColor: colors.accent },
             pressed &&
               styles.actionButtonPressed,
           ]}

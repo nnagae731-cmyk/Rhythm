@@ -569,6 +569,7 @@ export default function App() {
   const [premiumOpen, setPremiumOpen] = useState(false);
   const [premiumTargetFeature, setPremiumTargetFeature] = useState<PremiumGuideFeatureId>(DEFAULT_PREMIUM_GUIDE_FEATURE);
   const [designPreviewPattern, setDesignPreviewPattern] = useState<ChicPattern>();
+  const [onboardingDesignSelectionPending, setOnboardingDesignSelectionPending] = useState(false);
   const [designTrialNoticeOpen, setDesignTrialNoticeOpen] = useState(false);
   const designTrialExpirySeenRef = React.useRef<string | null>(null);
   const [hydrated, setHydrated] = useState(false);
@@ -831,6 +832,11 @@ export default function App() {
   const openWish = React.useCallback(() => {
     setScreen('wish');
   }, []);
+  const completeInitialDesignSelection = React.useCallback(() => {
+    if (!onboardingDesignSelectionPending) return;
+    setOnboardingDesignSelectionPending(false);
+    setScreen('home');
+  }, [onboardingDesignSelectionPending]);
   const requestWishReward = React.useCallback(async () => {
     if (hasPremiumAccess(planTier, 'wish_planning')) return { success: true, completed: true } as RewardedAccessResult;
     if (canCreateWish(rewardedAccess)) return { success: true, completed: true } as RewardedAccessResult;
@@ -1734,6 +1740,7 @@ export default function App() {
     tasksRef.current = nextTasks;
     setTasks(nextTasks);
     setAddOpen(false);
+    void onboarding.complete('todo');
     if (isRoutine) void onboarding.complete('routine');
     if (remindAt || (deadlineDate && deadlineTime && deadlineNotifyBefore !== undefined)) void scheduleAllTaskNotifications(task);
   };
@@ -2105,6 +2112,106 @@ export default function App() {
     else setScreen(nextScreen);
   }, [focusTimerActive, openWish, screen]);
 
+  // Premium previews reuse the production screens with fixed, read-only demo
+  // data.  The parent preview surface disables pointer events, so these
+  // callbacks are no-ops, so these screens cannot save tasks, schedule
+  // notifications, request permissions, or mutate the user's state while
+  // still showing the real layout, scroll behavior, and tokens.
+  const renderPremiumReadOnlyPreview = (kind: PremiumGuideFeatureId): React.ReactNode => {
+    const previewDate = dateKey(now);
+    const previewTasks: Task[] = [
+      { id: 'premium-preview-task-1', title: '資料をまとめる', done: false, category: '仕事', priority: '中', scheduledDate: previewDate, scheduledTime: '09:00', bucket: 'now' },
+      { id: 'premium-preview-task-2', title: '病院へ連絡する', done: true, status: 'completed', category: '予定', priority: '高', scheduledDate: previewDate, scheduledTime: '14:00', completedAt: new Date().toISOString(), bucket: 'later' },
+    ];
+    const previewPlans: DeparturePlan[] = [{ id: 'premium-preview-plan', title: '資料提出', destination: '天神○○ビル', date: previewDate, arrival: '14:00', endAt: '15:00', travelMinutes: 30, preparationMinutes: 15, bufferMinutes: 10, planMode: 'calendar_only' }];
+    const readonly = (node: React.ReactNode) => <View style={[styles.premiumPreview, { minHeight: 220, maxHeight: 360, overflow: 'hidden' }]}>{node}</View>;
+    if (kind === 'calendar' || kind === 'route' || kind === 'nudge' || kind === 'month' || kind === 'recovery' || kind === 'templates' || kind === 'focus_custom_duration') {
+      const initialTab: TimeTab = kind === 'calendar' ? 'calendar' : kind === 'focus_custom_duration' ? 'focus' : 'deadline';
+      return readonly(<TimelineScreen
+        plan={previewPlans[0]}
+        plans={previewPlans}
+        planEditorOpen={false}
+        departureCheckIns={[]}
+        departurePreparationStatuses={{}}
+        behaviorEvents={[]}
+        tasks={previewTasks}
+        now={now}
+        designMode={uiDesignMode}
+        focusBackgroundUri={undefined}
+        initialTab={initialTab}
+        chicPattern={effectiveChicPattern}
+        chicPalette={chicPalette}
+        planTier="premium"
+        focusCustomDurationMinutes={47}
+        onFocusCustomDurationChange={() => undefined}
+        recoveryTargetPlanId={undefined}
+        onChange={() => undefined}
+        onSchedule={() => undefined}
+        onScheduleUsed={() => undefined}
+        onOpenNewPlan={() => undefined}
+        onClosePlanEditor={() => undefined}
+        onImportCalendarEvent={() => false}
+        onEdit={() => undefined}
+        onSharePlan={() => undefined}
+        onDelete={() => undefined}
+        onEditTask={() => undefined}
+        onDeleteTask={() => undefined}
+        onPremium={() => undefined}
+        onRecovery={() => undefined}
+        onRecoveryClosed={() => undefined}
+        onFocusCompleted={() => undefined}
+        onFocusStarted={() => undefined}
+        onFocusNotificationPermission={async () => false}
+        onFocusRunningChange={() => undefined}
+        focusTimerActive={false}
+        onFocusNavigationBlocked={() => undefined}
+        onBehaviorEvent={() => undefined}
+        onDeparted={() => undefined}
+        onPreparationStarted={() => undefined}
+        onStill={() => undefined}
+        calendarMarks={{}}
+        onSetCalendarMark={() => undefined}
+        hapticsEnabled={false}
+        styles={styles}
+        helpers={{ getThemeTokens: getThemedThemeTokens, dateKey, planDateKey, hasPremiumAccess, formatLiveDate, formatLiveTime, getDepartureMoments, normalizePlanDate, countdownToDate, dateForReminder, getMapSearchTarget, openMapSearch: () => undefined, getPlanCountdownAt, colors: themedColors }}
+        components={{ TimeTabButton, FocusMode, TaskScheduleCalendar, DailyScheduleTimeline, RecoveryModal }}
+      />);
+    }
+    if (kind === 'time' || kind === 'behavior' || kind === 'history' || kind === 'records' || kind === 'reflection') {
+      return readonly(<AnalysisScreen
+        events={[]}
+        tasks={previewTasks}
+        onRemoveRoutine={() => undefined}
+        designMode={uiDesignMode}
+        planTier="premium"
+        chicPalette={chicPalette}
+        chicPattern={effectiveChicPattern}
+        PatternDecor={ChicPatternDecor}
+        recordContent={<View />}
+        onPremium={() => undefined}
+        departurePlans={previewPlans}
+        onApplySuggestion={() => undefined}
+        onAnalysisUsed={() => undefined}
+      />);
+    }
+    if (kind === 'wish') {
+      return readonly(<WishScreen
+        designMode={uiDesignMode}
+        chicPattern={effectiveChicPattern}
+        chicPalette={chicPalette}
+        monthLabel="2026年8月"
+        state={{ theme: '自分のペースを整える', wishes: [{ id: 'preview-wish', title: '週に1冊、本を読む', completed: false, createdAt: new Date().toISOString() }], actions: [{ id: 'preview-action', wishId: 'preview-wish', title: '10分読む', completed: false }], review: {} }}
+        onSaveState={() => undefined}
+        onCreateTaskFromAction={() => undefined}
+        canCreateWish={false}
+        canCreateWishAction={false}
+        onPremium={() => undefined}
+        onBack={() => undefined}
+      />);
+    }
+    return undefined;
+  };
+
   return (
         <SafeAreaView style={[styles.safe, uiDesignMode === 'minimal' && styles.safeMinimal, uiDesignMode === 'dark' && styles.safeDark, designMode === 'photo' && styles.safePhoto, { backgroundColor: uiDesignMode === 'chic' ? getChicPatternVisual(effectiveChicPattern, chicPalette).background : theme.colors.screenBackground }]}>
       <StatusBar style={uiDesignMode === 'dark' ? 'light' : 'dark'} />
@@ -2117,14 +2224,14 @@ export default function App() {
         {completionAffirmation && <Animated.View pointerEvents="none" style={{ position: 'absolute', top: 72, left: 20, right: 20, zIndex: 30, opacity: completionAffirmationOpacity, alignItems: 'center' }}><View style={{ maxWidth: 340, paddingHorizontal: 18, paddingVertical: 12, borderRadius: 18, backgroundColor: uiDesignMode === 'dark' ? '#20293A' : uiDesignMode === 'chic' ? chicPalette.cardSurface : '#FFFFFF', borderWidth: 1, borderColor: uiDesignMode === 'dark' ? '#40506A' : uiDesignMode === 'chic' ? chicPalette.border : '#E5E0E5', shadowColor: '#000', shadowOpacity: 0.12, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 4 }}><Text style={{ textAlign: 'center', color: uiDesignMode === 'dark' ? '#F4F7FC' : uiDesignMode === 'chic' ? chicPalette.textPrimary : '#282538', fontSize: 14, fontWeight: '600' }}>{completionAffirmation}</Text></View></Animated.View>}
 
         <ScrollView contentContainerStyle={[styles.content, screen === 'timeline' && styles.contentTimeline]} keyboardShouldPersistTaps="handled">
-          {onboarding.ready && onboarding.isCompleted('todoComplete') && onboarding.isCompleted('design') && screen === 'timeline' && !onboarding.isCompleted('schedule') && <View style={{ marginBottom: 12 }}><OnboardingHint featureId="schedule" onAction={() => openNewPlanEditor()} /></View>}
-          {onboarding.ready && onboarding.isCompleted('schedule') && screen === 'timeline' && !onboarding.isCompleted('planRegistration') && <View style={{ marginBottom: 12 }}><OnboardingHint featureId="planRegistration" onAction={() => openNewPlanEditor()} /></View>}
+          {onboarding.ready && onboarding.isCompleted('todoComplete') && onboarding.isCompleted('design') && screen === 'timeline' && !onboarding.isCompleted('schedule') && <View style={{ marginBottom: 12 }}><OnboardingHint featureId="schedule" designMode={uiDesignMode} chicPalette={chicPalette} onAction={() => openNewPlanEditor()} /></View>}
+          {onboarding.ready && onboarding.isCompleted('schedule') && screen === 'timeline' && !onboarding.isCompleted('planRegistration') && <View style={{ marginBottom: 12 }}><OnboardingHint featureId="planRegistration" designMode={uiDesignMode} chicPalette={chicPalette} onAction={() => openNewPlanEditor()} /></View>}
           {/* Calendar import remains an individual feature flow; it is not part of the basic guide sequence. */}
-          {onboarding.ready && screen === 'analysis' && !onboarding.isCompleted('analysis') && <View style={{ marginBottom: 12 }}><OnboardingHint featureId="analysis" /></View>}
-          {onboarding.ready && screen === 'analysis' && onboarding.isCompleted('analysis') && !onboarding.isCompleted('routine') && <View style={{ marginBottom: 12 }}><OnboardingHint featureId="routine" /></View>}
-          {onboarding.ready && screen === 'analysis' && onboarding.isCompleted('analysis') && onboarding.isCompleted('routine') && !onboarding.isCompleted('history') && <View style={{ marginBottom: 12 }}><OnboardingHint featureId="history" /></View>}
-          {onboarding.ready && onboarding.isCompleted('todoComplete') && screen === 'home' && !onboarding.isCompleted('design') && <OnboardingHint featureId="design" onAction={() => { setScreen('settings'); setDesignPreviewPattern('plain'); }} />}
-          {onboarding.ready && onboarding.isCompleted('planRegistration') && screen === 'timeline' && !onboarding.isCompleted('focus') && <OnboardingHint featureId="focus" onAction={() => setTimelineInitialTab('focus')} />}
+          {onboarding.ready && screen === 'analysis' && !onboarding.isCompleted('analysis') && <View style={{ marginBottom: 12 }}><OnboardingHint featureId="analysis" designMode={uiDesignMode} chicPalette={chicPalette} /></View>}
+          {onboarding.ready && screen === 'analysis' && onboarding.isCompleted('analysis') && !onboarding.isCompleted('routine') && <View style={{ marginBottom: 12 }}><OnboardingHint featureId="routine" designMode={uiDesignMode} chicPalette={chicPalette} /></View>}
+          {onboarding.ready && screen === 'analysis' && onboarding.isCompleted('analysis') && onboarding.isCompleted('routine') && !onboarding.isCompleted('history') && <View style={{ marginBottom: 12 }}><OnboardingHint featureId="history" designMode={uiDesignMode} chicPalette={chicPalette} /></View>}
+          {onboarding.ready && onboarding.isCompleted('todoComplete') && screen === 'home' && !onboarding.isCompleted('design') && <OnboardingHint featureId="design" designMode={uiDesignMode} chicPalette={chicPalette} onAction={() => { setScreen('settings'); setDesignPreviewPattern('plain'); }} />}
+          {onboarding.ready && onboarding.isCompleted('planRegistration') && screen === 'timeline' && !onboarding.isCompleted('focus') && <OnboardingHint featureId="focus" designMode={uiDesignMode} chicPalette={chicPalette} onAction={() => setTimelineInitialTab('focus')} />}
           {screen === 'home' && (
             <HomeScreen
               tasks={visibleTasks}
@@ -2326,11 +2433,13 @@ export default function App() {
                    setDesignMode(mode);
                  }
                  void onboarding.complete('design');
+                 if (mode !== 'chic') completeInitialDesignSelection();
                }}
                onMonoAppearance={(appearance) => {
                  setDesignMode('minimal');
                  setMonoAppearance(appearance);
                  void onboarding.complete('design');
+                 completeInitialDesignSelection();
                }}
                onHapticsEnabled={handleHapticsEnabled}
                onReview={() => void requestAppReview()}
@@ -2339,9 +2448,10 @@ export default function App() {
                 if (feature && !hasPremiumAccess(planTier, feature)) { openPremiumFeature(); return; }
                 setChicPattern(pattern);
                 void onboarding.complete('design');
+                completeInitialDesignSelection();
               }}
                onDesignPreview={(pattern) => setDesignPreviewPattern(pattern)}
-               onChicCheckColor={(color) => { setChicCheckColor(color); void onboarding.complete('design'); }}
+               onChicCheckColor={(color) => { setChicCheckColor(color); void onboarding.complete('design'); completeInitialDesignSelection(); }}
                onSaveAffirmation={saveAffirmation}
                onDeleteAffirmation={deleteAffirmation}
                onSaveAffirmationCustomText={saveAffirmationCustomText}
@@ -2482,7 +2592,7 @@ export default function App() {
         helpers={{ getThemeTokens: getThemedThemeTokens, todayInputValue, hasPremiumAccess, dateForReminder, dateKey, formatLiveTime, colors: themedColors, summarizePremiumTaskTemplate }}
         components={{ CompactNumberSetting }}
       />
-      <PremiumModal visible={premiumOpen} initialFeatureId={premiumTargetFeature} designMode={uiDesignMode} chicPalette={chicPalette} planTier={planTier} isDevelopment={__DEV__} onMockPlanTier={setDevPlanTierOverride} onClose={() => setPremiumOpen(false)} styles={styles} helpers={{ getThemeTokens: getThemedThemeTokens }} />
+      <PremiumModal visible={premiumOpen} initialFeatureId={premiumTargetFeature} designMode={uiDesignMode} chicPalette={chicPalette} planTier={planTier} isDevelopment={__DEV__} onMockPlanTier={setDevPlanTierOverride} onClose={() => setPremiumOpen(false)} styles={styles} helpers={{ getThemeTokens: getThemedThemeTokens }} renderReadOnlyPreview={renderPremiumReadOnlyPreview} />
       <DesignPreviewModal visible={Boolean(designPreviewPattern)} initialPattern={designPreviewPattern} chicCheckColor={chicCheckColor} planTier={planTier} photoUri={photoTheme.imageUri} onClose={() => setDesignPreviewPattern(undefined)} onUse={(mode, pattern) => {
         if (mode === 'photo') {
           if (planTier !== 'premium') { openPremiumFeature('photo_design'); return; }
@@ -2519,6 +2629,11 @@ export default function App() {
       ? onboarding.closeIntro
       : onboarding.finishIntro
   }
+  onFinalAction={() => {
+    void onboarding.finishIntro();
+    setOnboardingDesignSelectionPending(true);
+    setScreen('settings');
+  }}
 />
     </SafeAreaView>
   );

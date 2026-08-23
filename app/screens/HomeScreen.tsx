@@ -140,28 +140,30 @@ export function HomeScreen({
        <View style={{ marginBottom: 12 }}>
         <OnboardingHint
           featureId="todo"
+          designMode={designMode}
+          chicPalette={chicPalette}
           onAction={onTodoOnboardingAction}
      />
       </View>
       )}
       {showTodoCompleteOnboarding && (
        <View style={{ marginBottom: 12 }}>
-        <OnboardingHint featureId="todoComplete" />
+        <OnboardingHint featureId="todoComplete" designMode={designMode} chicPalette={chicPalette} />
        </View>
       )}
       {showCompletedTasksOnboarding && (
        <View style={{ marginBottom: 12 }}>
-        <OnboardingHint featureId="completedTasks" />
+        <OnboardingHint featureId="completedTasks" designMode={designMode} chicPalette={chicPalette} />
        </View>
       )}
       {showTaskBucketsOnboarding && (
        <View style={{ marginBottom: 12 }}>
-        <OnboardingHint featureId="taskBuckets" />
+        <OnboardingHint featureId="taskBuckets" designMode={designMode} chicPalette={chicPalette} />
        </View>
       )}
       {showTaskDetailsOnboarding && (
        <View style={{ marginBottom: 12 }}>
-        <OnboardingHint featureId="taskDetails" />
+        <OnboardingHint featureId="taskDetails" designMode={designMode} chicPalette={chicPalette} />
        </View>
       )}
     <VoiceQuickAddCard
