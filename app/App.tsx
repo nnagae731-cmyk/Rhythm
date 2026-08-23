@@ -34,9 +34,11 @@ import { OnboardingHint } from './features/onboarding/OnboardingHint';
 import type { OnboardingFeatureId } from './features/onboarding/onboardingSteps';
 import { useOnboarding } from './features/onboarding/useOnboarding';
 import { RecoveryModal } from './components/RecoveryModal';
+import { TravelAppsSettingsCard } from './components/TravelAppsSettingsCard';
 import { styles } from './styles/appStyles';
 import { Affirmation, AffirmationCustomText, CalendarMarks, Category, DeparturePlan, DeparturePreparationStatus, MonthlyReflectionCard, MonthlyReview, MonthlyWishState, NudgeMode, PersistedState, PhotoThemePhotoTarget, PhotoThemeSettings, Priority, RepeatRule, Screen, SharedEvent, SharedParticipantPrefs, Subtask, Task, TaskBucket, TaskListItem, ThemeMode, TimeTab, UrgencyStatus, WidgetSize, WishAction, WishMonthMap } from './types';
 import { initialPlan } from './storage/rhythmState';
+import { DEFAULT_TRAVEL_APP_SETTINGS, normalizeTravelAppSettings, TravelAppSettings } from './features/travel/travelApps';
 import { loadRhythmState, saveRhythmState } from './storage/rhythmStorage';
 import { categories, priorities, completionIcons, categoryColors as baseCategoryColors, designModes, getLateRiskMessage, getNextBestAction, getUrgencyStatus, urgencyLevel } from './features/tasks/taskUtils';
 import { createSharedEventPacket, createSharedEventToken, encodeSharedEventLink, normalizeSharedEvent, parseSharedEventLink, upsertSharedEvent } from './features/shared/sharedUtils';
@@ -546,6 +548,7 @@ export default function App() {
   const preparationFeedbackKeysRef = React.useRef(new Set<string>());
   const completionAffirmationOpacity = React.useRef(new Animated.Value(0)).current;
   const [photoTheme, setPhotoTheme] = useState<PhotoThemeSettings>({ placement: 'background' });
+  const [travelApps, setTravelApps] = useState<TravelAppSettings>(DEFAULT_TRAVEL_APP_SETTINGS);
   const [pendingTopPhoto, setPendingTopPhoto] = useState<{ target: Exclude<PhotoThemePhotoTarget, 'background' | 'focus'>; originalUri: string; sourceWidth: number; sourceHeight: number; cropRect?: NormalizedCropRect }>();
   const [recoveryHistory, setRecoveryHistory] = useState<RecoveryRecord[]>([]);
   const [focusSessions, setFocusSessions] = useState<FocusSession[]>([]);
@@ -1492,6 +1495,7 @@ export default function App() {
           topImageCropRects: saved.photoTheme?.topImageCropRects ?? {},
           focusBackgroundUri: saved.photoTheme?.focusBackgroundUri,
         });
+        setTravelApps(normalizeTravelAppSettings(saved.travelApps));
         setRecoveryHistory(saved.recoveryHistory ?? []);
         setFocusSessions(saved.focusSessions ?? []);
         if (typeof saved.focusCustomDurationMinutes === 'number' && Number.isSafeInteger(saved.focusCustomDurationMinutes) && saved.focusCustomDurationMinutes > 0) {
@@ -1657,7 +1661,7 @@ export default function App() {
 
   useEffect(() => {
     if (!hydrated) return;
-    const state: PersistedState = { tasks, plan, departurePlans, widgetSize, showCompleted, completionIcon, designMode, monoAppearance, hapticsEnabled, reviewPromptedAt, taskTemplates, savedTaskTemplates, chicPattern, chicCheckColor, recoveryHistory, focusSessions, focusCustomDurationMinutes, departureCheckIns, behaviorEvents, wishMonths, calendarMarks, calendarImportCalendarIds, calendarImportKnownCalendarIds, sharedEvents, sharedParticipantIdsByToken, sharedParticipantPrefsByToken, departurePreparationStatuses, affirmations, affirmationCustomTexts, photoTheme };
+    const state: PersistedState = { tasks, plan, departurePlans, widgetSize, showCompleted, completionIcon, designMode, monoAppearance, hapticsEnabled, reviewPromptedAt, taskTemplates, savedTaskTemplates, chicPattern, chicCheckColor, recoveryHistory, focusSessions, focusCustomDurationMinutes, departureCheckIns, behaviorEvents, wishMonths, calendarMarks, calendarImportCalendarIds, calendarImportKnownCalendarIds, sharedEvents, sharedParticipantIdsByToken, sharedParticipantPrefsByToken, departurePreparationStatuses, affirmations, affirmationCustomTexts, photoTheme, travelApps };
     latestPersistedStateRef.current = state;
     if (persistenceDisabledRef.current) return;
     if (persistenceTimerRef.current) clearTimeout(persistenceTimerRef.current);
@@ -1673,7 +1677,7 @@ export default function App() {
     return () => {
       if (persistenceTimerRef.current) clearTimeout(persistenceTimerRef.current);
     };
-  }, [tasks, plan, departurePlans, widgetSize, showCompleted, completionIcon, designMode, monoAppearance, hapticsEnabled, reviewPromptedAt, taskTemplates, savedTaskTemplates, chicPattern, chicCheckColor, recoveryHistory, focusSessions, focusCustomDurationMinutes, departureCheckIns, behaviorEvents, wishMonths, calendarMarks, calendarImportCalendarIds, calendarImportKnownCalendarIds, sharedEvents, sharedParticipantIdsByToken, sharedParticipantPrefsByToken, departurePreparationStatuses, affirmations, affirmationCustomTexts, photoTheme, hydrated]);
+  }, [tasks, plan, departurePlans, widgetSize, showCompleted, completionIcon, designMode, monoAppearance, hapticsEnabled, reviewPromptedAt, taskTemplates, savedTaskTemplates, chicPattern, chicCheckColor, recoveryHistory, focusSessions, focusCustomDurationMinutes, departureCheckIns, behaviorEvents, wishMonths, calendarMarks, calendarImportCalendarIds, calendarImportKnownCalendarIds, sharedEvents, sharedParticipantIdsByToken, sharedParticipantPrefsByToken, departurePreparationStatuses, affirmations, affirmationCustomTexts, photoTheme, travelApps, hydrated]);
 
   useEffect(() => {
     if (!hydrated) return;
@@ -2312,6 +2316,7 @@ export default function App() {
       return readonly(<View pointerEvents="none">{renderOnboardingCaptureStep('customize')}</View>);
     }
     if (kind === 'nudge') return readonly(<NotificationManagerCard designMode={uiDesignMode} readOnly />);
+    if (kind === 'travel_apps') return readonly(<TravelAppsSettingsCard settings={travelApps} onChange={() => undefined} planTier="premium" designMode={uiDesignMode} chicPalette={chicPalette} onPremium={() => undefined} readOnlyPreview />, 560);
     if (kind === 'calendar' || kind === 'route' || kind === 'month' || kind === 'recovery' || kind === 'focus_custom_duration') {
       const initialTab: TimeTab = kind === 'calendar' || kind === 'month' ? 'calendar' : kind === 'route' ? 'departure' : kind === 'focus_custom_duration' ? 'focus' : 'deadline';
       return readonly(<TimelineScreen
@@ -2530,6 +2535,7 @@ export default function App() {
       affirmations={[{ id: 'capture-affirmation', text: '私は、自分のペースで進める', time: '08:30', enabled: true, createdAt: '2026-01-01T00:00:00.000Z' }]}
       affirmationCustomTexts={[]}
       photoTheme={{ placement: 'background' }}
+      travelApps={DEFAULT_TRAVEL_APP_SETTINGS}
       onSize={() => undefined}
       onShowCompleted={() => undefined}
       onCompletionIcon={() => undefined}
@@ -2547,6 +2553,7 @@ export default function App() {
       onPickPhotoTheme={() => undefined}
       onAdjustPhotoTheme={() => undefined}
       onClearPhotoTheme={() => undefined}
+      onTravelAppsChange={() => undefined}
       templates={[]}
       savedTemplates={[]}
       onAddTemplate={() => undefined}
@@ -2758,6 +2765,8 @@ export default function App() {
                 if (target) handleDepartureStill(target, phase);
               }}
               calendarMarks={calendarMarks}
+              travelApps={travelApps}
+              onOpenTravelAppSettings={() => setScreen('settings')}
               calendarImportCalendarIds={calendarImportCalendarIds}
               calendarImportKnownCalendarIds={calendarImportKnownCalendarIds}
               onCalendarImportCalendarIdsChange={setCalendarImportCalendarIds}
@@ -2792,6 +2801,7 @@ export default function App() {
                affirmations={affirmations}
                affirmationCustomTexts={affirmationCustomTexts}
                photoTheme={photoTheme}
+               travelApps={travelApps}
               planTier={planTier}
               onSize={setWidgetSize}
               onShowCompleted={setShowCompleted}
@@ -2862,6 +2872,7 @@ export default function App() {
                  deleteManagedPhotoUri(removedOriginalUri, retainedUris);
                  return { ...current, topImageUris, topImageOriginalUris, topImageAdjustments, topImageCropRects };
                })}
+               onTravelAppsChange={setTravelApps}
               templates={taskTemplates}
               savedTemplates={savedTaskTemplates}
               onAddTemplate={(title) => setTaskTemplates((current) => current.includes(title) ? current : [...current, title])}

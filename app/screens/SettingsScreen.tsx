@@ -6,6 +6,8 @@ import { PlanTier } from '../premiumAccess';
 import { PremiumGuideFeatureId } from '../premiumGuide';
 import { PremiumTaskTemplate } from '../taskTemplates';
 import { PhotoThemeSettingsCard } from '../components/PhotoThemeSettingsCard';
+import { TravelAppsSettingsCard } from '../components/TravelAppsSettingsCard';
+import { TravelAppSettings } from '../features/travel/travelApps';
 export function SettingsScreen({
   tasks,
   timeline,
@@ -24,6 +26,7 @@ export function SettingsScreen({
   affirmations,
   affirmationCustomTexts,
   photoTheme,
+  travelApps,
   onSize,
   onShowCompleted,
   onCompletionIcon,
@@ -41,6 +44,7 @@ export function SettingsScreen({
   onPickPhotoTheme,
   onAdjustPhotoTheme,
   onClearPhotoTheme,
+  onTravelAppsChange,
   templates,
   savedTemplates,
   onAddTemplate,
@@ -73,6 +77,7 @@ export function SettingsScreen({
   affirmations: Affirmation[];
   affirmationCustomTexts: AffirmationCustomText[];
   photoTheme: PhotoThemeSettings;
+  travelApps: TravelAppSettings;
   onSize: (size: WidgetSize) => void;
   onShowCompleted: (value: boolean) => void;
   onCompletionIcon: (icon: string) => void;
@@ -90,6 +95,7 @@ export function SettingsScreen({
   onPickPhotoTheme: (target: PhotoThemePhotoTarget) => void;
   onAdjustPhotoTheme: (target: Exclude<PhotoThemePhotoTarget, 'background' | 'focus'>) => void;
   onClearPhotoTheme: (target: PhotoThemePhotoTarget) => void;
+  onTravelAppsChange: (settings: TravelAppSettings) => void;
   templates: string[];
   savedTemplates: PremiumTaskTemplate[];
   onAddTemplate: (title: string) => void;
@@ -111,7 +117,7 @@ export function SettingsScreen({
   const selectedMode = selectedDesignMode ?? designMode;
   const isDark = designMode === 'dark';
   const isDesign = selectedMode === 'chic' || selectedMode === 'photo';
-  const [expandedSetting, setExpandedSetting] = useState<'appearance' | 'notifications' | 'taskDisplay' | 'quick' | 'widget' | 'premium' | 'about' | null>(captureDesignOnly ? 'appearance' : null);
+  const [expandedSetting, setExpandedSetting] = useState<'appearance' | 'travelApps' | 'notifications' | 'taskDisplay' | 'quick' | 'widget' | 'premium' | 'about' | null>(captureDesignOnly ? 'appearance' : null);
   const previewTasks = tasks.filter((task) => showCompleted || !task.done).slice(0, size === 'small' ? 2 : 3);
   const isCheckPattern = chicPattern === 'checkLavenderSatin' || chicPattern === 'checkBeigeNoir' || chicPattern === 'checkMauveFrame';
   const patternVisual = isCheckPattern ? getChicCheckColor(chicCheckColor) : getChicPatternVisual(chicPattern, chicPalette);
@@ -166,6 +172,9 @@ export function SettingsScreen({
       </View>
       </SettingsDisclosure>
       {!captureDesignOnly && <>
+       <SettingsDisclosure designMode={designMode} title="移動アプリ連携" subtitle="乗換・タクシーアプリを登録" expanded={expandedSetting === 'travelApps'} onPress={() => setExpandedSetting((current) => current === 'travelApps' ? null : 'travelApps')}>
+         <TravelAppsSettingsCard settings={travelApps} onChange={onTravelAppsChange} planTier={planTier} designMode={designMode} chicPalette={chicPalette} onPremium={onPremium} />
+       </SettingsDisclosure>
        <SettingsDisclosure designMode={designMode} title="通知・フィードバック" subtitle="通知管理・触覚フィードバック" expanded={expandedSetting === 'notifications'} onPress={() => setExpandedSetting((current) => current === 'notifications' ? null : 'notifications')}>
          <NotificationManagerCard designMode={designMode} />
        <View style={[styles.settingsCard, isDark && styles.darkSurface]}><View style={styles.switchRow}><View style={{ flex: 1 }}><Text style={[styles.switchTitle, isDark && styles.darkBodyText]}>触覚フィードバック</Text><Text style={[styles.switchCopy, isDark && styles.darkMutedText]}>完了や集中開始を振動で知らせます</Text></View><Switch value={hapticsEnabled} onValueChange={(value) => onHapticsEnabled(value)} trackColor={{ false: isDark ? '#40506A' : '#D8D3DE', true: isDesign && chicPalette ? chicPalette.accent : colors.violet }} thumbColor={hapticsEnabled ? (isDesign && chicPalette ? chicPalette.onAccent : '#FFFFFF') : (isDark ? '#8F9BB0' : '#FFFFFF')} /></View></View>

@@ -3,6 +3,11 @@ import { Alert, Modal, Pressable, ScrollView, Share, Text, TextInput, View } fro
 import { DesignMode, getThemeTokens } from '../theme';
 import { createRecoveryRecord, getRecoveryOptions, RecoveryOption, RecoveryRecord } from '../recovery';
 import { DeparturePlan } from '../types';
+import { PlanTier } from '../premiumAccess';
+import { ChicThemePalette } from '../theme';
+import { TravelAppLaunchActions } from './TravelAppLaunchActions';
+import { TravelAppSettings } from '../features/travel/travelApps';
+import { PremiumGuideFeatureId } from '../premiumGuide';
 
 type RecoveryModalProps = {
   visible: boolean;
@@ -11,11 +16,15 @@ type RecoveryModalProps = {
   designMode: DesignMode;
   onClose: () => void;
   onApply: (record: RecoveryRecord) => void;
-  onPremium: () => void;
+  onPremium: (featureId?: PremiumGuideFeatureId) => void;
   styles: any;
+  travelApps?: TravelAppSettings;
+  planTier?: PlanTier;
+  chicPalette?: ChicThemePalette;
+  onOpenTravelAppSettings?: () => void;
 };
 
-export function RecoveryModal({ visible, plan, now, designMode, onClose, onApply, onPremium, styles }: RecoveryModalProps) {
+export function RecoveryModal({ visible, plan, now, designMode, onClose, onApply, onPremium, styles, travelApps, planTier = 'free', chicPalette, onOpenTravelAppSettings }: RecoveryModalProps) {
   const [contactEditing, setContactEditing] = React.useState(false);
   const [contactDraft, setContactDraft] = React.useState('');
   if (!plan) return null;
@@ -87,6 +96,7 @@ export function RecoveryModal({ visible, plan, now, designMode, onClose, onApply
               </View>
             </View>}
             <Text style={styles.recoveryNote}>位置情報や経路検索はまだ使わず、登録済みの移動時間から計算しています。</Text>
+            {plan.destination?.trim() ? <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginTop: 8 }}><TravelAppLaunchActions settings={travelApps} category="transit" destination={plan.destination} planTier={planTier} designMode={designMode} chicPalette={chicPalette} onPremium={(featureId) => onPremium(featureId)} onOpenSettings={onOpenTravelAppSettings} /><TravelAppLaunchActions settings={travelApps} category="taxi" destination={plan.destination} planTier={planTier} designMode={designMode} chicPalette={chicPalette} onPremium={(featureId) => onPremium(featureId)} onOpenSettings={onOpenTravelAppSettings} /></View> : null}
             <Pressable onPress={onClose}><Text style={styles.cancelText}>閉じる</Text></Pressable>
           </ScrollView>
         </Pressable>

@@ -6,6 +6,7 @@ import { PlanTier } from './premiumAccess';
 import { BehaviorEvent } from './behaviorEvents';
 import { PremiumTaskTemplate } from './taskTemplates';
 import type { NormalizedCropRect } from './features/photo/topImageCrop';
+import type { TravelAppSettings } from './features/travel/travelApps';
 
 export type Screen = 'home' | 'timeline' | 'analysis' | 'settings' | 'wish';
 export type TimeTab = 'departure' | 'deadline' | 'calendar' | 'focus';
@@ -249,4 +250,6 @@ export type PersistedState = {
   affirmations?: Affirmation[];
   affirmationCustomTexts?: AffirmationCustomText[];
   photoTheme?: PhotoThemeSettings;
+  /** Optional external travel-app launch settings. */
+  travelApps?: TravelAppSettings;
 };
