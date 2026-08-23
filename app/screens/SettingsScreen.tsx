@@ -16,6 +16,7 @@ export function SettingsScreen({
   showCompleted,
   completionIcon,
   designMode,
+  selectedDesignMode,
   monoAppearance,
   hapticsEnabled,
   chicPalette,
@@ -61,6 +62,8 @@ export function SettingsScreen({
   showCompleted: boolean;
   completionIcon: string;
   designMode: DesignMode;
+  /** Persisted mode used for selection labels; designMode is the effective visual mode. */
+  selectedDesignMode?: DesignMode;
   monoAppearance: 'auto' | 'light' | 'dark';
   hapticsEnabled: boolean;
   chicPalette?: ChicThemePalette;
@@ -101,8 +104,9 @@ export function SettingsScreen({
   const { colors, getChicPatternVisual, hasPremiumAccess, getChicCheckColor, chicCheckColorChoices, countdownToClock, getUrgencyStatus, getNextBestAction, designModes, completionIcons, summarizePremiumTaskTemplate } = helpers;
   const { BThemeRibbonDecoration, CThemeRibbonDecoration, ChicPatternDecor, ChicPatternSelector, SettingsDisclosure, NotificationManagerCard } = components;
   const [newTemplate, setNewTemplate] = useState('');
+  const selectedMode = selectedDesignMode ?? designMode;
   const isDark = designMode === 'dark';
-  const isDesign = designMode === 'chic' || designMode === 'photo';
+  const isDesign = selectedMode === 'chic' || selectedMode === 'photo';
   const [expandedSetting, setExpandedSetting] = useState<'design' | 'notifications' | 'affirmations' | 'quick' | 'templates' | 'widget' | null>('design');
   const previewTasks = tasks.filter((task) => showCompleted || !task.done).slice(0, size === 'small' ? 2 : 3);
   const isCheckPattern = chicPattern === 'checkLavenderSatin' || chicPattern === 'checkBeigeNoir' || chicPattern === 'checkMauveFrame';
@@ -129,32 +133,32 @@ export function SettingsScreen({
       {__DEV__ && <View style={[styles.settingsCard, isDark && styles.darkSurface]}><Text style={[styles.settingsTitle, isDark && styles.darkBodyText]}>Expo Go 確認環境</Text><Text style={[styles.switchCopy, isDark && styles.darkAccentText]}>このQRコードは、利用プランが固定された確認用環境です。</Text><Text style={[styles.devPlanCurrent, isDark && styles.darkAccentText]}>現在：{planTier === 'premium' ? 'Premium版' : '無料版'}</Text></View>}
       <SettingsDisclosure designMode={designMode} title="デザインモード" subtitle="Mono / Design / 写真を選ぶ" expanded={expandedSetting === 'design'} onPress={() => setExpandedSetting((current) => current === 'design' ? null : 'design')}>
       <View accessibilityLabel={isDesign ? `Design ${checkColorLabel}` : 'Mono'} style={[styles.modeCard, isDark && styles.darkSurface, isDesign && chicPalette && { backgroundColor: chicPalette.cardSurface, borderColor: chicPalette.border }]}>
-        {designMode === 'chic' && chicPattern === 'checkLavenderSatin' && <BThemeRibbonDecoration compact />}
-        {designMode === 'chic' && chicPattern === 'checkBeigeNoir' && <CThemeRibbonDecoration compact />}
-        {isDesign && <ChicPatternSelector designMode={designMode} chicPattern={chicPattern} chicCheckColor={chicCheckColor} planTier={planTier} onPattern={onChicPattern} onCheckColor={onChicCheckColor} onPremium={onPremium} onPreview={onDesignPreview} />}
+        {selectedMode === 'chic' && chicPattern === 'checkLavenderSatin' && <BThemeRibbonDecoration compact />}
+        {selectedMode === 'chic' && chicPattern === 'checkBeigeNoir' && <CThemeRibbonDecoration compact />}
+        {selectedMode === 'chic' && <ChicPatternSelector designMode={designMode} chicPattern={chicPattern} chicCheckColor={chicCheckColor} planTier={planTier} onPattern={onChicPattern} onCheckColor={onChicCheckColor} onPremium={onPremium} onPreview={onDesignPreview} />}
         <View style={styles.modeChoices}>
           {designModes.map((mode: { id: 'minimal' | 'chic'; description: string }) => (
-            <Pressable key={mode.id} style={[styles.modeChoice, (designMode === mode.id || (mode.id === 'minimal' && designMode === 'dark')) && styles.modeChoiceActive, mode.id === 'minimal' && designMode === 'dark' && styles.modeChoiceActiveDark, mode.id === 'chic' && designMode === 'chic' && chicPalette && { borderColor: chicPalette.accent, backgroundColor: chicPalette.cardTint }]} onPress={() => onDesignMode(mode.id === 'minimal' && designMode === 'dark' ? 'dark' : mode.id)}>
-              <View style={[styles.modeMiniPreview, mode.id === 'minimal' && styles.modeMiniMinimal, designMode === 'dark' && mode.id === 'minimal' && styles.modeMiniMinimalDark, mode.id === 'chic' && styles.modeMiniChic, ]}>
-                {mode.id === 'minimal' ? <><View style={[styles.modeMiniBlackBlock, designMode === 'dark' && styles.modeMiniDarkBlock]} /><Text style={[styles.modeMiniNumber, designMode === 'dark' && styles.modeMiniDarkNumber]}>03</Text><View style={[styles.modeMiniLine, designMode === 'dark' && styles.modeMiniDarkLine]} /></> : <>{designMode === 'chic' && <ChicPatternDecor pattern={chicPattern} accent={patternVisual.accent} warm={patternVisual.warm} checkColor={chicCheckColor} preview />}<View style={styles.modeMiniGlass} /><Text style={styles.modeMiniSparkle}>✦</Text></>}
+            <Pressable key={mode.id} style={[styles.modeChoice, (selectedMode === mode.id || (mode.id === 'minimal' && selectedMode === 'dark')) && styles.modeChoiceActive, mode.id === 'minimal' && selectedMode === 'dark' && styles.modeChoiceActiveDark, mode.id === 'chic' && selectedMode === 'chic' && chicPalette && { borderColor: chicPalette.accent, backgroundColor: chicPalette.cardTint }]} onPress={() => onDesignMode(mode.id === 'minimal' && selectedMode === 'dark' ? 'dark' : mode.id)}>
+              <View style={[styles.modeMiniPreview, mode.id === 'minimal' && styles.modeMiniMinimal, isDark && mode.id === 'minimal' && styles.modeMiniMinimalDark, mode.id === 'chic' && styles.modeMiniChic, ]}>
+                {mode.id === 'minimal' ? <><View style={[styles.modeMiniBlackBlock, isDark && styles.modeMiniDarkBlock]} /><Text style={[styles.modeMiniNumber, isDark && styles.modeMiniDarkNumber]}>03</Text><View style={[styles.modeMiniLine, isDark && styles.modeMiniDarkLine]} /></> : <>{selectedMode === 'chic' && <ChicPatternDecor pattern={chicPattern} accent={patternVisual.accent} warm={patternVisual.warm} checkColor={chicCheckColor} preview />}<View style={styles.modeMiniGlass} /><Text style={styles.modeMiniSparkle}>✦</Text></>}
               </View>
-              <Text style={[styles.modeName, (designMode === mode.id || (mode.id === 'minimal' && designMode === 'dark')) && styles.modeNameActive, mode.id === 'minimal' && designMode === 'dark' && styles.modeNameDark, mode.id === 'chic' && designMode === 'chic' && chicPalette && { color: chicPalette.accentStrong }]}>{mode.id === 'minimal' ? 'Mono' : 'Design'}</Text>
+              <Text style={[styles.modeName, (selectedMode === mode.id || (mode.id === 'minimal' && selectedMode === 'dark')) && styles.modeNameActive, mode.id === 'minimal' && selectedMode === 'dark' && styles.modeNameDark, mode.id === 'chic' && selectedMode === 'chic' && chicPalette && { color: chicPalette.accentStrong }]}>{mode.id === 'minimal' ? 'Mono' : 'Design'}</Text>
               <Text style={[styles.modeDescription, isDark && styles.darkAccentText]}>{mode.description}</Text>
                {mode.id === 'minimal' && <View style={styles.monoThemeChoices}>
                  <Pressable style={[styles.monoThemeChoice, monoAppearance === 'auto' && styles.monoThemeChoiceActive]} onPress={() => { onDesignMode('minimal'); onMonoAppearance('auto'); }}><Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75} style={[styles.monoThemeChoiceText, monoAppearance === 'auto' && styles.monoThemeChoiceTextActive]}>自動</Text></Pressable>
-                <Pressable accessibilityLabel="Mono Light" style={[styles.monoThemeChoice, designMode === 'minimal' && monoAppearance === 'light' && styles.monoThemeChoiceActive]} onPress={() => { onDesignMode('minimal'); onMonoAppearance('light'); }}><Text style={[styles.monoThemeChoiceText, designMode === 'minimal' && monoAppearance === 'light' && styles.monoThemeChoiceTextActive]}>白</Text></Pressable>
-                <Pressable accessibilityLabel="Mono Dark" style={[styles.monoThemeChoice, designMode === 'dark' && monoAppearance === 'dark' && styles.monoThemeChoiceActiveDark]} onPress={() => { onDesignMode('dark'); onMonoAppearance('dark'); }}><Text style={[styles.monoThemeChoiceText, designMode === 'dark' && monoAppearance === 'dark' && styles.monoThemeChoiceTextActive]}>黒</Text></Pressable>
+                <Pressable accessibilityLabel="Mono Light" style={[styles.monoThemeChoice, selectedMode === 'minimal' && monoAppearance === 'light' && styles.monoThemeChoiceActive]} onPress={() => { onDesignMode('minimal'); onMonoAppearance('light'); }}><Text style={[styles.monoThemeChoiceText, selectedMode === 'minimal' && monoAppearance === 'light' && styles.monoThemeChoiceTextActive]}>白</Text></Pressable>
+                <Pressable accessibilityLabel="Mono Dark" style={[styles.monoThemeChoice, selectedMode === 'dark' && monoAppearance === 'dark' && styles.monoThemeChoiceActiveDark]} onPress={() => { onDesignMode('dark'); onMonoAppearance('dark'); }}><Text style={[styles.monoThemeChoiceText, selectedMode === 'dark' && monoAppearance === 'dark' && styles.monoThemeChoiceTextActive]}>黒</Text></Pressable>
               </View>}
             </Pressable>
           ))}
         </View>
-        <Pressable style={[styles.savedTemplateLocked, designMode === 'photo' && styles.patternChoiceActive]} onPress={() => onDesignMode('photo')}>
+        <Pressable style={[styles.savedTemplateLocked, selectedMode === 'photo' && styles.patternChoiceActive]} onPress={() => onDesignMode('photo')}>
           {photoTheme.imageUri ? <Image source={{ uri: photoTheme.imageUri }} style={{ width: 54, height: 42, borderRadius: 9, marginRight: 10 }} /> : <View style={{ width: 54, height: 42, borderRadius: 9, marginRight: 10, backgroundColor: '#F2DDE5', alignItems: 'center', justifyContent: 'center' }}><Text style={{ color: '#9C5D79', fontSize: 17 }}>▧</Text></View>}
           <View style={{ flex: 1 }}><Text style={styles.savedTemplateLockedTitle}>写真デザイン</Text><Text style={styles.savedTemplateLockedCopy}>好きな写真を背景やトップ画像に使う</Text></View>
-          <Text style={planTier === 'premium' ? styles.affirmationEdit : styles.taskTemplateSavePremium}>{planTier === 'premium' ? (designMode === 'photo' ? '選択中' : '選ぶ') : (designMode === 'photo' ? '広告で解放' : '試す')}</Text>
+          <Text style={planTier === 'premium' ? styles.affirmationEdit : styles.taskTemplateSavePremium}>{planTier === 'premium' ? (selectedMode === 'photo' ? '選択中' : '選ぶ') : (selectedMode === 'photo' ? '広告で解放' : '試す')}</Text>
         </Pressable>
-          {designMode === 'photo' && <PhotoThemeSettingsCard photoTheme={photoTheme} designMode={designMode} planTier={planTier} onPremium={onPremium} onPick={onPickPhotoTheme} onAdjust={onAdjustPhotoTheme} onClear={onClearPhotoTheme} styles={styles} />}
-        {(designMode === 'minimal' || designMode === 'dark') && <View style={styles.monoInlinePreview}><Text style={[styles.fieldLabel, isDark && styles.darkAccentText]}>Monoの表示</Text><View style={styles.monoInlineChoices}><Pressable style={[styles.monoInlineChoice, styles.monoInlineLight, designMode === 'minimal' && styles.monoInlineChoiceActive]} onPress={() => onDesignMode('minimal')}><Text style={styles.monoInlineLightEyebrow}>LIGHT</Text><Text style={styles.monoInlineLightBrand}>Rhythm</Text><View style={styles.monoInlineLightLine} /><Text style={styles.monoInlineLightMeta}>白・黒・余白</Text><Text style={styles.monoInlineSelect}>{designMode === 'minimal' ? '選択中' : '選ぶ'}</Text></Pressable><Pressable style={[styles.monoInlineChoice, styles.monoInlineDark, designMode === 'dark' && styles.monoInlineChoiceActiveDark]} onPress={() => onDesignMode('dark')}><Text style={styles.monoInlineDarkEyebrow}>DARK</Text><Text style={styles.monoInlineDarkBrand}>Rhythm</Text><View style={styles.monoInlineDarkLine} /><Text style={styles.monoInlineDarkMeta}>黒・白・紫</Text><Text style={styles.monoInlineDarkSelect}>{designMode === 'dark' ? '選択中' : '選ぶ'}</Text></Pressable></View></View>}
+          {selectedMode === 'photo' && <PhotoThemeSettingsCard photoTheme={photoTheme} designMode={designMode} planTier={planTier} onPremium={onPremium} onPick={onPickPhotoTheme} onAdjust={onAdjustPhotoTheme} onClear={onClearPhotoTheme} styles={styles} />}
+        {(selectedMode === 'minimal' || selectedMode === 'dark') && <View style={styles.monoInlinePreview}><Text style={[styles.fieldLabel, isDark && styles.darkAccentText]}>Monoの表示</Text><View style={styles.monoInlineChoices}><Pressable style={[styles.monoInlineChoice, styles.monoInlineLight, selectedMode === 'minimal' && styles.monoInlineChoiceActive]} onPress={() => onDesignMode('minimal')}><Text style={styles.monoInlineLightEyebrow}>LIGHT</Text><Text style={styles.monoInlineLightBrand}>Rhythm</Text><View style={styles.monoInlineLightLine} /><Text style={styles.monoInlineLightMeta}>白・黒・余白</Text><Text style={styles.monoInlineSelect}>{selectedMode === 'minimal' ? '選択中' : '選ぶ'}</Text></Pressable><Pressable style={[styles.monoInlineChoice, styles.monoInlineDark, selectedMode === 'dark' && styles.monoInlineChoiceActiveDark]} onPress={() => onDesignMode('dark')}><Text style={styles.monoInlineDarkEyebrow}>DARK</Text><Text style={styles.monoInlineDarkBrand}>Rhythm</Text><View style={styles.monoInlineDarkLine} /><Text style={styles.monoInlineDarkMeta}>黒・白・紫</Text><Text style={styles.monoInlineDarkSelect}>{selectedMode === 'dark' ? '選択中' : '選ぶ'}</Text></Pressable></View></View>}
       </View>
       </SettingsDisclosure>
       <AffirmationSettingsCard affirmations={affirmations} customTexts={affirmationCustomTexts} designMode={designMode} chicPalette={chicPalette} planTier={planTier} onPremium={onPremium} onSave={onSaveAffirmation} onDelete={onDeleteAffirmation} onSaveCustomText={onSaveAffirmationCustomText} onDeleteCustomText={onDeleteAffirmationCustomText} styles={styles} />
@@ -178,14 +182,14 @@ export function SettingsScreen({
       <Text style={[styles.settingsSectionLabel, isDark && styles.darkBodyText]}>ウィジェット設定</Text>
       <Text style={[styles.previewLabel, isDark && styles.darkAccentText]}>WIDGET PREVIEW</Text>
 
-      <View style={[styles.phonePreview, designMode === 'minimal' && styles.phonePreviewMinimal, designMode === 'chic' && { backgroundColor: chicPalette?.accent ?? patternVisual.accent }, ]}>
+      <View style={[styles.phonePreview, selectedMode === 'minimal' && styles.phonePreviewMinimal, selectedMode === 'chic' && { backgroundColor: chicPalette?.accent ?? patternVisual.accent }, ]}>
         <Text style={styles.phoneClock}>9:41</Text>
-        <View style={[styles.widget, size === 'small' && styles.widgetSmall, designMode === 'minimal' && styles.widgetMinimal, designMode === 'chic' && { backgroundColor: chicPalette?.cardSurface ?? patternVisual.background }, ]}>
-          {designMode === 'chic' && <View pointerEvents="none" style={styles.widgetChicWash} />}
+        <View style={[styles.widget, size === 'small' && styles.widgetSmall, selectedMode === 'minimal' && styles.widgetMinimal, selectedMode === 'chic' && { backgroundColor: chicPalette?.cardSurface ?? patternVisual.background }, ]}>
+          {selectedMode === 'chic' && <View pointerEvents="none" style={styles.widgetChicWash} />}
           <View style={styles.widgetTop}>
             <View>
               <Text style={[styles.widgetBrand, designMode === 'minimal' && styles.widgetBrandMinimal]}>Rhythm</Text>
-              <Text style={styles.widgetDate}>{designMode !== 'chic' ? 'SAT / JUL 04' : 'TODAY'}</Text>
+              <Text style={styles.widgetDate}>{selectedMode !== 'chic' ? 'SAT / JUL 04' : 'TODAY'}</Text>
             </View>
             <View style={styles.widgetDeparture}>
               <Text style={styles.widgetDepartureLabel}>出発まで</Text>
@@ -226,7 +230,7 @@ export function SettingsScreen({
             <Text style={[styles.switchTitle, isDark && styles.darkBodyText]}>完了したタスクも表示</Text>
             <Text style={[styles.switchCopy, isDark && styles.darkAccentText]}>チェック済みの項目を残します</Text>
           </View>
-          <Switch value={showCompleted} onValueChange={onShowCompleted} trackColor={{ true: designMode === 'chic' && chicPalette ? chicPalette.accent : colors.violet }} />
+          <Switch value={showCompleted} onValueChange={onShowCompleted} trackColor={{ true: selectedMode === 'chic' && chicPalette ? chicPalette.accent : colors.violet }} />
         </View>
         <Text style={[styles.fieldLabel, { marginTop: 20 }, isDark && styles.darkAccentText]}>完了アイコン</Text>
         <View style={styles.iconChoices}>

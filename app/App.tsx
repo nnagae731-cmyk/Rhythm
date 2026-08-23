@@ -2288,7 +2288,8 @@ export default function App() {
                // Keep the raw mode here so persisted photo settings remain
                // reachable; the rest of the app intentionally maps photo to
                // the Design visual mode.
-               designMode={designMode}
+               designMode={uiDesignMode}
+               selectedDesignMode={designMode}
                monoAppearance={monoAppearance}
                hapticsEnabled={hapticsEnabled}
                chicPattern={effectiveChicPattern}
