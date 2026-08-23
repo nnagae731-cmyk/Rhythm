@@ -2208,6 +2208,8 @@ export default function App() {
               tasks={tasks}
               designMode={uiDesignMode}
               chicPalette={chicPalette}
+              chicPattern={chicPattern}
+              PatternDecor={ChicPatternDecor}
               planTier={planTier}
               onPremium={openPremiumFeature}
               onAnalysisUsed={() => void onboarding.complete('analysis')}

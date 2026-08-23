@@ -47,6 +47,16 @@ export type ChicThemeTokens = Pick<ChicThemePalette,
   'background' | 'surface' | 'surfaceSubtle' | 'accent' | 'accentSoft' |
   'textPrimary' | 'textSecondary' | 'border' | 'onAccent'>;
 
+export type PremiumFeatureCardTheme = {
+  background: string;
+  surface: string;
+  text: string;
+  mutedText: string;
+  accent: string;
+  border: string;
+  showPatternDecor: boolean;
+};
+
 const designPalettes: Record<ChicCheckColor, ChicThemePalette> = {
   monochrome: {
     id: 'monochrome', background: '#F4F1EE', patternBase: '#F4F1EE', patternStripe: '#D8D3D6',
@@ -168,6 +178,33 @@ export function getDesignPatternThemeTokens(pattern: ChicPattern, checkColor: Ch
 
 export function getChicThemePalette(color: ChicCheckColor): ChicThemePalette {
   return getDesignCheckThemeTokens(color);
+}
+
+/** Shared colors for Premium upsell cards. This keeps the gate readable in
+ * Mono Light/Dark and follows the selected Design palette without hard-coded
+ * black or gold surfaces. */
+export function getPremiumFeatureCardTheme(mode: DesignMode, chicPalette?: ChicThemePalette, chicPattern: ChicPattern = 'plain'): PremiumFeatureCardTheme {
+  if (mode === 'chic' && chicPalette) {
+    return {
+      background: chicPalette.background,
+      surface: chicPalette.cardSurface,
+      text: chicPalette.textPrimary,
+      mutedText: chicPalette.textSecondary,
+      accent: chicPalette.accent,
+      border: chicPalette.border,
+      showPatternDecor: chicPattern !== 'plain',
+    };
+  }
+  const tokens = getThemeTokens(mode, 'cool');
+  return {
+    background: tokens.colors.screenBackground,
+    surface: tokens.colors.surface,
+    text: tokens.colors.primaryText,
+    mutedText: tokens.colors.secondaryText,
+    accent: tokens.colors.primaryAccent,
+    border: tokens.colors.border,
+    showPatternDecor: false,
+  };
 }
 
 export type ThemeTokens = {

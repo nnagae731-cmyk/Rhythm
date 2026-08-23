@@ -161,10 +161,17 @@ function MonthlyReflectionCardView({ model, cardRef, onReady }: { model: Reflect
 }
 
 export function HistoryScreen({ tasks, wishMonths, calendarMarks, onSetCalendarMark, recoveryHistory, focusSessions, departureCheckIns, departurePlans, behaviorEvents, completionIcon, designMode, chicPattern, chicPalette, planTier, onPremium, onSaveTemplate, onRestore, onSaveDailyReview, onSaveMonthlyReflectionCard, onUpdateReview, onDeleteReview, styles, helpers, components }: { tasks: Task[]; wishMonths: WishMonthMap; calendarMarks: CalendarMarks; onSetCalendarMark: (date: string, mark?: string) => void; recoveryHistory: RecoveryRecord[]; focusSessions: FocusSession[]; departureCheckIns: DepartureCheckIn[]; departurePlans: DeparturePlan[]; behaviorEvents: BehaviorEvent[]; completionIcon: string; designMode: ThemeMode; chicPattern: ChicPattern; chicPalette?: ChicThemePalette; planTier: PlanTier; onPremium: (featureId?: PremiumGuideFeatureId) => void; onSaveTemplate: (task: Task) => void; onRestore: (id: string) => void; onSaveDailyReview: (monthKey: string, draft: MonthlyReview) => void; onSaveMonthlyReflectionCard: (monthKey: string, card: MonthlyReflectionCard) => void; onUpdateReview: (monthKey: string, reviewKey: string, updates: Partial<MonthlyReview>) => void; onDeleteReview: (monthKey: string, reviewKey: string) => void; styles: any; helpers: any; components: any }) {
-  const { dateKey, formatLiveTime } = helpers;
+  const { dateKey, formatLiveTime, getThemeTokens } = helpers;
   const { AchievementVessel, CalendarMarkPicker } = components;
   const now = new Date();
   const isDark = designMode === 'dark';
+  const guideTheme = getThemeTokens(designMode);
+  const premiumGuideCard = designMode === 'chic' && chicPalette
+    ? { backgroundColor: chicPalette.cardSurface, borderColor: chicPalette.border, borderWidth: 1 }
+    : { backgroundColor: guideTheme.colors.surface, borderColor: guideTheme.colors.border, borderWidth: 1 };
+  const premiumGuideTitle = { color: designMode === 'chic' && chicPalette ? chicPalette.textPrimary : guideTheme.colors.primaryText };
+  const premiumGuideCopy = { color: designMode === 'chic' && chicPalette ? chicPalette.textSecondary : guideTheme.colors.secondaryText };
+  const premiumGuideAccent = { color: designMode === 'chic' && chicPalette ? chicPalette.accent : guideTheme.colors.primaryAccent };
   const [selectedKey, setSelectedKey] = useState(dateKey(now));
   const [hasSelectedDate, setHasSelectedDate] = useState(false);
   const [historyMonthDate, setHistoryMonthDate] = useState(() => new Date(now.getFullYear(), now.getMonth(), 1));
@@ -415,7 +422,7 @@ export function HistoryScreen({ tasks, wishMonths, calendarMarks, onSetCalendarM
   const savedMonthlyCard = normalizeReflectionCard(wishMonths[monthPrefix]?.reflectionCard, monthPrefix);
   const openMonthlyReflection = () => {
     if (!premiumHistory) {
-      onPremium('month');
+      onPremium('reflection');
       return;
     }
     setMonthlyEditorOpen(true);
@@ -431,7 +438,7 @@ export function HistoryScreen({ tasks, wishMonths, calendarMarks, onSetCalendarM
   return (
     <>
       <Text style={[styles.hero, designMode === 'dark' && styles.darkPanel, designMode === 'dark' && styles.darkBodyText]}>{premiumHistory ? (designMode !== 'chic' ? '今月の記録' : '今月の小さな達成') : '1か月を振り返ろう'}</Text>
-      {premiumHistory ? <View style={[styles.historySearchBox, isDark && styles.darkPanel]}><Text style={[styles.taskSearchIcon, isDark && styles.darkAccentText]}>⌕</Text><TextInput value={historySearch} onChangeText={updateHistorySearch} placeholder="過去に完了したタスクを検索" placeholderTextColor={isDark ? '#8F9BB0' : '#A29DAA'} style={[styles.taskSearchInput, isDark && styles.darkBodyText]} />{historySearch.length > 0 && <><Pressable onPress={() => setSearchResultsOpen(true)}><Text style={[styles.historySearchOpenText, isDark && styles.darkAccentText]}>検索</Text></Pressable><Pressable onPress={() => { setHistorySearch(''); setSearchResultsOpen(false); }}><Text style={[styles.historySearchClear, isDark && styles.darkAccentText]}>×</Text></Pressable></>}</View> : <Pressable style={[styles.guideCard, isDark && styles.darkSurface]} onPress={() => onPremium('month')}><View><Text style={[styles.guideCardTitle, isDark && styles.darkBodyText]}>全期間の履歴と検索</Text><Text style={[styles.guideCardCopy, isDark && styles.darkMutedText]}>Premiumで月表示・詳細検索を利用できます</Text></View><Text style={[styles.guideCardArrow, isDark && styles.darkAccentText]}>›</Text></Pressable>}
+      {premiumHistory ? <View style={[styles.historySearchBox, isDark && styles.darkPanel]}><Text style={[styles.taskSearchIcon, isDark && styles.darkAccentText]}>⌕</Text><TextInput value={historySearch} onChangeText={updateHistorySearch} placeholder="過去に完了したタスクを検索" placeholderTextColor={isDark ? '#8F9BB0' : '#A29DAA'} style={[styles.taskSearchInput, isDark && styles.darkBodyText]} />{historySearch.length > 0 && <><Pressable onPress={() => setSearchResultsOpen(true)}><Text style={[styles.historySearchOpenText, isDark && styles.darkAccentText]}>検索</Text></Pressable><Pressable onPress={() => { setHistorySearch(''); setSearchResultsOpen(false); }}><Text style={[styles.historySearchClear, isDark && styles.darkAccentText]}>×</Text></Pressable></>}</View> : <Pressable style={[styles.guideCard, premiumGuideCard]} onPress={() => onPremium('history')}><View><Text style={[styles.guideCardTitle, premiumGuideTitle]}>全期間の履歴と検索</Text><Text style={[styles.guideCardCopy, premiumGuideCopy]}>Premiumで詳細な履歴・検索を利用できます</Text></View><Text style={[styles.guideCardArrow, premiumGuideAccent]}>›</Text></Pressable>}
       {premiumHistory && <AchievementVessel tasks={tasks} designMode={designMode} chicPattern={chicPattern} chicPalette={chicPalette} scope={hasSelectedDate ? 'today' : 'month'} targetDate={hasSelectedDate ? selectedKey : undefined} targetMonth={monthPrefix} />}
       {premiumHistory && <View style={styles.monthStats}>
         <View style={[styles.monthStat, isDark && styles.darkMonthStat, designMode === 'chic' && chicPalette && { backgroundColor: chicPalette.cardTint, borderColor: chicPalette.border }]}><Text style={[styles.monthStatNumber, isDark && styles.darkAccentText, designMode === 'chic' && chicPalette && { color: chicPalette.accentStrong }]}>{monthlyCount}</Text><Text style={[styles.monthStatLabel, isDark && styles.darkMutedText, designMode === 'chic' && chicPalette && { color: chicPalette.textSecondary }]}>今月の完了</Text></View>
@@ -498,8 +505,8 @@ export function HistoryScreen({ tasks, wishMonths, calendarMarks, onSetCalendarM
         </>}
       </View>
 
-      {!premiumHistory && <Pressable style={[styles.guideCard, isDark && styles.darkSurface]} onPress={() => onPremium('month')}>
-        <View><Text style={[styles.guideCardTitle, isDark && styles.darkBodyText]}>今日の記録</Text><Text style={[styles.guideCardCopy, isDark && styles.darkMutedText]}>Premiumで日付ごとの写真・ひとこと・メモを残せます</Text></View><Text style={[styles.guideCardArrow, isDark && styles.darkAccentText]}>›</Text>
+      {!premiumHistory && <Pressable style={[styles.guideCard, premiumGuideCard]} onPress={() => onPremium('records')}>
+        <View><Text style={[styles.guideCardTitle, premiumGuideTitle]}>今日の記録</Text><Text style={[styles.guideCardCopy, premiumGuideCopy]}>Premiumで日付ごとの写真・ひとこと・メモを残せます</Text></View><Text style={[styles.guideCardArrow, premiumGuideAccent]}>›</Text>
       </Pressable>}
 
       <View style={searchResultsOpen && searchQuery.trim() ? { display: 'none' } : undefined}>

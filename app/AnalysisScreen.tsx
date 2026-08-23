@@ -6,19 +6,21 @@ import { buildInsightDashboard, formatComparison, formatMetricAverage, formatPoi
 import { buildRoutineInterruptionSummary, formatRoutineDate, getRoutineHistories as getRoutineHistoryList, RoutineInterruptionSummary } from './features/analytics/routineInterruptionAnalysis';
 import { hasPremiumAccess, PlanTier } from './premiumAccess';
 import { PremiumGuideFeatureId } from './premiumGuide';
-import { ChicThemePalette, DesignMode, getDesignCheckThemeTokens, getThemeTokens } from './theme';
+import { ChicCheckColor, ChicPattern, ChicThemePalette, DesignMode, getDesignCheckThemeTokens, getPremiumFeatureCardTheme, getThemeTokens } from './theme';
 import { DeparturePlan, Task } from './types';
 
 type AnalysisTab = 'records' | 'insights' | 'routine';
 
-function PremiumGate({ onPremium, dark = false, chicPalette }: { onPremium: () => void; dark?: boolean; chicPalette?: ChicThemePalette }) {
-  const theme = getThemeTokens(chicPalette ? 'chic' : dark ? 'dark' : 'minimal', chicPalette?.id ?? 'cool');
+function PremiumGate({ onPremium, dark = false, chicPalette, chicPattern = 'plain', PatternDecor }: { onPremium: () => void; dark?: boolean; chicPalette?: ChicThemePalette; chicPattern?: ChicPattern; PatternDecor?: (props: { pattern: ChicPattern; accent: string; warm: string; checkColor?: ChicCheckColor }) => ReactNode }) {
+  const mode: DesignMode = chicPalette ? 'chic' : dark ? 'dark' : 'minimal';
+  const cardTheme = getPremiumFeatureCardTheme(mode, chicPalette, chicPattern);
   return (
-    <Pressable style={[styles.premiumGate, dark && styles.premiumGateDark, chicPalette && { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]} onPress={onPremium}>
-      <Text style={[styles.premiumLock, dark && styles.premiumLockDark, chicPalette && { color: theme.colors.primaryAccent }]}>🔒</Text>
-      <Text style={[styles.premiumTitle, dark && styles.premiumTitleDark, chicPalette && { color: theme.colors.primaryText }]}>Rhythm Premium</Text>
-      <Text style={[styles.premiumCopy, dark && styles.premiumCopyDark, chicPalette && { color: theme.colors.secondaryText }]}>詳細な分析はPremiumで見られます</Text>
-      <Text style={[styles.premiumButton, dark && styles.premiumButtonDark, chicPalette && { color: theme.colors.primaryAccent }]}>くわしく見る</Text>
+    <Pressable style={[styles.premiumGate, { backgroundColor: cardTheme.surface, borderColor: cardTheme.border }]} onPress={onPremium}>
+      {cardTheme.showPatternDecor && PatternDecor && <View pointerEvents="none" style={StyleSheet.absoluteFillObject}><PatternDecor pattern={chicPattern} accent={cardTheme.accent} warm={chicPalette?.accentSoft ?? cardTheme.border} checkColor={chicPalette && ['monochrome', 'cool', 'warm', 'green'].includes(chicPalette.id) ? chicPalette.id as ChicCheckColor : undefined} /></View>}
+      <Text style={[styles.premiumLock, { color: cardTheme.accent }]}>🔒</Text>
+      <Text style={[styles.premiumTitle, { color: cardTheme.text }]}>Premium限定</Text>
+      <Text style={[styles.premiumCopy, { color: cardTheme.mutedText }]}>詳細な分析はPremiumで利用できます</Text>
+      <Text style={[styles.premiumButton, { color: cardTheme.text, backgroundColor: cardTheme.accent }]}>Premiumで利用できます</Text>
     </Pressable>
   );
 }
@@ -251,6 +253,8 @@ export function AnalysisScreen({
   onPremium,
   departurePlans,
   chicPalette,
+  chicPattern,
+  PatternDecor,
   onApplySuggestion,
   onAnalysisUsed,
 }: {
@@ -263,6 +267,8 @@ export function AnalysisScreen({
   onPremium: (featureId?: PremiumGuideFeatureId) => void;
   departurePlans: DeparturePlan[];
   chicPalette?: ChicThemePalette;
+  chicPattern?: ChicPattern;
+  PatternDecor?: (props: { pattern: ChicPattern; accent: string; warm: string; checkColor?: ChicCheckColor }) => ReactNode;
   onApplySuggestion: (suggestion: InsightSuggestion) => void;
   onAnalysisUsed?: () => void;
 }) {
@@ -315,7 +321,7 @@ export function AnalysisScreen({
           {recordContent}
         </>
       ) : tab === 'insights' && !premium ? (
-        <PremiumGate dark={designMode === 'dark'} chicPalette={chicPalette} onPremium={() => onPremium('time')} />
+        <PremiumGate dark={designMode === 'dark'} chicPalette={chicPalette} chicPattern={chicPattern} PatternDecor={PatternDecor} onPremium={() => onPremium('time')} />
       ) : tab === 'insights' ? (
         <InsightDashboardView events={events} tasks={tasks} plans={departurePlans} designMode={designMode} chicPalette={chicPalette} onApplySuggestion={onApplySuggestion} />
       ) : tab === 'routine' ? (
@@ -467,14 +473,9 @@ const styles = StyleSheet.create({
   suggestionModalButton: { flex: 1, minHeight: 43, borderWidth: 1, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
   suggestionModalButtonText: { fontSize: 13, fontWeight: '900' },
   suggestionModalButtonPrimary: { color: '#FFFFFF', fontSize: 13, fontWeight: '900' },
-  premiumGate: { alignItems: 'center', backgroundColor: '#25202C', borderRadius: 22, padding: 25 },
-  premiumGateDark: { backgroundColor: '#181F2E', borderWidth: 1, borderColor: '#40506A' },
-  premiumLock: { color: '#F5D78B', fontSize: 28 },
-  premiumLockDark: { color: '#8EA6FF' },
-  premiumTitle: { color: '#FFF', fontSize: 22, fontWeight: '900', marginTop: 8 },
-  premiumTitleDark: { color: '#F4F7FC' },
-  premiumCopy: { color: '#D6CFDA', fontSize: 12, lineHeight: 20, textAlign: 'center', marginTop: 9 },
-  premiumCopyDark: { color: '#B4C0D4' },
-  premiumButton: { color: '#25202C', backgroundColor: '#F5D78B', paddingHorizontal: 18, paddingVertical: 9, borderRadius: 14, fontWeight: '900', marginTop: 16 },
-  premiumButtonDark: { color: '#F4F7FC', backgroundColor: '#26365F' },
+  premiumGate: { alignItems: 'center', borderRadius: 22, padding: 25, borderWidth: 1, overflow: 'hidden' },
+  premiumLock: { fontSize: 28 },
+  premiumTitle: { fontSize: 22, fontWeight: '900', marginTop: 8 },
+  premiumCopy: { fontSize: 12, lineHeight: 20, textAlign: 'center', marginTop: 9 },
+  premiumButton: { paddingHorizontal: 18, paddingVertical: 9, borderRadius: 14, fontWeight: '900', marginTop: 16 },
 });
