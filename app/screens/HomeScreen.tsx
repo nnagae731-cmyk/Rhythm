@@ -25,6 +25,7 @@ export function HomeScreen({
   selectionMode,
   selectedTaskIds,
   onAdd,
+  onOpenFocus,
   onQuickAdd,
   onToggle,
   onToggleSubtask,
@@ -61,6 +62,7 @@ export function HomeScreen({
   selectionMode: boolean;
   selectedTaskIds: string[];
   onAdd: () => void;
+  onOpenFocus: () => void;
   onQuickAdd: (title: string, category: Category, priority: Priority, scheduledDate?: string, scheduledTime?: string, endAt?: string, isRoutine?: boolean, deadlineDate?: string, deadlineTime?: string, deadlineNotifyBefore?: number, remindDate?: string, remindAt?: string, repeatRule?: RepeatRule, subtasks?: Subtask[]) => void;
   onToggle: (id: string) => void;
   onToggleSubtask: (taskId: string, subtaskId: string) => void;
@@ -90,6 +92,7 @@ export function HomeScreen({
   const { deadlineLabel, getUrgencyStatus, getLateRiskMessage, dateKey } = helpers;
   const priorityOrder: Record<Priority, number> = { 高: 0, 中: 1, 低: 2 };
   const isDark = designMode === 'dark';
+  const theme = helpers.getThemeTokens?.(designMode);
   const [categoryFilter, setCategoryFilter] = useState<'すべて' | Category>('すべて');
   const [bucketFilter, setBucketFilter] = useState<TaskBucket>('now');
   const [bucketTask, setBucketTask] = useState<Task | null>(null);
@@ -99,6 +102,14 @@ export function HomeScreen({
   const bucketTasks = tasks.filter((task) => (task.bucket ?? 'now') === bucketFilter);
   const categoryTasks = categoryFilter === 'すべて' ? bucketTasks : bucketTasks.filter((task) => task.category === categoryFilter);
   const displayTasks = [...categoryTasks].sort((a, b) => priorityOrder[a.priority] - priorityOrder[b.priority]);
+  const focusTask = [...tasks]
+    .filter((task) => !task.done && (task.status ?? 'active') === 'active' && (task.bucket ?? 'now') === 'now')
+    .sort((a, b) => priorityOrder[a.priority] - priorityOrder[b.priority])[0];
+  const focusShortcutBackground = isDark ? '#20293A' : designMode === 'chic' ? chicPalette.cardSurface : theme?.colors?.surface ?? '#FFFFFF';
+  const focusShortcutBorder = isDark ? '#40506A' : designMode === 'chic' ? chicPalette.border : theme?.colors?.border ?? '#DCE2EC';
+  const focusShortcutAccent = isDark ? '#8EA6FF' : designMode === 'chic' ? chicPalette.accent : theme?.colors?.primaryAccent ?? '#4F6FED';
+  const focusShortcutText = isDark ? '#F4F7FC' : designMode === 'chic' ? chicPalette.textPrimary : theme?.colors?.primaryText ?? '#182235';
+  const focusShortcutMuted = isDark ? '#B4C0D4' : designMode === 'chic' ? chicPalette.textSecondary : theme?.colors?.secondaryText ?? '#68748A';
   const tomorrowDate = new Date(now);
   tomorrowDate.setDate(tomorrowDate.getDate() + 1);
   const tomorrowKey = dateKey(tomorrowDate);
@@ -107,6 +118,18 @@ export function HomeScreen({
     <HomeRuntimeContext.Provider value={{ styles, helpers, chicPalette }}>
     <>
       {renderTodayWinStrip(allTasks)}
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={focusTask ? 'このタスクに集中' : '集中タイムをはじめる'}
+        onPress={onOpenFocus}
+        style={{ minHeight: 54, marginBottom: 12, paddingHorizontal: 14, paddingVertical: 10, borderRadius: 14, borderWidth: 1, borderColor: focusShortcutBorder, backgroundColor: focusShortcutBackground, flexDirection: 'row', alignItems: 'center' }}
+      >
+        <View style={{ flex: 1, minWidth: 0 }}>
+          <Text style={{ color: focusShortcutText, fontSize: 14, fontWeight: '800' }}>{focusTask ? 'このタスクに集中' : '集中タイムをはじめる'}</Text>
+          {focusTask ? <Text numberOfLines={1} ellipsizeMode="tail" style={{ color: focusShortcutMuted, fontSize: 12, marginTop: 3 }}>{focusTask.title}</Text> : <Text style={{ color: focusShortcutMuted, fontSize: 12, marginTop: 3 }}>今のペースで、ひとつずつ進めます</Text>}
+        </View>
+        <Text style={{ color: focusShortcutAccent, fontSize: 24, lineHeight: 26, marginLeft: 10 }}>›</Text>
+      </Pressable>
       {showTodoOnboarding && (
        <View style={{ marginBottom: 12 }}>
         <OnboardingHint

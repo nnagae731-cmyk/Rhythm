@@ -1999,6 +1999,10 @@ export default function App() {
               selectionMode={selectionMode}
               selectedTaskIds={selectedTaskIds}
               onAdd={() => setAddOpen(true)}
+              onOpenFocus={() => {
+                setTimelineInitialTab('focus');
+                navigateWithinApp('timeline');
+              }}
                 onQuickAdd={(title, category, priority, scheduledDate, scheduledTime, endAt, isRoutine, deadlineDate, deadlineTime, deadlineNotifyBefore, remindDate, remindAt, repeatRule, subtasks) => addTask(title, category, priority, remindDate, remindAt, deadlineDate, deadlineTime, deadlineNotifyBefore, undefined, undefined, undefined, undefined, repeatRule ?? 'none', 'once', scheduledDate, scheduledTime, endAt, isRoutine, subtasks)}
               onToggle={(id) => {
                 const task = tasksRef.current.find((item) => item.id === id);
@@ -2060,7 +2064,7 @@ export default function App() {
               showCompletedTasksOnboarding={onboarding.ready && onboarding.isCompleted('focus') && !onboarding.isCompleted('completedTasks') && tasks.some((task) => task.done)}
               showTaskBucketsOnboarding={onboarding.ready && onboarding.isCompleted('focus') && onboarding.isCompleted('completedTasks') && !onboarding.isCompleted('taskBuckets') && tasks.length > 0}
               showTaskDetailsOnboarding={onboarding.ready && onboarding.isCompleted('focus') && onboarding.isCompleted('taskBuckets') && !onboarding.isCompleted('taskDetails') && tasks.length > 0}
-              helpers={{ deadlineLabel, getUrgencyStatus, getLateRiskMessage, dateForReminder, dateKey, formatLiveTime, isCheckChicPattern, todayInputValue }}
+              helpers={{ deadlineLabel, getUrgencyStatus, getLateRiskMessage, dateForReminder, dateKey, formatLiveTime, isCheckChicPattern, todayInputValue, getThemeTokens: getThemedThemeTokens }}
             />
           )}
 
