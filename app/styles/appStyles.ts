@@ -552,7 +552,7 @@ export const styles = StyleSheet.create({
   premiumHeaderClose: { minWidth: 74, borderWidth: 1, borderRadius: 12, paddingVertical: 8, paddingHorizontal: 10, alignItems: 'center', justifyContent: 'center' },
   premiumFeaturePicker: { marginBottom: 10, minHeight: 66 },
   premiumFeaturePickerContent: { flexDirection: 'row', gap: 8, paddingHorizontal: 2 },
-  premiumPreviewViewport: { width: '100%', minHeight: 300, maxHeight: 430, overflow: 'hidden', borderRadius: 14, borderWidth: 1, borderColor: '#DDD7E1', backgroundColor: '#FFF' },
+  premiumPreviewViewport: { width: '100%', minHeight: 300, maxHeight: 560, overflow: 'hidden', borderRadius: 14, borderWidth: 1, borderColor: '#DDD7E1', backgroundColor: '#FFF' },
   premiumPreviewViewportContent: { width: '100%', minHeight: 300 },
   premiumFeatureStage: { marginBottom: 10 },
   premiumEntryCard: { width: '48%', minHeight: 74, borderRadius: 16, borderWidth: 1, borderColor: '#DDD7E1', backgroundColor: '#FFF', padding: 10, overflow: 'hidden' },

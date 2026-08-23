@@ -12,7 +12,7 @@ import { CalendarMarks, DeparturePlan, MonthlyReflectionCard, MonthlyReview, Ref
 import { normalizeMonthlyReview } from '../features/wish/wishUtils';
 import { persistPhotoUri } from '../features/photo/persistentPhoto';
 
-type ReflectionCardModel = {
+export type ReflectionCardModel = {
   monthKey: string;
   monthLabel: string;
   photos: string[];
@@ -111,7 +111,7 @@ const reflectionStyles = StyleSheet.create({
   savedCardButtonText: { color: '#6E6675', fontSize: 10, fontWeight: '800' },
 });
 
-function MonthlyReflectionCardView({ model, cardRef, onReady }: { model: ReflectionCardModel; cardRef: React.RefObject<View | null>; onReady: () => void }) {
+export function MonthlyReflectionCardView({ model, cardRef, onReady }: { model: ReflectionCardModel; cardRef: React.RefObject<View | null>; onReady: () => void }) {
   const palette = reflectionCardPalettes[model.palette];
   const isMagazine = model.template === 'gallery';
   const isCollage = model.template === 'film';

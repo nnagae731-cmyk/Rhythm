@@ -21,7 +21,7 @@ import { Header } from './components/Header';
 import { HomeScreen } from './screens/HomeScreen';
 import { TimelineScreen } from './screens/TimelineScreen';
 import { SettingsScreen } from './screens/SettingsScreen';
-import { HistoryScreen } from './screens/HistoryScreen';
+import { HistoryScreen, MonthlyReflectionCardView, ReflectionCardModel } from './screens/HistoryScreen';
 import { TaskModal } from './components/TaskModal';
 import { BulkTaskModal } from './components/BulkTaskModal';
 import { PremiumModal } from './components/PremiumModal';
@@ -2363,7 +2363,25 @@ export default function App() {
         components={{ TimeTabButton, FocusMode, TaskScheduleCalendar, DailyScheduleTimeline, RecoveryModal }}
       />);
     }
-    if (kind === 'time' || kind === 'behavior' || kind === 'history' || kind === 'records' || kind === 'reflection') {
+    if (kind === 'reflection') {
+      const reflectionPhotos = [
+        Image.resolveAssetSource(require('./assets/themes/floral/vintage-bloom-preview.jpg')).uri,
+        Image.resolveAssetSource(require('./assets/themes/floral/sheer-floral-preview.jpg')).uri,
+        Image.resolveAssetSource(require('./assets/themes/floral/floral-soft-thumbnail.jpg')).uri,
+      ];
+      const reflectionModel: ReflectionCardModel = {
+        monthKey: previewDate.slice(0, 7),
+        monthLabel: `${now.getFullYear()}年${now.getMonth() + 1}月`,
+        photos: reflectionPhotos,
+        template: 'gallery',
+        palette: 'lavender',
+        phrase: '自分のペースで進める',
+        bestMemory: '資料をまとめる時間を作れた',
+      };
+      return readonly(<View style={{ alignItems: 'center', paddingVertical: 12 }}><MonthlyReflectionCardView model={reflectionModel} cardRef={React.createRef<View>()} onReady={() => undefined} /></View>, 560);
+    }
+    if (kind === 'history') return readonly(<View pointerEvents="none">{previewHistory}</View>, 560);
+    if (kind === 'time' || kind === 'behavior' || kind === 'records') {
       return readonly(<AnalysisScreen
         events={previewEvents}
         tasks={previewTasks}
