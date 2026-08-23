@@ -43,6 +43,8 @@ type Props = {
   /** Current persisted/effective design; the GUIDE must follow it. */
   designMode?: DesignMode;
   chicPalette?: ChicThemePalette;
+  /** Development-only inline rendering for Capture Studio review. */
+  inline?: boolean;
 };
 
 const theme = getThemeTokens(
@@ -57,6 +59,7 @@ export function OnboardingHint({
   actionLabel,
   designMode = ONBOARDING_DESIGN_MODE,
   chicPalette,
+  inline = false,
 }: Props) {
   const [open, setOpen] = React.useState(visible);
   React.useEffect(() => setOpen(visible), [visible]);
@@ -84,11 +87,7 @@ export function OnboardingHint({
 
   const dismiss = () => { setOpen(false); onDismiss?.(); };
   const action = () => { setOpen(false); onAction?.(); };
-  return (
-    <Modal visible transparent animationType="fade" onRequestClose={dismiss}>
-      <Pressable style={styles.backdrop} onPress={dismiss}>
-      <Pressable style={styles.sheet} onPress={(event) => event.stopPropagation()}>
-      <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]} accessibilityRole="summary">
+  const card = <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]} accessibilityRole="summary">
       <View style={styles.topRow}>
         <View style={styles.badge}>
           <Text style={[styles.badgeText, { color: colors.accent }]}>
@@ -136,16 +135,19 @@ export function OnboardingHint({
           <Text style={styles.actionText}>
             {buttonLabel}
           </Text>
-        </Pressable>
+      </Pressable>
       ) : null}
-      </View>
-      </Pressable>
-      </Pressable>
-    </Modal>
-  );
+      </View>;
+  if (inline) return <View style={styles.inlineWrap}>{card}</View>;
+  return <Modal visible transparent animationType="fade" onRequestClose={dismiss}>
+    <Pressable style={styles.backdrop} onPress={dismiss}>
+      <Pressable style={styles.sheet} onPress={(event) => event.stopPropagation()}>{card}</Pressable>
+    </Pressable>
+  </Modal>;
 }
 
 const styles = StyleSheet.create({
+  inlineWrap: { marginTop: 10 },
   card: {
     width: '100%',
     backgroundColor:

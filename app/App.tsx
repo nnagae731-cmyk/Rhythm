@@ -29,6 +29,7 @@ import { BottomNav } from './components/BottomNav';
 import { OnboardingCarousel } from './features/onboarding/OnboardingCarousel';
 import { OnboardingCaptureStudio } from './features/onboarding/OnboardingCaptureStudio';
 import { OnboardingHint } from './features/onboarding/OnboardingHint';
+import type { OnboardingFeatureId } from './features/onboarding/onboardingSteps';
 import { useOnboarding } from './features/onboarding/useOnboarding';
 import { RecoveryModal } from './components/RecoveryModal';
 import { styles } from './styles/appStyles';
@@ -2231,10 +2232,12 @@ export default function App() {
       { id: 'capture-task-2', title: 'スーパーに寄る', done: false, category: '家事', priority: '低', scheduledDate: previewDate, bucket: 'later' },
       { id: 'capture-task-3', title: '美容室を予約する', done: true, status: 'completed', category: '予定', priority: '高', scheduledDate: previewDate, completedAt: new Date().toISOString(), bucket: 'waiting' },
     ];
-    if (id === 'quickTodo' || id === 'today') return <HomeScreen
-      tasks={captureTasks}
-      allTasks={captureTasks}
-      remaining={2}
+    if (id === 'quickTodo' || id === 'today') {
+      const homeTasks = id === 'quickTodo' ? [] : captureTasks;
+      return <HomeScreen
+      tasks={homeTasks}
+      allTasks={homeTasks}
+      remaining={id === 'quickTodo' ? 0 : 2}
       now={now}
       designMode="minimal"
       chicPalette={chicPalette}
@@ -2267,6 +2270,7 @@ export default function App() {
       showTaskDetailsOnboarding={false}
       helpers={{ deadlineLabel, getUrgencyStatus, getLateRiskMessage, dateForReminder, dateKey, formatLiveTime, isCheckChicPattern, todayInputValue, getThemeTokens: getThemedThemeTokens }}
     />;
+    }
     if (id === 'customize') return <SettingsScreen
       tasks={captureTasks}
       timeline={displayTimeline}
@@ -2315,6 +2319,18 @@ export default function App() {
       components={{ BThemeRibbonDecoration, CThemeRibbonDecoration, ChicPatternDecor, ChicPatternSelector, SettingsDisclosure, NotificationManagerCard }}
     />;
     return undefined;
+  };
+
+  const renderGuideCaptureStep = (id: Exclude<OnboardingFeatureId, 'intro'>): React.ReactNode => {
+    let production: React.ReactNode;
+    if (id === 'todo' || id === 'todoComplete' || id === 'completedTasks' || id === 'taskBuckets' || id === 'taskDetails') production = renderOnboardingCaptureStep(id === 'todo' ? 'quickTodo' : 'today');
+    else if (id === 'schedule' || id === 'planRegistration' || id === 'calendarImport') production = renderPremiumReadOnlyPreview('calendar');
+    else if (id === 'focus') production = renderPremiumReadOnlyPreview('focus_custom_duration');
+    else if (id === 'analysis' || id === 'routine' || id === 'history') production = renderPremiumReadOnlyPreview('behavior');
+    else if (id === 'photoLog' || id === 'affirmation') production = renderOnboardingCaptureStep('customize');
+    else if (id === 'wish') production = renderPremiumReadOnlyPreview('wish');
+    else production = renderPremiumReadOnlyPreview('recovery');
+    return <View><View style={{ borderWidth: 1, borderColor: chicPalette.border, borderRadius: 14, overflow: 'hidden' }}>{production}</View><OnboardingHint inline featureId={id} designMode={uiDesignMode} chicPalette={chicPalette} onAction={() => undefined} /></View>;
   };
 
   return (
@@ -2699,7 +2715,7 @@ export default function App() {
         components={{ CompactNumberSetting }}
       />
       <PremiumModal visible={premiumOpen} initialFeatureId={premiumTargetFeature} designMode={uiDesignMode} chicPalette={chicPalette} planTier={planTier} isDevelopment={__DEV__} onMockPlanTier={setDevPlanTierOverride} onClose={() => setPremiumOpen(false)} styles={styles} helpers={{ getThemeTokens: getThemedThemeTokens }} renderReadOnlyPreview={renderPremiumReadOnlyPreview} />
-      {__DEV__ && <OnboardingCaptureStudio visible={captureStudioOpen} onClose={() => setCaptureStudioOpen(false)} renderStep={renderOnboardingCaptureStep} colors={{ background: theme.colors.screenBackground, surface: theme.colors.surface, border: theme.colors.border, text: theme.colors.primaryText, muted: theme.colors.secondaryText, accent: theme.colors.primaryAccent, onAccent: uiDesignMode === 'dark' ? theme.colors.screenBackground : '#FFFFFF' }} />}
+      {__DEV__ && <OnboardingCaptureStudio visible={captureStudioOpen} onClose={() => setCaptureStudioOpen(false)} renderStep={renderOnboardingCaptureStep} renderGuideStep={renderGuideCaptureStep} renderPremiumStep={renderPremiumReadOnlyPreview} colors={{ background: theme.colors.screenBackground, surface: theme.colors.surface, border: theme.colors.border, text: theme.colors.primaryText, muted: theme.colors.secondaryText, accent: theme.colors.primaryAccent, onAccent: uiDesignMode === 'dark' ? theme.colors.screenBackground : '#FFFFFF' }} />}
       <DesignPreviewModal visible={Boolean(designPreviewPattern)} initialPattern={designPreviewPattern} chicCheckColor={chicCheckColor} planTier={planTier} photoUri={photoTheme.imageUri} onClose={() => setDesignPreviewPattern(undefined)} onUse={(mode, pattern) => {
         if (mode === 'photo') {
           if (planTier !== 'premium') { openPremiumFeature('photo_design'); return; }
