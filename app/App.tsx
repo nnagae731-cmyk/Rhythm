@@ -2050,7 +2050,7 @@ export default function App() {
       countdownEnabled: false,
       planMode: 'calendar_only',
       date: dateKey(start),
-      arrival: formatLiveTime(start),
+      arrival: event.allDay ? '' : formatLiveTime(start),
       travelMinutes: initialPlan.travelMinutes,
       preparationMinutes: initialPlan.preparationMinutes,
       bufferMinutes: initialPlan.bufferMinutes,
@@ -3233,7 +3233,7 @@ function DailyScheduleTimeline({ date, tasks, plans, externalEvents, now, design
     const time = getPlanScheduledTime(plan);
     const canUseReversePlan = isArrivalReversePlan(plan) && planTier === 'premium';
     const meta = mode === 'calendar_only'
-      ? '予定表の予定'
+      ? time ? '予定表の予定' : '終日'
       : mode === 'departure_reminder'
         ? `出発 ${time}`
         : canUseReversePlan
@@ -3241,7 +3241,11 @@ function DailyScheduleTimeline({ date, tasks, plans, externalEvents, now, design
           : '到着からの逆算 ・ Premium';
     items.push({ id: `plan-${plan.id ?? index}`, time, endTime: plan.endAt ?? undefined, title: plan.title, meta, kind: 'plan', onPress: () => onEditPlan(plan) });
   });
-  externalEvents.filter((event) => dateKey(new Date(event.startDate)) === date).forEach((event) => items.push({ id: `external-${event.id}`, time: formatLiveTime(new Date(event.startDate)), title: event.title || 'カレンダー予定', meta: '端末カレンダー', kind: 'external' }));
+  externalEvents.filter((event) => dateKey(new Date(event.startDate)) === date).forEach((event) => {
+    const eventStart = new Date(event.startDate);
+    items.push({ id: `external-${event.id}`, time: event.allDay ? undefined : formatLiveTime(eventStart), title: event.title || 'カレンダー予定', meta: event.allDay ? '終日 ・ 端末カレンダー' : '端末カレンダー', kind: 'external' });
+  });
+  const allDayItems = items.filter((item) => !item.time);
   const timed = items.filter((item) => item.time).sort((a, b) => parseClock(a.time!) - parseClock(b.time!));
   const currentDate = dateKey(now);
   // Include each plan's end time when building the axis so the timeline
@@ -3268,6 +3272,7 @@ function DailyScheduleTimeline({ date, tasks, plans, externalEvents, now, design
   }, []);
   const columnCount = Math.max(1, ...placements.map((item) => item.column + 1));
   return <View style={{ marginTop: 12, marginBottom: 8 }}>
+    {allDayItems.length > 0 && <View style={{ marginBottom: 10, padding: 12, borderRadius: 12, borderWidth: 1, borderColor: theme.colors.border, backgroundColor: theme.colors.secondarySurface }}><Text style={{ color: theme.colors.primaryText, fontSize: 11, fontWeight: '800', marginBottom: 6 }}>終日の予定</Text>{allDayItems.map((item) => { const content = <View key={`all-day-${item.id}`} style={{ paddingVertical: 6, borderTopWidth: 1, borderTopColor: theme.colors.border }}><Text style={{ color: theme.colors.primaryText, fontSize: 13, fontWeight: '800' }}>{item.title}</Text><Text style={{ color: theme.colors.secondaryText, fontSize: 10, marginTop: 2 }}>{item.meta}</Text></View>; return item.onPress ? <Pressable key={`all-day-press-${item.id}`} onPress={item.onPress}>{content}</Pressable> : content; })}</View>}
     <View style={{ flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 8 }}><Text style={[styles.sectionTitle, { color: isDark ? '#F4F7FC' : theme.colors.primaryText }]}>今日の流れ</Text><Text style={{ color: theme.colors.primaryAccent, fontSize: 11, fontWeight: '800' }}>{date === currentDate ? '現在時刻を表示中' : '1日の予定'}</Text></View>
     <View style={{ backgroundColor: theme.colors.surface, borderColor: theme.colors.border, borderWidth: 1, borderRadius: designMode === 'minimal' || isDark ? 16 : 18, overflow: 'hidden', height: timelineHeight, position: 'relative' }}>
       {timelineHours.map((hour) => {
@@ -3396,10 +3401,12 @@ function TaskScheduleCalendar({ tasks, plans, externalEvents, now, designMode, c
       : status ? getStatusPalette(status) : undefined;
     const canUseReversePlan = isArrivalReversePlan(item) && planTier === 'premium';
     const endSuffix = item.endAt ? ` 〜 ${item.endAt}` : '';
+    const scheduledTime = getPlanScheduledTime(item);
+    const timeLabel = scheduledTime ? `${scheduledTime}${endSuffix}` : '終日';
     const meta = mode === 'calendar_only'
-      ? `予定表の予定 ・ ${getPlanScheduledTime(item)}${endSuffix}`
+      ? `予定表の予定 ・ ${timeLabel}`
       : mode === 'departure_reminder'
-        ? `出発時刻 ・ ${getPlanScheduledTime(item)}${endSuffix}`
+        ? `出発時刻 ・ ${timeLabel}`
         : canUseReversePlan
           ? `到着 ${item.arrival} ・ 出発 ${formatLiveTime(getDepartureMoments(item).leave)}`
           : '到着からの逆算 ・ Premium';
@@ -3518,7 +3525,7 @@ function TaskScheduleCalendar({ tasks, plans, externalEvents, now, designMode, c
       {visibleSelectedCompletedTasks.map((task) => <View key={`completed-${task.id}`} style={[styles.scheduleAgendaItem, styles.scheduleCompletedAgendaItem, isDark && styles.scheduleCompletedAgendaItemDark, chicAgendaStyle]}><View style={[styles.scheduleAgendaDot, styles.scheduleCompletedDot]} /><View style={{ flex: 1 }}><Text style={[styles.scheduleAgendaTitle, styles.scheduleCompletedTitle, isDark && styles.scheduleCompletedTitleDark]}>✓ {task.title}</Text><Text style={[styles.scheduleAgendaMeta, styles.scheduleCompletedMeta, isDark && styles.scheduleCompletedMetaDark]}>完了したタスク ・ {task.completedAt ? formatLiveTime(new Date(task.completedAt)) : '記録あり'}</Text></View><Text style={[styles.scheduleCompletedLabel, isDark && styles.scheduleCompletedLabelDark]}>完了</Text></View>)}
       {visibleSelectedPlans.map(renderPlanAgenda)}
       {hiddenSelectedPlanCount > 0 && <View style={styles.departureEmpty}><Text style={styles.emptyCopy}>この日は{calendarPlanDisplayLimit}件まで表示しています。</Text></View>}
-      {visibleSelectedExternalEvents.map((event) => <View key={`external-agenda-${event.id}`} style={[styles.scheduleAgendaItem, isDark && styles.scheduleAgendaItemDark, chicAgendaStyle]}><View style={[styles.scheduleAgendaDot, { backgroundColor: designExternalAccent }]} /><View style={{ flex: 1 }}><Text style={[styles.scheduleAgendaTitle, isDark && styles.darkBodyText]}>{event.title || 'カレンダー予定'}</Text><Text style={[styles.scheduleAgendaMeta, isDark && styles.darkAccentText]}>端末カレンダー ・ {formatLiveTime(new Date(event.startDate))}</Text></View><Text style={[styles.scheduleAgendaEdit, isDark && styles.darkAccentText]}>外部</Text></View>)}
+      {visibleSelectedExternalEvents.map((event) => <View key={`external-agenda-${event.id}`} style={[styles.scheduleAgendaItem, isDark && styles.scheduleAgendaItemDark, chicAgendaStyle]}><View style={[styles.scheduleAgendaDot, { backgroundColor: designExternalAccent }]} /><View style={{ flex: 1 }}><Text style={[styles.scheduleAgendaTitle, isDark && styles.darkBodyText]}>{event.title || 'カレンダー予定'}</Text><Text style={[styles.scheduleAgendaMeta, isDark && styles.darkAccentText]}>端末カレンダー ・ {event.allDay ? '終日' : formatLiveTime(new Date(event.startDate))}</Text></View><Text style={[styles.scheduleAgendaEdit, isDark && styles.darkAccentText]}>外部</Text></View>)}
     </>}
   </>;
 }
