@@ -48,7 +48,7 @@ import { TopImageCropModal } from './components/TopImageCropModal';
 import { cropRectToPixels, displayToNormalizedRect, getContainBounds, getInitialCropRect, NormalizedCropRect } from './features/photo/topImageCrop';
 import { deleteManagedPhotoUri, persistPhotoUri } from './features/photo/persistentPhoto';
 import { canUseNotifications, getNotificationPermissionAction, getNotificationPermissionStatus, requestRhythmNotificationPermission } from './features/notifications/notificationPermission';
-import { addHours, canCreateWish, canCreateWishAction, canImportCalendar, canStartPremiumDesignTrial, endOfCalendarMonth, isPremiumDesignTrialActive, isPremiumDesignUnlocked, isWishMonthlyGoalUnlocked } from './features/ads/rewardedAccessLogic';
+import { addHours, canCreateWish, canImportCalendar, canStartPremiumDesignTrial, endOfCalendarMonth, isPremiumDesignTrialActive, isPremiumDesignUnlocked, isWishMonthlyGoalUnlocked } from './features/ads/rewardedAccessLogic';
 import { getRequiredAds, RewardedFeatureId } from './features/ads/rewardedAccess';
 import { DEFAULT_REWARDED_ACCESS_STATE, loadRewardedAccessState, RewardedAccessState, saveRewardedAccessState } from './features/ads/rewardedAccessStorage';
 import { cancelFocusCompletionNotification, cancelPendingFocusCompletionNotifications, scheduleFocusCompletionNotification } from './features/focus/focusNotifications';
@@ -626,7 +626,6 @@ export default function App() {
     const required = getRequiredAds(featureId);
     if (featureId === 'wishMonthlyGoal') return { current: rewardedAccess.wishMonthlyGoal.monthKey === currentWishMonthKey ? rewardedAccess.wishMonthlyGoal.progress : 0, required };
     if (featureId === 'wishCreate') return { current: rewardedAccess.wishCreateProgress, required };
-    if (featureId === 'wishActionCreate') return { current: rewardedAccess.wishActionCreateProgress, required };
     if (featureId === 'routineSkipBonus') return { current: rewardedAccess.routine.skipBonusProgress, required };
     return { current: 0, required };
   }, [currentWishMonthKey, rewardedAccess]);
@@ -659,10 +658,6 @@ export default function App() {
       } else if (featureId === 'wishCreate') {
         const progress = Math.min(required, base.wishCreateProgress + 1);
         next = { ...base, wishCreateProgress: progress };
-        completed = progress >= required;
-      } else if (featureId === 'wishActionCreate') {
-        const progress = Math.min(required, base.wishActionCreateProgress + 1);
-        next = { ...base, wishActionCreateProgress: progress };
         completed = progress >= required;
       } else if (featureId === 'premiumDesign' || featureId === 'premiumDesignTrialExpired') {
         next = { ...base, premiumDesign: { unlockedUntil: addHours(new Date(), 12) } };
@@ -872,21 +867,9 @@ export default function App() {
       rewardedWishBusyRef.current = false;
     }
   }, [grantRewarded, planTier, rewardedAccess]);
-  const requestWishActionReward = React.useCallback(async () => {
-    if (hasPremiumAccess(planTier, 'wish_planning')) return { success: true, completed: true } as RewardedAccessResult;
-    if (canCreateWishAction(rewardedAccess)) return { success: true, completed: true } as RewardedAccessResult;
-    const result = await grantRewarded('wishActionCreate');
-    return result;
-  }, [grantRewarded, planTier, rewardedAccess]);
   const consumeWishReward = React.useCallback(() => {
     if (hasPremiumAccess(planTier, 'wish_planning') || rewardedAccess.wishCreateProgress <= 0) return;
     const next: RewardedAccessState = { ...rewardedAccess, wishCreateProgress: Math.max(0, rewardedAccess.wishCreateProgress - 2) };
-    setRewardedAccess(next);
-    void saveRewardedAccessState(next);
-  }, [planTier, rewardedAccess]);
-  const consumeWishActionReward = React.useCallback(() => {
-    if (hasPremiumAccess(planTier, 'wish_planning') || rewardedAccess.wishActionCreateProgress <= 0) return;
-    const next: RewardedAccessState = { ...rewardedAccess, wishActionCreateProgress: Math.max(0, rewardedAccess.wishActionCreateProgress - 2) };
     setRewardedAccess(next);
     void saveRewardedAccessState(next);
   }, [planTier, rewardedAccess]);
@@ -2176,7 +2159,7 @@ export default function App() {
   // callbacks are no-ops, so these screens cannot save tasks, schedule
   // notifications, request permissions, or mutate the user's state while
   // still showing the real layout, scroll behavior, and tokens.
-  const renderPremiumReadOnlyPreview = (kind: PremiumGuideFeatureId): React.ReactNode => {
+  const renderPremiumReadOnlyPreview = (kind: PremiumGuideFeatureId, wishPremium = true): React.ReactNode => {
     const previewDate = dateKey(now);
     const previewTasks: Task[] = [
       { id: 'premium-preview-task-1', title: '資料をまとめる', done: false, category: '仕事', priority: '中', scheduledDate: previewDate, scheduledTime: '09:00', bucket: 'now' },
@@ -2213,7 +2196,7 @@ export default function App() {
       helpers={{ dateKey, formatLiveTime, getThemeTokens: getThemedThemeTokens }}
       components={{ AchievementVessel, CalendarMarkPicker }}
     />;
-    const readonly = (node: React.ReactNode) => <View style={[styles.premiumPreview, { minHeight: 220, maxHeight: 360, overflow: 'hidden' }]}>{node}</View>;
+    const readonly = (node: React.ReactNode, maxHeight = 360) => <View style={[styles.premiumPreview, { minHeight: 220, maxHeight, overflow: 'hidden' }]}>{node}</View>;
     // Settings-backed Premium features use the production settings surface as
     // their read-only preview.  The capture/preview callbacks are no-ops, so
     // this cannot persist settings, request permissions, or start ads.
@@ -2299,11 +2282,11 @@ export default function App() {
         onSaveState={() => undefined}
         onCreateTaskFromAction={() => undefined}
         canCreateWish={false}
-        canCreateWishAction={false}
+        canCreateWishAction={wishPremium}
         monthlyGoalUnlocked
         onPremium={() => undefined}
         onBack={() => undefined}
-      />);
+      />, 640);
     }
     return undefined;
   };
@@ -2312,7 +2295,7 @@ export default function App() {
     if (id === 'schedule') return renderPremiumReadOnlyPreview('calendar');
     if (id === 'focus') return renderPremiumReadOnlyPreview('focus_custom_duration');
     if (id === 'records') return renderPremiumReadOnlyPreview('records');
-    if (id === 'wish') return renderPremiumReadOnlyPreview('wish');
+    if (id === 'wish') return renderPremiumReadOnlyPreview('wish', false);
     const previewDate = dateKey(now);
     const captureTasks: Task[] = [
       { id: 'capture-task-1', title: '資料をまとめる', done: false, category: '仕事', priority: '中', scheduledDate: previewDate, scheduledTime: '09:00', bucket: 'now' },
@@ -2538,10 +2521,7 @@ export default function App() {
               wishRewardProgress={{ current: rewardedAccess.wishCreateProgress, required: 2 }}
               onRequestWishReward={requestWishReward}
               onWishCreated={consumeWishReward}
-              canCreateWishAction={hasPremiumAccess(planTier, 'wish_planning') || canCreateWishAction(rewardedAccess)}
-              wishActionRewardProgress={{ current: rewardedAccess.wishActionCreateProgress, required: 2 }}
-              onRequestWishActionReward={requestWishActionReward}
-              onWishActionCreated={consumeWishActionReward}
+              canCreateWishAction={hasPremiumAccess(planTier, 'wish_planning')}
               monthlyGoalUnlocked={planTier === 'premium' || isWishMonthlyGoalUnlocked(rewardedAccess, now)}
               monthlyGoalRewardProgress={getRewardedPromptProgress('wishMonthlyGoal')}
               onRequestMonthlyGoalReward={requestMonthlyGoalReward}

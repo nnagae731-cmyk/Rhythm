@@ -19,7 +19,7 @@ const PREMIUM_GUIDE_FEATURES: Array<{ id: PremiumGuideFeatureId; kind: PremiumPr
   { id: 'history', kind: 'history', title: '詳細な履歴・検索', description: '過去の完了タスクや記録を、検索とカレンダーから詳しく確認できます。' },
   { id: 'recovery', kind: 'recovery', title: '遅れた時も、ここから立て直す', description: '遅れたことを責めるのではなく、今からできる行動を表示。予定が崩れても、すぐに戻れる形を考えます。' },
   { id: 'templates', kind: 'templates', title: 'タスクひな型', description: '一度作ったタスクのカテゴリ・優先度・通知設定をひな型として保存し、次回の登録を簡単にします。' },
-  { id: 'wish', kind: 'wish', title: '叶えたいことを、今月の行動へつなげる', description: '画面はFreeでも利用できます。叶えたいこと・行動の追加は広告2回で1件、Premiumなら広告なしで使えます。' },
+  { id: 'wish', kind: 'wish', title: '叶えたいことを、今日の行動へ', description: '叶えたいことはFreeでも記録できます。Premiumなら、叶えるための行動に分けて管理し、今月の進捗までまとめて振り返れます。' },
   { id: 'affirmation', kind: 'affirmation', title: '好きな言葉を、選んだ時間に届ける', description: '自分で書いたアファメーションを毎日指定時刻に通知。忙しい日も、自分の軸へ静かに戻れます。' },
   { id: 'photo_design', kind: 'photo_design', title: '選べるデザイン', description: '花柄1〜3、ドット、チェックデザイン、写真背景はPremium対象です。通常プレビューは無料、初回24時間Trial後は広告で12時間、Premiumなら常時利用できます。' },
 ];

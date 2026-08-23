@@ -20,9 +20,6 @@ type WishScreenProps = {
   onRequestWishReward?: () => Promise<RewardedAccessResult> | RewardedAccessResult;
   onWishCreated?: () => void;
   canCreateWishAction?: boolean;
-  wishActionRewardProgress?: { current: number; required: number };
-  onRequestWishActionReward?: () => Promise<RewardedAccessResult> | RewardedAccessResult;
-  onWishActionCreated?: () => void;
   monthlyGoalUnlocked?: boolean;
   monthlyGoalRewardProgress?: { current: number; required: number };
   onRequestMonthlyGoalReward?: () => Promise<RewardedAccessResult> | RewardedAccessResult;
@@ -62,7 +59,7 @@ function sectionText(mode: DesignMode, chic: string, minimal: string) {
   return mode === 'minimal' ? minimal : chic;
 }
 
-export function WishScreen({ designMode: rawDesignMode, chicPattern, chicPalette, monthLabel, state, onSaveState, onCreateTaskFromAction, canCreateWish = true, wishRewardProgress, onRequestWishReward, onWishCreated, canCreateWishAction = true, wishActionRewardProgress, onRequestWishActionReward, onWishActionCreated, monthlyGoalUnlocked = false, monthlyGoalRewardProgress, onRequestMonthlyGoalReward, onPremium, onBack }: WishScreenProps) {
+export function WishScreen({ designMode: rawDesignMode, chicPattern, chicPalette, monthLabel, state, onSaveState, onCreateTaskFromAction, canCreateWish = true, wishRewardProgress, onRequestWishReward, onWishCreated, canCreateWishAction = true, monthlyGoalUnlocked = false, monthlyGoalRewardProgress, onRequestMonthlyGoalReward, onPremium, onBack }: WishScreenProps) {
   // Mono DarkはMono Lightと同じレイアウトを使い、色だけを反転する。
   const designMode: 'minimal' | 'chic' = rawDesignMode === 'dark' || rawDesignMode === 'photo' ? 'minimal' : rawDesignMode;
   const isDark = rawDesignMode === 'dark';
@@ -75,7 +72,7 @@ export function WishScreen({ designMode: rawDesignMode, chicPattern, chicPalette
   const darkAccent = rawDesignMode === 'dark' ? '#8EA6FF' : theme.colors.primaryAccent;
   const progress = useMemo(() => calculateWishProgress(state), [state]);
   const [editor, setEditor] = useState<EditorState>(emptyEditor);
-  const [rewardPrompt, setRewardPrompt] = useState<'wish' | 'action' | 'monthlyGoal' | null>(null);
+  const [rewardPrompt, setRewardPrompt] = useState<'wish' | 'monthlyGoal' | null>(null);
   const [monthlyGoalDraft, setMonthlyGoalDraft] = useState(state.monthlyGoal ?? '');
   const [monthlyGoalEditing, setMonthlyGoalEditing] = useState(!(state.monthlyGoal ?? '').trim());
 
@@ -104,10 +101,9 @@ export function WishScreen({ designMode: rawDesignMode, chicPattern, chicPalette
   };
 
   const openActionEditor = (action?: WishAction) => {
-    if (!action && !canCreateWishAction) {
-      setRewardPrompt('action');
-      return;
-    }
+    // Actions are Premium-only. Keep the legacy Rewarded progress in storage
+    // for compatibility, but never open the old action Rewarded flow.
+    if (!canCreateWishAction) return;
     setEditor({
       visible: true,
       mode: 'action',
@@ -156,7 +152,6 @@ export function WishScreen({ designMode: rawDesignMode, chicPattern, chicPalette
           ? current.actions.map((item) => (item.id === action.id ? action : item))
           : [action, ...current.actions],
       }));
-      if (!isEditing) onWishActionCreated?.();
     }
 
     if (isEditing) {
@@ -306,61 +301,71 @@ export function WishScreen({ designMode: rawDesignMode, chicPattern, chicPalette
             title="叶えるための行動"
             subtitle="行動"
           >
-            {wishes.length === 0 ? (
-              <Text style={[styles.emptyText, { color: theme.colors.secondaryText }]}>先に叶えたいことを1つ作ると、行動を結びつけられます。</Text>
-            ) : null}
-            <View style={styles.listGap}>
-              {actions.length === 0 ? (
-                <Text style={[styles.emptyText, { color: theme.colors.secondaryText }]}>行動はまだありません。</Text>
-              ) : actions.map((action) => {
-                const wish = wishes.find((item) => item.id === action.wishId);
-                return (
-                  <Pressable
-                    key={action.id}
-                    style={[
-                      styles.itemCard,
-                      designMode === 'minimal' ? styles.itemCardMinimal : styles.itemCardChic,
-                      isDark && styles.itemCardDark,
-                    action.completed && styles.itemCardDone,
-                    designSurface,
-                    ]}
-                    onPress={() => undefined}
-                  >
+            {canCreateWishAction ? <>
+              {wishes.length === 0 ? (
+                <Text style={[styles.emptyText, { color: theme.colors.secondaryText }]}>先に叶えたいことを1つ作ると、行動を結びつけられます。</Text>
+              ) : null}
+              <View style={styles.listGap}>
+                {actions.length === 0 ? (
+                  <Text style={[styles.emptyText, { color: theme.colors.secondaryText }]}>行動はまだありません。</Text>
+                ) : actions.map((action) => {
+                  const wish = wishes.find((item) => item.id === action.wishId);
+                  return (
                     <Pressable
-                      accessibilityRole="checkbox"
-                      accessibilityState={{ checked: action.completed }}
-                      style={[styles.completionCheck, designMode === 'minimal' && styles.completionCheckMinimal, isDark && styles.completionCheckDark, action.completed && styles.completionCheckActive, action.completed && isDark && styles.completionCheckActiveDark, designMode === 'chic' && palette && { borderColor: palette.accent, backgroundColor: action.completed ? palette.accent : palette.cardSurface }]}
-                      onPress={() => toggleAction(action.id)}
+                      key={action.id}
+                      style={[
+                        styles.itemCard,
+                        designMode === 'minimal' ? styles.itemCardMinimal : styles.itemCardChic,
+                        isDark && styles.itemCardDark,
+                        action.completed && styles.itemCardDone,
+                        designSurface,
+                      ]}
+                      onPress={() => undefined}
                     >
-                    <Text style={[styles.completionCheckText, isDark && styles.completionCheckTextDark, designMode === 'minimal' && { color: theme.colors.primaryAccent }, rawDesignMode === 'chic' && palette && { color: palette.accent }, action.completed && styles.completionCheckTextActive]}>✓</Text>
+                      <Pressable
+                        accessibilityRole="checkbox"
+                        accessibilityState={{ checked: action.completed }}
+                        style={[styles.completionCheck, designMode === 'minimal' && styles.completionCheckMinimal, isDark && styles.completionCheckDark, action.completed && styles.completionCheckActive, action.completed && isDark && styles.completionCheckActiveDark, designMode === 'chic' && palette && { borderColor: palette.accent, backgroundColor: action.completed ? palette.accent : palette.cardSurface }]}
+                        onPress={() => toggleAction(action.id)}
+                      >
+                        <Text style={[styles.completionCheckText, isDark && styles.completionCheckTextDark, designMode === 'minimal' && { color: theme.colors.primaryAccent }, rawDesignMode === 'chic' && palette && { color: palette.accent }, action.completed && styles.completionCheckTextActive]}>✓</Text>
+                      </Pressable>
+                      <View style={styles.itemBody}>
+                        <Text style={[styles.itemTitle, isDark && styles.itemTitleDark, action.completed && styles.itemTitleDone, designText]}>{action.title}</Text>
+                        <Text style={[styles.itemMeta, { color: theme.colors.secondaryText }]}>{wish ? `願い: ${wish.title}` : '願い未選択'}</Text>
+                      </View>
+                      <View style={styles.itemActions}>
+                        {onCreateTaskFromAction && <Pressable onPress={() => onCreateTaskFromAction(action)}>
+                          <Text style={[styles.itemActionText, { color: theme.colors.primaryAccent }]}>タスク化</Text>
+                        </Pressable>}
+                        <Pressable onPress={() => openActionEditor(action)}>
+                          <Text style={[styles.itemActionText, { color: theme.colors.primaryAccent }]}>編集</Text>
+                        </Pressable>
+                        <Pressable onPress={() => deleteAction(action.id)}>
+                          <Text style={[styles.itemActionText, styles.deleteText, isDark && styles.deleteTextDark]}>削除</Text>
+                        </Pressable>
+                      </View>
                     </Pressable>
-                    <View style={styles.itemBody}>
-                      <Text style={[styles.itemTitle, isDark && styles.itemTitleDark, action.completed && styles.itemTitleDone, designText]}>{action.title}</Text>
-                      <Text style={[styles.itemMeta, { color: theme.colors.secondaryText }]}>{wish ? `願い: ${wish.title}` : '願い未選択'}</Text>
-                    </View>
-                    <View style={styles.itemActions}>
-                      {onCreateTaskFromAction && <Pressable onPress={() => onCreateTaskFromAction(action)}>
-                        <Text style={[styles.itemActionText, { color: theme.colors.primaryAccent }]}>タスク化</Text>
-                      </Pressable>}
-                      <Pressable onPress={() => openActionEditor(action)}>
-                        <Text style={[styles.itemActionText, { color: theme.colors.primaryAccent }]}>編集</Text>
-                      </Pressable>
-                      <Pressable onPress={() => deleteAction(action.id)}>
-                        <Text style={[styles.itemActionText, styles.deleteText, isDark && styles.deleteTextDark]}>削除</Text>
-                      </Pressable>
-                    </View>
-                  </Pressable>
-                );
-              })}
-            </View>
+                  );
+                })}
+              </View>
 
-            <Pressable
-              style={[styles.addRow, designMode === 'minimal' ? styles.addRowMinimal : styles.addRowChic, isDark && styles.addRowDark, !wishes.length && styles.addRowDisabled, designSubtle]}
-              onPress={() => wishes.length ? openActionEditor() : Alert.alert('先に叶えたいことを1つ作ってね')}
-            >
-              <Text style={[styles.addRowText, { color: rawDesignMode === 'dark' ? darkAccent : wishes.length ? theme.colors.primaryAccent : theme.colors.secondaryText }]}>＋ 行動を追加</Text>
-            </Pressable>
-            {!canCreateWishAction && wishActionRewardProgress && <Text style={[styles.itemMeta, { color: theme.colors.secondaryText, marginTop: 8 }]}>広告を2回見ると、行動を1件追加できます。 {wishActionRewardProgress.current} / {wishActionRewardProgress.required}</Text>}
+              <Pressable
+                style={[styles.addRow, designMode === 'minimal' ? styles.addRowMinimal : styles.addRowChic, isDark && styles.addRowDark, !wishes.length && styles.addRowDisabled, designSubtle]}
+                onPress={() => wishes.length ? openActionEditor() : Alert.alert('先に叶えたいことを1つ作ってね')}
+              >
+                <Text style={[styles.addRowText, { color: rawDesignMode === 'dark' ? darkAccent : wishes.length ? theme.colors.primaryAccent : theme.colors.secondaryText }]}>＋ 行動を追加</Text>
+              </Pressable>
+            </> : (
+              <Pressable
+                style={[styles.lockedFeatureCard, isDark && styles.lockedFeatureCardDark, rawDesignMode === 'chic' && palette && { backgroundColor: palette.surfaceSubtle, borderColor: palette.border }]}
+                onPress={onPremium}
+              >
+                <Text style={[styles.lockedFeatureTitle, isDark && styles.lockedFeatureTitleDark, rawDesignMode === 'chic' && palette && { color: palette.textPrimary }]}>🔒 叶えるための行動</Text>
+                <Text style={[styles.lockedFeatureText, isDark && styles.lockedFeatureTextDark, rawDesignMode === 'chic' && palette && { color: palette.textSecondary }]}>叶えたいことを、今日できる行動に分けられます。</Text>
+                <Text style={[styles.lockedFeatureCta, { color: rawDesignMode === 'chic' && palette ? palette.accent : darkAccent }]}>Premiumで利用できます</Text>
+              </Pressable>
+            )}
           </SectionCard>
 
           <SectionCard
@@ -369,9 +374,9 @@ export function WishScreen({ designMode: rawDesignMode, chicPattern, chicPalette
             chicPalette={palette}
             title="今月の進捗"
             dark={isDark}
-            subtitle={`${progress.progress}%`}
+            subtitle={canCreateWishAction ? `${progress.progress}%` : 'Premium限定'}
           >
-            {designMode === 'minimal' ? (
+            {canCreateWishAction ? (designMode === 'minimal' ? (
               <View style={styles.progressMinimal}>
                 <Text style={[styles.progressNumberMinimal, isDark && styles.progressNumberDark]}>{progress.progress}%</Text>
                 <View style={styles.statGrid}>
@@ -391,15 +396,24 @@ export function WishScreen({ designMode: rawDesignMode, chicPattern, chicPalette
                   <StatCard label="行動" value={`${progress.actionCompleted} / ${progress.actionTotal}`} chicPalette={palette} />
                 </View>
               </View>
+            )) : (
+              <Pressable
+                style={[styles.lockedFeatureCard, isDark && styles.lockedFeatureCardDark, rawDesignMode === 'chic' && palette && { backgroundColor: palette.surfaceSubtle, borderColor: palette.border }]}
+                onPress={onPremium}
+              >
+                <Text style={[styles.lockedFeatureTitle, isDark && styles.lockedFeatureTitleDark, rawDesignMode === 'chic' && palette && { color: palette.textPrimary }]}>🔒 今月の進捗</Text>
+                <Text style={[styles.lockedFeatureText, isDark && styles.lockedFeatureTextDark, rawDesignMode === 'chic' && palette && { color: palette.textSecondary }]}>叶えたいことと行動の達成状況をまとめて振り返れます。</Text>
+                <Text style={[styles.lockedFeatureCta, { color: rawDesignMode === 'chic' && palette ? palette.accent : darkAccent }]}>Premiumで確認</Text>
+              </Pressable>
             )}
           </SectionCard>
 
         </ScrollView>
         <RewardedAccessModal
           visible={rewardPrompt !== null}
-          title={rewardPrompt === 'action' ? '行動を追加' : rewardPrompt === 'monthlyGoal' ? '今月の目標' : '叶えたいことを追加'}
-          description={rewardPrompt === 'action' ? '広告を2回見ると、叶えたいことにつながる行動を1件追加できます。' : rewardPrompt === 'monthlyGoal' ? '広告を5回見ると、今月の目標を設定できます。' : '広告を2回見ると、叶えたいことを1件追加できます。'}
-          current={rewardPrompt === 'action' ? wishActionRewardProgress?.current ?? 0 : rewardPrompt === 'monthlyGoal' ? monthlyGoalRewardProgress?.current ?? 0 : wishRewardProgress?.current ?? 0}
+          title={rewardPrompt === 'monthlyGoal' ? '今月の目標' : '叶えたいことを追加'}
+          description={rewardPrompt === 'monthlyGoal' ? '広告を5回見ると、今月の目標を設定できます。' : '広告を2回見ると、叶えたいことを1件追加できます。'}
+          current={rewardPrompt === 'monthlyGoal' ? monthlyGoalRewardProgress?.current ?? 0 : wishRewardProgress?.current ?? 0}
           required={rewardPrompt === 'monthlyGoal' ? monthlyGoalRewardProgress?.required ?? 5 : 2}
           designMode={rawDesignMode}
           chicPalette={palette}
@@ -410,14 +424,6 @@ export function WishScreen({ designMode: rawDesignMode, chicPattern, chicPalette
             if (mode === 'monthlyGoal') {
               const result = await onRequestMonthlyGoalReward?.() ?? { success: false, message: '広告を利用できません。' };
               if (result.completed) { setRewardPrompt(null); setMonthlyGoalEditing(true); }
-              return result;
-            }
-            if (mode === 'action') {
-              const result = await onRequestWishActionReward?.() ?? { success: false, message: '広告を利用できません。' };
-              if (result.completed) {
-                setRewardPrompt(null);
-                setEditor({ visible: true, mode: 'action', id: undefined, title: '', wishId: state.wishes[0]?.id, completed: false });
-              }
               return result;
             }
             const result = await onRequestWishReward?.() ?? { success: false, message: '広告を利用できません。' };
@@ -594,6 +600,13 @@ const styles = StyleSheet.create({
   addRowDark: { borderColor: '#40506A', backgroundColor: '#20293A' },
   addRowDisabled: { opacity: 0.45 },
   addRowText: { fontSize: 13, fontWeight: '900' },
+  lockedFeatureCard: { borderWidth: 1, borderColor: '#D9D4DC', borderRadius: 16, padding: 14, backgroundColor: '#F7F5F8', gap: 6 },
+  lockedFeatureCardDark: { borderColor: '#40506A', backgroundColor: '#20293A' },
+  lockedFeatureTitle: { fontSize: 14, fontWeight: '900', color: '#282538' },
+  lockedFeatureTitleDark: { color: '#F4F7FC' },
+  lockedFeatureText: { fontSize: 12, lineHeight: 18, fontWeight: '700', color: '#6F6873' },
+  lockedFeatureTextDark: { color: '#B4C0D4' },
+  lockedFeatureCta: { fontSize: 12, fontWeight: '900', marginTop: 4 },
   progressMinimal: { gap: 12 },
   progressNumberMinimal: { fontSize: 42, lineHeight: 46, fontWeight: '300', color: '#111111' },
   progressNumberDark: { color: '#F4F7FC' },
