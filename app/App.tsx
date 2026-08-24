@@ -19,7 +19,7 @@ import { DEFAULT_PREMIUM_GUIDE_FEATURE, PremiumGuideFeatureId } from './premiumG
 import { createPremiumTaskTemplate, hasSameTemplateSettings, PremiumTaskTemplate, summarizePremiumTaskTemplate } from './taskTemplates';
 import { Header } from './components/Header';
 import { HomeScreen } from './screens/HomeScreen';
-import { TimelineScreen } from './screens/TimelineScreen';
+import { PlanLocationShareActions, TimelineScreen } from './screens/TimelineScreen';
 import { SettingsScreen } from './screens/SettingsScreen';
 import { HistoryScreen, MonthlyReflectionCardView, ReflectionCardModel } from './screens/HistoryScreen';
 import { TaskModal } from './components/TaskModal';
@@ -2275,8 +2275,8 @@ export default function App() {
     const previewDate = dateKey(now);
     const previewTasks: Task[] = [
       { id: 'premium-preview-task-1', title: '資料をまとめる', done: false, category: '仕事', priority: '中', scheduledDate: previewDate, scheduledTime: '09:00', bucket: 'now' },
-      { id: 'premium-preview-task-2', title: '病院へ連絡する', done: true, status: 'completed', category: '予定', priority: '高', scheduledDate: previewDate, scheduledTime: '14:00', completedAt: new Date().toISOString(), bucket: 'later' },
-      { id: 'premium-preview-task-3', title: '病院訪問の準備', done: true, status: 'completed', category: '予定', priority: '中', scheduledDate: previewDate, completedAt: new Date(Date.now() - 86400000 * 3).toISOString(), bucket: 'later' },
+      { id: 'premium-preview-task-2', title: '洗濯をする', done: true, status: 'completed', category: '家事', priority: '中', scheduledDate: previewDate, scheduledTime: '14:00', completedAt: new Date(Date.now() - 86400000).toISOString(), bucket: 'later' },
+      { id: 'premium-preview-task-3', title: 'シーツを洗濯する', done: true, status: 'completed', category: '家事', priority: '中', scheduledDate: previewDate, completedAt: new Date(Date.now() - 86400000 * 4).toISOString(), bucket: 'later' },
     ];
     const previewPlans: DeparturePlan[] = [{ id: 'premium-preview-plan', title: '資料提出', destination: '天神○○ビル', date: previewDate, arrival: '14:00', departureTime: '13:15', endAt: '15:00', travelMinutes: 30, preparationMinutes: 15, bufferMinutes: 10, planMode: 'arrival_reverse' }];
     const previewCalendarOptions = [
@@ -2322,7 +2322,7 @@ export default function App() {
       helpers={{ dateKey, formatLiveTime, getThemeTokens: getThemedThemeTokens }}
       components={{ AchievementVessel, CalendarMarkPicker }}
       previewMode={kind === 'records' || kind === 'history'}
-      previewSearchQuery={kind === 'history' ? '病院' : undefined}
+      previewSearchQuery={kind === 'history' ? '洗濯' : undefined}
       previewJournal={kind === 'records'}
     />;
     const readonly = (node: React.ReactNode, maxHeight = 430) => <View style={[styles.premiumPreview, { minHeight: 300, maxHeight, overflow: 'hidden' }, uiDesignMode === 'dark' && { backgroundColor: '#181F2E', borderColor: '#40506A' }]}>{node}</View>;
@@ -2334,8 +2334,17 @@ export default function App() {
     }
     if (kind === 'nudge') return readonly(<NotificationManagerCard designMode={uiDesignMode} readOnly />);
     if (kind === 'travel_apps') return readonly(<TravelAppsSettingsCard settings={travelApps} onChange={() => undefined} planTier="premium" designMode={uiDesignMode} chicPalette={chicPalette} onPremium={() => undefined} readOnlyPreview />, 560);
-    if (kind === 'calendar' || kind === 'route' || kind === 'month' || kind === 'recovery' || kind === 'focus_custom_duration') {
-      const initialTab: TimeTab = kind === 'month' ? 'calendar' : kind === 'route' ? 'departure' : kind === 'focus_custom_duration' ? 'focus' : 'departure';
+    if (kind === 'route') {
+      const routeTheme = getThemedThemeTokens(uiDesignMode);
+      return readonly(<View style={[styles.departureCountdownCard, styles.planCountdownCardNew, { backgroundColor: routeTheme.colors.surface, borderColor: routeTheme.colors.border, borderLeftColor: routeTheme.colors.primaryAccent }]}>
+        <Text style={[styles.departureCountdownTitle, { color: routeTheme.colors.primaryText }]}>資料提出</Text>
+        <Text style={[styles.planDestination, { color: routeTheme.colors.secondaryText }]}>目的地</Text>
+        <Text style={[styles.departureCountdownTitle, { color: routeTheme.colors.primaryText, marginTop: 3 }]}>天神○○ビル</Text>
+        <View style={styles.planUtilityRow}><PlanLocationShareActions plan={previewPlans[0]!} planTier="premium" designMode={uiDesignMode} chicPalette={chicPalette} styles={styles} onOpenMap={() => undefined} onShare={() => undefined} /></View>
+      </View>, 320);
+    }
+    if (kind === 'calendar' || kind === 'month' || kind === 'recovery' || kind === 'focus_custom_duration') {
+      const initialTab: TimeTab = kind === 'month' ? 'calendar' : kind === 'focus_custom_duration' ? 'focus' : 'departure';
       return readonly(<TimelineScreen
         plan={previewPlans[0]}
         plans={previewPlans}

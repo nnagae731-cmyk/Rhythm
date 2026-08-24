@@ -1,7 +1,7 @@
 import * as ImagePicker from 'expo-image-picker';
 import React, { useEffect, useRef, useState } from 'react';
 import { Alert, Image, Modal, Pressable, ScrollView, Share, StyleSheet, Text, TextInput, View } from 'react-native';
-import { ChicPattern, ChicThemePalette } from '../theme';
+import { ChicPattern, ChicThemePalette, getThemeTokens } from '../theme';
 import { hasPremiumAccess, isWithinFreeHistory, PlanTier } from '../premiumAccess';
 import { PremiumGuideFeatureId } from '../premiumGuide';
 import { BehaviorEvent } from '../behaviorEvents';
@@ -21,6 +21,19 @@ export type ReflectionCardModel = {
   phrase: string;
   bestMemory: string;
 };
+
+function JournalEditorPreview({ date, maxPhotos, designMode, chicPalette, styles }: { date: string; maxPhotos: number; designMode: ThemeMode; chicPalette?: ChicThemePalette; styles: any }) {
+  const theme = getThemeTokens(designMode, chicPalette?.id ?? 'cool');
+  const isDark = designMode === 'dark';
+  return <View pointerEvents="none" style={[styles.journalEditor, designMode === 'minimal' && styles.journalEditorMinimal, isDark && styles.darkJournalEditor, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }, designMode === 'chic' && chicPalette && { backgroundColor: chicPalette.cardSurface, borderColor: chicPalette.border }]}>
+    <View style={styles.journalEditorHeader}><View><Text style={[styles.journalEditorTitle, { color: theme.colors.primaryText }]}>{'今日の記録'}</Text><Text style={[styles.journalEditorDate, { color: theme.colors.primaryAccent }]}>{date.replaceAll('-', '.')}</Text></View><Text style={[styles.journalEditorCount, { color: theme.colors.primaryAccent }]}>{`写真 0 / ${maxPhotos}`}</Text></View>
+    <View style={styles.journalPhotoRow}><Pressable style={[styles.journalPhotoAdd, { borderColor: theme.colors.border, backgroundColor: theme.colors.secondarySurface }]}><Text style={[styles.journalPhotoAddIcon, { color: theme.colors.primaryAccent }]}>＋</Text><Text style={[styles.journalPhotoAddText, { color: theme.colors.primaryAccent }]}>写真を追加</Text></Pressable></View>
+    <TextInput editable={false} value="" placeholder="今日のひとこと" placeholderTextColor={theme.colors.secondaryText} style={[styles.journalInput, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border, color: theme.colors.primaryText }]} />
+    <TextInput editable={false} value="" placeholder="今日のことを少し残す" placeholderTextColor={theme.colors.secondaryText} multiline style={[styles.journalInput, styles.journalMemo, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border, color: theme.colors.primaryText }]} />
+    <View style={styles.journalSatisfactionRow}>{[1, 2, 3, 4, 5].map((value) => <View key={value} style={[styles.journalSatisfaction, { backgroundColor: theme.colors.secondarySurface, borderColor: theme.colors.border }]}><Text style={[styles.journalSatisfactionText, { color: theme.colors.secondaryText }]}>{value}</Text></View>)}<Text style={[styles.journalSatisfactionLabel, { color: theme.colors.primaryAccent }]}>満足度</Text></View>
+    <Pressable style={[styles.journalSaveButton, { backgroundColor: theme.colors.primaryAccent }]}><Text style={styles.journalSaveButtonText}>保存する</Text></Pressable>
+  </View>;
+}
 
 const reflectionCardPalettes: Record<ReflectionCardPalette, { background: string; surface: string; accent: string; text: string; muted: string }> = {
   lavender: { background: '#F7F8FF', surface: '#FFFFFF', accent: '#5B82E8', text: '#182B4A', muted: '#71809A' },
@@ -434,6 +447,10 @@ export function HistoryScreen({ tasks, wishMonths, calendarMarks, onSetCalendarM
     setMonthlyCardPhotoCount(Math.min(savedMonthlyCard.photoIds.length, monthlyCardLimit));
     setMonthlyCardGenerating(false);
   };
+
+  if (previewJournal && premiumHistory) {
+    return <JournalEditorPreview date={selectedKey} maxPhotos={maxJournalPhotos} designMode={designMode} chicPalette={chicPalette} styles={styles} />;
+  }
 
   return (
     <>

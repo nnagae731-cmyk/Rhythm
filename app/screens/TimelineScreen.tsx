@@ -1,7 +1,7 @@
 import * as Calendar from 'expo-calendar';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Modal, Pressable, ScrollView, Text, View } from 'react-native';
-import { ChicPattern, ChicThemePalette, DesignMode } from '../theme';
+import { ChicPattern, ChicThemePalette, DesignMode, getThemeTokens } from '../theme';
 import { CalendarMarks, DeparturePlan, DeparturePreparationStatus, Task, TimeTab } from '../types';
 import { DepartureCheckIn } from '../departureCheckIn';
 import { BehaviorEvent } from '../behaviorEvents';
@@ -37,6 +37,16 @@ type PlanCardProps = {
   travelApps?: TravelAppSettings;
   onOpenTravelAppSettings?: () => void;
 };
+
+export function PlanLocationShareActions({ plan, planTier, designMode, chicPalette, styles, onOpenMap, onShare }: { plan: DeparturePlan; planTier: PlanTier; designMode: DesignMode; chicPalette?: ChicThemePalette; styles: any; onOpenMap: () => void; onShare: () => void }) {
+  const theme = getThemeTokens(designMode, chicPalette?.id ?? 'cool');
+  const isDark = designMode === 'dark';
+  const accent = theme.colors.primaryAccent;
+  return <>
+    {plan.destination?.trim() ? <Pressable accessibilityRole="button" style={[styles.planUtilityButton, isDark && styles.planUtilityButtonDark]} onPress={onOpenMap}><Text style={[styles.planUtilityText, { color: accent }]}>地図</Text></Pressable> : null}
+    {planTier === 'premium' && <Pressable accessibilityRole="button" style={[styles.planUtilityButton, isDark && styles.planUtilityButtonDark]} onPress={onShare}><Text style={[styles.planUtilityText, { color: accent }]}>共有</Text></Pressable>}
+  </>;
+}
 
 const DepartureCountdownCard = React.memo(function DepartureCountdownCard({ plan, now, planTier, designMode, chicPalette, status, prepared, departed, checkIn, styles, helpers, onPrepare, onDepart, onStill, onRecover, onShare, onPremium, onEdit, onDelete, travelApps, onOpenTravelAppSettings }: PlanCardProps) {
   const { getThemeTokens, planDateKey, formatLiveTime, getDepartureMoments, countdownToDate, getMapSearchTarget, openMapSearch, getPlanCountdownAt } = helpers;
@@ -99,8 +109,7 @@ const DepartureCountdownCard = React.memo(function DepartureCountdownCard({ plan
     {reverse && isPremium && (checkIn || departed) && <Pressable accessibilityRole="button" style={actionStyle} onPress={() => void openMap()}><Text style={styles.planActionMainText}>地図を開く</Text></Pressable>}
 
     <View style={[styles.planUtilityRow, { flexWrap: 'wrap' }]}>
-      {plan.destination?.trim() ? <Pressable accessibilityRole="button" style={[styles.planUtilityButton, isDark && styles.planUtilityButtonDark]} onPress={() => void openMap()}><Text style={[styles.planUtilityText, { color: theme.colors.primaryAccent }]}>地図</Text></Pressable> : null}
-      {reverse && isPremium && <Pressable accessibilityRole="button" style={[styles.planUtilityButton, isDark && styles.planUtilityButtonDark]} onPress={() => onShare(plan)}><Text style={[styles.planUtilityText, { color: theme.colors.primaryAccent }]}>共有</Text></Pressable>}
+      <PlanLocationShareActions plan={plan} planTier={planTier} designMode={designMode} chicPalette={chicPalette} styles={styles} onOpenMap={() => void openMap()} onShare={() => onShare(plan)} />
       <Pressable accessibilityRole="button" style={[styles.planUtilityButton, isDark && styles.planUtilityButtonDark]} onPress={() => onEdit(plan)}><Text style={[styles.planUtilityText, { color: theme.colors.primaryAccent }]}>編集</Text></Pressable>
       {plan.id && <Pressable accessibilityRole="button" style={[styles.planUtilityButton, isDark && styles.planUtilityButtonDark]} onPress={() => onDelete(plan.id!)}><Text style={[styles.planDeleteText, { color: isDark ? '#FF8F9C' : '#B85060' }]}>削除</Text></Pressable>}
       {plan.destination?.trim() ? <TravelAppLaunchActions settings={travelApps} category="transit" destination={plan.destination} planTier={planTier} designMode={designMode} chicPalette={chicPalette} onPremium={onPremium} onOpenSettings={onOpenTravelAppSettings} /> : null}

@@ -11,9 +11,8 @@ import { DeparturePlan, Task } from './types';
 
 type AnalysisTab = 'records' | 'insights' | 'routine';
 
-function PremiumGate({ onPremium, dark = false, chicPalette, chicPattern = 'plain', PatternDecor }: { onPremium: () => void; dark?: boolean; chicPalette?: ChicThemePalette; chicPattern?: ChicPattern; PatternDecor?: (props: { pattern: ChicPattern; accent: string; warm: string; checkColor?: ChicCheckColor }) => ReactNode }) {
-  const mode: DesignMode = chicPalette ? 'chic' : dark ? 'dark' : 'minimal';
-  const cardTheme = getPremiumFeatureCardTheme(mode, chicPalette, chicPattern);
+function PremiumGate({ onPremium, designMode, chicPalette, chicPattern = 'plain', PatternDecor }: { onPremium: () => void; designMode: DesignMode; chicPalette?: ChicThemePalette; chicPattern?: ChicPattern; PatternDecor?: (props: { pattern: ChicPattern; accent: string; warm: string; checkColor?: ChicCheckColor }) => ReactNode }) {
+  const cardTheme = getPremiumFeatureCardTheme(designMode, designMode === 'chic' ? chicPalette : undefined, chicPattern);
   return (
     <Pressable style={[styles.premiumGate, { backgroundColor: cardTheme.surface, borderColor: cardTheme.border }]} onPress={onPremium}>
       {cardTheme.showPatternDecor && PatternDecor && <View pointerEvents="none" style={StyleSheet.absoluteFillObject}><PatternDecor pattern={chicPattern} accent={cardTheme.accent} warm={chicPalette?.accentSoft ?? cardTheme.border} checkColor={chicPalette && ['monochrome', 'cool', 'warm', 'green'].includes(chicPalette.id) ? chicPalette.id as ChicCheckColor : undefined} /></View>}
@@ -328,7 +327,7 @@ export function AnalysisScreen({
           {recordContent}
         </>
       ) : tab === 'insights' && !premium ? (
-        <PremiumGate dark={designMode === 'dark'} chicPalette={chicPalette} chicPattern={chicPattern} PatternDecor={PatternDecor} onPremium={() => onPremium('time')} />
+        <PremiumGate designMode={designMode} chicPalette={chicPalette} chicPattern={chicPattern} PatternDecor={PatternDecor} onPremium={() => onPremium('time')} />
       ) : tab === 'insights' ? (
         <InsightDashboardView events={events} tasks={tasks} plans={departurePlans} designMode={designMode} chicPalette={chicPalette} onApplySuggestion={onApplySuggestion} behaviorOnly={previewKind === 'behavior'} />
       ) : tab === 'routine' ? (

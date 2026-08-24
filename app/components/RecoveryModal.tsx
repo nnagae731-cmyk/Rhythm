@@ -29,7 +29,7 @@ export function RecoveryModal({ visible, plan, now, designMode, onClose, onApply
   const [contactEditing, setContactEditing] = React.useState(false);
   const [contactDraft, setContactDraft] = React.useState('');
   if (!plan) return null;
-  const theme = getThemeTokens(designMode);
+  const theme = getThemeTokens(designMode, chicPalette?.id ?? 'cool');
   const options = getRecoveryOptions(plan, now);
   const estimatedArrival = options[0]?.estimatedArrival ?? plan.arrival;
   const applyOption = async (option: RecoveryOption, customMessage?: string) => {
@@ -53,16 +53,16 @@ export function RecoveryModal({ visible, plan, now, designMode, onClose, onApply
 
   const content = <ScrollView showsVerticalScrollIndicator={false}>
             <View style={styles.modalHandle} />
-            <View style={[styles.recoveryHeader, { backgroundColor: theme.colors.softAccent }]}>
-              <Text style={[styles.recoveryEyebrow, { color: theme.colors.primaryAccent }]}>遅れても、ここから立て直せます</Text>
-              <Text style={styles.recoveryTitle}>{plan.title}</Text>
-              <Text style={styles.recoverySummary}>予定到着 {plan.arrival}　→　今出ると {estimatedArrival}ごろ</Text>
+            <View style={[styles.recoveryHeader, { backgroundColor: theme.colors.softAccent, borderColor: theme.colors.border, borderWidth: 1 }]}>
+              <Text style={[styles.recoveryEyebrow, { color: theme.colors.primaryAccent }]}>ここから立て直す</Text>
+              <Text style={[styles.recoveryTitle, { color: theme.colors.primaryText }]}>{plan.title}</Text>
+              <Text style={[styles.recoverySummary, { color: theme.colors.secondaryText }]}>予定到着 {plan.arrival}　→　今出ると {estimatedArrival}ごろ</Text>
             </View>
-            <Text style={styles.recoveryPrompt}>次の行動を選んでください</Text>
+            <Text style={[styles.recoveryPrompt, { color: theme.colors.primaryText }]}>次の行動を選んでください</Text>
             {options.map((option) => {
               const locked = option.action === 'delay_arrival' || option.action === 'reschedule';
               return (
-                <Pressable key={option.action} style={[styles.recoveryOption, { borderColor: theme.colors.border }]} onPress={() => {
+                <Pressable key={option.action} style={[styles.recoveryOption, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]} onPress={() => {
                   if (locked) {
                     onClose();
                     onPremium();
@@ -77,24 +77,24 @@ export function RecoveryModal({ visible, plan, now, designMode, onClose, onApply
                     <Text style={[styles.recoveryOptionIconText, { color: theme.colors.primaryAccent }]}>{option.action === 'leave_now' ? '↗' : option.action === 'delay_arrival' ? '◷' : option.action === 'contact' ? '✉' : '↻'}</Text>
                   </View>
                   <View style={{ flex: 1 }}>
-                    <Text style={styles.recoveryOptionTitle}>{option.title}</Text>
-                    <Text style={styles.recoveryOptionCopy}>{option.description}</Text>
+                    <Text style={[styles.recoveryOptionTitle, { color: theme.colors.primaryText }]}>{option.title}</Text>
+                    <Text style={[styles.recoveryOptionCopy, { color: theme.colors.secondaryText }]}>{option.description}</Text>
                   </View>
                   <Text style={[styles.recoveryOptionArrow, { color: theme.colors.primaryAccent }]}>{locked ? '▣' : '›'}</Text>
                 </Pressable>
               );
             })}
-            {contactEditing && <View style={styles.recoveryContactEditor}>
-              <Text style={styles.recoveryContactLabel}>共有する連絡文</Text>
-              <TextInput value={contactDraft} onChangeText={setContactDraft} multiline placeholder="例：少し遅れます。到着は10分ほど遅れる見込みです。" placeholderTextColor="#A29DAA" style={styles.recoveryContactInput} />
+            {contactEditing && <View style={[styles.recoveryContactEditor, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
+              <Text style={[styles.recoveryContactLabel, { color: theme.colors.primaryText }]}>共有する連絡文</Text>
+              <TextInput value={contactDraft} onChangeText={setContactDraft} multiline placeholder="例：少し遅れます。到着は10分ほど遅れる見込みです。" placeholderTextColor={theme.colors.secondaryText} style={[styles.recoveryContactInput, { backgroundColor: theme.colors.secondarySurface, borderColor: theme.colors.border, color: theme.colors.primaryText }]} />
               <View style={styles.recoveryContactActions}>
                 <Pressable onPress={() => setContactEditing(false)}><Text style={styles.cancelText}>戻る</Text></Pressable>
-                <Pressable style={styles.recoveryContactSend} onPress={() => { const option = options.find((item) => item.action === 'contact'); if (option) void applyOption(option, contactDraft); }}><Text style={styles.recoveryContactSendText}>共有する</Text></Pressable>
+                <Pressable style={[styles.recoveryContactSend, { backgroundColor: theme.colors.primaryAccent }]} onPress={() => { const option = options.find((item) => item.action === 'contact'); if (option) void applyOption(option, contactDraft); }}><Text style={styles.recoveryContactSendText}>共有する</Text></Pressable>
               </View>
             </View>}
-            <Text style={styles.recoveryNote}>位置情報や経路検索はまだ使わず、登録済みの移動時間から計算しています。</Text>
+            <Text style={[styles.recoveryNote, { color: theme.colors.secondaryText }]}>位置情報や経路検索はまだ使わず、登録済みの移動時間から計算しています。</Text>
             {plan.destination?.trim() ? <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginTop: 8 }}><TravelAppLaunchActions settings={travelApps} category="transit" destination={plan.destination} planTier={planTier} designMode={designMode} chicPalette={chicPalette} onPremium={(featureId) => onPremium(featureId)} onOpenSettings={onOpenTravelAppSettings} /><TravelAppLaunchActions settings={travelApps} category="taxi" destination={plan.destination} planTier={planTier} designMode={designMode} chicPalette={chicPalette} onPremium={(featureId) => onPremium(featureId)} onOpenSettings={onOpenTravelAppSettings} /></View> : null}
-            <Pressable onPress={onClose}><Text style={styles.cancelText}>閉じる</Text></Pressable>
+            <Pressable onPress={onClose}><Text style={[styles.cancelText, { color: theme.colors.secondaryText }]}>閉じる</Text></Pressable>
   </ScrollView>;
   if (inlinePreview) return <View style={[styles.modalSheet, { backgroundColor: theme.colors.screenBackground, borderRadius: theme.radius.modal, position: 'absolute', top: 0, left: 0, right: 0, zIndex: 20 }]} pointerEvents="none">{content}</View>;
   return <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}><Pressable style={styles.modalBackdrop} onPress={onClose}><Pressable style={[styles.modalSheet, { backgroundColor: theme.colors.screenBackground, borderRadius: theme.radius.modal }]} onPress={(event) => event.stopPropagation()}>{content}</Pressable></Pressable></Modal>;
