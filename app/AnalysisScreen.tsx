@@ -49,7 +49,8 @@ function RoutineProgressPanel({ events, tasks, designMode, chicPalette, onRemove
   const routineTasks = useMemo(() => getRoutineHistoryList(events, tasks), [events, tasks]);
   const [historyTarget, setHistoryTarget] = useState<{ title: string; summary: RoutineInterruptionSummary }>();
   const resolvedChicPalette = chicPalette ?? getDesignCheckThemeTokens('cool');
-  const palette = designMode === 'chic' ? [resolvedChicPalette.accent, resolvedChicPalette.statusAccent, resolvedChicPalette.patternStripe, resolvedChicPalette.accentSoft, resolvedChicPalette.border] : designMode === 'dark' ? ['#8EA6FF', '#AFC2FF', '#7ED6C4', '#C5B4FF', '#8EA6FF'] : ['#171717', '#3A3A3A', '#5C5C5C', '#7A7A7A', '#A0A0A0'];
+  const theme = getThemeTokens(designMode, chicPalette?.id ?? 'cool');
+  const palette = designMode === 'chic' ? [resolvedChicPalette.accent, resolvedChicPalette.statusAccent, resolvedChicPalette.patternStripe, resolvedChicPalette.accentSoft, resolvedChicPalette.border] : [theme.colors.primaryAccent, theme.colors.secondaryAccent, theme.colors.border, theme.colors.softAccent, theme.colors.secondaryText];
   const isDark = designMode === 'dark';
   if (routineTasks.length === 0) return <View style={[styles.routineCard, isDark && styles.routineCardDark, designMode === 'chic' && chicPalette && { backgroundColor: chicPalette.cardSurface, borderColor: chicPalette.border }]}><Text style={[styles.sectionTitle, isDark && styles.darkMetricText, designMode === 'chic' && chicPalette && { color: chicPalette.textPrimary }]}>ルーティンの継続</Text><Text style={[styles.sectionCopy, isDark && styles.darkSecondaryText, designMode === 'chic' && chicPalette && { color: chicPalette.textSecondary }]}>タスク登録時に「ルーティンにする」を選ぶと、継続率を確認できます。</Text></View>;
   return <>
@@ -309,11 +310,11 @@ export function AnalysisScreen({
             <Text style={[styles.activityTitle, { color: theme.colors.primaryText }]}>出発・準備の実績</Text>
             <View style={styles.activityRow}>
               <View style={styles.activityMetric}>
-                <Text style={[styles.activityValue, { color: designMode === 'dark' ? '#8EA6FF' : theme.colors.primaryAccent }]}>{departureActivity.preparationCount}</Text>
+                <Text style={[styles.activityValue, { color: theme.colors.primaryAccent }]}>{departureActivity.preparationCount}</Text>
                 <Text style={[styles.activityLabel, { color: theme.colors.secondaryText }]}>準備開始</Text>
               </View>
               <View style={styles.activityMetric}>
-                <Text style={[styles.activityValue, { color: designMode === 'dark' ? '#8EA6FF' : theme.colors.primaryAccent }]}>{departureActivity.departureCount}</Text>
+                <Text style={[styles.activityValue, { color: theme.colors.primaryAccent }]}>{departureActivity.departureCount}</Text>
                 <Text style={[styles.activityLabel, { color: theme.colors.secondaryText }]}>出発</Text>
               </View>
               <View style={[styles.activityLatest, designMode === 'dark' && styles.activityLatestDark, { borderLeftColor: theme.colors.border }]}>
