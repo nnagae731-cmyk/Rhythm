@@ -2522,6 +2522,7 @@ export default function App() {
       onAdd={() => undefined}
       onOpenBulkAdd={() => undefined}
       onOpenFocus={() => undefined}
+      onOpenSchedule={() => undefined}
       onUpdateTaskList={() => undefined}
       onQuickAdd={() => undefined}
       onToggle={() => undefined}
@@ -2650,6 +2651,11 @@ export default function App() {
                 setTimelineInitialTab('focus');
                 navigateWithinApp('timeline');
               }}
+              onOpenSchedule={() => {
+                setTimelineInitialTab('departure');
+                navigateWithinApp('timeline');
+              }}
+              onOpenCompleted={() => void onboarding.complete('completedTasks')}
               onUpdateTaskList={updateTaskList}
                 onQuickAdd={(title, category, priority, scheduledDate, scheduledTime, endAt, isRoutine, deadlineDate, deadlineTime, deadlineNotifyBefore, remindDate, remindAt, repeatRule, subtasks) => addTask(title, category, priority, remindDate, remindAt, deadlineDate, deadlineTime, deadlineNotifyBefore, undefined, undefined, undefined, undefined, repeatRule ?? 'none', 'once', scheduledDate, scheduledTime, endAt, isRoutine, subtasks)}
               onToggle={(id) => {

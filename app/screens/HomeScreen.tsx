@@ -28,6 +28,8 @@ export function HomeScreen({
   onAdd,
   onOpenBulkAdd,
   onOpenFocus,
+  onOpenSchedule,
+  onOpenCompleted,
   onQuickAdd,
   onToggle,
   onToggleSubtask,
@@ -70,6 +72,8 @@ export function HomeScreen({
   onAdd: () => void;
   onOpenBulkAdd: () => void;
   onOpenFocus: () => void;
+  onOpenSchedule?: () => void;
+  onOpenCompleted?: () => void;
   onQuickAdd: (title: string, category: Category, priority: Priority, scheduledDate?: string, scheduledTime?: string, endAt?: string, isRoutine?: boolean, deadlineDate?: string, deadlineTime?: string, deadlineNotifyBefore?: number, remindDate?: string, remindAt?: string, repeatRule?: RepeatRule, subtasks?: Subtask[]) => void;
   onToggle: (id: string) => void;
   onToggleSubtask: (taskId: string, subtaskId: string) => void;
@@ -111,6 +115,7 @@ export function HomeScreen({
   const [tomorrowOpen, setTomorrowOpen] = useState(false);
   const [expandedSubtasks, setExpandedSubtasks] = useState<Record<string, boolean>>({});
   const [listTask, setListTask] = useState<Task | undefined>();
+  const [homeTab, setHomeTab] = useState<'now' | 'list'>('now');
   const bucketTasks = tasks.filter((task) => (task.bucket ?? 'now') === bucketFilter);
   const categoryTasks = categoryFilter === 'すべて' ? bucketTasks : bucketTasks.filter((task) => task.category === categoryFilter);
   const displayTasks = [...categoryTasks].sort((a, b) => priorityOrder[a.priority] - priorityOrder[b.priority]);
@@ -126,9 +131,23 @@ export function HomeScreen({
   tomorrowDate.setDate(tomorrowDate.getDate() + 1);
   const tomorrowKey = dateKey(tomorrowDate);
   const tomorrowTasks = allTasks.filter((task) => task.scheduledDate === tomorrowKey).sort((a, b) => (a.scheduledTime ?? '99:99').localeCompare(b.scheduledTime ?? '99:99'));
+  const todayKey = dateKey(now);
+  const nowClock = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+  const nextScheduledTask = allTasks.filter((task) => task.scheduledDate === todayKey && task.scheduledTime && !task.done && task.scheduledTime >= nowClock).sort((a, b) => (a.scheduledTime ?? '').localeCompare(b.scheduledTime ?? ''))[0];
+  const todayScheduledTasks = allTasks.filter((task) => task.scheduledDate === todayKey && task.scheduledTime).sort((a, b) => (a.scheduledTime ?? '').localeCompare(b.scheduledTime ?? ''));
+  const completedTodayCount = allTasks.filter((task) => task.done && task.completedAt && dateKey(task.completedAt) === todayKey).length;
+  const weekdayLabels = ['日', '月', '火', '水', '木', '金', '土'];
   return (
     <HomeRuntimeContext.Provider value={{ styles, helpers, chicPalette }}>
     <>
+      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+        <Text style={{ color: designMode === 'chic' ? chicPalette.textPrimary : theme?.colors?.primaryText ?? '#182235', fontSize: 18, fontWeight: '900' }}>{now.getMonth() + 1}月{now.getDate()}日（{weekdayLabels[now.getDay()]}）</Text>
+        <Pressable accessibilityRole="button" accessibilityLabel="タスクを追加" onPress={onAdd} style={{ minHeight: 40, paddingHorizontal: 13, borderRadius: 12, borderWidth: 1, borderColor: focusShortcutBorder, backgroundColor: designMode === 'chic' ? chicPalette.accentSoft : theme?.colors?.softAccent ?? '#E8EEFF', justifyContent: 'center' }}><Text style={{ color: focusShortcutAccent, fontSize: 13, fontWeight: '900' }}>＋追加</Text></Pressable>
+      </View>
+      <View style={{ flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: focusShortcutBorder, marginBottom: 14 }}>
+        {(['now', 'list'] as const).map((tab) => <Pressable key={tab} onPress={() => setHomeTab(tab)} style={{ flex: 1, minHeight: 40, alignItems: 'center', justifyContent: 'center', borderBottomWidth: homeTab === tab ? 2 : 0, borderBottomColor: focusShortcutAccent }}><Text style={{ color: homeTab === tab ? focusShortcutAccent : focusShortcutMuted, fontSize: 13, fontWeight: homeTab === tab ? '900' : '700' }}>{tab === 'now' ? '今' : '一覧'}</Text></Pressable>)}
+      </View>
+      {homeTab === 'now' && <>
       {renderTodayWinStrip(allTasks)}
       <Pressable
         accessibilityRole="button"
@@ -142,6 +161,13 @@ export function HomeScreen({
         </View>
         <Text style={{ color: focusShortcutAccent, fontSize: 24, lineHeight: 26, marginLeft: 10 }}>›</Text>
       </Pressable>
+      <View style={{ minHeight: 58, paddingHorizontal: 14, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: focusShortcutBorder }}>
+        <Text style={{ color: focusShortcutMuted, fontSize: 11, fontWeight: '800' }}>次の予定</Text>
+        {nextScheduledTask ? <Pressable onPress={onOpenSchedule} style={{ flexDirection: 'row', alignItems: 'center', marginTop: 5 }}><Text style={{ color: focusShortcutText, fontSize: 14, fontWeight: '800' }}>{nextScheduledTask.scheduledTime}　{nextScheduledTask.title}</Text><Text style={{ marginLeft: 'auto', color: focusShortcutAccent, fontSize: 20 }}>›</Text></Pressable> : <Text style={{ color: focusShortcutMuted, fontSize: 13, marginTop: 5 }}>今日の次の予定はありません</Text>}
+      </View>
+      <Pressable onPress={() => { setHomeTab('list'); setTomorrowOpen(true); }} style={{ minHeight: 44, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 4, marginTop: 8 }}><Text style={{ color: focusShortcutText, fontSize: 13, fontWeight: '800' }}>明日の予定を見る</Text><Text style={{ color: focusShortcutAccent, fontSize: 20 }}>›</Text></Pressable>
+      </>}
+      {homeTab === 'list' && <>
       {showTodoOnboarding && (
        <View style={{ marginBottom: 12 }}>
         <OnboardingHint
@@ -202,12 +228,18 @@ export function HomeScreen({
         {(['すべて', ...categories] as const).map((category) => <Pressable key={category} style={[styles.filterChip, isDark && styles.filterChipDark, categoryFilter === category && styles.filterChipActive, categoryFilter === category && isDark && styles.filterChipActiveDark, designMode === 'chic' && { backgroundColor: categoryFilter === category ? chicPalette.accentSoft : chicPalette.cardSurface, borderColor: categoryFilter === category ? chicPalette.accent : chicPalette.border }]} onPress={() => setCategoryFilter(category)}><Text style={[styles.filterChipText, isDark && styles.darkMutedText, categoryFilter === category && styles.filterChipTextActive, categoryFilter === category && isDark && styles.filterChipTextActiveDark, designMode === 'chic' && { color: categoryFilter === category ? chicPalette.accentStrong : chicPalette.textSecondary }]}>{category}</Text></Pressable>)}
       </ScrollView>
 
+      <View style={{ marginBottom: 12, paddingHorizontal: 4 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}><Text style={[styles.sectionTitle, isDark && styles.darkBodyText]}>今日の予定</Text><Pressable onPress={onOpenSchedule}><Text style={{ color: focusShortcutAccent, fontSize: 12, fontWeight: '800' }}>予定をすべて見る ›</Text></Pressable></View>
+        {todayScheduledTasks.length === 0 ? <Text style={{ color: focusShortcutMuted, fontSize: 12, marginTop: 6 }}>時間を指定した予定はありません</Text> : todayScheduledTasks.slice(0, 5).map((task) => <View key={`schedule-row-${task.id}`} style={{ minHeight: 34, flexDirection: 'row', alignItems: 'center', borderBottomWidth: 1, borderBottomColor: focusShortcutBorder }}><Text style={{ width: 58, color: focusShortcutAccent, fontSize: 12, fontWeight: '800' }}>{task.scheduledTime}</Text><Text numberOfLines={1} style={{ flex: 1, color: focusShortcutText, fontSize: 13, fontWeight: '700' }}>{task.title}</Text></View>)}
+      </View>
+
       <Pressable style={[styles.taskCard, isDark && styles.darkSurface, designMode === 'chic' && { backgroundColor: chicPalette.cardSurface, borderColor: chicPalette.border }]} onPress={() => setTomorrowOpen(true)}>
         <View style={[styles.taskCardInner, designMode === 'chic' && { backgroundColor: chicPalette.cardSurface }]}>
           <View style={{ flex: 1 }}><Text style={[styles.taskTitle, isDark && styles.darkBodyText, designMode === 'chic' && { color: chicPalette.textPrimary }]}>明日のタスクを確認</Text><Text style={[styles.taskMeta, isDark && styles.darkMutedText, designMode === 'chic' && { color: chicPalette.textSecondary }]}>{tomorrowTasks.length > 0 ? `${tomorrowTasks.length}件の予定があります` : '明日の予定を先に確認できます'}</Text></View>
           <Text style={[styles.taskMoreText, isDark && styles.darkAccentText, designMode === 'chic' && { color: chicPalette.accent }]}>›</Text>
         </View>
       </Pressable>
+      <Pressable onPress={onOpenCompleted} style={{ minHeight: 42, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 4, marginBottom: 10 }}><Text style={{ color: focusShortcutText, fontSize: 13, fontWeight: '800' }}>今日できたこと　{completedTodayCount}件</Text><Text style={{ color: focusShortcutAccent, fontSize: 20 }}>›</Text></Pressable>
 
       {selectionMode && (
         <View style={[styles.batchBar, isDark && styles.batchBarDark]}>
@@ -299,6 +331,7 @@ export function HomeScreen({
           </View>
         </Pressable>
       </Modal>
+      </>}
     </>
     </HomeRuntimeContext.Provider>
   );

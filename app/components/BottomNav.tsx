@@ -7,7 +7,7 @@ export function BottomNav({ screen, designMode, chicPalette, onChange }: { scree
   const theme = getThemeTokens(designMode);
   const designColors = designMode === 'chic' ? chicPalette : undefined;
   const items: { id: Screen; icon: string; label: string }[] = [
-    { id: 'home', icon: '✓', label: '今日' },
+    { id: 'home', icon: '✓', label: 'ToDo' },
     { id: 'timeline', icon: '↗', label: '予定' },
     { id: 'analysis', icon: '▦', label: '分析' },
     { id: 'wish', icon: '✿', label: '叶えたいこと' },

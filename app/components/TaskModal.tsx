@@ -42,12 +42,14 @@ export function TaskModal({ visible, task, templates, savedTemplates, designMode
   const [smartResult, setSmartResult] = useState<SmartTaskParseResult>({ title: '', matched: [] });
   const [subtasks, setSubtasks] = useState<Subtask[]>([]);
   const [newSubtask, setNewSubtask] = useState('');
+  const [detailsOpen, setDetailsOpen] = useState(Boolean(task));
   const titleInputRef = useRef<TextInput>(null);
   const saveGuardRef = useRef(false);
 
   useEffect(() => {
     if (!visible) return;
     saveGuardRef.current = false;
+    setDetailsOpen(Boolean(task));
     setTitle(task?.title ?? '');
     setRemind(Boolean(task?.remindAt));
     setTime(task?.remindAt ?? '09:00');
@@ -205,7 +207,7 @@ export function TaskModal({ visible, task, templates, savedTemplates, designMode
           <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false} contentContainerStyle={[styles.modalScroll, isDark && styles.taskModalScrollDark]}>
           <View style={styles.modalHandle} />
           <Text style={[styles.modalTitle, designMode === 'dark' && styles.modalTitleDark]}>{task ? 'タスクを編集' : '新しいタスク'}</Text>
-          {!task && onOpenBulkAdd && <Pressable style={{ alignSelf: 'flex-start', marginTop: 8, marginBottom: 2 }} onPress={() => { closeForm(); onOpenBulkAdd(); }}><Text style={{ color: isChic && chicPalette ? chicPalette.accent : theme.colors.primaryAccent, fontWeight: '700' }}>複数まとめて追加 ›</Text></Pressable>}
+          {!task && onOpenBulkAdd && <View style={{ flexDirection: 'row', gap: 8, marginTop: 10, marginBottom: 2 }}><View style={{ flex: 1, minHeight: 38, borderRadius: 10, borderWidth: 1, borderColor: theme.colors.primaryAccent, backgroundColor: theme.colors.softAccent, alignItems: 'center', justifyContent: 'center' }}><Text style={{ color: theme.colors.primaryAccent, fontSize: 12, fontWeight: '900' }}>1件</Text></View><Pressable style={{ flex: 1, minHeight: 38, borderRadius: 10, borderWidth: 1, borderColor: theme.colors.border, backgroundColor: theme.colors.secondarySurface, alignItems: 'center', justifyContent: 'center' }} onPress={() => { closeForm(); onOpenBulkAdd(); }}><Text style={{ color: theme.colors.secondaryText, fontSize: 12, fontWeight: '800' }}>まとめて</Text></Pressable></View>}
           {!task && templates.length > 0 && <><Text style={styles.templateGroupLabel}>クイックひな型</Text><ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.taskTemplates}>{templates.map((item) => <Pressable key={item} style={styles.taskTemplateChip} onPress={() => setTitle(item)}><Text style={styles.taskTemplateText}>＋ {item}</Text></Pressable>)}</ScrollView></>}
           {savedTemplateContent}
           <Text style={[styles.fieldLabel, designMode === 'dark' && styles.fieldLabelDark]}>やること・忘れたくないこと</Text>
@@ -230,8 +232,10 @@ export function TaskModal({ visible, task, templates, savedTemplates, designMode
             <Text style={styles.voiceAddMicText}>🎙</Text>
           </Pressable>
           </View>
-          <Text style={[styles.voiceAddHint, isDark && styles.darkMutedText]}>マイクで話した内容も日時・通知・繰り返しを解析します</Text>
+          <Pressable accessibilityRole="button" onPress={() => titleInputRef.current?.focus()}><Text style={[styles.voiceAddHint, isDark && styles.darkMutedText]}>🎙 音声で入力する　日時・通知・繰り返しを解析します</Text></Pressable>
           {smartResult.matched.length > 0 && <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 8 }}><Text style={[styles.fieldLabel, designMode === 'dark' && styles.fieldLabelDark]}>解析結果</Text>{smartResult.scheduledDate && <Pressable style={styles.taskTemplateChip} onPress={() => { setScheduledDate(''); setSmartResult((current) => ({ ...current, scheduledDate: undefined })); }}><Text style={styles.taskTemplateText}>日付 {smartResult.scheduledDate} ×</Text></Pressable>}{smartResult.scheduledTime && <Pressable style={styles.taskTemplateChip} onPress={() => { setScheduledTime(''); setSmartResult((current) => ({ ...current, scheduledTime: undefined })); }}><Text style={styles.taskTemplateText}>時刻 {smartResult.scheduledTime} ×</Text></Pressable>}{smartResult.endTime && <Pressable style={styles.taskTemplateChip} onPress={() => { setScheduledEndTime(''); setSmartResult((current) => ({ ...current, endTime: undefined })); }}><Text style={styles.taskTemplateText}>終了 {smartResult.endTime} ×</Text></Pressable>}{smartResult.remindAt && <Pressable style={styles.taskTemplateChip} onPress={() => setSmartResult((current) => ({ ...current, remindAt: undefined, remindDate: undefined }))}><Text style={styles.taskTemplateText}>通知 {smartResult.remindDate} {smartResult.remindAt} ×</Text></Pressable>}{smartResult.repeatRule && <Pressable style={styles.taskTemplateChip} onPress={() => setSmartResult((current) => ({ ...current, repeatRule: undefined }))}><Text style={styles.taskTemplateText}>繰り返し {smartResult.repeatRule} ×</Text></Pressable>}</View>}
+          {!task && <Pressable accessibilityRole="button" onPress={() => setDetailsOpen((value) => !value)} style={{ minHeight: 44, marginTop: 14, paddingHorizontal: 12, borderRadius: 12, borderWidth: 1, borderColor: theme.colors.border, backgroundColor: theme.colors.secondarySurface, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}><Text style={{ color: theme.colors.primaryText, fontSize: 13, fontWeight: '800' }}>必要なら詳しく設定</Text><Text style={{ color: theme.colors.primaryAccent, fontSize: 18 }}>{detailsOpen ? '⌃' : '⌄'}</Text></Pressable>}
+          {(Boolean(task) || detailsOpen) && <>
           <Text style={[styles.fieldLabel, { marginTop: 18 }, designMode === 'dark' && styles.fieldLabelDark]}>ジャンル</Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.categoryChoices}>
             {categories.map((item) => (
@@ -342,6 +346,7 @@ export function TaskModal({ visible, task, templates, savedTemplates, designMode
               </View>
             </View>
           )}
+          </>}
           <Pressable style={[styles.primaryButton, { backgroundColor: theme.colors.primaryAccent, borderRadius: theme.radius.button }]} onPress={save}><Text style={styles.primaryButtonText}>{task ? '変更を保存' : '登録する'}</Text></Pressable>
           <Pressable onPress={closeForm}><Text style={styles.cancelText}>キャンセル</Text></Pressable>
           </ScrollView>
