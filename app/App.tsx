@@ -2276,11 +2276,25 @@ export default function App() {
     const previewTasks: Task[] = [
       { id: 'premium-preview-task-1', title: '資料をまとめる', done: false, category: '仕事', priority: '中', scheduledDate: previewDate, scheduledTime: '09:00', bucket: 'now' },
       { id: 'premium-preview-task-2', title: '病院へ連絡する', done: true, status: 'completed', category: '予定', priority: '高', scheduledDate: previewDate, scheduledTime: '14:00', completedAt: new Date().toISOString(), bucket: 'later' },
+      { id: 'premium-preview-task-3', title: '病院訪問の準備', done: true, status: 'completed', category: '予定', priority: '中', scheduledDate: previewDate, completedAt: new Date(Date.now() - 86400000 * 3).toISOString(), bucket: 'later' },
     ];
-    const previewPlans: DeparturePlan[] = [{ id: 'premium-preview-plan', title: '資料提出', destination: '天神○○ビル', date: previewDate, arrival: '14:00', endAt: '15:00', travelMinutes: 30, preparationMinutes: 15, bufferMinutes: 10, planMode: 'calendar_only' }];
+    const previewPlans: DeparturePlan[] = [{ id: 'premium-preview-plan', title: '資料提出', destination: '天神○○ビル', date: previewDate, arrival: '14:00', departureTime: '13:15', endAt: '15:00', travelMinutes: 30, preparationMinutes: 15, bufferMinutes: 10, planMode: 'arrival_reverse' }];
+    const previewCalendarOptions = [
+      { id: 'preview-personal-calendar', title: '個人', type: 'local' },
+      { id: 'preview-work-calendar', title: '仕事', type: 'local' },
+    ] as Calendar.Calendar[];
+    const previewCalendarEvents = [
+      { id: 'preview-calendar-hospital', calendarId: 'preview-personal-calendar', title: '病院', startDate: `${previewDate}T10:00:00`, endDate: `${previewDate}T11:00:00`, allDay: false },
+      { id: 'preview-calendar-holiday', calendarId: 'preview-personal-calendar', title: '休み', startDate: `${previewDate}T00:00:00`, endDate: `${previewDate}T23:59:00`, allDay: true },
+      { id: 'preview-calendar-meeting', calendarId: 'preview-work-calendar', title: '打ち合わせ', startDate: `${previewDate}T14:00:00`, endDate: `${previewDate}T15:00:00`, allDay: false },
+    ] as Calendar.Event[];
     const previewEvents: BehaviorEvent[] = [
       { id: 'premium-preview-complete', eventKey: 'premium-preview-complete', type: 'task_completed', occurredAt: new Date().toISOString(), source: 'manual', version: 1, taskId: previewTasks[1]!.id, taskTitleSnapshot: previewTasks[1]!.title, actualAt: new Date().toISOString(), taskCompletionDate: previewDate },
       { id: 'premium-preview-focus', eventKey: 'premium-preview-focus', type: 'focus_completed', occurredAt: new Date().toISOString(), source: 'manual', version: 1, taskId: previewTasks[0]!.id, taskTitleSnapshot: previewTasks[0]!.title, focusSessionId: 'premium-preview-focus-session', plannedDurationMinutes: 25, actualDurationMinutes: 25, focusStartedAt: new Date(Date.now() - 25 * 60_000).toISOString() },
+      { id: 'premium-preview-preparation', eventKey: 'premium-preview-preparation', type: 'departure_preparation_started', occurredAt: new Date(Date.now() - 45 * 60_000).toISOString(), source: 'manual', version: 1, departurePlanId: previewPlans[0]!.id, departurePlanTitleSnapshot: previewPlans[0]!.title, departurePlanDate: previewDate, scheduledAt: new Date(Date.now() - 55 * 60_000).toISOString(), actualAt: new Date(Date.now() - 45 * 60_000).toISOString(), deltaMinutes: 10 },
+      { id: 'premium-preview-departure', eventKey: 'premium-preview-departure', type: 'departure_started', occurredAt: new Date(Date.now() - 25 * 60_000).toISOString(), source: 'manual', version: 1, departurePlanId: previewPlans[0]!.id, departurePlanTitleSnapshot: previewPlans[0]!.title, departurePlanDate: previewDate, scheduledAt: new Date(Date.now() - 30 * 60_000).toISOString(), actualAt: new Date(Date.now() - 25 * 60_000).toISOString(), deltaMinutes: 5 },
+      { id: 'premium-preview-notification-scheduled', eventKey: 'premium-preview-notification-scheduled', type: 'notification_scheduled', occurredAt: new Date(Date.now() - 70 * 60_000).toISOString(), source: 'system', version: 1, notificationInstanceId: 'premium-preview-notification', taskId: previewTasks[1]!.id, taskTitleSnapshot: previewTasks[1]!.title, scheduledAt: new Date(Date.now() - 60 * 60_000).toISOString() },
+      { id: 'premium-preview-notification-action', eventKey: 'premium-preview-notification-action', type: 'notification_action', occurredAt: new Date(Date.now() - 55 * 60_000).toISOString(), source: 'notification', version: 1, notificationInstanceId: 'premium-preview-notification', notificationAction: 'completed', taskId: previewTasks[1]!.id, taskTitleSnapshot: previewTasks[1]!.title, scheduledAt: new Date(Date.now() - 60 * 60_000).toISOString(), actualAt: new Date(Date.now() - 55 * 60_000).toISOString(), deltaMinutes: 5 },
     ];
     const previewHistory = <HistoryScreen
       tasks={previewTasks}
@@ -2307,6 +2321,9 @@ export default function App() {
       styles={styles}
       helpers={{ dateKey, formatLiveTime, getThemeTokens: getThemedThemeTokens }}
       components={{ AchievementVessel, CalendarMarkPicker }}
+      previewMode={kind === 'records' || kind === 'history'}
+      previewSearchQuery={kind === 'history' ? '病院' : undefined}
+      previewJournal={kind === 'records'}
     />;
     const readonly = (node: React.ReactNode, maxHeight = 430) => <View style={[styles.premiumPreview, { minHeight: 300, maxHeight, overflow: 'hidden' }, uiDesignMode === 'dark' && { backgroundColor: '#181F2E', borderColor: '#40506A' }]}>{node}</View>;
     // Settings-backed Premium features use the production settings surface as
@@ -2318,7 +2335,7 @@ export default function App() {
     if (kind === 'nudge') return readonly(<NotificationManagerCard designMode={uiDesignMode} readOnly />);
     if (kind === 'travel_apps') return readonly(<TravelAppsSettingsCard settings={travelApps} onChange={() => undefined} planTier="premium" designMode={uiDesignMode} chicPalette={chicPalette} onPremium={() => undefined} readOnlyPreview />, 560);
     if (kind === 'calendar' || kind === 'route' || kind === 'month' || kind === 'recovery' || kind === 'focus_custom_duration') {
-      const initialTab: TimeTab = kind === 'calendar' || kind === 'month' ? 'calendar' : kind === 'route' ? 'departure' : kind === 'focus_custom_duration' ? 'focus' : 'deadline';
+      const initialTab: TimeTab = kind === 'month' ? 'calendar' : kind === 'route' ? 'departure' : kind === 'focus_custom_duration' ? 'focus' : 'departure';
       return readonly(<TimelineScreen
         plan={previewPlans[0]}
         plans={previewPlans}
@@ -2334,7 +2351,11 @@ export default function App() {
         chicPattern={effectiveChicPattern}
         chicPalette={chicPalette}
         planTier="premium"
-        focusCustomDurationMinutes={25}
+        focusCustomDurationMinutes={47}
+        previewCustomDurationOpen={kind === 'focus_custom_duration'}
+        previewMode={kind === 'calendar' || kind === 'recovery'}
+        previewCalendarEvents={previewCalendarEvents}
+        previewCalendarOptions={previewCalendarOptions}
         onFocusCustomDurationChange={() => undefined}
         recoveryTargetPlanId={kind === 'recovery' ? previewPlans[0]!.id : undefined}
         onChange={() => undefined}
@@ -2402,7 +2423,8 @@ export default function App() {
         departurePlans={previewPlans}
          onApplySuggestion={() => undefined}
          onAnalysisUsed={() => undefined}
-         initialTab={kind === 'time' ? 'insights' : kind === 'behavior' ? 'routine' : 'records'}
+         initialTab={kind === 'time' || kind === 'behavior' ? 'insights' : 'records'}
+         previewKind={kind === 'time' || kind === 'behavior' ? kind : undefined}
        />);
     }
     if (kind === 'templates') {
@@ -3177,7 +3199,7 @@ function TimeTabButton({ tab, active, designMode, chicPattern, chicPalette, them
      return <Pressable style={[styles.timeTab, styles.timeTabMinimal, isDark && styles.darkSurface, active && styles.timeTabActive, active && { backgroundColor: isDark ? '#26365F' : themeAccent, borderColor: isDark ? '#6F8DFF' : themeAccent }]} onPress={onPress}><Text numberOfLines={1} style={[styles.timeTabText, { color: isDark ? '#F4F7FC' : secondaryText }, active && styles.timeTabTextActive, active && styles.timeTabTextActiveMinimal]}>{label}</Text></Pressable>;
 }
 
-function FocusMode({ tasks, designMode, chicPalette, backgroundImageUri, planTier, onPremium, customDurationMinutes, onCustomDurationChange, onFocusCompleted, onFocusStarted, onFocusNotificationPermission, onFocusRunningChange, onBehaviorEvent, hapticsEnabled = true }: { tasks: Task[]; designMode: DesignMode; chicPalette?: ChicThemePalette; backgroundImageUri?: string; planTier: PlanTier; onPremium?: (featureId?: PremiumGuideFeatureId) => void; customDurationMinutes?: number; onCustomDurationChange?: (minutes: number) => void; onFocusCompleted: (session: FocusSession) => void; onFocusStarted?: () => void; onFocusNotificationPermission?: () => Promise<boolean>; onFocusRunningChange?: (running: boolean) => void; onBehaviorEvent: (event: BehaviorEvent) => void; hapticsEnabled?: boolean }) {
+function FocusMode({ tasks, designMode, chicPalette, backgroundImageUri, planTier, onPremium, customDurationMinutes, onCustomDurationChange, onFocusCompleted, onFocusStarted, onFocusNotificationPermission, onFocusRunningChange, onBehaviorEvent, hapticsEnabled = true, previewCustomDurationOpen = false }: { tasks: Task[]; designMode: DesignMode; chicPalette?: ChicThemePalette; backgroundImageUri?: string; planTier: PlanTier; onPremium?: (featureId?: PremiumGuideFeatureId) => void; customDurationMinutes?: number; onCustomDurationChange?: (minutes: number) => void; onFocusCompleted: (session: FocusSession) => void; onFocusStarted?: () => void; onFocusNotificationPermission?: () => Promise<boolean>; onFocusRunningChange?: (running: boolean) => void; onBehaviorEvent: (event: BehaviorEvent) => void; hapticsEnabled?: boolean; previewCustomDurationOpen?: boolean }) {
   const availableTasks = React.useMemo(() => {
     const today = dateKey();
     const seenTitles = new Set<string>();
@@ -3192,12 +3214,12 @@ function FocusMode({ tasks, designMode, chicPalette, backgroundImageUri, planTie
     }).sort((a, b) => (bucketOrder[a.bucket ?? 'now'] - bucketOrder[b.bucket ?? 'now']) || a.title.localeCompare(b.title));
   }, [tasks]);
   const [selectedTaskId, setSelectedTaskId] = useState(availableTasks[0]?.id ?? '');
-  const [duration, setDuration] = useState(25);
-  const [secondsLeft, setSecondsLeft] = useState(25 * 60);
+  const [duration, setDuration] = useState(previewCustomDurationOpen ? customDurationMinutes ?? 47 : 25);
+  const [secondsLeft, setSecondsLeft] = useState((previewCustomDurationOpen ? customDurationMinutes ?? 47 : 25) * 60);
   const [running, setRunning] = useState(false);
-  const [customEditorOpen, setCustomEditorOpen] = useState(false);
-  const [customDraft, setCustomDraft] = useState('');
-  const pausedSecondsRef = React.useRef(25 * 60);
+  const [customEditorOpen, setCustomEditorOpen] = useState(previewCustomDurationOpen);
+  const [customDraft, setCustomDraft] = useState(String(previewCustomDurationOpen ? customDurationMinutes ?? 47 : ''));
+  const pausedSecondsRef = React.useRef((previewCustomDurationOpen ? customDurationMinutes ?? 47 : 25) * 60);
   const selectedTask = availableTasks.find((task) => task.id === selectedTaskId);
   const sessionRef = React.useRef<{ id: string; startedAt: Date; taskId?: string; taskTitle?: string; plannedDurationMinutes: number } | undefined>(undefined);
   const endAtRef = React.useRef<number | undefined>(undefined);
@@ -3290,6 +3312,9 @@ function FocusMode({ tasks, designMode, chicPalette, backgroundImageUri, planTie
     setCustomDraft(String(customDurationMinutes ?? duration));
     setCustomEditorOpen(true);
   };
+  useEffect(() => {
+    if (previewCustomDurationOpen) setCustomEditorOpen(true);
+  }, [previewCustomDurationOpen]);
   const applyCustomDuration = () => {
     const value = Number(customDraft.trim());
     if (!Number.isSafeInteger(value) || value < 1) {

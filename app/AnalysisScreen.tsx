@@ -1,4 +1,4 @@
-import React, { ReactNode, useMemo, useState } from 'react';
+import React, { ReactNode, useEffect, useMemo, useState } from 'react';
 import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import Svg, { Circle, Line, Path, Text as SvgText } from 'react-native-svg';
 import { BehaviorEvent } from './behaviorEvents';
@@ -170,7 +170,7 @@ function ConditionChart({ data, designMode, chicPalette }: { data: InsightCondit
   })}</View>;
 }
 
-function InsightDashboardView({ events, tasks, plans, designMode, chicPalette, onApplySuggestion }: { events: BehaviorEvent[]; tasks: Task[]; plans: DeparturePlan[]; designMode: DesignMode; chicPalette?: ChicThemePalette; onApplySuggestion: (suggestion: InsightSuggestion) => void }) {
+function InsightDashboardView({ events, tasks, plans, designMode, chicPalette, onApplySuggestion, behaviorOnly = false }: { events: BehaviorEvent[]; tasks: Task[]; plans: DeparturePlan[]; designMode: DesignMode; chicPalette?: ChicThemePalette; onApplySuggestion: (suggestion: InsightSuggestion) => void; behaviorOnly?: boolean }) {
   const [range, setRange] = useState<InsightRange>('30d');
   const [metric, setMetric] = useState<InsightMetric>('preparation');
   const [conditionView, setConditionView] = useState<InsightConditionView>('weekday');
@@ -194,12 +194,12 @@ function InsightDashboardView({ events, tasks, plans, designMode, chicPalette, o
       <Text style={[styles.dashboardCaption, { color: theme.colors.secondaryText }]}>{dashboard.trend.comparison}</Text>
     </DashboardCard>
 
-    <DashboardCard designMode={designMode} chicPalette={chicPalette}>
+    {!behaviorOnly && <DashboardCard designMode={designMode} chicPalette={chicPalette}>
       <View style={styles.cardTitleRow}><View><Text style={[styles.dashboardTitle, { color: theme.colors.primaryText }]}>時間の変化</Text><Text style={[styles.dashboardCaption, { color: theme.colors.secondaryText }]}>予定どおりは基準線の0です</Text></View><Text style={[styles.metricAverage, { color: theme.colors.primaryAccent }]}>{formatMetricAverage(metric, activeMetric.average)}</Text></View>
       <View style={styles.metricSwitcher}>{([['preparation', '準備'], ['departure', '出発'], ['notification', '通知'], ['focus', '集中']] as [InsightMetric, string][]).map(([id, label]) => <Pressable key={id} onPress={() => { setMetric(id); setSelectedPointDate(undefined); }} style={[styles.metricSwitch, { borderColor: theme.colors.border, backgroundColor: isDark ? '#20293A' : theme.colors.secondarySurface }, metric === id && { backgroundColor: theme.colors.primaryAccent, borderColor: theme.colors.primaryAccent }]}><Text style={[styles.metricSwitchText, { color: metric === id ? '#FFFFFF' : theme.colors.secondaryText }]}>{label}</Text></Pressable>)}</View>
       <LineChart points={activeMetric.points} metric={metric} selectedDate={selectedPointDate} onSelect={setSelectedPointDate} designMode={designMode} chicPalette={chicPalette} />
       <View style={[styles.chartFooter, { borderTopColor: theme.colors.border }]}><Text style={[styles.chartFooterText, { color: theme.colors.secondaryText }]}>平均 {formatMetricAverage(metric, activeMetric.average)}</Text><Text style={[styles.chartFooterText, { color: theme.colors.secondaryText }]}>{formatComparison(metric, activeMetric.average, activeMetric.previousAverage)}</Text></View>
-    </DashboardCard>
+    </DashboardCard>}
 
     <DashboardCard designMode={designMode} chicPalette={chicPalette}>
       <Text style={[styles.dashboardTitle, { color: theme.colors.primaryText }]}>行動率</Text>
@@ -258,6 +258,7 @@ export function AnalysisScreen({
   onApplySuggestion,
   onAnalysisUsed,
   initialTab,
+  previewKind,
 }: {
   events: BehaviorEvent[];
   tasks: Task[];
@@ -273,8 +274,12 @@ export function AnalysisScreen({
   onApplySuggestion: (suggestion: InsightSuggestion) => void;
   onAnalysisUsed?: () => void;
   initialTab?: AnalysisTab;
+  previewKind?: 'time' | 'behavior';
 }) {
   const [tab, setTab] = useState<AnalysisTab>(initialTab ?? 'records');
+  useEffect(() => {
+    if (initialTab) setTab(initialTab);
+  }, [initialTab]);
   const departureActivity = useMemo(() => {
     const preparationEvents = events.filter((item) => item.type === 'departure_preparation_started');
     const departureEvents = events.filter((item) => item.type === 'departure_started');
@@ -325,7 +330,7 @@ export function AnalysisScreen({
       ) : tab === 'insights' && !premium ? (
         <PremiumGate dark={designMode === 'dark'} chicPalette={chicPalette} chicPattern={chicPattern} PatternDecor={PatternDecor} onPremium={() => onPremium('time')} />
       ) : tab === 'insights' ? (
-        <InsightDashboardView events={events} tasks={tasks} plans={departurePlans} designMode={designMode} chicPalette={chicPalette} onApplySuggestion={onApplySuggestion} />
+        <InsightDashboardView events={events} tasks={tasks} plans={departurePlans} designMode={designMode} chicPalette={chicPalette} onApplySuggestion={onApplySuggestion} behaviorOnly={previewKind === 'behavior'} />
       ) : tab === 'routine' ? (
         <RoutineProgressPanel events={events} tasks={tasks} designMode={designMode} chicPalette={chicPalette} onRemoveRoutine={onRemoveRoutine} />
       ) : null}

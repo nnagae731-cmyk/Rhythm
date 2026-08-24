@@ -22,9 +22,10 @@ type RecoveryModalProps = {
   planTier?: PlanTier;
   chicPalette?: ChicThemePalette;
   onOpenTravelAppSettings?: () => void;
+  inlinePreview?: boolean;
 };
 
-export function RecoveryModal({ visible, plan, now, designMode, onClose, onApply, onPremium, styles, travelApps, planTier = 'free', chicPalette, onOpenTravelAppSettings }: RecoveryModalProps) {
+export function RecoveryModal({ visible, plan, now, designMode, onClose, onApply, onPremium, styles, travelApps, planTier = 'free', chicPalette, onOpenTravelAppSettings, inlinePreview = false }: RecoveryModalProps) {
   const [contactEditing, setContactEditing] = React.useState(false);
   const [contactDraft, setContactDraft] = React.useState('');
   if (!plan) return null;
@@ -50,11 +51,7 @@ export function RecoveryModal({ visible, plan, now, designMode, onClose, onApply
     Alert.alert('リカバリープランを反映しました', option.description);
   };
 
-  return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <Pressable style={styles.modalBackdrop} onPress={onClose}>
-        <Pressable style={[styles.modalSheet, { backgroundColor: theme.colors.screenBackground, borderRadius: theme.radius.modal }]} onPress={(event) => event.stopPropagation()}>
-          <ScrollView showsVerticalScrollIndicator={false}>
+  const content = <ScrollView showsVerticalScrollIndicator={false}>
             <View style={styles.modalHandle} />
             <View style={[styles.recoveryHeader, { backgroundColor: theme.colors.softAccent }]}>
               <Text style={[styles.recoveryEyebrow, { color: theme.colors.primaryAccent }]}>遅れても、ここから立て直せます</Text>
@@ -98,9 +95,7 @@ export function RecoveryModal({ visible, plan, now, designMode, onClose, onApply
             <Text style={styles.recoveryNote}>位置情報や経路検索はまだ使わず、登録済みの移動時間から計算しています。</Text>
             {plan.destination?.trim() ? <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginTop: 8 }}><TravelAppLaunchActions settings={travelApps} category="transit" destination={plan.destination} planTier={planTier} designMode={designMode} chicPalette={chicPalette} onPremium={(featureId) => onPremium(featureId)} onOpenSettings={onOpenTravelAppSettings} /><TravelAppLaunchActions settings={travelApps} category="taxi" destination={plan.destination} planTier={planTier} designMode={designMode} chicPalette={chicPalette} onPremium={(featureId) => onPremium(featureId)} onOpenSettings={onOpenTravelAppSettings} /></View> : null}
             <Pressable onPress={onClose}><Text style={styles.cancelText}>閉じる</Text></Pressable>
-          </ScrollView>
-        </Pressable>
-      </Pressable>
-    </Modal>
-  );
+  </ScrollView>;
+  if (inlinePreview) return <View style={[styles.modalSheet, { backgroundColor: theme.colors.screenBackground, borderRadius: theme.radius.modal, position: 'absolute', top: 0, left: 0, right: 0, zIndex: 20 }]} pointerEvents="none">{content}</View>;
+  return <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}><Pressable style={styles.modalBackdrop} onPress={onClose}><Pressable style={[styles.modalSheet, { backgroundColor: theme.colors.screenBackground, borderRadius: theme.radius.modal }]} onPress={(event) => event.stopPropagation()}>{content}</Pressable></Pressable></Modal>;
 }
