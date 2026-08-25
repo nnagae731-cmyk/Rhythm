@@ -2714,7 +2714,7 @@ export default function App() {
                 if (task.bucket !== bucket) void onboarding.complete('taskBuckets');
               }}
               styles={styles}
-              renderTodayWinStrip={(todayTasks) => <TodayWinStrip tasks={todayTasks} designMode={uiDesignMode} chicPattern={effectiveChicPattern} chicPalette={chicPalette} onRestore={restoreTaskById} onOpenCompleted={() => void onboarding.complete('completedTasks')} />}
+              renderTodayWinStrip={(todayTasks, openFocus) => <TodayWinStrip tasks={todayTasks} designMode={uiDesignMode} chicPattern={effectiveChicPattern} chicPalette={chicPalette} onRestore={restoreTaskById} onOpenCompleted={() => void onboarding.complete('completedTasks')} onOpenFocus={openFocus} />}
               showTodoOnboarding={onboarding.ready && onboarding.isCompleted('intro') && !onboarding.isCompleted('todo')}
               onTodoOnboardingAction={() => setAddOpen(true)}
               onTodoOnboardingCompleted={() => void onboarding.complete('todo')}
@@ -3939,7 +3939,7 @@ function NotificationManagerCard({ designMode, readOnly = false }: { designMode?
   </View>;
 }
 
-function TodayWinStrip({ tasks, designMode, chicPattern, chicPalette, onRestore, onOpenCompleted }: { tasks: Task[]; designMode: ThemeMode; chicPattern: ChicPattern; chicPalette: ChicThemePalette; onRestore: (id: string) => void; onOpenCompleted?: () => void }) {
+function TodayWinStrip({ tasks, designMode, chicPattern, chicPalette, onRestore, onOpenCompleted, onOpenFocus }: { tasks: Task[]; designMode: ThemeMode; chicPattern: ChicPattern; chicPalette: ChicThemePalette; onRestore: (id: string) => void; onOpenCompleted?: () => void; onOpenFocus?: () => void }) {
   const theme = getThemeTokens(designMode, chicPalette.id);
   const now = new Date();
   const todayKey = dateKey(now);
@@ -4015,6 +4015,7 @@ function TodayWinStrip({ tasks, designMode, chicPattern, chicPalette, onRestore,
               <Text style={[styles.todayHeroMinimalStats, { color: theme.colors.secondaryText }]}>今日できたことを確認</Text>
             </View>
           </View>
+          <Pressable accessibilityRole="button" accessibilityLabel="集中" onPress={(event) => { event.stopPropagation(); onOpenFocus?.(); }} style={{ minHeight: 38, marginTop: 12, borderTopWidth: 1, borderTopColor: theme.colors.border, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}><Text style={{ color: theme.colors.primaryText, fontSize: 13, fontWeight: '800' }}>集中</Text><Text style={{ color: theme.colors.primaryAccent, fontSize: 20 }}>›</Text></Pressable>
         </Pressable>
         {details}
       </>
@@ -4044,6 +4045,7 @@ function TodayWinStrip({ tasks, designMode, chicPattern, chicPalette, onRestore,
             <Text style={[styles.todayHeroJarHint, { color: chicPalette.textMuted }]}>タップして今日できたことを見る</Text>
           </View>
         </View>
+        <Pressable accessibilityRole="button" accessibilityLabel="集中" onPress={(event) => { event.stopPropagation(); onOpenFocus?.(); }} style={{ minHeight: 38, marginTop: 12, paddingHorizontal: 14, borderTopWidth: 1, borderTopColor: chicPalette.border, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}><Text style={{ color: chicPalette.textPrimary, fontSize: 13, fontWeight: '800' }}>集中</Text><Text style={{ color: chicPalette.accent, fontSize: 20 }}>›</Text></Pressable>
       </Pressable>
       {details}
     </>
