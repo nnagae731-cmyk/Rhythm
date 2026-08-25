@@ -925,7 +925,6 @@ export const styles = StyleSheet.create({
   taskSortLabel: { color: colors.muted, fontSize: 7, fontWeight: '700' },
   taskSortValue: { color: colors.violet, fontSize: 9, fontWeight: '900', marginTop: 2 },
   taskBucketButton: { minWidth: 49, height: 28, borderRadius: 8, paddingHorizontal: 6, backgroundColor: '#F0ECF4', alignItems: 'center', justifyContent: 'center' },
-  taskBucketButtonText: { color: colors.violet, fontSize: 8, fontWeight: '900' },
   taskMoreButton: { width: 29, height: 28, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
   taskMoreText: { color: colors.muted, fontSize: 11, fontWeight: '900', letterSpacing: 1 },
   nudgeBadge: { backgroundColor: '#FFE3EA', borderRadius: 8, paddingHorizontal: 6, paddingVertical: 3 },

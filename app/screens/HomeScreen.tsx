@@ -1,24 +1,13 @@
-import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import React, { useState } from 'react';
-import { Modal, Platform, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
+import { Modal, Pressable, ScrollView, Text, View } from 'react-native';
 import { ChicThemePalette, DesignMode } from '../theme';
-import { Category, Priority, RepeatRule, Subtask, Task, TaskBucket, TaskListItem } from '../types';
-import { categories, categoryColors, priorities, repeatOptions } from '../features/tasks/taskUtils';
-import { TaskDateTimePickerSheet } from '../components/TaskDateTimePickerSheet';
-import { parseSmartTaskInput, SmartTaskParseResult } from '../features/tasks/smartTaskInput';
+import { Category, Priority, Task, TaskBucket, TaskListItem } from '../types';
+import { categories } from '../features/tasks/taskUtils';
 import { OnboardingHint } from '../features/onboarding/OnboardingHint';
 import { TaskListSheet } from '../components/TaskListSheet';
-const HomeRuntimeContext = React.createContext<any>(null);
-
-function useHomeRuntime() {
-  const runtime = React.useContext(HomeRuntimeContext);
-  if (!runtime) throw new Error('Home runtime is unavailable.');
-  return runtime;
-}
 export function HomeScreen({
   tasks,
   allTasks,
-  remaining,
   now,
   completionIcon,
   designMode,
@@ -26,13 +15,10 @@ export function HomeScreen({
   selectionMode,
   selectedTaskIds,
   onAdd,
-  onOpenBulkAdd,
   onOpenFocus,
   todayReviewExists = false,
   onOpenTodayRecord,
   onOpenSchedule,
-  onOpenCompleted,
-  onQuickAdd,
   onToggle,
   onToggleSubtask,
   onUpdateTaskList,
@@ -56,7 +42,6 @@ export function HomeScreen({
   renderTodayWinStrip,
   showTodoOnboarding,
   onTodoOnboardingAction,
-  onTodoOnboardingCompleted,
   showTodoCompleteOnboarding,
   showCompletedTasksOnboarding,
   showTaskBucketsOnboarding,
@@ -65,7 +50,6 @@ export function HomeScreen({
 }: {
   tasks: Task[];
   allTasks: Task[];
-  remaining: number;
   now: Date;
   designMode: DesignMode;
   chicPalette: ChicThemePalette;
@@ -73,13 +57,10 @@ export function HomeScreen({
   selectionMode: boolean;
   selectedTaskIds: string[];
   onAdd: () => void;
-  onOpenBulkAdd: () => void;
   onOpenFocus: () => void;
   todayReviewExists?: boolean;
   onOpenTodayRecord?: () => void;
   onOpenSchedule?: () => void;
-  onOpenCompleted?: () => void;
-  onQuickAdd: (title: string, category: Category, priority: Priority, scheduledDate?: string, scheduledTime?: string, endAt?: string, isRoutine?: boolean, deadlineDate?: string, deadlineTime?: string, deadlineNotifyBefore?: number, remindDate?: string, remindAt?: string, repeatRule?: RepeatRule, subtasks?: Subtask[]) => void;
   onToggle: (id: string) => void;
   onToggleSubtask: (taskId: string, subtaskId: string) => void;
   onUpdateTaskList: (taskId: string, items: TaskListItem[]) => void;
@@ -103,14 +84,13 @@ export function HomeScreen({
   renderTodayWinStrip: (tasks: Task[], onOpenFocus?: () => void, onToggleNowTask?: (id: string) => void, onOpenTaskActions?: (task: Task) => void, selectionMode?: boolean, selectedTaskIds?: string[]) => React.ReactNode;
   showTodoOnboarding?: boolean;
   onTodoOnboardingAction?: () => void;
-  onTodoOnboardingCompleted?: () => void;
   showTodoCompleteOnboarding?: boolean;
   showCompletedTasksOnboarding?: boolean;
   showTaskBucketsOnboarding?: boolean;
   showTaskDetailsOnboarding?: boolean;
   helpers: any;
 }) {
-  const { deadlineLabel, getUrgencyStatus, getLateRiskMessage, dateKey } = helpers;
+  const { dateKey } = helpers;
   const priorityOrder: Record<Priority, number> = { 高: 0, 中: 1, 低: 2 };
   const isDark = designMode === 'dark';
   const theme = helpers.getThemeTokens?.(designMode);
@@ -172,7 +152,6 @@ export function HomeScreen({
   const clearSelectionForViewChange = () => onClearSelection?.();
   const weekdayLabels = ['日', '月', '火', '水', '木', '金', '土'];
   return (
-    <HomeRuntimeContext.Provider value={{ styles, helpers, chicPalette }}>
     <>
       <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
         <Text style={{ color: designMode === 'chic' ? chicPalette.textPrimary : theme?.colors?.primaryText ?? '#182235', fontSize: 18, fontWeight: '900' }}>{now.getMonth() + 1}月{now.getDate()}日（{weekdayLabels[now.getDay()]}）</Text>
@@ -261,31 +240,6 @@ export function HomeScreen({
         <React.Fragment key={task.id}>
         <TodoTaskRow task={task} styles={styles} designMode={designMode} chicPalette={chicPalette} isDark={isDark} selected={selectedTaskIds.includes(task.id)} selectionMode={selectionMode} completionIcon={completionIcon} textColor={focusShortcutText} accentColor={focusShortcutAccent} borderColor={focusShortcutBorder} onPress={() => selectionMode ? onToggleSelection(task.id) : setActionTask(task)} onCheck={() => handleTaskCheck(task.id)} />
         {hasSubtasks && <Pressable accessibilityRole="button" style={[{ minHeight: 40, marginTop: 8, paddingHorizontal: 10, borderRadius: 10, borderWidth: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }, isDark ? styles.darkSurface : styles.filterChip, designMode === 'chic' && { backgroundColor: chicPalette.accentSoft, borderColor: chicPalette.border }]} onPress={() => { clearSelectionForViewChange(); setExpandedSubtasks((current) => ({ ...current, [task.id]: !isSubtasksExpanded })); }}><Text style={[styles.taskMeta, isDark && styles.darkBodyText, designMode === 'chic' && { color: chicPalette.accentStrong }]}>サブタスク {taskSubtasks.length}件 ・ 完了 {completedSubtaskCount}件</Text><Text style={[styles.taskMeta, isDark && styles.darkAccentText, designMode === 'chic' && { color: chicPalette.accent }]}>{isSubtasksExpanded ? '閉じる' : '開く'}⌄</Text></Pressable>}
-        <Pressable key={task.id} style={[styles.taskCard, designMode === 'minimal' && styles.taskCardMinimal, designMode === 'dark' && styles.darkSurface, designMode === 'chic' && styles.taskCardChic, designMode === 'chic' && { backgroundColor: task.done ? chicPalette.surfaceSubtle : chicPalette.taskBackground, borderColor: chicPalette.border }, task.done && designMode !== 'chic' && styles.taskCardDone, task.done && isDark && styles.taskCardDoneDark, task.done && designMode === 'chic' && styles.taskCardChicDone, { display: 'none', minHeight: 48, paddingVertical: 4, backgroundColor: 'transparent', borderWidth: 0, borderBottomWidth: 1, borderBottomColor: focusShortcutBorder, borderRadius: 0 }]} onPress={() => selectionMode ? onToggleSelection(task.id) : setActionTask(task)}>
-          <View style={[styles.taskCardInner, designMode === 'chic' && styles.taskCardInnerChic, designMode === 'chic' && { backgroundColor: chicPalette.cardSurface }, task.done && designMode === 'chic' && styles.taskCardInnerChicDone, { paddingHorizontal: 0, paddingVertical: 0, backgroundColor: 'transparent', borderWidth: 0 }]}>
-          <Pressable style={[styles.check, isDark && styles.checkDark, task.done && styles.checkDone, task.done && isDark && styles.checkDoneDark, task.done && designMode === 'chic' && { backgroundColor: chicPalette.accent, borderColor: chicPalette.accent }, selectionMode && selectedTaskIds.includes(task.id) && styles.selectionChecked, selectionMode && selectedTaskIds.includes(task.id) && isDark && styles.selectionCheckedDark, selectionMode && selectedTaskIds.includes(task.id) && designMode === 'chic' && { backgroundColor: chicPalette.accent, borderColor: chicPalette.accent }]} onPress={(event) => { event.stopPropagation(); selectionMode ? onToggleSelection(task.id) : (task.subtasks?.some((item) => !item.done) ? onCompleteParent(task.id) : onToggle(task.id)); }}>
-            <Text style={styles.checkMark}>{selectionMode ? (selectedTaskIds.includes(task.id) ? '✓' : '') : (task.done ? completionIcon : '')}</Text>
-          </Pressable>
-          <View style={styles.taskBody}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}><Text style={[styles.taskTitle, task.done && styles.taskTitleDone, isDark && styles.darkBodyText, { flex: 1 }]}>{task.title}</Text></View>
-            {task.navigationEnabled && !task.done && <View style={styles.inlineUrgency}><Text style={styles.inlineUrgencyText}>{getUrgencyStatus(task, now)}</Text><Text style={styles.inlineRisk}>{getLateRiskMessage(task, now)}</Text></View>}
-            <View style={[styles.taskInfoRow, { display: 'none' }]}>
-              <View style={[styles.priorityPill, task.priority === '高' && styles.priorityHigh, designMode === 'chic' && { backgroundColor: chicPalette.accentSoft, borderColor: chicPalette.accent }]}><Text style={[styles.priorityText, task.priority === '高' && styles.priorityHighText, designMode === 'chic' && { color: chicPalette.textPrimary }]}>{task.priority === '高' ? '！重要' : task.priority}</Text></View>
-              <View style={[styles.categoryPill, { backgroundColor: categoryColors[task.category] }, designMode === 'chic' && styles.categoryPillChic, designMode === 'chic' && { backgroundColor: chicPalette.accentSoft, borderColor: chicPalette.accent }]}><Text style={[styles.categoryText, designMode === 'chic' && { color: chicPalette.statusAccent }]}>{task.category}</Text></View>
-              {task.repeatRule && task.repeatRule !== 'none' && <View style={[styles.routinePill, designMode === 'chic' && { backgroundColor: chicPalette.accentSoft, borderColor: chicPalette.border }]}><Text style={[styles.routinePillText, designMode === 'chic' && { color: chicPalette.statusAccent }]}>↻ {repeatOptions.find((option) => option.id === task.repeatRule)?.label}</Text></View>}
-              {task.scheduledDate && <Text style={[styles.taskMeta, isDark && styles.darkAccentText, designMode === 'chic' && { color: chicPalette.taskMeta }]}>▣ {task.scheduledDate.slice(5).replace('-', '/')}</Text>}
-              {task.scheduledTime && <Text style={[styles.taskMeta, isDark && styles.darkAccentText, designMode === 'chic' && { color: chicPalette.taskMeta }]}>◷ 実行 {task.scheduledTime}</Text>}
-              {task.remindAt && <Text style={[styles.taskMeta, isDark && styles.darkAccentText, designMode === 'chic' && { color: chicPalette.taskMeta }]}>◷ {task.remindDate?.slice(5).replace('-', '/')} {task.remindAt}</Text>}
-              {task.remindAt && task.nudgeMode && task.nudgeMode !== 'once' && <View style={[styles.nudgeBadge, designMode === 'chic' && { backgroundColor: chicPalette.accentSoft, borderColor: chicPalette.border }]}><Text style={[styles.nudgeBadgeText, designMode === 'chic' && { color: chicPalette.statusAccent }]}>{task.nudgeMode === 'strong' ? '通知×3' : '通知×2'}</Text></View>}
-              {task.deadlineDate && (() => { const status = deadlineLabel(task); return <Text style={[styles.deadlineMeta, status?.overdue && styles.deadlineOverdue]}>⌛ {task.deadlineDate.slice(5).replace('-', '/')} {task.deadlineTime ?? '23:59'} · {status?.text}</Text>; })()}
-            </View>
-            {hasSubtasks && <Pressable accessibilityRole="button" style={[{ minHeight: 40, marginTop: 8, paddingHorizontal: 10, borderRadius: 10, borderWidth: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }, isDark ? styles.darkSurface : styles.filterChip, designMode === 'chic' && { backgroundColor: chicPalette.accentSoft, borderColor: chicPalette.border }]} onPress={(event) => { event.stopPropagation(); setExpandedSubtasks((current) => ({ ...current, [task.id]: !isSubtasksExpanded })); }}><Text style={[styles.taskMeta, isDark && styles.darkBodyText, designMode === 'chic' && { color: chicPalette.accentStrong }]}>サブタスク {taskSubtasks.length}件 ・ 完了 {completedSubtaskCount}件</Text><Text style={[styles.taskMeta, isDark && styles.darkAccentText, designMode === 'chic' && { color: chicPalette.accent }]}>{isSubtasksExpanded ? '閉じる' : '開く'}⌄</Text></Pressable>}
-            {task.listItems && task.listItems.length > 0 && <Pressable accessibilityRole="button" onStartShouldSetResponder={() => true} style={[{ marginTop: 8, minHeight: 34, paddingHorizontal: 10, borderRadius: 10, borderWidth: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }, isDark ? styles.darkSurface : styles.filterChip, designMode === 'chic' && { backgroundColor: chicPalette.cardTint, borderColor: chicPalette.border }]} onPress={(event) => { event.stopPropagation(); setListTask(task); }}><Text style={[styles.taskMeta, isDark && styles.darkBodyText, designMode === 'chic' && { color: chicPalette.accentStrong }]}>リスト {task.listItems.filter((item) => item.checked).length} / {task.listItems.length}</Text><Text style={[styles.taskMeta, isDark && styles.darkAccentText, designMode === 'chic' && { color: chicPalette.accent }]}>›</Text></Pressable>}
-          </View>
-          {!selectionMode && <Pressable style={{ display: 'none' }} onPress={() => setBucketTask(task)}><Text style={styles.taskBucketButtonText}>{(task.bucket ?? 'now') === 'now' ? '今やる' : task.bucket === 'later' ? 'あとで' : '待ち'}⌄</Text></Pressable>}
-          {!selectionMode && <Pressable style={[styles.taskMoreButton, { minWidth: 26, alignItems: 'flex-end' }]} onPress={() => setActionTask(task)} hitSlop={8}><Text style={[styles.taskMoreText, { color: focusShortcutAccent }]}>›</Text></Pressable>}
-           </View>
-         </Pressable>
          {isSubtasksExpanded && <ScrollView nestedScrollEnabled style={{ maxHeight: 280, marginTop: 2 }} showsVerticalScrollIndicator={taskSubtasks.length > 6}>{taskSubtasks.map((item) => <Pressable key={`${task.id}:${item.id}`} style={[styles.taskCard, designMode === 'minimal' && styles.taskCardMinimal, isDark && styles.darkSurface, designMode === 'chic' && styles.taskCardChic, { marginLeft: 18, borderLeftWidth: 3, borderLeftColor: designMode === 'chic' ? chicPalette.accent : theme?.colors?.primaryAccent ?? '#68748A' }, item.done && styles.taskCardDone]} onPress={() => onToggleSubtask(task.id, item.id)}><View style={[styles.taskCardInner, designMode === 'chic' && styles.taskCardInnerChic, designMode === 'chic' && { backgroundColor: chicPalette.cardSurface }]}><Pressable style={[styles.check, isDark && styles.checkDark, item.done && styles.checkDone, item.done && isDark && styles.checkDoneDark, designMode === 'chic' && { backgroundColor: item.done ? chicPalette.accent : chicPalette.cardTint, borderColor: chicPalette.accent }]} onPress={() => onToggleSubtask(task.id, item.id)}><Text style={styles.checkMark}>{item.done ? completionIcon : ''}</Text></Pressable><View style={styles.taskBody}><Text style={[styles.taskTitle, item.done && styles.taskTitleDone, isDark && styles.darkBodyText, designMode === 'chic' && { color: chicPalette.textPrimary }]}>{item.title}</Text><Text style={[styles.taskMeta, isDark && styles.darkMutedText, designMode === 'chic' && { color: chicPalette.taskMeta }]}>サブタスク ・ 親: {task.title}</Text><View style={styles.taskInfoRow}><View style={[styles.categoryPill, isDark && styles.darkSurface, designMode === 'chic' && { backgroundColor: chicPalette.accentSoft, borderColor: chicPalette.border }]}><Text style={[styles.categoryText, isDark && styles.darkBodyText, designMode === 'chic' && { color: chicPalette.textSecondary }]}>次の一歩</Text></View><Text style={[styles.taskMeta, isDark && styles.darkAccentText, designMode === 'chic' && { color: chicPalette.taskMeta }]}>{(task.bucket ?? 'now') === 'now' ? '今やる' : task.bucket === 'later' ? 'あとで' : '待ち'}</Text></View></View></View></Pressable>)}</ScrollView>}
         </React.Fragment>
       ); })}
@@ -334,7 +288,6 @@ export function HomeScreen({
         </Pressable>
       </Modal>
     </>
-    </HomeRuntimeContext.Provider>
   );
 }
 
@@ -344,113 +297,4 @@ function TodoTaskRow({ task, styles, designMode, chicPalette, isDark, selected, 
     <Text numberOfLines={2} style={{ flex: 1, color: textColor, fontSize: 13, fontWeight: '700', marginLeft: 9 }}>{task.title}</Text>
     <Text style={{ color: accentColor, fontSize: 18, marginLeft: 8 }}>›</Text>
   </Pressable>;
-}
-
-function parseVoiceSchedule(value: string, today: Date, dateKey: (date: Date) => string) {
-  const result: { date?: string; time?: string } = {};
-  if (/明後日/.test(value)) { const date = new Date(today); date.setDate(date.getDate() + 2); result.date = dateKey(date); }
-  else if (/明日|あした/.test(value)) { const date = new Date(today); date.setDate(date.getDate() + 1); result.date = dateKey(date); }
-  else if (/今日/.test(value)) result.date = dateKey(today);
-  const monthDay = value.match(/(\d{1,2})月(\d{1,2})日/);
-  if (monthDay) { const date = new Date(today.getFullYear(), Number(monthDay[1]) - 1, Number(monthDay[2])); result.date = dateKey(date); }
-  const weekday = value.match(/(日|月|火|水|木|金|土)曜日?/);
-  if (weekday && !result.date) { const target = ['日', '月', '火', '水', '木', '金', '土'].indexOf(weekday[1] ?? ''); const date = new Date(today); const distance = (target - date.getDay() + 7) % 7 || 7; date.setDate(date.getDate() + distance); result.date = dateKey(date); }
-  const clock = value.match(/(?:午前|午後)?\s*(\d{1,2})(?:時|:\s*)(\d{0,2})/);
-  if (clock) { let hour = Number(clock[1]); const minute = clock[2] ? Number(clock[2]) : 0; if (/午後/.test(clock[0]) && hour < 12) hour += 12; if (/午前/.test(clock[0]) && hour === 12) hour = 0; if (hour < 24 && minute < 60) result.time = `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`; }
-  return result;
-}
-
-function VoiceQuickAddCard({ designMode, chicPalette, onQuickAdd, onOpenBulkAdd }: { designMode: DesignMode; chicPalette: ChicThemePalette; onQuickAdd: (title: string, category: Category, priority: Priority, scheduledDate?: string, scheduledTime?: string, endAt?: string, isRoutine?: boolean, deadlineDate?: string, deadlineTime?: string, deadlineNotifyBefore?: number, remindDate?: string, remindAt?: string, repeatRule?: RepeatRule, subtasks?: Subtask[]) => void; onOpenBulkAdd: () => void }) {
-  const { styles, helpers } = useHomeRuntime();
-  const { dateForReminder, dateKey, formatLiveTime, todayInputValue } = helpers;
-  const theme = helpers.getThemeTokens?.(designMode);
-  const isDark = designMode === 'dark';
-  const [title, setTitle] = useState('');
-  const [category, setCategory] = useState<Category>('その他');
-  const [priority, setPriority] = useState<Priority>('中');
-  const [scheduledDate, setScheduledDate] = useState('');
-  const [scheduledTime, setScheduledTime] = useState('');
-  const [scheduledEndTime, setScheduledEndTime] = useState('');
-  const [isRoutine, setIsRoutine] = useState(false);
-  const [detailsOpen, setDetailsOpen] = useState(false);
-  const [fieldOpen, setFieldOpen] = useState<null | 'category' | 'priority'>(null);
-  const [deadlineEnabled, setDeadlineEnabled] = useState(false);
-  const [deadlineDate, setDeadlineDate] = useState('');
-  const [deadlineTime, setDeadlineTime] = useState('');
-  const [deadlineNotifyBefore, setDeadlineNotifyBefore] = useState(10);
-  const [activePicker, setActivePicker] = useState<null | 'date' | 'time' | 'deadlineDate' | 'deadlineTime'>(null);
-  const [smartResult, setSmartResult] = useState<SmartTaskParseResult>({ title: '', matched: [] });
-  const [subtasks, setSubtasks] = useState<Subtask[]>([]);
-  const [newSubtask, setNewSubtask] = useState('');
-  const titleInputRef = React.useRef<TextInput>(null);
-
-  const resetDraft = () => {
-    setTitle(''); setCategory('その他'); setPriority('中'); setScheduledDate(''); setScheduledTime(''); setScheduledEndTime(''); setIsRoutine(false);
-    setDetailsOpen(false); setDeadlineEnabled(false); setDeadlineDate(''); setDeadlineTime(''); setDeadlineNotifyBefore(10); setFieldOpen(null); setActivePicker(null); setSmartResult({ title: '', matched: [] }); setSubtasks([]); setNewSubtask('');
-  };
-  const submit = () => {
-    const clean = title.trim();
-    if (!clean) return;
-    onQuickAdd(smartResult.title.trim() || clean, category, priority, (smartResult.scheduledDate ?? scheduledDate) || undefined, (smartResult.scheduledTime ?? scheduledTime) || undefined, (smartResult.endTime ?? scheduledEndTime) || undefined, isRoutine, deadlineEnabled ? deadlineDate || undefined : undefined, deadlineEnabled ? deadlineTime || undefined : undefined, deadlineEnabled && deadlineDate && deadlineTime ? deadlineNotifyBefore : undefined, smartResult.remindDate, smartResult.remindAt, smartResult.repeatRule, subtasks.filter((item) => item.title.trim()).map((item, index) => ({ ...item, title: item.title.trim(), order: index })));
-    resetDraft();
-  };
-  const updateTitle = (value: string) => {
-    setTitle(value);
-    const suggestion = parseSmartTaskInput(value, new Date(), dateKey);
-    setSmartResult(suggestion);
-    if (suggestion.scheduledDate) setScheduledDate(suggestion.scheduledDate);
-    if (suggestion.scheduledTime) setScheduledTime(suggestion.scheduledTime);
-    if (suggestion.endTime) setScheduledEndTime(suggestion.endTime);
-    if (value.trim()) setDetailsOpen(true);
-  };
-  const setPicker = (picker: typeof activePicker) => setActivePicker((current) => current === picker ? null : picker);
-  const addSubtask = () => {
-    const clean = newSubtask.trim();
-    if (!clean) return;
-    setSubtasks((current) => [...current, { id: `${Date.now()}-${Math.random().toString(16).slice(2)}`, title: clean, done: false, order: current.length }]);
-    setNewSubtask('');
-  };
-  const pickerValue = (picker: typeof activePicker) => {
-    if (picker === 'deadlineDate') return dateForReminder(deadlineDate || scheduledDate || todayInputValue(), deadlineTime || '23:59');
-    if (picker === 'deadlineTime') return dateForReminder(deadlineDate || scheduledDate || todayInputValue(), deadlineTime || '23:59');
-    if (picker === 'time') return dateForReminder(scheduledDate || todayInputValue(), scheduledTime || '09:00');
-    return dateForReminder(scheduledDate || todayInputValue(), '12:00');
-  };
-  const applyPicker = (picker: typeof activePicker, selected: Date) => {
-    if (picker === 'date') setScheduledDate(dateKey(selected));
-    if (picker === 'time') setScheduledTime(formatLiveTime(selected));
-    if (picker === 'deadlineDate') setDeadlineDate(dateKey(selected));
-    if (picker === 'deadlineTime') setDeadlineTime(formatLiveTime(selected));
-  };
-  const renderPicker = (picker: typeof activePicker) => {
-    if (!picker) return null;
-    const mode = picker.endsWith('Date') || picker === 'date' ? 'date' : 'time';
-    const titleText = picker === 'date' ? '実行日を選択' : picker === 'time' ? '実行時間を選択' : picker === 'deadlineDate' ? '期限日を選択' : 'リミット時間を選択';
-    if (isDark) return <TaskDateTimePickerSheet visible mode={mode} title={titleText} value={pickerValue(picker)} minimumDate={mode === 'date' ? new Date() : undefined} designMode={designMode} onClose={() => setActivePicker(null)} onConfirm={(selected) => { applyPicker(picker, selected); setActivePicker(null); }} />;
-    return <DateTimePicker value={pickerValue(picker)} mode={mode} minimumDate={mode === 'date' ? new Date() : undefined} display={Platform.OS === 'ios' ? (mode === 'date' ? 'inline' : 'spinner') : 'default'} onChange={(event: DateTimePickerEvent, selected) => { if (event.type === 'set' && selected) applyPicker(picker, selected); if (Platform.OS !== 'ios' || event.type === 'set' || event.type === 'dismissed') setActivePicker(null); }} />;
-  };
-
-  return <View style={[styles.voiceAddCard, designMode === 'minimal' && styles.voiceAddCardMinimal, isDark && styles.voiceAddCardDark, designMode === 'chic' && styles.voiceAddCardChic, designMode === 'chic' && { backgroundColor: chicPalette.cardTint, borderColor: chicPalette.border }]}>
-    <View style={[designMode === 'chic' ? styles.voiceAddPaperChic : styles.voiceAddPaperMinimal, designMode === 'chic' && { backgroundColor: chicPalette.cardSurface }]}>
-      <View style={styles.voiceAddHeading}><Text style={[styles.quickAddTitle, isDark && styles.darkBodyText, designMode === 'chic' && { color: chicPalette.textPrimary }]}>やることを追加</Text><Text style={[styles.voiceAddHint, isDark && styles.darkMutedText, designMode === 'chic' && { color: chicPalette.textSecondary }]}>キーボードのマイクで音声入力できます</Text></View>
-      {!detailsOpen && !title && <><Pressable style={[styles.voiceAddCompact, isDark && styles.voiceAddCompactDark]} onPress={() => setDetailsOpen(true)}><Text style={[styles.voiceAddCompactTitle, isDark && styles.darkBodyText]}>タップして入力</Text><Text style={[styles.voiceAddCompactCopy, isDark && styles.darkMutedText]}>内容を確認してから追加できます</Text><Text style={[styles.voiceAddMicText, isDark && styles.darkAccentText]}>🎙</Text></Pressable><Pressable accessibilityRole="button" style={{ minHeight: 38, marginTop: 8, alignItems: 'center', justifyContent: 'center' }} onPress={onOpenBulkAdd}><Text style={[styles.voiceAddDetailsToggleText, isDark && styles.darkAccentText]}>複数まとめて追加 ›</Text></Pressable></>}
-       {(detailsOpen || Boolean(title)) && <>
-         <View style={styles.voiceAddInputRow}><TextInput ref={titleInputRef} autoFocus={!title} value={title} onChangeText={updateTitle} placeholder="話してそのまま入力" placeholderTextColor={isDark ? '#8F9BB0' : '#A29DAA'} style={[styles.voiceAddInput, designMode === 'minimal' && styles.voiceAddInputMinimal, isDark && styles.voiceAddInputDark, designMode === 'chic' && styles.voiceAddInputChic]} returnKeyType="done" /><Pressable accessibilityRole="button" style={[styles.voiceAddMicButton, isDark && styles.voiceAddMicButtonDark]} onPress={() => { setDetailsOpen(true); titleInputRef.current?.focus(); }}><Text style={styles.voiceAddMicText}>🎙</Text></Pressable></View>
-        {smartResult.matched.length > 0 && <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 8 }}><Text style={[styles.voiceAddHint, isDark && styles.darkMutedText]}>解析:</Text>{smartResult.scheduledDate && <Pressable style={styles.voiceAddQuickChip} onPress={() => { setScheduledDate(''); setSmartResult((current) => ({ ...current, scheduledDate: undefined })); }}><Text style={[styles.voiceAddQuickText, isDark && styles.darkBodyText]}>日付 {smartResult.scheduledDate} ×</Text></Pressable>}{smartResult.scheduledTime && <Pressable style={styles.voiceAddQuickChip} onPress={() => { setScheduledTime(''); setSmartResult((current) => ({ ...current, scheduledTime: undefined })); }}><Text style={[styles.voiceAddQuickText, isDark && styles.darkBodyText]}>時刻 {smartResult.scheduledTime} ×</Text></Pressable>}{smartResult.endTime && <Pressable style={styles.voiceAddQuickChip} onPress={() => { setScheduledEndTime(''); setSmartResult((current) => ({ ...current, endTime: undefined })); }}><Text style={[styles.voiceAddQuickText, isDark && styles.darkBodyText]}>終了 {smartResult.endTime} ×</Text></Pressable>}{smartResult.remindAt && <Pressable style={styles.voiceAddQuickChip} onPress={() => setSmartResult((current) => ({ ...current, remindDate: undefined, remindAt: undefined }))}><Text style={[styles.voiceAddQuickText, isDark && styles.darkBodyText]}>通知 {smartResult.remindAt} ×</Text></Pressable>}{smartResult.repeatRule && <Pressable style={styles.voiceAddQuickChip} onPress={() => setSmartResult((current) => ({ ...current, repeatRule: undefined }))}><Text style={[styles.voiceAddQuickText, isDark && styles.darkBodyText]}>繰り返し {smartResult.repeatRule} ×</Text></Pressable>}</View>}
-        <View style={styles.voiceAddQuickRow}><Pressable style={[styles.voiceAddQuickChip, isDark && styles.voiceAddChoiceDark, designMode === 'chic' && { backgroundColor: chicPalette.surfaceSubtle, borderColor: chicPalette.border }]} onPress={() => setScheduledDate(todayInputValue())}><Text style={[styles.voiceAddQuickText, isDark && styles.darkBodyText, designMode === 'chic' && { color: chicPalette.textSecondary }]}>今日</Text></Pressable><Pressable style={[styles.voiceAddQuickChip, isDark && styles.voiceAddChoiceDark, designMode === 'chic' && { backgroundColor: chicPalette.surfaceSubtle, borderColor: chicPalette.border }]} onPress={() => setScheduledDate(todayInputValue(1))}><Text style={[styles.voiceAddQuickText, isDark && styles.darkBodyText, designMode === 'chic' && { color: chicPalette.textSecondary }]}>明日</Text></Pressable><Pressable style={[styles.voiceAddQuickChip, isDark && styles.voiceAddChoiceDark, designMode === 'chic' && { backgroundColor: chicPalette.surfaceSubtle, borderColor: chicPalette.border }]} onPress={() => setPicker('date')}><Text style={[styles.voiceAddQuickText, isDark && styles.darkBodyText, designMode === 'chic' && { color: chicPalette.textSecondary }]}>{scheduledDate || '日付指定'}</Text></Pressable><Pressable style={[styles.voiceAddQuickChip, isDark && styles.voiceAddChoiceDark, designMode === 'chic' && { backgroundColor: chicPalette.surfaceSubtle, borderColor: chicPalette.border }]} onPress={() => setScheduledTime('')}><Text style={[styles.voiceAddQuickText, isDark && styles.darkBodyText, designMode === 'chic' && { color: chicPalette.textSecondary }]}>時間なし</Text></Pressable><Pressable style={[styles.voiceAddQuickChip, isDark && styles.voiceAddChoiceDark, designMode === 'chic' && { backgroundColor: chicPalette.surfaceSubtle, borderColor: chicPalette.border }]} onPress={() => setPicker('time')}><Text style={[styles.voiceAddQuickText, isDark && styles.darkBodyText, designMode === 'chic' && { color: chicPalette.textSecondary }]}>{scheduledTime || '時間指定'}</Text></Pressable>{scheduledTime && <TextInput value={scheduledEndTime} onChangeText={setScheduledEndTime} placeholder="終了時間" placeholderTextColor={isDark ? '#8F9BB0' : '#A29DAA'} keyboardType="numbers-and-punctuation" style={[styles.voiceAddQuickChip, { minWidth: 82, color: theme?.colors?.primaryText ?? '#182235' }, isDark && styles.voiceAddChoiceDark]} />}</View>
-        <Pressable style={[styles.voiceAddDetailsToggle, isDark && styles.voiceAddDetailsToggleDark]} onPress={() => setDetailsOpen((value) => !value)}><Text style={[styles.voiceAddDetailsToggleText, isDark && styles.darkBodyText]}>詳細設定</Text><Text style={[styles.voiceAddDetailsToggleText, isDark && styles.darkMutedText]}>{detailsOpen ? '⌃' : '⌄'}</Text></Pressable>
-        {detailsOpen && <View style={[styles.voiceAddDetailsPanel, isDark && styles.voiceAddDetailsPanelDark]}>
-          <View style={styles.voiceAddChoicesRow}><Pressable style={[styles.voiceAddChoice, isDark && styles.voiceAddChoiceDark]} onPress={() => setFieldOpen('category')}><Text style={[styles.voiceAddChoiceLabel, isDark && styles.voiceAddChoiceLabelDark]}>ジャンル</Text><Text style={[styles.voiceAddChoiceValue, isDark && styles.voiceAddChoiceValueDark]}>{category}</Text></Pressable><Pressable style={[styles.voiceAddChoice, isDark && styles.voiceAddChoiceDark]} onPress={() => setFieldOpen('priority')}><Text style={[styles.voiceAddChoiceLabel, isDark && styles.voiceAddChoiceLabelDark]}>優先度</Text><Text style={[styles.voiceAddChoiceValue, isDark && styles.voiceAddChoiceValueDark]}>{priority}</Text></Pressable></View>
-          <Pressable style={styles.routineToggleRow} onPress={() => setIsRoutine((value) => !value)}><View style={[styles.routineToggleBox, isRoutine && styles.routineToggleBoxActive, isRoutine && isDark && styles.routineToggleBoxActiveDark]}><Text style={styles.routineToggleCheck}>{isRoutine ? '✓' : ''}</Text></View><View><Text style={[styles.routineToggleTitle, isDark && styles.routineToggleTitleDark]}>ルーティンにする</Text><Text style={[styles.routineToggleCopy, isDark && styles.routineToggleCopyDark]}>毎日の継続状況を分析に表示</Text></View></Pressable>
-          <Pressable style={[styles.deadlineToggleRow, isDark && styles.deadlinePanelDark]} onPress={() => setDeadlineEnabled((value) => !value)}><View style={[styles.routineToggleBox, deadlineEnabled && styles.routineToggleBoxActive, deadlineEnabled && isDark && styles.routineToggleBoxActiveDark]}><Text style={styles.routineToggleCheck}>{deadlineEnabled ? '✓' : ''}</Text></View><Text style={[styles.deadlineToggleTitle, isDark && styles.darkBodyText]}>期限を設定</Text></Pressable>
-          {deadlineEnabled && <View style={[styles.deadlinePanel, isDark && styles.deadlinePanelDark]}><Pressable style={[styles.pickerButton, isDark && styles.pickerButtonDark]} onPress={() => setPicker('deadlineDate')}><Text style={[styles.pickerButtonLabel, isDark && styles.darkMutedText]}>期限日</Text><Text style={[styles.pickerButtonValue, isDark && styles.darkBodyText]}>{deadlineDate || '指定なし'}</Text></Pressable><Pressable style={[styles.pickerButton, isDark && styles.pickerButtonDark]} onPress={() => setPicker('deadlineTime')}><Text style={[styles.pickerButtonLabel, isDark && styles.darkMutedText]}>リミット時間</Text><Text style={[styles.pickerButtonValue, isDark && styles.darkBodyText]}>{deadlineTime || '指定なし'}</Text></Pressable><Pressable style={styles.routineToggleRow} onPress={() => setDeadlineNotifyBefore((value) => value === 10 ? 30 : 10)}><View style={[styles.routineToggleBox, isDark && styles.routineToggleBoxActiveDark]}><Text style={styles.routineToggleCheck}>✓</Text></View><Text style={[styles.routineToggleTitle, isDark && styles.darkBodyText]}>期限前に通知（{deadlineNotifyBefore}分前）</Text></Pressable></View>}
-        </View>}
-        <View style={styles.voiceAddActionRow}><Pressable style={styles.voiceAddCancel} onPress={resetDraft}><Text style={[styles.voiceAddCancelText, isDark && styles.darkMutedText]}>キャンセル</Text></Pressable><Pressable style={[styles.voiceAddRegister, designMode === 'minimal' && styles.voiceAddRegisterMinimal, isDark && styles.voiceAddRegisterDark, designMode === 'chic' && styles.voiceAddRegisterChic]} onPress={submit}><Text style={styles.voiceAddRegisterText}>追加する</Text></Pressable></View>
-        <Pressable accessibilityRole="button" style={{ minHeight: 38, marginTop: 8, alignItems: 'center', justifyContent: 'center' }} onPress={onOpenBulkAdd}><Text style={[styles.voiceAddDetailsToggleText, isDark && styles.darkAccentText]}>複数まとめて追加 ›</Text></Pressable>
-      </>}
-    </View>
-    {fieldOpen && <Modal visible transparent animationType="fade" onRequestClose={() => setFieldOpen(null)}><Pressable style={styles.bucketModalBackdrop} onPress={() => setFieldOpen(null)}><View style={[styles.bucketModalCard, isDark && styles.darkSurface]}><Text style={[styles.bucketModalTitle, isDark && styles.darkBodyText]}>{fieldOpen === 'category' ? 'ジャンル' : '優先度'}</Text>{(fieldOpen === 'category' ? categories : priorities).map((item) => <Pressable key={item} style={styles.voiceChoiceOption} onPress={() => { if (fieldOpen === 'category') setCategory(item as Category); else setPriority(item as Priority); setFieldOpen(null); }}><Text style={[styles.voiceChoiceOptionText, isDark && styles.darkBodyText]}>{item}</Text></Pressable>)}</View></Pressable></Modal>}
-    {detailsOpen && <View style={[styles.voiceAddDetailsPanel, isDark && styles.voiceAddDetailsPanelDark]}><Text style={[styles.fieldLabel, isDark && styles.fieldLabelDark]}>サブタスク</Text>{subtasks.map((item) => <View key={item.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 6 }}><TextInput value={item.title} onChangeText={(value) => setSubtasks((current) => current.map((entry) => entry.id === item.id ? { ...entry, title: value } : entry))} placeholder="サブタスク" placeholderTextColor={isDark ? '#8F9BB0' : '#A29DAA'} style={[styles.voiceAddInput, { flex: 1, minHeight: 42 }, isDark && styles.voiceAddInputDark]} /><Pressable accessibilityRole="button" onPress={() => setSubtasks((current) => current.filter((entry) => entry.id !== item.id))}><Text style={[styles.taskActionDeleteText, isDark && styles.darkAccentText]}>削除</Text></Pressable></View>)}<View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}><TextInput value={newSubtask} onChangeText={setNewSubtask} onSubmitEditing={addSubtask} placeholder="サブタスクを追加" placeholderTextColor={isDark ? '#8F9BB0' : '#A29DAA'} style={[styles.voiceAddInput, { flex: 1, minHeight: 42 }, isDark && styles.voiceAddInputDark]} /><Pressable accessibilityRole="button" style={styles.taskTemplateSaveAction} onPress={addSubtask}><Text style={styles.taskTemplateSaveTitle}>追加</Text></Pressable></View></View>}
-    {activePicker && renderPicker(activePicker)}
-  </View>;
 }

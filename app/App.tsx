@@ -497,7 +497,6 @@ export default function App() {
   const [screen, setScreen] = useState<Screen>('home');
   const [focusNavigationNotice, setFocusNavigationNotice] = useState(false);
   const [timelineInitialTab, setTimelineInitialTab] = useState<TimeTab>('departure');
-  const [analysisInitialTab, setAnalysisInitialTab] = useState<'records' | 'insights' | 'routine'>('records');
   const [openTodayReview, setOpenTodayReview] = useState(false);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [focusTimerActive, setFocusTimerActive] = useState(false);
@@ -1831,7 +1830,6 @@ export default function App() {
   const visibleTasks = tasks
     .filter(isVisibleToday)
     .sort((a, b) => Number(a.done) - Number(b.done) || priorityRank[a.priority] - priorityRank[b.priority]);
-  const remaining = visibleTasks.reduce((sum, task) => sum + (task.subtasks?.length ? task.subtasks.filter((item) => !item.done).length : 1), 0);
   const dangerousTask = [...tasks]
     .filter((task) => !task.done && !isTaskSkippedOnDate(task, todayTaskDate) && task.navigationEnabled && task.deadlineDate)
     .sort((a, b) => urgencyLevel(getUrgencyStatus(b, now)) - urgencyLevel(getUrgencyStatus(a, now)))[0];
@@ -2563,7 +2561,6 @@ export default function App() {
       return <HomeScreen
       tasks={homeTasks}
       allTasks={homeTasks}
-      remaining={id === 'quickTodo' ? 0 : 2}
       now={now}
       designMode="minimal"
       chicPalette={chicPalette}
@@ -2571,11 +2568,9 @@ export default function App() {
       selectionMode={false}
       selectedTaskIds={[]}
       onAdd={() => undefined}
-      onOpenBulkAdd={() => undefined}
       onOpenFocus={() => undefined}
       onOpenSchedule={() => undefined}
       onUpdateTaskList={() => undefined}
-      onQuickAdd={() => undefined}
       onToggle={() => undefined}
       onToggleSubtask={() => undefined}
       onCompleteParent={() => undefined}
@@ -2689,7 +2684,6 @@ export default function App() {
             <HomeScreen
               tasks={visibleTasks}
               allTasks={tasks}
-              remaining={remaining}
               now={now}
               designMode={uiDesignMode}
               chicPalette={chicPalette}
@@ -2697,7 +2691,6 @@ export default function App() {
               selectionMode={selectionMode}
               selectedTaskIds={selectedTaskIds}
               onAdd={() => setAddOpen(true)}
-              onOpenBulkAdd={() => setBulkAddOpen(true)}
               onOpenFocus={() => {
                 setTimelineInitialTab('focus');
                 navigateWithinApp('timeline');
@@ -2706,9 +2699,7 @@ export default function App() {
                 setTimelineInitialTab('departure');
                 navigateWithinApp('timeline');
               }}
-              onOpenCompleted={() => void onboarding.complete('completedTasks')}
               onUpdateTaskList={updateTaskList}
-                onQuickAdd={(title, category, priority, scheduledDate, scheduledTime, endAt, isRoutine, deadlineDate, deadlineTime, deadlineNotifyBefore, remindDate, remindAt, repeatRule, subtasks) => addTask(title, category, priority, remindDate, remindAt, deadlineDate, deadlineTime, deadlineNotifyBefore, undefined, undefined, undefined, undefined, repeatRule ?? 'none', 'once', scheduledDate, scheduledTime, endAt, isRoutine, subtasks)}
               onToggle={(id) => {
                 const task = tasksRef.current.find((item) => item.id === id);
                 completeTaskIds([id]);
@@ -2775,7 +2766,6 @@ export default function App() {
               onOpenTodayRecord={() => { if (planTier !== 'premium') { openPremiumFeature('records'); return; } setOpenTodayReview(true); }}
               showTodoOnboarding={onboarding.ready && onboarding.isCompleted('intro') && !onboarding.isCompleted('todo')}
               onTodoOnboardingAction={() => setAddOpen(true)}
-              onTodoOnboardingCompleted={() => void onboarding.complete('todo')}
               showTodoCompleteOnboarding={onboarding.ready && onboarding.isCompleted('todo') && !onboarding.isCompleted('todoComplete') && tasks.some((task) => !task.done)}
               showCompletedTasksOnboarding={onboarding.ready && onboarding.isCompleted('focus') && !onboarding.isCompleted('completedTasks') && tasks.some((task) => task.done)}
               showTaskBucketsOnboarding={onboarding.ready && onboarding.isCompleted('focus') && onboarding.isCompleted('completedTasks') && !onboarding.isCompleted('taskBuckets') && tasks.length > 0}
@@ -3008,7 +2998,7 @@ export default function App() {
               }}
               onDeleteRoutineArchive={(archive) => Alert.alert('この解除履歴を削除しますか？', '解除履歴を削除すると、この解除歴画面からは確認できなくなります。', [{ text: 'キャンセル', style: 'cancel' }, { text: '削除する', style: 'destructive', onPress: () => setRoutineArchives((current) => current.filter((item) => item.id !== archive.id)) }])}
               onAnalysisUsed={() => void onboarding.complete('analysis')}
-              initialTab={analysisInitialTab}
+              initialTab="records"
               departurePlans={departurePlans}
               onApplySuggestion={(suggestion) => {
                 const nextPlans = departurePlansRef.current.map((item) => item.id === suggestion.planId ? { ...item, preparationMinutes: suggestion.nextPreparationMinutes } : item);
