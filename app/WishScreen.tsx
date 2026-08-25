@@ -1,9 +1,9 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Alert, Image, Keyboard, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { ChicPattern, ChicThemePalette, DesignMode, getThemeTokens } from './theme';
-import { Affirmation, AffirmationCustomText, MonthlyWishState, Wish, WishAction } from './types';
+import { Affirmation, AffirmationCustomText, MonthlyWishState, Wish, WishAction, WishMonthMap } from './types';
 import { PlanTier } from './premiumAccess';
-import { calculateWishProgress } from './features/wish/wishUtils';
+import { calculateWishProgress, wishMonthKey } from './features/wish/wishUtils';
 import { BThemeRibbonDecoration } from './components/BThemeRibbonDecoration';
 import { CThemeRibbonDecoration } from './components/CThemeRibbonDecoration';
 import { RewardedAccessModal, RewardedAccessResult } from './components/RewardedAccessModal';
@@ -15,6 +15,7 @@ type WishScreenProps = {
   chicPalette?: ChicThemePalette;
   monthLabel: string;
   state: MonthlyWishState;
+  wishMonths?: WishMonthMap;
   onSaveState: (updater: (current: MonthlyWishState) => MonthlyWishState) => void;
   onCreateTaskFromAction?: (action: WishAction) => void;
   canCreateWish?: boolean;
@@ -64,7 +65,18 @@ function patternSymbol(pattern: ChicPattern) {
   return '✿';
 }
 
-export function WishScreen({ designMode: rawDesignMode, chicPattern, chicPalette, monthLabel, state, onSaveState, onCreateTaskFromAction, canCreateWish = true, wishRewardProgress, onRequestWishReward, onWishCreated, affirmations, affirmationCustomTexts, planTier, onSaveAffirmation, onDeleteAffirmation, onSaveAffirmationCustomText, onDeleteAffirmationCustomText, canCreateWishAction = true, monthlyGoalUnlocked = false, monthlyGoalRewardProgress, onRequestMonthlyGoalReward, onPremium, onBack }: WishScreenProps) {
+function formatHistoryMonth(monthKey: string) {
+  const match = /^(\d{4})-(\d{1,2})$/.exec(monthKey);
+  return match ? `${match[1]}年${Number(match[2])}月` : monthKey;
+}
+
+function formatHistoryDate(value?: string) {
+  if (!value) return '';
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? '' : `${date.getMonth() + 1}/${date.getDate()} 完了`;
+}
+
+export function WishScreen({ designMode: rawDesignMode, chicPattern, chicPalette, monthLabel, state, wishMonths = {}, onSaveState, onCreateTaskFromAction, canCreateWish = true, wishRewardProgress, onRequestWishReward, onWishCreated, affirmations, affirmationCustomTexts, planTier, onSaveAffirmation, onDeleteAffirmation, onSaveAffirmationCustomText, onDeleteAffirmationCustomText, canCreateWishAction = true, monthlyGoalUnlocked = false, monthlyGoalRewardProgress, onRequestMonthlyGoalReward, onPremium, onBack }: WishScreenProps) {
   // Mono DarkはMono Lightと同じレイアウトを使い、色だけを反転する。
   const designMode: 'minimal' | 'chic' = rawDesignMode === 'dark' || rawDesignMode === 'photo' ? 'minimal' : rawDesignMode;
   const isDark = rawDesignMode === 'dark';
@@ -78,6 +90,8 @@ export function WishScreen({ designMode: rawDesignMode, chicPattern, chicPalette
   const progress = useMemo(() => calculateWishProgress(state), [state]);
   const [editor, setEditor] = useState<EditorState>(emptyEditor);
   const [rewardPrompt, setRewardPrompt] = useState<'wish' | 'monthlyGoal' | null>(null);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [historyMonthKey, setHistoryMonthKey] = useState<string>();
   const [monthlyGoalDraft, setMonthlyGoalDraft] = useState(state.monthlyGoal ?? '');
   const [monthlyGoalEditing, setMonthlyGoalEditing] = useState(!(state.monthlyGoal ?? '').trim());
 
@@ -205,11 +219,22 @@ export function WishScreen({ designMode: rawDesignMode, chicPattern, chicPalette
 
   const wishes = state.wishes;
   const actions = state.actions;
+  const historyMonths = useMemo(() => Object.entries(wishMonths)
+    .filter(([monthKey, monthState]) => monthKey !== wishMonthKey() && (Boolean(monthState.monthlyGoal?.trim()) || (monthState.wishes ?? []).length > 0 || (monthState.actions ?? []).length > 0))
+    .sort(([left], [right]) => right.localeCompare(left)), [wishMonths]);
+  const closeHistory = () => { setHistoryOpen(false); setHistoryMonthKey(undefined); };
+  const selectedHistory = historyMonthKey ? wishMonths[historyMonthKey] : undefined;
 
   return (
     <View style={[styles.screen, designMode === 'minimal' ? styles.screenMinimal : styles.screenChic, rawDesignMode === 'dark' && styles.screenDark, rawDesignMode === 'chic' && { backgroundColor: 'transparent' }]}>
       <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
+          <View style={styles.pageHeader}>
+            <Text style={[styles.pageHeaderTitle, { color: rawDesignMode === 'chic' && palette ? palette.textPrimary : theme.colors.primaryText }]}>叶えたいこと</Text>
+            <Pressable onPress={() => { setHistoryMonthKey(undefined); setHistoryOpen(true); }} hitSlop={8}>
+              <Text style={[styles.pageHeaderLink, { color: rawDesignMode === 'chic' && palette ? palette.accent : theme.colors.primaryAccent }]}>過去を見る ›</Text>
+            </Pressable>
+          </View>
           <SectionCard
             designMode={designMode}
             dark={isDark}
@@ -413,6 +438,51 @@ export function WishScreen({ designMode: rawDesignMode, chicPattern, chicPalette
             return result;
           }}
         />
+
+        <Modal visible={historyOpen} transparent animationType="slide" onRequestClose={closeHistory}>
+          <Pressable style={styles.modalBackdrop} onPress={closeHistory}>
+            <Pressable style={[styles.historySheet, designMode === 'minimal' ? styles.editorSheetMinimal : styles.editorSheetChic, isDark && styles.editorSheetDark, designSurface]} onPress={(event) => event.stopPropagation()}>
+              {!selectedHistory ? (
+                <>
+                  <View style={styles.historyHeaderRow}>
+                    <Text style={[styles.historyTitle, { color: theme.colors.primaryText }]}>これまで</Text>
+                    <Pressable onPress={closeHistory}><Text style={[styles.editorCancelText, { color: theme.colors.secondaryText }]}>閉じる</Text></Pressable>
+                  </View>
+                  <ScrollView contentContainerStyle={styles.historyList}>
+                    {historyMonths.length === 0 ? <View style={styles.historyEmpty}><Text style={[styles.emptyText, { color: theme.colors.secondaryText }]}>まだ過去の記録はありません。</Text><Text style={[styles.historyEmptyHint, { color: theme.colors.secondaryText }]}>これから目標や叶えたいことを残していくと、ここで振り返れます。</Text></View> : historyMonths.map(([monthKey, monthState]) => {
+                      const monthWishes = monthState.wishes ?? [];
+                      const monthActions = monthState.actions ?? [];
+                      const completedWishes = monthWishes.filter((wish) => wish.completed).length;
+                      const completedActions = monthActions.filter((action) => action.completed).length;
+                      return <Pressable key={monthKey} style={[styles.historyMonthRow, { borderBottomColor: rawDesignMode === 'chic' && palette ? palette.border : theme.colors.border }]} onPress={() => setHistoryMonthKey(monthKey)}>
+                        <View style={styles.itemBody}>
+                          <Text style={[styles.historyMonthTitle, { color: theme.colors.primaryText }]}>{formatHistoryMonth(monthKey)}</Text>
+                          {monthState.monthlyGoal?.trim() ? <Text numberOfLines={2} style={[styles.historyGoal, { color: theme.colors.secondaryText }]}>{monthState.monthlyGoal}</Text> : null}
+                          <Text style={[styles.historyCounts, { color: theme.colors.secondaryText }]}>叶えたこと {completedWishes} / {monthWishes.length}　行動 {completedActions} / {monthActions.length} 完了</Text>
+                        </View>
+                        <Text style={[styles.itemChevron, { color: rawDesignMode === 'chic' && palette ? palette.accent : theme.colors.secondaryText }]}>›</Text>
+                      </Pressable>;
+                    })}
+                  </ScrollView>
+                </>
+              ) : (
+                <>
+                  <View style={styles.historyHeaderRow}>
+                    <Pressable onPress={() => setHistoryMonthKey(undefined)} hitSlop={8}><Text style={[styles.historyBack, { color: rawDesignMode === 'chic' && palette ? palette.accent : theme.colors.primaryAccent }]}>〈 これまで</Text></Pressable>
+                    <Pressable onPress={closeHistory}><Text style={[styles.editorCancelText, { color: theme.colors.secondaryText }]}>閉じる</Text></Pressable>
+                  </View>
+                  <ScrollView contentContainerStyle={styles.historyList}>
+                    <Text style={[styles.historyDetailMonth, { color: theme.colors.primaryText }]}>{formatHistoryMonth(historyMonthKey!)}</Text>
+                    {selectedHistory?.monthlyGoal?.trim() ? <View style={styles.historyDetailSection}><Text style={[styles.historySectionTitle, { color: theme.colors.primaryText }]}>今月の目標</Text><Text style={[styles.historyGoalDetail, { color: theme.colors.secondaryText }]}>{selectedHistory.monthlyGoal}</Text></View> : null}
+                    <View style={styles.historyDetailSection}><Text style={[styles.historySectionTitle, { color: theme.colors.primaryText }]}>叶えたこと</Text>{(selectedHistory?.wishes ?? []).filter((wish) => wish.completed).map((wish) => <HistoryReadOnlyRow key={wish.id} title={wish.title} meta={formatHistoryDate(wish.completedAt)} completed theme={theme} palette={palette} />)}{(!(selectedHistory?.wishes ?? []).some((wish) => wish.completed)) && <Text style={[styles.historyEmptyLine, { color: theme.colors.secondaryText }]}>まだありません</Text>}</View>
+                    <View style={styles.historyDetailSection}><Text style={[styles.historySectionTitle, { color: theme.colors.primaryText }]}>残った叶えたいこと</Text>{(selectedHistory?.wishes ?? []).filter((wish) => !wish.completed).map((wish) => <HistoryReadOnlyRow key={wish.id} title={wish.title} theme={theme} palette={palette} />)}{(!(selectedHistory?.wishes ?? []).some((wish) => !wish.completed)) && <Text style={[styles.historyEmptyLine, { color: theme.colors.secondaryText }]}>ありません</Text>}</View>
+                    <View style={styles.historyDetailSection}><Text style={[styles.historySectionTitle, { color: theme.colors.primaryText }]}>叶えるための行動</Text>{(selectedHistory?.actions ?? []).map((action) => <HistoryReadOnlyRow key={action.id} title={action.title} meta={(selectedHistory?.wishes ?? []).find((wish) => wish.id === action.wishId)?.title} completed={action.completed} theme={theme} palette={palette} />)}{(selectedHistory?.actions ?? []).length === 0 && <Text style={[styles.historyEmptyLine, { color: theme.colors.secondaryText }]}>ありません</Text>}</View>
+                  </ScrollView>
+                </>
+              )}
+            </Pressable>
+          </Pressable>
+        </Modal>
       </KeyboardAvoidingView>
 
       <Modal visible={editor.visible} transparent animationType="fade" onRequestClose={() => setEditor(emptyEditor)}>
@@ -467,6 +537,13 @@ export function WishScreen({ designMode: rawDesignMode, chicPattern, chicPalette
   );
 }
 
+function HistoryReadOnlyRow({ title, meta, completed, theme, palette }: { title: string; meta?: string; completed?: boolean; theme: ReturnType<typeof getThemeTokens>; palette?: ChicThemePalette }) {
+  return <View style={styles.historyReadOnlyRow}>
+    <Text style={[styles.historyCheck, { color: palette?.accent ?? theme.colors.primaryAccent }]}>{completed ? '✓' : '□'}</Text>
+    <View style={styles.itemBody}><Text style={[styles.itemTitle, completed && styles.itemTitleDone, { color: palette?.textPrimary ?? theme.colors.primaryText }]}>{title}</Text>{meta ? <Text style={[styles.itemMeta, { color: palette?.textSecondary ?? theme.colors.secondaryText }]}>{meta}</Text> : null}</View>
+  </View>;
+}
+
 function SectionCard({
   title,
   subtitle,
@@ -511,6 +588,9 @@ const styles = StyleSheet.create({
   screenDark: { backgroundColor: '#0E1117' },
   screenChic: { backgroundColor: '#FFF9F6' },
   scroll: { paddingHorizontal: 16, paddingTop: 12, paddingBottom: 120, gap: 12 },
+  pageHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', minHeight: 34 },
+  pageHeaderTitle: { fontSize: 20, fontWeight: '900' },
+  pageHeaderLink: { fontSize: 12, fontWeight: '900' },
   sectionCard: { borderWidth: 1, borderRadius: 22, padding: 14, overflow: 'hidden', position: 'relative' },
   sectionCardMinimal: { backgroundColor: '#FFFFFF', borderColor: '#111111', borderRadius: 20 },
   sectionCardChic: { backgroundColor: '#FFF3F5', borderColor: '#F0DFE5', borderRadius: 26, shadowColor: '#D986A1', shadowOpacity: 0.08, shadowRadius: 10, shadowOffset: { width: 0, height: 4 } },
@@ -594,6 +674,24 @@ const styles = StyleSheet.create({
   progressTrack: { height: 8, borderRadius: 999, overflow: 'hidden' },
   progressFill: { height: '100%', borderRadius: 999 },
   modalBackdrop: { flex: 1, backgroundColor: 'rgba(32,25,40,0.45)', justifyContent: 'center', padding: 16 },
+  historySheet: { maxHeight: '88%', borderRadius: 18, padding: 16, gap: 10 },
+  historyHeaderRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', minHeight: 30 },
+  historyTitle: { fontSize: 20, fontWeight: '900' },
+  historyBack: { fontSize: 13, fontWeight: '900' },
+  historyList: { paddingBottom: 12 },
+  historyEmpty: { paddingVertical: 34, gap: 8 },
+  historyEmptyHint: { fontSize: 11, lineHeight: 17, fontWeight: '700' },
+  historyMonthRow: { minHeight: 78, flexDirection: 'row', alignItems: 'center', paddingVertical: 12, borderBottomWidth: 1 },
+  historyMonthTitle: { fontSize: 15, fontWeight: '900' },
+  historyGoal: { fontSize: 12, lineHeight: 18, fontWeight: '700', marginTop: 4 },
+  historyCounts: { fontSize: 10, fontWeight: '800', marginTop: 5 },
+  historyDetailMonth: { fontSize: 20, fontWeight: '900', marginBottom: 4 },
+  historyDetailSection: { paddingVertical: 10, gap: 6 },
+  historySectionTitle: { fontSize: 13, fontWeight: '900' },
+  historyGoalDetail: { fontSize: 14, lineHeight: 21, fontWeight: '800' },
+  historyEmptyLine: { fontSize: 11, fontWeight: '700' },
+  historyReadOnlyRow: { minHeight: 42, flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 6, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#D8D8D3' },
+  historyCheck: { width: 22, fontSize: 18, fontWeight: '900', textAlign: 'center' },
   editorSheet: { borderRadius: 18, padding: 16, gap: 10 },
   editorSheetMinimal: { borderRadius: 18, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#111111' },
   editorSheetChic: { backgroundColor: '#FFF3F5', borderWidth: 1, borderColor: '#F0DFE5' },

@@ -2781,6 +2781,7 @@ export default function App() {
               chicPalette={chicPalette}
               monthLabel={`${now.getFullYear()}年${now.getMonth() + 1}月`}
               state={currentWishState}
+              wishMonths={wishMonths}
               onSaveState={saveCurrentWishState}
               onCreateTaskFromAction={createTaskFromWishAction}
               affirmations={affirmations}
