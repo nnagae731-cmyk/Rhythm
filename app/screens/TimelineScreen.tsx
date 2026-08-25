@@ -48,7 +48,7 @@ export function PlanLocationShareActions({ plan, planTier, designMode, chicPalet
   </>;
 }
 
-const DepartureCountdownCard = React.memo(function DepartureCountdownCard({ plan, now, planTier, designMode, chicPalette, status, prepared, departed, checkIn, styles, helpers, onPrepare, onDepart, onStill, onRecover, onShare, onPremium, onEdit, onDelete, travelApps, onOpenTravelAppSettings }: PlanCardProps) {
+export const DepartureCountdownCard = React.memo(function DepartureCountdownCard({ plan, now, planTier, designMode, chicPalette, status, prepared, departed, checkIn, styles, helpers, onPrepare, onDepart, onStill, onRecover, onShare, onPremium, onEdit, onDelete, travelApps, onOpenTravelAppSettings }: PlanCardProps) {
   const { getThemeTokens, planDateKey, formatLiveTime, getDepartureMoments, countdownToDate, getMapSearchTarget, openMapSearch, getPlanCountdownAt } = helpers;
   const theme = getThemeTokens(designMode, chicPalette?.id ?? 'cool');
   const isDark = designMode === 'dark';

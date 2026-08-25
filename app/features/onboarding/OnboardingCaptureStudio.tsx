@@ -31,6 +31,7 @@ export function OnboardingCaptureStudio({ visible, onClose, renderStep, renderGu
   const [capturedUris, setCapturedUris] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
+  const [renderedSize, setRenderedSize] = useState({ width: 0, height: 0 });
   const items = mode === 'onboarding' ? ONBOARDING_ITEMS : mode === 'guide' ? GUIDE_ITEMS : PREMIUM_ITEMS;
   const current = items[stepIndex] ?? items[0]!;
   const renderCurrent = () => {
@@ -45,7 +46,11 @@ export function OnboardingCaptureStudio({ visible, onClose, renderStep, renderGu
     try {
       const viewShot = require('react-native-view-shot') as { captureRef?: (view: View, options: { format: 'jpg'; quality: number; width: number; height: number; result: 'tmpfile' }) => Promise<string> };
       if (!viewShot.captureRef) throw new Error('capture-unavailable');
-      const uri = await viewShot.captureRef(targetRef.current, { format: 'jpg', quality: 0.82, width: 900, height: 1600, result: 'tmpfile' });
+      const outputWidth = 900;
+      const outputHeight = mode === 'premium'
+        ? Math.max(650, Math.min(1500, renderedSize.width > 0 ? Math.round(outputWidth * renderedSize.height / renderedSize.width) : 650))
+        : 1600;
+      const uri = await viewShot.captureRef(targetRef.current, { format: 'jpg', quality: 0.82, width: outputWidth, height: outputHeight, result: 'tmpfile' });
       setCapturedUris((current) => ({ ...current, [`${item.mode}:${item.id}`]: uri }));
       return uri;
     } catch {
@@ -86,7 +91,7 @@ export function OnboardingCaptureStudio({ visible, onClose, renderStep, renderGu
       <View style={styles.header}><View><Text style={[styles.title, { color: colors.text }]}>Content Capture Studio</Text><Text style={[styles.subtitle, { color: colors.muted }]}>実画面・固定デモデータ・保存なし</Text></View><Pressable onPress={onClose} hitSlop={10}><Text style={[styles.close, { color: colors.accent }]}>閉じる</Text></Pressable></View>
       <View style={styles.modeRow}>{(['onboarding', 'guide', 'premium'] as CaptureMode[]).map((itemMode) => <Pressable key={itemMode} disabled={busy} onPress={() => selectMode(itemMode)} style={[styles.modeButton, { borderColor: colors.border }, mode === itemMode && { backgroundColor: colors.accent, borderColor: colors.accent }]}><Text style={[styles.modeText, { color: mode === itemMode ? colors.onAccent : colors.text }]}>{itemMode === 'onboarding' ? 'Onboarding' : itemMode === 'guide' ? 'Guide Preview' : 'Premium Preview'}</Text></Pressable>)}</View>
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-        <View ref={targetRef} collapsable={false} style={[styles.captureFrame, { backgroundColor: colors.surface, borderColor: colors.border }]}>{renderCurrent()}</View>
+        <View ref={targetRef} collapsable={false} onLayout={(event) => { const { width, height } = event.nativeEvent.layout; if (width > 0 && height > 0) setRenderedSize({ width, height }); }} style={[styles.captureFrame, { backgroundColor: colors.surface, borderColor: colors.border }, mode !== 'premium' && styles.captureFrameFixed]}>{renderCurrent()}</View>
         <View style={styles.stepRow}>{items.map((item, index) => { const key = `${item.mode}:${item.id}`; return <Pressable key={key} disabled={busy} onPress={() => setStepIndex(index)} style={[styles.stepChip, { borderColor: colors.border }, index === stepIndex && { backgroundColor: colors.accent, borderColor: colors.accent }]}><Text style={[styles.stepText, { color: index === stepIndex ? colors.onAccent : colors.muted }]}>{index + 1}</Text><Text style={[styles.stepName, { color: index === stepIndex ? colors.onAccent : colors.text }]}>{item.label}</Text>{capturedUris[key] ? <Text style={[styles.done, { color: index === stepIndex ? colors.onAccent : colors.accent }]}>✓</Text> : null}</Pressable>; })}</View>
         <Pressable disabled={busy} onPress={() => void captureAll()} style={[styles.primaryButton, { backgroundColor: colors.accent }, busy && styles.disabled]}>{busy ? <ActivityIndicator color={colors.onAccent} /> : <Text style={[styles.primaryText, { color: colors.onAccent }]}>このモードを一括生成</Text>}</Pressable>
         <Pressable disabled={busy} onPress={() => void captureCurrent(current)} style={[styles.secondaryButton, { borderColor: colors.accent }]}><Text style={[styles.secondaryText, { color: colors.accent }]}>表示中の1枚を生成</Text></Pressable>
@@ -108,7 +113,8 @@ const styles = StyleSheet.create({
   modeButton: { flex: 1, minHeight: 38, borderWidth: 1, borderRadius: 10, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4 },
   modeText: { fontSize: 10, fontWeight: '800' },
   content: { padding: 20, paddingBottom: 40 },
-  captureFrame: { width: '100%', minHeight: 420, borderWidth: 1, borderRadius: 18, padding: 14, overflow: 'hidden' },
+  captureFrame: { width: '100%', minHeight: 0, borderWidth: 1, borderRadius: 18, padding: 14, overflow: 'hidden' },
+  captureFrameFixed: { aspectRatio: 900 / 1600, minHeight: 420 },
   stepRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 7, marginTop: 14 },
   stepChip: { minWidth: 86, minHeight: 36, paddingHorizontal: 8, borderWidth: 1, borderRadius: 10, flexDirection: 'row', alignItems: 'center', gap: 4 },
   stepText: { fontSize: 11, fontWeight: '900' },

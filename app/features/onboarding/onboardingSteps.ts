@@ -81,8 +81,8 @@ export const INTRO_CARDS: IntroCard[] = [
 
   {
     id: 'records',
-    title: 'できたことを、あとから振り返れる',
-    description: '完了したことや記録を残して、自分の積み重ねを振り返れます。',
+    title: 'できたことも、ちゃんと残る',
+    description: '完了したことを振り返って、今日の積み重ねを確認できます。',
   },
 ];
 
