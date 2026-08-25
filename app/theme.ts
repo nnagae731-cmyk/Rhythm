@@ -53,6 +53,7 @@ export type PremiumFeatureCardTheme = {
   text: string;
   mutedText: string;
   accent: string;
+  onAccent: string;
   border: string;
   showPatternDecor: boolean;
 };
@@ -191,6 +192,7 @@ export function getPremiumFeatureCardTheme(mode: DesignMode, chicPalette?: ChicT
       text: chicPalette.textPrimary,
       mutedText: chicPalette.textSecondary,
       accent: chicPalette.accent,
+      onAccent: chicPalette.onAccent,
       border: chicPalette.border,
       showPatternDecor: chicPattern !== 'plain',
     };
@@ -202,6 +204,7 @@ export function getPremiumFeatureCardTheme(mode: DesignMode, chicPalette?: ChicT
     text: tokens.colors.primaryText,
     mutedText: tokens.colors.secondaryText,
     accent: tokens.colors.primaryAccent,
+    onAccent: mode === 'dark' ? tokens.colors.screenBackground : '#FFFFFF',
     border: tokens.colors.border,
     showPatternDecor: false,
   };

@@ -19,7 +19,7 @@ function PremiumGate({ onPremium, designMode, chicPalette, chicPattern = 'plain'
       <Text style={[styles.premiumLock, { color: cardTheme.accent }]}>🔒</Text>
       <Text style={[styles.premiumTitle, { color: cardTheme.text }]}>Premium限定</Text>
       <Text style={[styles.premiumCopy, { color: cardTheme.mutedText }]}>詳細な分析はPremiumで利用できます</Text>
-      <Text style={[styles.premiumButton, { color: cardTheme.text, backgroundColor: cardTheme.accent }]}>Premiumで利用できます</Text>
+      <Text style={[styles.premiumButton, { color: cardTheme.onAccent, backgroundColor: cardTheme.accent }]}>Premiumで利用できます</Text>
     </Pressable>
   );
 }
