@@ -168,7 +168,7 @@ export function TaskModal({ visible, task, templates, savedTemplates, designMode
     setDeadlineNotify(false);
   };
 
-  const savedTemplateContent = !task && (hasPremiumAccess(planTier, 'saved_task_templates') ? <View style={styles.savedTemplatePicker}><Text style={styles.templateGroupLabel}>マイひな型</Text>{savedTemplates.length === 0 ? <Text style={styles.savedTemplateEmpty}>タスクの「•••」から設定ごと保存できます。</Text> : <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.savedTemplateChips}>{savedTemplates.map((template) => <Pressable key={template.id} style={styles.savedTemplateChip} onPress={() => applySavedTemplate(template)}><Text numberOfLines={1} style={styles.savedTemplateChipTitle}>{template.title}</Text><Text numberOfLines={2} style={styles.savedTemplateChipCopy}>{summarizePremiumTaskTemplate(template)}</Text><Text style={styles.savedTemplateChoose}>選ぶ ›</Text></Pressable>)}</ScrollView>}</View> : <Pressable style={styles.savedTemplateLocked} onPress={() => onPremium('templates')}><View style={{ flex: 1 }}><Text style={styles.savedTemplateLockedTitle}>マイひな型</Text><Text style={styles.savedTemplateLockedCopy}>一度作った設定を、次からそのまま使う</Text></View><Text style={styles.taskTemplateSavePremium}>Premium機能</Text></Pressable>);
+  const savedTemplateContent = !task && (hasPremiumAccess(planTier, 'saved_task_templates') ? <View style={styles.savedTemplatePicker}><Text style={styles.templateGroupLabel}>マイひな型</Text>{savedTemplates.length === 0 ? <Text style={styles.savedTemplateEmpty}>タスクの「•••」から設定ごと保存できます。</Text> : readOnlyPreview ? <View style={{ gap: 8 }}>{savedTemplates.map((template) => <Pressable key={template.id} style={[styles.savedTemplateChip, { width: '100%' }]} onPress={() => applySavedTemplate(template)}><Text numberOfLines={1} style={styles.savedTemplateChipTitle}>{template.title}</Text><Text numberOfLines={2} style={styles.savedTemplateChipCopy}>{summarizePremiumTaskTemplate(template)}</Text><Text style={styles.savedTemplateChoose}>選ぶ ›</Text></Pressable>)}</View> : <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.savedTemplateChips}>{savedTemplates.map((template) => <Pressable key={template.id} style={styles.savedTemplateChip} onPress={() => applySavedTemplate(template)}><Text numberOfLines={1} style={styles.savedTemplateChipTitle}>{template.title}</Text><Text numberOfLines={2} style={styles.savedTemplateChipCopy}>{summarizePremiumTaskTemplate(template)}</Text><Text style={styles.savedTemplateChoose}>選ぶ ›</Text></Pressable>)}</ScrollView>}</View> : <Pressable style={styles.savedTemplateLocked} onPress={() => onPremium('templates')}><View style={{ flex: 1 }}><Text style={styles.savedTemplateLockedTitle}>マイひな型</Text><Text style={styles.savedTemplateLockedCopy}>一度作った設定を、次からそのまま使う</Text></View><Text style={styles.taskTemplateSavePremium}>Premium機能</Text></Pressable>);
 
   const closeForm = () => {
     setShowScheduledDatePicker(false);
@@ -209,12 +209,12 @@ export function TaskModal({ visible, task, templates, savedTemplates, designMode
     setShowDeadlineTimePicker((value) => !value);
   };
 
-  if (readOnlyPreview && previewSection === 'savedTemplates') return <View style={[styles.premiumPreview, { backgroundColor: theme.colors.surface, padding: 14 }]} pointerEvents="none"><Text style={[styles.modalTitle, designMode === 'dark' && styles.modalTitleDark]}>マイひな型</Text>{savedTemplateContent}</View>;
+  if (readOnlyPreview && previewSection === 'savedTemplates') return <View style={[styles.premiumPreview, { backgroundColor: theme.colors.surface, padding: 14 }]} pointerEvents="none">{savedTemplateContent}</View>;
 
   const modalContent = (
-      <KeyboardAvoidingView style={styles.keyboardView} behavior={Platform.OS === 'ios' ? 'padding' : 'height'} keyboardVerticalOffset={8}>
-      <Pressable style={styles.modalBackdrop} onPress={closeForm}>
-        <Pressable style={[styles.modalSheet, { backgroundColor: theme.colors.screenBackground, borderRadius: theme.radius.modal }]} onPress={(event) => event.stopPropagation()}>
+      <KeyboardAvoidingView style={readOnlyPreview ? { width: '100%' } : styles.keyboardView} behavior={Platform.OS === 'ios' ? 'padding' : 'height'} keyboardVerticalOffset={8}>
+      <Pressable style={[styles.modalBackdrop, readOnlyPreview && { flex: 0, backgroundColor: 'transparent', padding: 0 }]} onPress={closeForm}>
+        <Pressable style={[styles.modalSheet, { backgroundColor: theme.colors.screenBackground, borderRadius: theme.radius.modal }, readOnlyPreview && { maxHeight: undefined, borderRadius: 14 }]} onPress={(event) => event.stopPropagation()}>
           <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false} contentContainerStyle={[styles.modalScroll, isDark && styles.taskModalScrollDark]}>
           <View style={styles.modalHandle} />
           <Text style={[styles.modalTitle, designMode === 'dark' && styles.modalTitleDark]}>{task ? 'タスクを編集' : '新しいタスク'}</Text>
