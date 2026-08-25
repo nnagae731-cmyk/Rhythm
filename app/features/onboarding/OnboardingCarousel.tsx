@@ -35,14 +35,13 @@ function IntroPreview({
 }) {
   return (
     <View style={styles.preview}>
-      <Text style={styles.previewHeader}>{card.id === 'quickTodo' ? 'やること追加' : card.id === 'today' ? '今日' : card.id === 'schedule' ? '予定' : card.id === 'focus' ? '集中' : card.id === 'records' ? '記録' : card.id === 'wish' ? '叶えたいこと' : 'デザイン'}</Text>
+      <Text style={styles.previewHeader}>{card.id === 'quickTodo' ? 'やること追加' : card.id === 'today' ? '今日' : card.id === 'schedule' ? '予定' : card.id === 'focus' ? '集中' : card.id === 'recovery' ? '立て直し' : '記録'}</Text>
       {card.id === 'quickTodo' && <><View style={styles.previewInput}><Text style={styles.previewInputText}>明日15時に美容院</Text><Text style={styles.previewInputHint}>日時を読み取りました</Text></View><View style={styles.previewButton}><Text style={styles.previewButtonText}>追加する</Text></View></>}
       {card.id === 'today' && <><View style={styles.previewHero}><Text style={styles.previewLabel}>今はこれ</Text><Text style={styles.previewTask}>資料をまとめる</Text><Text style={styles.previewMeta}>完了 2　残り 1</Text></View><View style={styles.previewTabs}><Text style={styles.previewTabActive}>今やる 1</Text><Text style={styles.previewTab}>あとで 2</Text><Text style={styles.previewTab}>待ち 0</Text></View></>}
       {card.id === 'schedule' && <View style={styles.previewTimeline}>{[['09:00', '朝会'], ['14:00', '資料提出'], ['18:30', '帰宅']].map(([time, title]) => <View key={time} style={styles.previewTimelineRow}><Text style={styles.previewTime}>{time}</Text><View style={styles.previewTimelineCard}><Text style={styles.previewTimelineTitle}>{title}</Text><Text style={styles.previewTimelineMeta}>予定表の予定</Text></View></View>)}</View>}
       {card.id === 'focus' && <><View style={styles.previewFocus}><Text style={styles.previewFocusTime}>25:00</Text><Text style={styles.previewFocusTask}>資料をまとめる</Text><View style={styles.previewButton}><Text style={styles.previewButtonText}>スタート</Text></View></View></>}
+      {card.id === 'recovery' && <View style={styles.previewRecovery}><Text style={styles.previewLabel}>予定が崩れても</Text><Text style={styles.previewRecoveryTitle}>ここから立て直す</Text><Text style={styles.previewRecoveryText}>今の状況から、次にできることを選べます。</Text><View style={styles.previewRecoveryActions}><Text style={styles.previewRecoveryAction}>今から出発</Text><Text style={styles.previewRecoveryAction}>予定を変更</Text><Text style={styles.previewRecoveryAction}>連絡する</Text></View></View>}
       {card.id === 'records' && <><View style={styles.previewCalendar}><Text style={styles.previewCalendarTitle}>2026年 8月</Text><View style={styles.previewCalendarRow}>{['18', '19', '20', '21', '22', '23'].map((day) => <Text key={day} style={day === '23' ? styles.previewCalendarDayActive : styles.previewCalendarDay}>{day}</Text>)}</View></View><View style={styles.previewRecord}><Text style={styles.previewRecordTitle}>今日できたこと</Text><Text style={styles.previewRecordText}>写真・ひとこと・メモ</Text></View></>}
-      {card.id === 'wish' && <><View style={styles.previewWish}><Text style={styles.previewLabel}>今月の目標</Text><Text style={styles.previewWishTitle}>自分のペースを整える</Text></View><View style={styles.previewWish}><Text style={styles.previewLabel}>叶えたいこと</Text><Text style={styles.previewWishTitle}>週に1冊、本を読む</Text></View><View style={styles.previewWishLocked}><Text style={styles.previewLabel}>🔒 叶えるための行動</Text><Text style={styles.previewWishMeta}>Premiumで利用できます</Text></View><View style={styles.previewWishLocked}><Text style={styles.previewLabel}>🔒 今月の進捗</Text><Text style={styles.previewWishMeta}>Premiumで確認</Text></View></>}
-      {card.id === 'customize' && <><View style={styles.previewDesignOptions}>{['Mono', 'Design', 'Photo'].map((label, index) => <View key={label} style={[styles.previewDesignOption, index === 1 && styles.previewDesignOptionActive]}><Text style={styles.previewDesignText}>{label}</Text></View>)}</View><Text style={styles.previewSub}>好きな見た目を選択</Text></>}
     </View>
   );
 }
@@ -326,6 +325,11 @@ const styles = StyleSheet.create({
   previewFocus: { alignItems: 'center', borderRadius: 15, backgroundColor: theme.colors.surface, borderWidth: 1, borderColor: theme.colors.border, padding: 13 },
   previewFocusTime: { color: theme.colors.primaryText, fontSize: 30, fontWeight: '900', letterSpacing: -1 },
   previewFocusTask: { color: theme.colors.secondaryText, fontSize: 11, marginTop: 2 },
+  previewRecovery: { borderRadius: 15, backgroundColor: theme.colors.surface, borderWidth: 1, borderColor: theme.colors.border, padding: 14 },
+  previewRecoveryTitle: { color: theme.colors.primaryText, fontSize: 18, fontWeight: '900', marginTop: 5 },
+  previewRecoveryText: { color: theme.colors.secondaryText, fontSize: 11, lineHeight: 17, marginTop: 7 },
+  previewRecoveryActions: { flexDirection: 'row', gap: 6, marginTop: 12 },
+  previewRecoveryAction: { flex: 1, borderRadius: 9, borderWidth: 1, borderColor: theme.colors.border, color: theme.colors.primaryAccent, fontSize: 10, fontWeight: '800', paddingVertical: 8, textAlign: 'center' },
   previewCalendar: { borderRadius: 12, borderWidth: 1, borderColor: theme.colors.border, backgroundColor: theme.colors.surface, padding: 11 },
   previewCalendarTitle: { color: theme.colors.primaryText, fontSize: 12, fontWeight: '900' },
   previewCalendarRow: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 10 },

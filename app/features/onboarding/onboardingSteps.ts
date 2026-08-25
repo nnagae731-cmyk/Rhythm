@@ -31,9 +31,8 @@ export type IntroCardId =
   | 'today'
   | 'schedule'
   | 'focus'
-  | 'records'
-  | 'wish'
-  | 'customize';
+  | 'recovery'
+  | 'records';
 
 export type OnboardingStep = {
   id: OnboardingFeatureId;
@@ -53,7 +52,7 @@ export const INTRO_CARDS: IntroCard[] = [
   {
     id: 'quickTodo',
     title: '思いついたら、すぐ追加',
-    description: 'やることを、まず1つ残してみましょう。細かい使い方は、実際に使う時に案内します。',
+    description: 'やることを思いついた時に、すぐ残せます。',
   },
 
   {
@@ -65,7 +64,7 @@ export const INTRO_CARDS: IntroCard[] = [
   {
     id: 'schedule',
     title: '予定には、間に合うように',
-    description: '準備や移動も含めて、次に動くタイミングを確認できます。',
+    description: '準備や移動も含めて動くタイミングを確認できます。',
   },
 
   {
@@ -75,21 +74,15 @@ export const INTRO_CARDS: IntroCard[] = [
   },
 
   {
+    id: 'recovery',
+    title: '崩れても、ここから立て直せる',
+    description: '遅れた時も、今の状況から次にできることを選べます。',
+  },
+
+  {
     id: 'records',
-    title: 'できたことを残せる',
-    description: '行動や写真、ひとことをあとから振り返れます。',
-  },
-
-  {
-    id: 'wish',
-    title: 'やりたいことを、今日の一歩へ',
-    description: '目標だけで終わらず、叶えるための行動につなげられます。',
-  },
-
-  {
-    id: 'customize',
-    title: 'Rhythmを、自分らしく',
-    description: '次に、あなたの好きな見た目を選びましょう。',
+    title: 'できたことを、あとから振り返れる',
+    description: '完了したことや記録を残して、自分の積み重ねを振り返れます。',
   },
 ];
 
