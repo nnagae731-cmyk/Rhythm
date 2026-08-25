@@ -28,6 +28,8 @@ export function HomeScreen({
   onAdd,
   onOpenBulkAdd,
   onOpenFocus,
+  todayReviewExists = false,
+  onOpenTodayRecord,
   onOpenSchedule,
   onOpenCompleted,
   onQuickAdd,
@@ -72,6 +74,8 @@ export function HomeScreen({
   onAdd: () => void;
   onOpenBulkAdd: () => void;
   onOpenFocus: () => void;
+  todayReviewExists?: boolean;
+  onOpenTodayRecord?: () => void;
   onOpenSchedule?: () => void;
   onOpenCompleted?: () => void;
   onQuickAdd: (title: string, category: Category, priority: Priority, scheduledDate?: string, scheduledTime?: string, endAt?: string, isRoutine?: boolean, deadlineDate?: string, deadlineTime?: string, deadlineNotifyBefore?: number, remindDate?: string, remindAt?: string, repeatRule?: RepeatRule, subtasks?: Subtask[]) => void;
@@ -153,6 +157,13 @@ export function HomeScreen({
         {nextScheduledTask ? <Pressable onPress={onOpenSchedule} style={{ flexDirection: 'row', alignItems: 'center', marginTop: 5 }}><Text style={{ color: focusShortcutText, fontSize: 14, fontWeight: '800' }}>{nextScheduledTask.scheduledTime}　{nextScheduledTask.title}</Text><Text style={{ marginLeft: 'auto', color: focusShortcutAccent, fontSize: 20 }}>›</Text></Pressable> : <Text style={{ color: focusShortcutMuted, fontSize: 13, marginTop: 5 }}>今日の次の予定はありません</Text>}
       </View>
       <Pressable onPress={() => { setHomeTab('list'); setTomorrowOpen(true); }} style={{ minHeight: 44, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 4, marginTop: 8 }}><Text style={{ color: focusShortcutText, fontSize: 13, fontWeight: '800' }}>明日の予定を見る</Text><Text style={{ color: focusShortcutAccent, fontSize: 20 }}>›</Text></Pressable>
+      <Pressable disabled={!onOpenTodayRecord} onPress={onOpenTodayRecord} style={{ minHeight: 48, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 4, marginTop: 8, borderTopWidth: 1, borderTopColor: focusShortcutBorder }}>
+        <View style={{ flex: 1 }}>
+          <Text style={{ color: focusShortcutText, fontSize: 13, fontWeight: '800' }}>{todayReviewExists ? '今日の記録を編集' : '今日を記録'}</Text>
+          <Text style={{ color: focusShortcutMuted, fontSize: 12, marginTop: 3 }}>{todayReviewExists ? '今日残した内容を確認・編集できます' : '写真やひとことを残す'}</Text>
+        </View>
+        <Text style={{ color: focusShortcutAccent, fontSize: 20 }}>›</Text>
+      </Pressable>
       </>}
       {homeTab === 'list' && <>
       {showTodoOnboarding && (
