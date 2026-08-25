@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { Alert, Modal, Pressable, ScrollView, Switch, Text, TextInput, View } from 'react-native';
-import { ChicThemePalette, DesignMode } from '../theme';
+import { ChicThemePalette, DesignMode, getThemeTokens } from '../theme';
 import { PlanTier } from '../premiumAccess';
 import { PremiumGuideFeatureId } from '../premiumGuide';
 import { TravelAppCategory, TravelAppConfig, TravelAppSettings, getEnabledTravelApps, normalizeTravelAppSettings, openShortcutsSetup, openTravelApp, validateTravelAppUrl } from '../features/travel/travelApps';
@@ -24,9 +24,10 @@ export function TravelAppsSettingsCard({ settings, onChange, planTier, designMod
   const [draft, setDraft] = useState(EMPTY_DRAFT);
   const isPremium = planTier === 'premium';
   const isDark = designMode === 'dark';
+  const base = getThemeTokens(designMode, chicPalette?.id ?? 'cool').colors;
   const colors = chicPalette && (designMode === 'chic' || designMode === 'photo')
     ? { surface: chicPalette.cardSurface, soft: chicPalette.cardTint, border: chicPalette.border, text: chicPalette.textPrimary, muted: chicPalette.textSecondary, accent: chicPalette.accent, onAccent: chicPalette.onAccent }
-    : { surface: isDark ? '#20293A' : '#FFFFFF', soft: isDark ? '#26365F' : '#F6F4F8', border: isDark ? '#40506A' : '#E7E2EA', text: isDark ? '#F4F7FC' : '#302C35', muted: isDark ? '#B4C0D4' : '#756D7B', accent: isDark ? '#8EA6FF' : '#7559E8', onAccent: '#FFFFFF' };
+    : { surface: base.surface, soft: base.secondarySurface, border: base.border, text: base.primaryText, muted: base.secondaryText, accent: base.primaryAccent, onAccent: designMode === 'dark' ? base.screenBackground : '#FFFFFF' };
   const updateApp = (id: string, update: Partial<TravelAppConfig>) => onChange(normalizeTravelAppSettings({ ...normalized, apps: normalized.apps.map((app) => app.id === id ? { ...app, ...update } : app) }));
   const setDefault = (app: TravelAppConfig) => onChange({ ...normalized, defaultTaxiAppId: app.category === 'taxi' ? app.id : normalized.defaultTaxiAppId, defaultTransitAppId: app.category === 'transit' ? app.id : normalized.defaultTransitAppId, apps: normalized.apps.map((item) => item.id === app.id ? { ...item, enabled: true, isDefault: true } : item) });
   const startEditor = (app?: TravelAppConfig) => {

@@ -126,6 +126,28 @@ export function PremiumModal({ visible, initialFeatureId, designMode, chicPalett
   const primaryText = designMode === 'chic' && chicPalette ? chicPalette.textPrimary : theme.colors.primaryText;
   const secondaryText = designMode === 'chic' && chicPalette ? chicPalette.textSecondary : theme.colors.secondaryText;
   const accentText = designMode === 'chic' && chicPalette ? chicPalette.onAccent : designMode === 'dark' ? theme.colors.screenBackground : '#FFFFFF';
+  const previewStyles = {
+    ...styles,
+    ...(designMode === 'dark' ? darkPreviewStyleOverrides : {}),
+    premiumPreview: { ...styles.premiumPreview, backgroundColor: surface, borderColor: theme.colors.border },
+    previewImageLabel: { ...styles.previewImageLabel, color: secondaryText },
+    previewTime: { ...styles.previewTime, color: primaryText },
+    previewScheduleTitle: { ...styles.previewScheduleTitle, color: primaryText },
+    previewSource: { ...styles.previewSource, color: primaryText, backgroundColor: surfaceSoft },
+    previewSourceRhythm: { ...styles.previewSourceRhythm, color: accentText, backgroundColor: accent },
+    previewFlowText: { ...styles.previewFlowText, color: secondaryText },
+    previewArrow: { ...styles.previewArrow, color: secondaryText },
+    previewFlowButton: { ...styles.previewFlowButton, color: accentText, backgroundColor: accent },
+    previewMetricLabel: { ...styles.previewMetricLabel, color: secondaryText },
+    previewMetricBig: { ...styles.previewMetricBig, color: accent },
+    previewRecordCount: { ...styles.previewRecordCount, color: secondaryText },
+    previewTemplateTitle: { ...styles.previewTemplateTitle, color: primaryText },
+    previewTemplateMeta: { ...styles.previewTemplateMeta, color: secondaryText },
+    previewTemplateChoose: { ...styles.previewTemplateChoose, color: accent },
+    previewTemplateReady: { ...styles.previewTemplateReady, color: secondaryText },
+    previewCompareTag: { ...styles.previewCompareTag, color: secondaryText },
+    previewRecoveryText: { ...styles.previewRecoveryText, color: primaryText },
+  };
   const initialIndex = Math.max(0, PREMIUM_GUIDE_FEATURES.findIndex((feature) => feature.id === initialFeatureId));
   const [selectedFeatureId, setSelectedFeatureId] = useState<PremiumGuideFeatureId>(initialFeatureId);
   const featurePickerRef = useRef<ScrollView>(null);

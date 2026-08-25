@@ -64,10 +64,6 @@ function patternSymbol(pattern: ChicPattern) {
   return '✿';
 }
 
-function sectionText(mode: DesignMode, chic: string, minimal: string) {
-  return mode === 'minimal' ? minimal : chic;
-}
-
 export function WishScreen({ designMode: rawDesignMode, chicPattern, chicPalette, monthLabel, state, onSaveState, onCreateTaskFromAction, canCreateWish = true, wishRewardProgress, onRequestWishReward, onWishCreated, affirmations, affirmationCustomTexts, planTier, onSaveAffirmation, onDeleteAffirmation, onSaveAffirmationCustomText, onDeleteAffirmationCustomText, canCreateWishAction = true, monthlyGoalUnlocked = false, monthlyGoalRewardProgress, onRequestMonthlyGoalReward, onPremium, onBack }: WishScreenProps) {
   // Mono DarkはMono Lightと同じレイアウトを使い、色だけを反転する。
   const designMode: 'minimal' | 'chic' = rawDesignMode === 'dark' || rawDesignMode === 'photo' ? 'minimal' : rawDesignMode;
@@ -527,13 +523,16 @@ function SectionCard({
   showCRibbon?: boolean;
   children: React.ReactNode;
 }) {
+  const tokens = designMode === 'chic' && chicPalette
+    ? { primary: chicPalette.textPrimary, secondary: chicPalette.textSecondary }
+    : (() => { const colors = getThemeTokens(designMode).colors; return { primary: colors.primaryText, secondary: colors.secondaryText }; })();
   return (
     <View style={[styles.sectionCard, designMode === 'minimal' ? styles.sectionCardMinimal : styles.sectionCardChic, dark && styles.sectionCardDark, designMode === 'chic' && chicPalette && { backgroundColor: chicPalette.cardSurface, borderColor: chicPalette.border, shadowColor: chicPalette.accent }]}>
       {showBRibbon && <BThemeRibbonDecoration journal={title.includes('九☆')} />}
       {showCRibbon && <CThemeRibbonDecoration journal={title.includes('九☆')} />}
       <View style={styles.sectionHeader}>
-        <Text style={[styles.sectionTitle, { color: sectionText(designMode, '#392F34', '#171715') }, dark && styles.sectionTitleDark, designMode === 'chic' && chicPalette && { color: chicPalette.textPrimary }]}>{title}</Text>
-        {subtitle ? <Text style={[styles.sectionSubtitle, { color: sectionText(designMode, '#8B7B82', '#777772') }, dark && styles.sectionSubtitleDark, designMode === 'chic' && chicPalette && { color: chicPalette.textSecondary }]}>{subtitle}</Text> : null}
+        <Text style={[styles.sectionTitle, { color: tokens.primary }, dark && styles.sectionTitleDark]}>{title}</Text>
+        {subtitle ? <Text style={[styles.sectionSubtitle, { color: tokens.secondary }, dark && styles.sectionSubtitleDark]}>{subtitle}</Text> : null}
       </View>
       {children}
     </View>

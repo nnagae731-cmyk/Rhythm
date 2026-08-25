@@ -642,19 +642,22 @@ export default function App() {
   const getThemedThemeTokens = React.useCallback((mode: DesignMode) => getThemeTokens(mode, mode === 'chic' ? chicPalette.id : chicCheckColor), [chicCheckColor, chicPalette]);
   // Design uses one palette for every surface. Keep the legacy color shape for
   // components that still consume the shared app colors object.
-  const themedColors = useMemo(() => uiDesignMode === 'chic' ? {
-    ...colors,
-    background: chicPalette.background,
-    surface: chicPalette.cardSurface,
-    ink: chicPalette.textPrimary,
-    muted: chicPalette.textSecondary,
-    violet: chicPalette.accent,
-    violetSoft: chicPalette.accentSoft,
-    coral: chicPalette.accent,
-    coralSoft: chicPalette.cardTint,
-    mint: chicPalette.accentSoft,
-    line: chicPalette.border,
-  } : colors, [uiDesignMode, chicPalette]);
+  const themedColors = useMemo(() => {
+    const tokens = getThemeTokens(uiDesignMode, uiDesignMode === 'chic' ? chicPalette.id : chicCheckColor).colors;
+    return {
+      ...colors,
+      background: tokens.screenBackground,
+      surface: tokens.surface,
+      ink: tokens.primaryText,
+      muted: tokens.secondaryText,
+      violet: tokens.primaryAccent,
+      violetSoft: tokens.softAccent,
+      coral: tokens.danger,
+      coralSoft: tokens.softAccent,
+      mint: tokens.success,
+      line: tokens.border,
+    };
+  }, [chicCheckColor, chicPalette.id, uiDesignMode]);
   const currentWishMonthKey = wishMonthKey(now);
   const getRewardedPromptProgress = React.useCallback((featureId: RewardedFeatureId) => {
     const required = getRequiredAds(featureId);
@@ -2964,7 +2967,7 @@ export default function App() {
               onDeleteSavedTemplate={deleteSavedTaskTemplate}
               onOpenCaptureStudio={__DEV__ ? () => setCaptureStudioOpen(true) : undefined}
                           styles={styles}
-              helpers={{ colors, getThemeTokens: getThemedThemeTokens, getChicPatternVisual, hasPremiumAccess, getChicCheckColor, chicCheckColorChoices, countdownToClock, getUrgencyStatus, getNextBestAction, designModes, completionIcons, summarizePremiumTaskTemplate }}
+              helpers={{ colors: themedColors, getThemeTokens: getThemedThemeTokens, getChicPatternVisual, hasPremiumAccess, getChicCheckColor, chicCheckColorChoices, countdownToClock, getUrgencyStatus, getNextBestAction, designModes, completionIcons, summarizePremiumTaskTemplate }}
               components={{ BThemeRibbonDecoration, CThemeRibbonDecoration, ChicPatternDecor, ChicPatternSelector, SettingsDisclosure, NotificationManagerCard }}
             />
           )}
@@ -3141,7 +3144,7 @@ export default function App() {
           startDesignTrial(pattern);
         }
       }} />
-      <DesignTrialExpiredModal visible={designTrialNoticeOpen} onClose={() => { pendingDesignApplyRef.current = undefined; setDesignTrialNoticeOpen(false); designTrialExpirySeenRef.current = rewardedAccess.premiumDesignTrial.expiresAt; }} onPremium={() => { pendingDesignApplyRef.current = undefined; setDesignTrialNoticeOpen(false); openPremiumFeature('photo_design'); }} onReward={() => void requestDesignReward()} />
+      <DesignTrialExpiredModal visible={designTrialNoticeOpen} designMode={uiDesignMode} chicPalette={chicPalette} onClose={() => { pendingDesignApplyRef.current = undefined; setDesignTrialNoticeOpen(false); designTrialExpirySeenRef.current = rewardedAccess.premiumDesignTrial.expiresAt; }} onPremium={() => { pendingDesignApplyRef.current = undefined; setDesignTrialNoticeOpen(false); openPremiumFeature('photo_design'); }} onReward={() => void requestDesignReward()} />
       <TopImageCropModal visible={Boolean(pendingTopPhoto)} uri={pendingTopPhoto?.originalUri} sourceWidth={pendingTopPhoto?.sourceWidth ?? 1} sourceHeight={pendingTopPhoto?.sourceHeight ?? 1} initialRect={pendingTopPhoto?.cropRect} styles={styles} onCancel={() => setPendingTopPhoto(undefined)} onReselect={() => { if (pendingTopPhoto) void pickPhotoTheme(pendingTopPhoto.target); }} onUse={(cropRect) => { void applyPendingTopPhoto(cropRect); }} />
       <OnboardingCarousel
   visible={
@@ -3190,6 +3193,12 @@ function DesignPreviewModal({ visible, initialPattern, initialMode = 'chic', chi
   }, [isFreeFloralSoftPreview, visible]);
   const palette = getDesignCheckThemeTokens(chicCheckColor);
   const previewVisual = getChicPatternVisual(pattern, palette);
+  const previewTokens = mode === 'chic'
+    ? getDesignPatternThemeTokens(pattern, chicCheckColor)
+    : undefined;
+  const uiPreview = mode === 'chic' && previewTokens
+    ? { background: previewTokens.background, surface: previewTokens.cardSurface, soft: previewTokens.accentSoft, border: previewTokens.border, text: previewTokens.textPrimary, muted: previewTokens.textSecondary, accent: previewTokens.accent, accentStrong: previewTokens.accentStrong, onAccent: previewTokens.onAccent }
+    : (() => { const colors = getThemeTokens(mode).colors; return { background: colors.screenBackground, surface: colors.surface, soft: colors.softAccent, border: colors.border, text: colors.primaryText, muted: colors.secondaryText, accent: colors.primaryAccent, accentStrong: colors.primaryAccent, onAccent: mode === 'dark' ? colors.screenBackground : '#FFFFFF' }; })();
   const previewPatterns: { id: ChicPattern; label: string }[] = [
     { id: 'plain', label: 'プレーン' },
     { id: 'floral', label: designFloralAssets.floral.label },
@@ -3204,18 +3213,18 @@ function DesignPreviewModal({ visible, initialPattern, initialMode = 'chic', chi
   return <>
     <Modal visible transparent animationType="slide" onRequestClose={onClose}>
     <Pressable style={designPreviewStyles.backdrop} onPress={onClose}>
-      <Pressable style={designPreviewStyles.sheet} onPress={(event) => event.stopPropagation()}>
-        <View style={designPreviewStyles.header}><View><Text style={designPreviewStyles.eyebrow}>DESIGN PREVIEW</Text><Text style={designPreviewStyles.title}>見た目を試してみよう</Text></View><Pressable onPress={onClose} hitSlop={10}><Text style={designPreviewStyles.close}>×</Text></Pressable></View>
-        <Text style={designPreviewStyles.copy}>実際のRhythm画面で、Mono・Design・Photoの見え方を確認できます。</Text>
+      <Pressable style={[designPreviewStyles.sheet, { backgroundColor: uiPreview.surface, borderColor: uiPreview.border }]} onPress={(event) => event.stopPropagation()}>
+        <View style={designPreviewStyles.header}><View><Text style={[designPreviewStyles.eyebrow, { color: uiPreview.accent }]}>DESIGN PREVIEW</Text><Text style={[designPreviewStyles.title, { color: uiPreview.text }]}>見た目を試してみよう</Text></View><Pressable onPress={onClose} hitSlop={10}><Text style={[designPreviewStyles.close, { color: uiPreview.muted }]}>×</Text></Pressable></View>
+        <Text style={[designPreviewStyles.copy, { color: uiPreview.muted }]}>実際のRhythm画面で、Mono・Design・Photoの見え方を確認できます。</Text>
         <View style={designPreviewStyles.modeRow}>
-          {([{ id: 'minimal', label: 'Mono Light' }, { id: 'dark', label: 'Mono Dark' }, { id: 'chic', label: 'Design' }, { id: 'photo', label: 'Photo' }] as { id: DesignPreviewMode; label: string }[]).map((item) => <Pressable key={item.id} style={[designPreviewStyles.modeChip, mode === item.id && designPreviewStyles.modeChipActive]} onPress={() => setMode(item.id)}><Text style={[designPreviewStyles.modeChipText, mode === item.id && designPreviewStyles.modeChipTextActive]}>{item.label}</Text></Pressable>)}
+          {([{ id: 'minimal', label: 'Mono Light' }, { id: 'dark', label: 'Mono Dark' }, { id: 'chic', label: 'Design' }, { id: 'photo', label: 'Photo' }] as { id: DesignPreviewMode; label: string }[]).map((item) => <Pressable key={item.id} style={[designPreviewStyles.modeChip, { borderColor: uiPreview.border }, mode === item.id && { borderColor: uiPreview.accent, backgroundColor: uiPreview.soft }]} onPress={() => setMode(item.id)}><Text style={[designPreviewStyles.modeChipText, { color: uiPreview.muted }, mode === item.id && { color: uiPreview.accentStrong }]}>{item.label}</Text></Pressable>)}
         </View>
         {mode === 'chic' && <View style={designPreviewStyles.patternRow}>{previewPatterns.map((item) => <Pressable key={item.id} style={[designPreviewStyles.patternChip, pattern === item.id && { borderColor: palette.accent, backgroundColor: palette.accentSoft }]} onPress={() => setPattern(item.id)}><View style={[designPreviewStyles.patternDot, { backgroundColor: item.id === 'plain' ? palette.accent : getChicPatternVisual(item.id, palette).accent }]} /><Text numberOfLines={1} style={[designPreviewStyles.patternText, pattern === item.id && { color: palette.accentStrong }]}>{item.label}</Text></Pressable>)}</View>}
-        <View style={[designPreviewStyles.preview, { backgroundColor: mode === 'dark' ? '#181F2E' : mode === 'minimal' ? '#F8F5EF' : mode === 'photo' ? '#202020' : previewVisual.background }]}>
+        <View style={[designPreviewStyles.preview, { backgroundColor: mode === 'photo' ? '#202020' : uiPreview.background, borderColor: uiPreview.border }]}>
           {isFreeFloralSoftPreview ? <View style={designPreviewStyles.floralSoftPreviewCard}>
-            {floralSoftPreviewStatus !== 'loaded' && <View style={[StyleSheet.absoluteFillObject, designPreviewStyles.floralSoftPreviewFallback]}>{floralSoftPreviewStatus === 'error' ? <Text style={designPreviewStyles.floralSoftPreviewError}>プレビューを表示できませんでした</Text> : <ActivityIndicator color={previewVisual.accent} />}</View>}
+            {floralSoftPreviewStatus !== 'loaded' && <View style={[StyleSheet.absoluteFillObject, designPreviewStyles.floralSoftPreviewFallback, { backgroundColor: uiPreview.soft }]}>{floralSoftPreviewStatus === 'error' ? <Text style={[designPreviewStyles.floralSoftPreviewError, { color: uiPreview.muted }]}>プレビューを表示できませんでした</Text> : <ActivityIndicator color={uiPreview.accent} />}</View>}
             <Image source={designFloralAssets.floralSoft.previewSource ?? designFloralAssets.floralSoft.source} resizeMode="contain" onLoadStart={() => setFloralSoftPreviewStatus('loading')} onLoad={() => setFloralSoftPreviewStatus('loaded')} onError={() => setFloralSoftPreviewStatus('error')} style={[designPreviewStyles.floralSoftPreviewImage, floralSoftPreviewStatus !== 'loaded' && { opacity: 0 }]} />
-            <View style={designPreviewStyles.floralSoftPreviewNotice}><Text style={designPreviewStyles.floralSoftPreviewName}>花柄2</Text><Text style={designPreviewStyles.floralSoftPreviewPremium}>Premium限定デザイン</Text><Text style={designPreviewStyles.floralSoftPreviewCopy}>このデザインを使うにはPremium登録が必要です</Text></View>
+            <View style={[designPreviewStyles.floralSoftPreviewNotice, { backgroundColor: uiPreview.surface, borderTopColor: uiPreview.border }]}><Text style={[designPreviewStyles.floralSoftPreviewName, { color: uiPreview.text }]}>花柄2</Text><Text style={[designPreviewStyles.floralSoftPreviewPremium, { color: uiPreview.accent }]}>Premium限定デザイン</Text><Text style={[designPreviewStyles.floralSoftPreviewCopy, { color: uiPreview.muted }]}>このデザインを使うにはPremium登録が必要です</Text></View>
           </View> : <>
             {mode === 'chic' && <View pointerEvents="none" style={StyleSheet.absoluteFillObject}><ChicPatternDecor pattern={pattern} accent={previewVisual.accent} warm={previewVisual.warm} checkColor={chicCheckColor} preview previewTopCrop={pattern === 'floralSoft'} /></View>}
           {mode === 'photo' && photoUri ? <Image source={{ uri: photoUri }} resizeMode="cover" style={designPreviewStyles.photoBackground} /> : null}
@@ -3229,16 +3238,17 @@ function DesignPreviewModal({ visible, initialPattern, initialMode = 'chic', chi
           {mode === 'photo' && !photoUri && <Text style={designPreviewStyles.photoHint}>写真を選ぶと、ここに試着表示されます。選択だけでは保存されません。</Text>}
           </>}
         </View>
-        {mode === 'photo' && <Pressable style={designPreviewStyles.secondaryButton} onPress={onPickPhoto}><Text style={designPreviewStyles.secondaryButtonText}>{photoUri ? '写真を選び直す' : '写真で試す'}</Text></Pressable>}
-        <View style={designPreviewStyles.actions}><Pressable style={designPreviewStyles.secondaryButton} onPress={onClose}><Text style={designPreviewStyles.secondaryButtonText}>閉じる</Text></Pressable><Pressable style={designPreviewStyles.primaryButton} onPress={() => { if (mode === 'photo' && !photoUri) { onPickPhoto(); return; } onUse(mode, mode === 'chic' ? pattern : undefined); }}><Text style={designPreviewStyles.primaryButtonText}>{mode === 'photo' ? (photoUri ? 'この写真を使う' : '写真で試す') : isFreeFloralSoftPreview ? 'Premiumで使う' : 'このデザインを使う'}</Text></Pressable></View>
+        {mode === 'photo' && <Pressable style={[designPreviewStyles.secondaryButton, { borderColor: uiPreview.border, backgroundColor: uiPreview.surface }]} onPress={onPickPhoto}><Text style={[designPreviewStyles.secondaryButtonText, { color: uiPreview.accent }]}>{photoUri ? '写真を選び直す' : '写真で試す'}</Text></Pressable>}
+        <View style={designPreviewStyles.actions}><Pressable style={[designPreviewStyles.secondaryButton, { borderColor: uiPreview.border, backgroundColor: uiPreview.surface }]} onPress={onClose}><Text style={[designPreviewStyles.secondaryButtonText, { color: uiPreview.accent }]} >閉じる</Text></Pressable><Pressable style={[designPreviewStyles.primaryButton, { backgroundColor: uiPreview.accent }]} onPress={() => { if (mode === 'photo' && !photoUri) { onPickPhoto(); return; } onUse(mode, mode === 'chic' ? pattern : undefined); }}><Text style={[designPreviewStyles.primaryButtonText, { color: uiPreview.onAccent }]}>{mode === 'photo' ? (photoUri ? 'この写真を使う' : '写真で試す') : isFreeFloralSoftPreview ? 'Premiumで使う' : 'このデザインを使う'}</Text></Pressable></View>
       </Pressable>
     </Pressable>
     </Modal>
   </>;
 }
 
-function DesignTrialExpiredModal({ visible, onClose, onPremium, onReward }: { visible: boolean; onClose: () => void; onPremium: () => void; onReward: () => void }) {
-  return <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}><Pressable style={designPreviewStyles.backdrop} onPress={onClose}><Pressable style={designPreviewStyles.sheet} onPress={(event) => event.stopPropagation()}><Text style={designPreviewStyles.eyebrow}>DESIGN TRIAL</Text><Text style={designPreviewStyles.title}>デザイン体験が終了しました</Text><Text style={designPreviewStyles.copy}>広告を1回確認すると12時間使えます。Premiumなら期限なしで使い続けられます。Freeのテーマへ戻ることもできます。</Text><Pressable style={designPreviewStyles.primaryButton} onPress={onReward}><Text style={designPreviewStyles.primaryButtonText}>広告を見て取得（12時間）</Text></Pressable><Pressable style={designPreviewStyles.secondaryButton} onPress={onPremium}><Text style={designPreviewStyles.secondaryButtonText}>Premiumで使い続ける</Text></Pressable><Pressable style={designPreviewStyles.textButton} onPress={onClose}><Text style={designPreviewStyles.textButtonText}>FreeのThemeへ戻る</Text></Pressable></Pressable></Pressable></Modal>;
+function DesignTrialExpiredModal({ visible, designMode, chicPalette, onClose, onPremium, onReward }: { visible: boolean; designMode: DesignMode; chicPalette?: ChicThemePalette; onClose: () => void; onPremium: () => void; onReward: () => void }) {
+  const colors = chicPalette && designMode === 'chic' ? { surface: chicPalette.cardSurface, border: chicPalette.border, text: chicPalette.textPrimary, muted: chicPalette.textSecondary, accent: chicPalette.accent, onAccent: chicPalette.onAccent } : (() => { const theme = getThemeTokens(designMode).colors; return { surface: theme.surface, border: theme.border, text: theme.primaryText, muted: theme.secondaryText, accent: theme.primaryAccent, onAccent: designMode === 'dark' ? theme.screenBackground : '#FFFFFF' }; })();
+  return <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}><Pressable style={designPreviewStyles.backdrop} onPress={onClose}><Pressable style={[designPreviewStyles.sheet, { backgroundColor: colors.surface, borderColor: colors.border }]} onPress={(event) => event.stopPropagation()}><Text style={[designPreviewStyles.eyebrow, { color: colors.accent }]}>DESIGN TRIAL</Text><Text style={[designPreviewStyles.title, { color: colors.text }]}>デザイン体験が終了しました</Text><Text style={[designPreviewStyles.copy, { color: colors.muted }]}>広告を1回確認すると12時間使えます。Premiumなら期限なしで使い続けられます。Freeのテーマへ戻ることもできます。</Text><Pressable style={[designPreviewStyles.primaryButton, { backgroundColor: colors.accent }]} onPress={onReward}><Text style={[designPreviewStyles.primaryButtonText, { color: colors.onAccent }]}>広告を見て取得（12時間）</Text></Pressable><Pressable style={[designPreviewStyles.secondaryButton, { borderColor: colors.border }]} onPress={onPremium}><Text style={[designPreviewStyles.secondaryButtonText, { color: colors.accent }]}>Premiumで使い続ける</Text></Pressable><Pressable style={designPreviewStyles.textButton} onPress={onClose}><Text style={[designPreviewStyles.textButtonText, { color: colors.muted }]}>FreeのThemeへ戻る</Text></Pressable></Pressable></Pressable></Modal>;
 }
 
 const designPreviewStyles = StyleSheet.create({
@@ -3251,9 +3261,9 @@ const designPreviewStyles = StyleSheet.create({
   copy: { color: '#777285', fontSize: 12, lineHeight: 18, marginTop: 8 },
   modeRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 12 },
   modeChip: { borderWidth: 1, borderColor: '#DDD7E3', borderRadius: 9, paddingHorizontal: 9, paddingVertical: 7 },
-  modeChipActive: { borderColor: '#7559E8', backgroundColor: '#EEE9FF' },
+  modeChipActive: {},
   modeChipText: { color: '#777285', fontSize: 10, fontWeight: '800' },
-  modeChipTextActive: { color: '#5E4BB7' },
+  modeChipTextActive: {},
   patternRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 5, marginTop: 8 },
   patternChip: { width: '31.5%', minHeight: 32, flexDirection: 'row', alignItems: 'center', gap: 4, borderWidth: 1, borderColor: '#E4DFE3', borderRadius: 8, paddingHorizontal: 5 },
   patternDot: { width: 10, height: 10, borderRadius: 5 },
@@ -3264,16 +3274,16 @@ const designPreviewStyles = StyleSheet.create({
   floralSoftPreviewFallback: { alignItems: 'center', justifyContent: 'center', backgroundColor: '#F3F0EB' },
   floralSoftPreviewNotice: { paddingHorizontal: 12, paddingVertical: 10, backgroundColor: 'rgba(255,253,253,0.96)' },
   floralSoftPreviewName: { color: '#443E39', fontSize: 16, fontWeight: '900' },
-  floralSoftPreviewPremium: { color: '#9A8877', fontSize: 12, fontWeight: '900', marginTop: 2 },
-  floralSoftPreviewCopy: { color: '#79716A', fontSize: 11, lineHeight: 16, marginTop: 2 },
-  floralSoftPreviewError: { color: '#79716A', fontSize: 11, fontWeight: '700', textAlign: 'center' },
+  floralSoftPreviewPremium: { fontSize: 12, fontWeight: '900', marginTop: 2 },
+  floralSoftPreviewCopy: { fontSize: 11, lineHeight: 16, marginTop: 2 },
+  floralSoftPreviewError: { fontSize: 11, fontWeight: '700', textAlign: 'center' },
   photoBackground: { ...StyleSheet.absoluteFillObject, opacity: 0.7 },
   photoHint: { color: '#FFFFFF', fontSize: 11, fontWeight: '700', textAlign: 'center' },
   actions: { flexDirection: 'row', gap: 8, marginTop: 14 },
-  primaryButton: { minHeight: 46, flex: 1, borderRadius: 11, backgroundColor: '#7559E8', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 12, marginTop: 10 },
+  primaryButton: { minHeight: 46, flex: 1, borderRadius: 11, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 12, marginTop: 10 },
   primaryButtonText: { color: '#FFFFFF', fontSize: 13, fontWeight: '900' },
   secondaryButton: { minHeight: 46, flex: 1, borderRadius: 11, borderWidth: 1, borderColor: '#DDD7E3', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 12, marginTop: 10 },
-  secondaryButtonText: { color: '#5E4BB7', fontSize: 13, fontWeight: '900' },
+  secondaryButtonText: { fontSize: 13, fontWeight: '900' },
   textButton: { alignItems: 'center', paddingVertical: 10 },
   textButtonText: { color: '#777285', fontSize: 12, fontWeight: '800' },
 });
@@ -3595,10 +3605,11 @@ function DailyScheduleTimeline({ date, tasks, plans, externalEvents, now, design
 }
 
 function CalendarPlanActions({ plan, isDark, onEdit, onDelete, onOpenMap }: { plan: DeparturePlan; isDark: boolean; onEdit: (plan: DeparturePlan) => void; onDelete: (id: string) => void; onOpenMap: (plan: DeparturePlan) => void }) {
-  const buttonStyle = { minHeight: 44, paddingHorizontal: 10, justifyContent: 'center' as const, borderRadius: 10, borderWidth: 1, borderColor: isDark ? '#40506A' : '#DDD4F5', backgroundColor: isDark ? '#20293A' : '#FAF8FF' };
+  const theme = getThemeTokens(isDark ? 'dark' : 'minimal').colors;
+  const buttonStyle = { minHeight: 44, paddingHorizontal: 10, justifyContent: 'center' as const, borderRadius: 10, borderWidth: 1, borderColor: theme.border, backgroundColor: theme.secondarySurface };
   return <View style={[styles.scheduleAgendaActions, { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 6 }]}>
-    {plan.destination?.trim() && <Pressable hitSlop={6} style={buttonStyle} onPress={(event) => { event.stopPropagation(); onOpenMap(plan); }}><Text style={{ color: isDark ? '#8EA6FF' : colors.violet, fontSize: 10, fontWeight: '900' }}>地図</Text></Pressable>}
-    <Pressable hitSlop={6} style={buttonStyle} onPress={(event) => { event.stopPropagation(); onEdit(plan); }}><Text style={{ color: isDark ? '#F4F7FC' : colors.ink, fontSize: 10, fontWeight: '900' }}>編集</Text></Pressable>
+    {plan.destination?.trim() && <Pressable hitSlop={6} style={buttonStyle} onPress={(event) => { event.stopPropagation(); onOpenMap(plan); }}><Text style={{ color: theme.primaryAccent, fontSize: 10, fontWeight: '900' }}>地図</Text></Pressable>}
+    <Pressable hitSlop={6} style={buttonStyle} onPress={(event) => { event.stopPropagation(); onEdit(plan); }}><Text style={{ color: theme.primaryText, fontSize: 10, fontWeight: '900' }}>編集</Text></Pressable>
     {plan.id && <Pressable hitSlop={6} style={[buttonStyle, { borderColor: isDark ? '#754657' : '#E3B9BF', backgroundColor: isDark ? '#35222D' : '#FFF7F7' }]} onPress={(event) => { event.stopPropagation(); onDelete(plan.id!); }}><Text style={{ color: isDark ? '#FF8F9C' : '#B85060', fontSize: 10, fontWeight: '900' }}>削除</Text></Pressable>}
   </View>;
 }
@@ -3973,10 +3984,11 @@ function ChicPatternSelector({ designMode, chicPattern, chicCheckColor, planTier
 
 function SettingsDisclosure({ title, subtitle, expanded, onPress, children, designMode }: { title: string; subtitle: string; expanded: boolean; onPress: () => void; children: React.ReactNode; designMode?: DesignMode }) {
   const isDark = designMode === 'dark';
+  const theme = getThemeTokens(designMode ?? 'minimal').colors;
   return <View style={styles.settingsDisclosure}>
     <Pressable style={[styles.settingsDisclosureHeader, isDark && styles.darkSurface]} onPress={onPress} accessibilityRole="button" accessibilityState={{ expanded }}>
-      <View style={{ flex: 1 }}><Text style={[styles.settingsDisclosureTitle, isDark && styles.darkBodyText]}>{title}</Text><Text style={[styles.settingsDisclosureSubtitle, isDark && styles.darkAccentText]}>{subtitle}</Text></View>
-      <Text style={[styles.settingsDisclosureChevron, isDark && styles.darkAccentText]}>{expanded ? '⌃' : '⌄'}</Text>
+      <View style={{ flex: 1 }}><Text style={[styles.settingsDisclosureTitle, { color: theme.primaryText }]}>{title}</Text><Text style={[styles.settingsDisclosureSubtitle, { color: theme.secondaryText }]}>{subtitle}</Text></View>
+      <Text style={[styles.settingsDisclosureChevron, { color: theme.primaryAccent }]}>{expanded ? '⌃' : '⌄'}</Text>
     </Pressable>
     {expanded && <View style={styles.settingsDisclosureBody}>{children}</View>}
   </View>;
@@ -3984,6 +3996,7 @@ function SettingsDisclosure({ title, subtitle, expanded, onPress, children, desi
 
 function NotificationManagerCard({ designMode, readOnly = false }: { designMode?: DesignMode; readOnly?: boolean }) {
   const isDark = designMode === 'dark';
+  const theme = getThemeTokens(designMode ?? 'minimal').colors;
   const [pending, setPending] = useState<Notifications.NotificationRequest[]>([]);
   const [loading, setLoading] = useState(false);
   const refresh = React.useCallback(async () => {
@@ -4002,11 +4015,11 @@ function NotificationManagerCard({ designMode, readOnly = false }: { designMode?
     { text: 'キャンセル', style: 'cancel' },
     { text: '停止する', style: 'destructive', onPress: () => { void Notifications.cancelAllScheduledNotificationsAsync().then(refresh); } },
   ]);
-  if (readOnly) return <View style={[styles.notificationManagerCard, isDark && styles.darkSurface]}><View style={styles.notificationManagerHeader}><View><Text style={[styles.settingsTitle, isDark && styles.darkBodyText]}>高度な通知</Text><Text style={[styles.switchCopy, isDark && styles.darkAccentText]}>段階的な通知を設定できます</Text></View><Text style={[styles.notificationRefreshText, isDark && styles.darkAccentText]}>Premium</Text></View>{[['09:00', 'そろそろ始められそう？'], ['09:05', 'もう一度確認しよう'], ['09:08', '今からできることを選ぶ']].map(([time, copy]) => <View key={time} style={styles.notificationPendingRow}><View style={styles.notificationPendingDot} /><View style={{ flex: 1 }}><Text style={[styles.notificationPendingTitle, isDark && styles.darkBodyText]}>{time}</Text><Text style={[styles.notificationPendingBody, isDark && styles.darkAccentText]}>{copy}</Text></View></View>)}</View>;
+  if (readOnly) return <View style={[styles.notificationManagerCard, isDark && styles.darkSurface]}><View style={styles.notificationManagerHeader}><View><Text style={[styles.settingsTitle, { color: theme.primaryText }]}>高度な通知</Text><Text style={[styles.switchCopy, { color: theme.secondaryText }]}>段階的な通知を設定できます</Text></View><Text style={[styles.notificationRefreshText, { color: theme.primaryAccent }]}>Premium</Text></View>{[['09:00', 'そろそろ始められそう？'], ['09:05', 'もう一度確認しよう'], ['09:08', '今からできることを選ぶ']].map(([time, copy]) => <View key={time} style={styles.notificationPendingRow}><View style={[styles.notificationPendingDot, { backgroundColor: theme.primaryAccent }]} /><View style={{ flex: 1 }}><Text style={[styles.notificationPendingTitle, { color: theme.primaryText }]}>{time}</Text><Text style={[styles.notificationPendingBody, { color: theme.secondaryText }]}>{copy}</Text></View></View>)}</View>;
   return <View style={[styles.notificationManagerCard, isDark && styles.darkSurface]}>
-    <View style={styles.notificationManagerHeader}><View><Text style={[styles.settingsTitle, isDark && styles.darkBodyText]}>通知管理</Text><Text style={[styles.switchCopy, isDark && styles.darkAccentText]}>{loading ? '確認中…' : `${pending.length}件の通知を予約中`}</Text></View><Pressable style={styles.notificationRefresh} onPress={() => void refresh()}><Text style={styles.notificationRefreshText}>更新</Text></Pressable></View>
-    {pending.slice(0, 4).map((request) => <View key={request.identifier} style={styles.notificationPendingRow}><View style={styles.notificationPendingDot} /><View style={{ flex: 1 }}><Text numberOfLines={1} style={[styles.notificationPendingTitle, isDark && styles.darkBodyText]}>{request.content.title ?? '通知'}</Text><Text numberOfLines={1} style={[styles.notificationPendingBody, isDark && styles.darkAccentText]}>{request.content.body ?? ''}</Text></View></View>)}
-    {pending.length > 4 && <Text style={[styles.notificationMore, isDark && styles.darkAccentText]}>ほか{pending.length - 4}件</Text>}
+    <View style={styles.notificationManagerHeader}><View><Text style={[styles.settingsTitle, { color: theme.primaryText }]}>通知管理</Text><Text style={[styles.switchCopy, { color: theme.secondaryText }]}>{loading ? '確認中…' : `${pending.length}件の通知を予約中`}</Text></View><Pressable style={styles.notificationRefresh} onPress={() => void refresh()}><Text style={[styles.notificationRefreshText, { color: theme.primaryAccent }]}>更新</Text></Pressable></View>
+    {pending.slice(0, 4).map((request) => <View key={request.identifier} style={styles.notificationPendingRow}><View style={[styles.notificationPendingDot, { backgroundColor: theme.primaryAccent }]} /><View style={{ flex: 1 }}><Text numberOfLines={1} style={[styles.notificationPendingTitle, { color: theme.primaryText }]}>{request.content.title ?? '通知'}</Text><Text numberOfLines={1} style={[styles.notificationPendingBody, { color: theme.secondaryText }]}>{request.content.body ?? ''}</Text></View></View>)}
+    {pending.length > 4 && <Text style={[styles.notificationMore, { color: theme.secondaryText }]}>ほか{pending.length - 4}件</Text>}
     <Pressable disabled={pending.length === 0} style={[styles.notificationStopButton, pending.length === 0 && styles.batchDisabled]} onPress={stopAll}><Text style={styles.notificationStopText}>予約通知をすべて停止</Text></Pressable>
   </View>;
 }

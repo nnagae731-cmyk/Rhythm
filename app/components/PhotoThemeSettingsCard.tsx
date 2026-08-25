@@ -3,6 +3,7 @@ import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import { PlanTier } from '../premiumAccess';
 import { PremiumGuideFeatureId } from '../premiumGuide';
 import { PhotoThemePhotoTarget, PhotoThemeSettings, PhotoThemeTopSlot, ThemeMode } from '../types';
+import { ChicThemePalette, getThemeTokens } from '../theme';
 
 const topSlots: Array<{ id: PhotoThemeTopSlot; label: string }> = [
   { id: 'home', label: '今日' },
@@ -15,6 +16,7 @@ const topSlots: Array<{ id: PhotoThemeTopSlot; label: string }> = [
 type Props = {
   photoTheme: PhotoThemeSettings;
   designMode: ThemeMode;
+  chicPalette?: ChicThemePalette;
   planTier: PlanTier;
   onPremium: (featureId?: PremiumGuideFeatureId) => void;
   onPick: (target: PhotoThemePhotoTarget) => void;
@@ -27,30 +29,33 @@ function PhotoPreview({ uri, label }: { uri?: string; label: string }) {
   return uri ? <Image source={{ uri }} style={localStyles.preview} /> : <View style={localStyles.emptyPreview}><Text style={localStyles.emptyPreviewText}>{label}</Text></View>;
 }
 
-export function PhotoThemeSettingsCard({ photoTheme, designMode, planTier, onPremium, onPick, onAdjust, onClear, styles }: Props) {
+export function PhotoThemeSettingsCard({ photoTheme, designMode, chicPalette, planTier, onPremium, onPick, onAdjust, onClear, styles }: Props) {
   const isDark = designMode === 'dark';
+  const themeColors = chicPalette && designMode === 'chic'
+    ? { textPrimary: chicPalette.textPrimary, textSecondary: chicPalette.textSecondary, primaryAccent: chicPalette.accent, accentSoft: chicPalette.accentSoft, onAccent: chicPalette.onAccent }
+    : (() => { const colors = getThemeTokens(designMode).colors; return { textPrimary: colors.primaryText, textSecondary: colors.secondaryText, primaryAccent: colors.primaryAccent, accentSoft: colors.softAccent, onAccent: designMode === 'dark' ? colors.screenBackground : '#FFFFFF' }; })();
   return <View style={[styles.settingsCard, isDark && styles.darkSurface]}>
     <View style={styles.historyHeader}><View><Text style={[styles.settingsTitle, isDark && styles.darkBodyText]}>写真デザイン</Text><Text style={[styles.switchCopy, isDark && styles.darkAccentText]}>Designの雰囲気はそのままに、好きな一枚を添えます</Text></View><Text style={styles.taskTemplateSavePremium}>{planTier === 'premium' ? 'Premium' : '広告で解放'}</Text></View>
 
     <Text style={[styles.fieldLabel, isDark && styles.darkAccentText]}>背景写真</Text>
     <PhotoPreview uri={photoTheme.imageUri} label="背景にしたい写真を選ぶ" />
     <View style={localStyles.controls}>
-      <Pressable style={styles.templateAddButton} onPress={() => onPick('background')}><Text style={styles.templateAddButtonText}>{photoTheme.imageUri ? '背景写真を変更' : '背景写真を選ぶ'}</Text></Pressable>
+      <Pressable style={[styles.templateAddButton, { backgroundColor: themeColors.primaryAccent }]} onPress={() => onPick('background')}><Text style={[styles.templateAddButtonText, { color: themeColors.onAccent }]}>{photoTheme.imageUri ? '背景写真を変更' : '背景写真を選ぶ'}</Text></Pressable>
       {photoTheme.imageUri && <Pressable style={localStyles.clearButton} onPress={() => onClear('background')}><Text style={localStyles.clearText}>外す</Text></Pressable>}
     </View>
-    <Text style={localStyles.note}>色味は変えず、そのまま背景に表示します。</Text>
+    <Text style={[localStyles.note, { color: themeColors.textSecondary }]}>色味は変えず、そのまま背景に表示します。</Text>
 
     <View style={localStyles.divider} />
     <Text style={[styles.fieldLabel, isDark && styles.darkAccentText]}>画面ごとのトップ画像</Text>
-    <Text style={localStyles.note}>今日・予定・分析・叶えたいこと・設定の5画面に、それぞれ1枚ずつ設定できます。</Text>
+    <Text style={[localStyles.note, { color: themeColors.textSecondary }]}>今日・予定・分析・叶えたいこと・設定の5画面に、それぞれ1枚ずつ設定できます。</Text>
     <View style={localStyles.slotGrid}>
       {topSlots.map((slot) => {
         const uri = photoTheme.topImageUris?.[slot.id] ?? photoTheme.topImageOriginalUris?.[slot.id];
         return <View key={slot.id} style={localStyles.slotCard}>
           {uri ? <Image source={{ uri }} style={localStyles.slotPreview} /> : <View style={localStyles.slotEmpty}><Text style={localStyles.slotEmptyText}>＋</Text></View>}
-          <Text style={localStyles.slotLabel}>{slot.label}</Text>
+          <Text style={[localStyles.slotLabel, { color: themeColors.textPrimary }]}>{slot.label}</Text>
           <View style={localStyles.slotActions}>
-            <Pressable hitSlop={6} style={[localStyles.slotActionButton, !uri && localStyles.slotActionButtonFull]} onPress={() => onPick(slot.id)}><Text style={localStyles.slotActionText}>{uri ? '変更' : '選ぶ'}</Text></Pressable>
+            <Pressable hitSlop={6} style={[localStyles.slotActionButton, { backgroundColor: themeColors.accentSoft }, !uri && localStyles.slotActionButtonFull]} onPress={() => onPick(slot.id)}><Text style={[localStyles.slotActionText, { color: themeColors.primaryAccent }]}>{uri ? '変更' : '選ぶ'}</Text></Pressable>
             {uri && <Pressable hitSlop={6} style={localStyles.slotActionButton} onPress={() => onAdjust(slot.id)}><Text style={localStyles.slotActionText}>再調整</Text></Pressable>}
             {uri && <Pressable hitSlop={6} style={localStyles.slotRemoveButton} onPress={() => onClear(slot.id)}><Text style={localStyles.slotRemoveText}>外す</Text></Pressable>}
           </View>
@@ -62,7 +67,7 @@ export function PhotoThemeSettingsCard({ photoTheme, designMode, planTier, onPre
     <Text style={[styles.fieldLabel, isDark && styles.darkAccentText]}>集中タイマーの背景</Text>
     <PhotoPreview uri={photoTheme.focusBackgroundUri} label="集中中に見たい写真を選ぶ" />
     <View style={localStyles.controls}>
-      <Pressable style={styles.templateAddButton} onPress={() => onPick('focus')}><Text style={styles.templateAddButtonText}>{photoTheme.focusBackgroundUri ? '集中背景を変更' : '集中背景を選ぶ'}</Text></Pressable>
+      <Pressable style={[styles.templateAddButton, { backgroundColor: themeColors.primaryAccent }]} onPress={() => onPick('focus')}><Text style={[styles.templateAddButtonText, { color: themeColors.onAccent }]}>{photoTheme.focusBackgroundUri ? '集中背景を変更' : '集中背景を選ぶ'}</Text></Pressable>
       {photoTheme.focusBackgroundUri && <Pressable style={localStyles.clearButton} onPress={() => onClear('focus')}><Text style={localStyles.clearText}>外す</Text></Pressable>}
     </View>
   </View>;
@@ -87,6 +92,6 @@ const localStyles = StyleSheet.create({
   slotActionButton: { minHeight: 34, minWidth: 44, paddingHorizontal: 9, paddingVertical: 7, borderRadius: 9, alignItems: 'center', justifyContent: 'center', backgroundColor: '#F0E9FF' },
   slotActionButtonFull: { flex: 1 },
   slotRemoveButton: { minHeight: 34, minWidth: 38, paddingHorizontal: 8, paddingVertical: 7, borderRadius: 9, alignItems: 'center', justifyContent: 'center', backgroundColor: '#FFF0F2' },
-  slotActionText: { color: '#7559E8', fontSize: 11, fontWeight: '900' },
+  slotActionText: { fontSize: 11, fontWeight: '900' },
   slotRemoveText: { color: '#B85060', fontSize: 11, fontWeight: '900' },
 });

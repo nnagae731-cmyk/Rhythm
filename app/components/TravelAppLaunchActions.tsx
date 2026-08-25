@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { Alert, Modal, Pressable, Text, View } from 'react-native';
-import { ChicThemePalette, DesignMode } from '../theme';
+import { ChicThemePalette, DesignMode, getThemeTokens } from '../theme';
 import { PlanTier } from '../premiumAccess';
 import { PremiumGuideFeatureId } from '../premiumGuide';
 import { TravelAppCategory, TravelAppConfig, TravelAppSettings, getDefaultTravelApp, getEnabledTravelApps, openTravelApp } from '../features/travel/travelApps';
@@ -20,11 +20,10 @@ type Props = {
 export function TravelAppLaunchActions({ settings, category, destination, planTier, designMode, chicPalette, onPremium, onOpenSettings, readOnly = false }: Props) {
   const [pickerOpen, setPickerOpen] = useState(false);
   const enabled = useMemo(() => settings ? getEnabledTravelApps(settings, category) : [], [settings, category]);
+  const base = getThemeTokens(designMode, chicPalette?.id ?? 'cool').colors;
   const colors = chicPalette && (designMode === 'chic' || designMode === 'photo')
     ? { surface: chicPalette.cardSurface, soft: chicPalette.cardTint, border: chicPalette.border, text: chicPalette.textPrimary, muted: chicPalette.textSecondary, accent: chicPalette.accent, onAccent: chicPalette.onAccent }
-    : designMode === 'dark'
-      ? { surface: '#20293A', soft: '#26365F', border: '#40506A', text: '#F4F7FC', muted: '#B4C0D4', accent: '#8EA6FF', onAccent: '#101522' }
-      : { surface: '#FFFFFF', soft: '#F6F4F8', border: '#E7E2EA', text: '#302C35', muted: '#756D7B', accent: '#7559E8', onAccent: '#FFFFFF' };
+    : { surface: base.surface, soft: base.secondarySurface, border: base.border, text: base.primaryText, muted: base.secondaryText, accent: base.primaryAccent, onAccent: designMode === 'dark' ? base.screenBackground : '#FFFFFF' };
   const title = category === 'taxi' ? 'タクシーを開く' : '乗換を調べる';
   const launch = async (app: TravelAppConfig) => {
     setPickerOpen(false);

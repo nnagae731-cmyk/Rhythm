@@ -111,7 +111,7 @@ export function SettingsScreen({
   helpers: any;
   components: any;
 }) {
-  const { colors, getChicPatternVisual, hasPremiumAccess, getChicCheckColor, chicCheckColorChoices, countdownToClock, getUrgencyStatus, getNextBestAction, designModes, completionIcons, summarizePremiumTaskTemplate } = helpers;
+  const { getChicPatternVisual, hasPremiumAccess, getChicCheckColor, chicCheckColorChoices, countdownToClock, getUrgencyStatus, getNextBestAction, designModes, completionIcons, summarizePremiumTaskTemplate } = helpers;
   const { BThemeRibbonDecoration, CThemeRibbonDecoration, ChicPatternDecor, ChicPatternSelector, SettingsDisclosure, NotificationManagerCard } = components;
   const [newTemplate, setNewTemplate] = useState('');
   const selectedMode = selectedDesignMode ?? designMode;
@@ -167,7 +167,7 @@ export function SettingsScreen({
           <View style={{ flex: 1 }}><Text style={styles.savedTemplateLockedTitle}>写真デザイン</Text><Text style={styles.savedTemplateLockedCopy}>好きな写真を背景やトップ画像に使う</Text></View>
           <Text style={planTier === 'premium' ? styles.affirmationEdit : styles.taskTemplateSavePremium}>{planTier === 'premium' ? (selectedMode === 'photo' ? '選択中' : '選ぶ') : (selectedMode === 'photo' ? '広告で解放' : '試す')}</Text>
         </Pressable>
-          {selectedMode === 'photo' && <PhotoThemeSettingsCard photoTheme={photoTheme} designMode={designMode} planTier={planTier} onPremium={onPremium} onPick={onPickPhotoTheme} onAdjust={onAdjustPhotoTheme} onClear={onClearPhotoTheme} styles={styles} />}
+          {selectedMode === 'photo' && <PhotoThemeSettingsCard photoTheme={photoTheme} designMode={designMode} chicPalette={chicPalette} planTier={planTier} onPremium={onPremium} onPick={onPickPhotoTheme} onAdjust={onAdjustPhotoTheme} onClear={onClearPhotoTheme} styles={styles} />}
         {(selectedMode === 'minimal' || selectedMode === 'dark') && <View style={styles.monoInlinePreview}><Text style={[styles.fieldLabel, isDark && styles.darkAccentText]}>Monoの表示</Text><View style={styles.monoInlineChoices}><Pressable style={[styles.monoInlineChoice, styles.monoInlineLight, selectedMode === 'minimal' && styles.monoInlineChoiceActive]} onPress={() => onDesignMode('minimal')}><Text style={styles.monoInlineLightEyebrow}>LIGHT</Text><Text style={styles.monoInlineLightBrand}>Rhythm</Text><View style={styles.monoInlineLightLine} /><Text style={styles.monoInlineLightMeta}>白・黒・余白</Text><Text style={styles.monoInlineSelect}>{selectedMode === 'minimal' ? '選択中' : '選ぶ'}</Text></Pressable><Pressable style={[styles.monoInlineChoice, styles.monoInlineDark, selectedMode === 'dark' && styles.monoInlineChoiceActiveDark]} onPress={() => onDesignMode('dark')}><Text style={styles.monoInlineDarkEyebrow}>DARK</Text><Text style={styles.monoInlineDarkBrand}>Rhythm</Text><View style={styles.monoInlineDarkLine} /><Text style={styles.monoInlineDarkMeta}>黒・白・紫</Text><Text style={styles.monoInlineDarkSelect}>{selectedMode === 'dark' ? '選択中' : '選ぶ'}</Text></Pressable></View></View>}
       </View>
       </SettingsDisclosure>
@@ -177,12 +177,12 @@ export function SettingsScreen({
        </SettingsDisclosure>
        <SettingsDisclosure designMode={designMode} title="通知・フィードバック" subtitle="通知管理・触覚フィードバック" expanded={expandedSetting === 'notifications'} onPress={() => setExpandedSetting((current) => current === 'notifications' ? null : 'notifications')}>
          <NotificationManagerCard designMode={designMode} />
-       <View style={[styles.settingsCard, isDark && styles.darkSurface]}><View style={styles.switchRow}><View style={{ flex: 1 }}><Text style={[styles.switchTitle, isDark && styles.darkBodyText]}>触覚フィードバック</Text><Text style={[styles.switchCopy, isDark && styles.darkMutedText]}>完了や集中開始を振動で知らせます</Text></View><Switch value={hapticsEnabled} onValueChange={(value) => onHapticsEnabled(value)} trackColor={{ false: isDark ? '#40506A' : '#D8D3DE', true: isDesign && chicPalette ? chicPalette.accent : colors.violet }} thumbColor={hapticsEnabled ? (isDesign && chicPalette ? chicPalette.onAccent : '#FFFFFF') : (isDark ? '#8F9BB0' : '#FFFFFF')} /></View></View>
+       <View style={[styles.settingsCard, isDark && styles.darkSurface]}><View style={styles.switchRow}><View style={{ flex: 1 }}><Text style={[styles.switchTitle, isDark && styles.darkBodyText]}>触覚フィードバック</Text><Text style={[styles.switchCopy, isDark && styles.darkMutedText]}>完了や集中開始を振動で知らせます</Text></View><Switch value={hapticsEnabled} onValueChange={(value) => onHapticsEnabled(value)} trackColor={{ false: isDark ? '#40506A' : baseTheme.border, true: isDesign && chicPalette ? chicPalette.accent : baseTheme.primaryAccent }} thumbColor={hapticsEnabled ? (isDesign && chicPalette ? chicPalette.onAccent : '#FFFFFF') : (isDark ? '#8F9BB0' : '#FFFFFF')} /></View></View>
        </SettingsDisclosure>
         <SettingsDisclosure designMode={designMode} title="タスク・表示" subtitle="完了表示・アイコン・ウィジェット" expanded={expandedSetting === 'taskDisplay'} onPress={() => setExpandedSetting((current) => current === 'taskDisplay' ? null : 'taskDisplay')}>
         <View style={[styles.settingsCard, isDark && styles.darkSurface]}>
           <Text style={[styles.settingsTitle, isDark && styles.darkBodyText]}>タスク・表示</Text>
-          <View style={styles.switchRow}><View><Text style={[styles.switchTitle, isDark && styles.darkBodyText]}>完了したタスクも表示</Text><Text style={[styles.switchCopy, isDark && styles.darkAccentText]}>チェック済みの項目を残します</Text></View><Switch value={showCompleted} onValueChange={onShowCompleted} trackColor={{ true: selectedMode === 'chic' && chicPalette ? chicPalette.accent : colors.violet }} /></View>
+          <View style={styles.switchRow}><View><Text style={[styles.switchTitle, isDark && styles.darkBodyText]}>完了したタスクも表示</Text><Text style={[styles.switchCopy, isDark && styles.darkAccentText]}>チェック済みの項目を残します</Text></View><Switch value={showCompleted} onValueChange={onShowCompleted} trackColor={{ true: selectedMode === 'chic' && chicPalette ? chicPalette.accent : baseTheme.primaryAccent }} /></View>
           <Text style={[styles.fieldLabel, { marginTop: 20 }, isDark && styles.darkAccentText]}>完了アイコン</Text>
           <View style={styles.iconChoices}>{completionIcons.map((icon: string) => <Pressable key={icon} style={[styles.iconChoice, completionIcon === icon && styles.iconChoiceActive]} onPress={() => onCompletionIcon(icon)}><Text style={[styles.iconChoiceText, completionIcon === icon && styles.iconChoiceTextActive]}>{icon}</Text></Pressable>)}</View>
         </View>
@@ -190,7 +190,7 @@ export function SettingsScreen({
         <SettingsDisclosure designMode={designMode} title="クイックひな型" subtitle="登録済みタスクと設定を呼び出す" expanded={expandedSetting === 'quick'} onPress={() => setExpandedSetting((current) => current === 'quick' ? null : 'quick')}>
       <View style={[styles.settingsCard, isDark && styles.darkSurface]}>
         <Text style={[styles.switchCopy, isDark && styles.darkMutedText]}>よく登録するタスクを自分用に保存できます</Text>
-        <View style={styles.templateAddRow}><TextInput value={newTemplate} onChangeText={setNewTemplate} placeholder="例：水筒をバッグに入れる" placeholderTextColor="#A29DAA" style={styles.templateInput} /><Pressable style={styles.templateAddButton} onPress={() => { const clean = newTemplate.trim(); if (!clean) return; onAddTemplate(clean); setNewTemplate(''); }}><Text style={styles.templateAddButtonText}>追加</Text></Pressable></View>
+        <View style={styles.templateAddRow}><TextInput value={newTemplate} onChangeText={setNewTemplate} placeholder="例：水筒をバッグに入れる" placeholderTextColor={baseTheme.secondaryText} style={[styles.templateInput, { color: baseTheme.primaryText }]} /><Pressable style={[styles.templateAddButton, { backgroundColor: baseTheme.primaryAccent }]} onPress={() => { const clean = newTemplate.trim(); if (!clean) return; onAddTemplate(clean); setNewTemplate(''); }}><Text style={styles.templateAddButtonText}>追加</Text></Pressable></View>
         <View style={styles.templateList}>{templates.map((item) => <View key={item} style={[styles.templateRow, isDark && styles.darkSurface]}><Text style={[styles.templateRowText, isDark && styles.darkBodyText]}>{item}</Text><Pressable onPress={() => onDeleteTemplate(item)}><Text style={[styles.templateDelete, isDark && styles.darkAccentText]}>×</Text></Pressable></View>)}</View>
       </View>
       <View style={[styles.settingsCard, isDark && styles.darkSurface]}>

@@ -6,7 +6,7 @@ import { PremiumGuideFeatureId } from '../premiumGuide';
 import { Affirmation, AffirmationCustomText, ThemeMode } from '../types';
 import { formatLiveTime } from '../features/tasks/taskUtils';
 import { affirmationTemplateCategories, affirmationTemplates, AffirmationTemplateCategory } from '../features/affirmations/affirmationTemplates';
-import { ChicThemePalette } from '../theme';
+import { ChicThemePalette, getThemeTokens } from '../theme';
 
 type Props = {
   affirmations: Affirmation[];
@@ -47,12 +47,13 @@ export function AffirmationSettingsCard({ affirmations, customTexts, designMode,
   const canUse = planTier === 'premium';
   const editing = affirmations.find((item) => item.id === editingId);
   const selectedTemplates = useMemo(() => affirmationTemplates.filter((item) => item.category === category), [category]);
-  const surface = isChic ? chicPalette?.cardSurface : isDark ? '#181F2E' : '#FFFFFF';
-  const surfaceSoft = isChic ? chicPalette?.cardTint : isDark ? '#20293A' : '#F8F5FA';
-  const border = isChic ? chicPalette?.border : isDark ? '#40506A' : '#E5E0E5';
-  const primary = isChic ? chicPalette?.textPrimary : isDark ? '#F4F7FC' : '#282538';
-  const secondary = isChic ? chicPalette?.textSecondary : isDark ? '#B4C0D4' : '#777285';
-  const accent = isChic ? chicPalette?.accent : isDark ? '#8EA6FF' : '#7559E8';
+  const baseTheme = getThemeTokens(designMode, chicPalette?.id ?? 'cool').colors;
+  const surface = isChic ? chicPalette?.cardSurface : baseTheme.surface;
+  const surfaceSoft = isChic ? chicPalette?.cardTint : baseTheme.secondarySurface;
+  const border = isChic ? chicPalette?.border : baseTheme.border;
+  const primary = isChic ? chicPalette?.textPrimary : baseTheme.primaryText;
+  const secondary = isChic ? chicPalette?.textSecondary : baseTheme.secondaryText;
+  const accent = isChic ? chicPalette?.accent : baseTheme.primaryAccent;
 
   const reset = () => {
     setText(''); setTime('09:00'); setEnabled(true); setEditingId(undefined); setEditingCustomId(undefined); setShowTimePicker(false); setTemplateId(undefined); setCustomDraft('');
