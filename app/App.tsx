@@ -47,6 +47,8 @@ import { cancelPendingTaskNotifications } from './features/tasks/taskNotificatio
 import { cancelPendingDepartureNotifications } from './features/departure/departureNotifications';
 import { getDeparturePlanMode, getPlanScheduledTime, isArrivalReversePlan, isDepartureReminderPlan, normalizeDeparturePlanForSave } from './features/departure/departurePlanMode';
 import { WishScreen } from './WishScreen';
+import { buildRoutineInterruptionSummary, getRoutineHistories } from './features/analytics/routineInterruptionAnalysis';
+import type { RoutineArchive } from './types';
 import { SharedEventScreen } from './SharedEventScreen';
 import { TopImageCropModal } from './components/TopImageCropModal';
 import { cropRectToPixels, displayToNormalizedRect, getContainBounds, getInitialCropRect, NormalizedCropRect } from './features/photo/topImageCrop';
@@ -92,6 +94,14 @@ const colors = {
   line: '#ECE8F0',
 };
 const categoryColors = baseCategoryColors;
+const ROUTINE_ARCHIVE_RETENTION_DAYS = 90;
+
+function pruneRoutineArchives(items: RoutineArchive[], now = Date.now()): RoutineArchive[] {
+  return items.filter((item) => {
+    const removedAt = Date.parse(item.removedAt);
+    return !Number.isFinite(removedAt) || now - removedAt < ROUTINE_ARCHIVE_RETENTION_DAYS * 86_400_000;
+  });
+}
 
 const focusCompletionMessages = [
   'お疲れさま。ここまで集中できたね',
@@ -555,6 +565,7 @@ export default function App() {
   const [focusCustomDurationMinutes, setFocusCustomDurationMinutes] = useState<number | undefined>();
   const [behaviorEvents, setBehaviorEvents] = useState<BehaviorEvent[]>([]);
   const behaviorEventsRef = React.useRef<BehaviorEvent[]>([]);
+  const [routineArchives, setRoutineArchives] = useState<RoutineArchive[]>([]);
   const pendingBehaviorEventsRef = React.useRef<BehaviorEvent[]>([]);
   const pendingNotificationBehaviorActionsRef = React.useRef<Array<{ notificationInstanceId: string; action: NotificationAction; taskId?: string; actualAt: Date }>>([]);
   const pendingDepartureFollowUpsRef = React.useRef(new Set<string>());
@@ -1523,6 +1534,26 @@ export default function App() {
         });
         behaviorEventsRef.current = loadedBehaviorEvents;
         setBehaviorEvents(loadedBehaviorEvents);
+        const storedRoutineArchives = pruneRoutineArchives(saved.routineArchives ?? []);
+        const storedArchiveIds = new Set(storedRoutineArchives.map((item) => item.routineId));
+        const legacyRoutineArchives: RoutineArchive[] = saved.routineArchives === undefined
+          ? getRoutineHistories(loadedBehaviorEvents, loadedTasks)
+            .filter((routine) => !routine.active && routine.endedAt && !storedArchiveIds.has(routine.id))
+            .map((routine) => {
+              const representative = loadedTasks.find((task) => (task.routineId ?? task.id) === routine.id);
+              const summary = buildRoutineInterruptionSummary(loadedBehaviorEvents, loadedTasks, routine);
+              return {
+                id: `routine-archive:${routine.id}:${routine.endedAt}`,
+                routineId: routine.id,
+                title: routine.title,
+                removedAt: routine.endedAt!,
+                streakDays: summary.longestStreak,
+                totalCompletedDays: summary.totalCompletedDays,
+                taskTemplate: representative,
+              };
+            })
+          : [];
+        setRoutineArchives([...storedRoutineArchives, ...legacyRoutineArchives]);
         if (saved.taskTemplates) setTaskTemplates(saved.taskTemplates);
         setSavedTaskTemplates(saved.savedTaskTemplates ?? []);
         setWishMonths(saved.wishMonths ?? {});
@@ -1661,7 +1692,7 @@ export default function App() {
 
   useEffect(() => {
     if (!hydrated) return;
-    const state: PersistedState = { tasks, plan, departurePlans, widgetSize, showCompleted, completionIcon, designMode, monoAppearance, hapticsEnabled, reviewPromptedAt, taskTemplates, savedTaskTemplates, chicPattern, chicCheckColor, recoveryHistory, focusSessions, focusCustomDurationMinutes, departureCheckIns, behaviorEvents, wishMonths, calendarMarks, calendarImportCalendarIds, calendarImportKnownCalendarIds, sharedEvents, sharedParticipantIdsByToken, sharedParticipantPrefsByToken, departurePreparationStatuses, affirmations, affirmationCustomTexts, photoTheme, travelApps };
+    const state: PersistedState = { tasks, plan, departurePlans, widgetSize, showCompleted, completionIcon, designMode, monoAppearance, hapticsEnabled, reviewPromptedAt, taskTemplates, savedTaskTemplates, chicPattern, chicCheckColor, recoveryHistory, focusSessions, focusCustomDurationMinutes, departureCheckIns, behaviorEvents, wishMonths, calendarMarks, calendarImportCalendarIds, calendarImportKnownCalendarIds, sharedEvents, sharedParticipantIdsByToken, sharedParticipantPrefsByToken, departurePreparationStatuses, affirmations, affirmationCustomTexts, photoTheme, travelApps, routineArchives: pruneRoutineArchives(routineArchives) };
     latestPersistedStateRef.current = state;
     if (persistenceDisabledRef.current) return;
     if (persistenceTimerRef.current) clearTimeout(persistenceTimerRef.current);
@@ -1677,7 +1708,7 @@ export default function App() {
     return () => {
       if (persistenceTimerRef.current) clearTimeout(persistenceTimerRef.current);
     };
-  }, [tasks, plan, departurePlans, widgetSize, showCompleted, completionIcon, designMode, monoAppearance, hapticsEnabled, reviewPromptedAt, taskTemplates, savedTaskTemplates, chicPattern, chicCheckColor, recoveryHistory, focusSessions, focusCustomDurationMinutes, departureCheckIns, behaviorEvents, wishMonths, calendarMarks, calendarImportCalendarIds, calendarImportKnownCalendarIds, sharedEvents, sharedParticipantIdsByToken, sharedParticipantPrefsByToken, departurePreparationStatuses, affirmations, affirmationCustomTexts, photoTheme, travelApps, hydrated]);
+  }, [tasks, plan, departurePlans, widgetSize, showCompleted, completionIcon, designMode, monoAppearance, hapticsEnabled, reviewPromptedAt, taskTemplates, savedTaskTemplates, chicPattern, chicCheckColor, recoveryHistory, focusSessions, focusCustomDurationMinutes, departureCheckIns, behaviorEvents, wishMonths, calendarMarks, calendarImportCalendarIds, calendarImportKnownCalendarIds, sharedEvents, sharedParticipantIdsByToken, sharedParticipantPrefsByToken, departurePreparationStatuses, affirmations, affirmationCustomTexts, photoTheme, travelApps, routineArchives, hydrated]);
 
   useEffect(() => {
     if (!hydrated) return;
@@ -1693,6 +1724,17 @@ export default function App() {
       }
     });
     return () => subscription.remove();
+  }, [hydrated]);
+
+  useEffect(() => {
+    if (!hydrated) return;
+    const cleanup = () => setRoutineArchives((current) => {
+      const next = pruneRoutineArchives(current);
+      return next.length === current.length ? current : next;
+    });
+    cleanup();
+    const timer = setInterval(cleanup, 60_000);
+    return () => clearInterval(timer);
   }, [hydrated]);
 
   const requestAppReview = React.useCallback(async () => {
@@ -2422,6 +2464,9 @@ export default function App() {
         events={previewEvents}
         tasks={previewTasks}
         onRemoveRoutine={() => undefined}
+        routineArchives={[]}
+        onResumeRoutine={() => undefined}
+        onDeleteRoutineArchive={() => undefined}
         designMode={uiDesignMode}
         planTier="premium"
         chicPalette={chicPalette}
@@ -2934,6 +2979,21 @@ export default function App() {
               PatternDecor={ChicPatternDecor}
               planTier={planTier}
               onPremium={openPremiumFeature}
+              routineArchives={routineArchives}
+              onResumeRoutine={(archive) => {
+                const duplicate = tasksRef.current.some((task) => task.isRoutine && (task.title.trim() === archive.title.trim() || (archive.routineId && task.routineId === archive.routineId)));
+                if (duplicate) {
+                  Alert.alert('同じルーティンがすでにあります', '使用中のルーティンを重複して再開することはできません。');
+                  return;
+                }
+                const template = archive.taskTemplate;
+                if (!template) {
+                  Alert.alert('ルーティンを再開できません', '引き継げる設定が見つかりません。');
+                  return;
+                }
+                addTask(template.title, template.category, template.priority, template.remindDate, template.remindAt, template.deadlineDate, template.deadlineTime, template.deadlineNotifyBefore, template.navigationEnabled, template.preparationMinutes, template.travelMinutes, template.bufferMinutes, template.repeatRule ?? 'none', template.nudgeMode ?? 'once', dateKey(now), template.scheduledTime, template.endAt, true, template.subtasks ?? [], template.listItems ?? []);
+              }}
+              onDeleteRoutineArchive={(archive) => Alert.alert('この解除履歴を削除しますか？', '解除履歴を削除すると、この解除歴画面からは確認できなくなります。', [{ text: 'キャンセル', style: 'cancel' }, { text: '削除する', style: 'destructive', onPress: () => setRoutineArchives((current) => current.filter((item) => item.id !== archive.id)) }])}
               onAnalysisUsed={() => void onboarding.complete('analysis')}
               departurePlans={departurePlans}
               onApplySuggestion={(suggestion) => {
@@ -2954,9 +3014,21 @@ export default function App() {
                 if (!target) return;
                 const endedAt = new Date().toISOString();
                 const routineId = target.routineId ?? target.id;
+                const routine = getRoutineHistories(behaviorEventsRef.current, tasksRef.current).find((item) => item.id === routineId);
+                const summary = routine ? buildRoutineInterruptionSummary(behaviorEventsRef.current, tasksRef.current, routine, new Date(endedAt)) : undefined;
+                const archive: RoutineArchive = {
+                  id: `routine-archive:${routineId}:${endedAt}`,
+                  routineId,
+                  title: target.title,
+                  removedAt: endedAt,
+                  streakDays: summary?.longestStreak ?? 0,
+                  totalCompletedDays: summary?.totalCompletedDays ?? 0,
+                  taskTemplate: { ...target, subtasks: target.subtasks?.map((item) => ({ ...item })), listItems: target.listItems?.map((item) => ({ ...item })) },
+                };
                 const next = tasksRef.current.map((task) => (task.routineId ?? task.id) === routineId ? { ...task, isRoutine: false, routineEndedAt: endedAt } : task);
                 tasksRef.current = next;
                 setTasks(next);
+                setRoutineArchives((current) => pruneRoutineArchives([...current.filter((item) => item.routineId !== routineId), archive]));
                 recordBehaviorEvent(createRoutineDeactivatedBehaviorEvent({ routineId, routineTitle: target.title, taskId: target.id, occurredAt: new Date(endedAt), targetDate: dateKey(endedAt) }));
               } }])}
               recordContent={<HistoryScreen tasks={tasks} wishMonths={wishMonths} calendarMarks={calendarMarks} onSetCalendarMark={(date, mark) => setCalendarMarks((current) => { const next = { ...current }; if (mark) next[date] = mark; else delete next[date]; return next; })} recoveryHistory={recoveryHistory} focusSessions={focusSessions} departureCheckIns={departureCheckIns} departurePlans={departurePlans} behaviorEvents={behaviorEvents} completionIcon={completionIcon} designMode={uiDesignMode} chicPattern={effectiveChicPattern} chicPalette={chicPalette} planTier={planTier} onPremium={openPremiumFeature} onSaveTemplate={saveTaskAsTemplate} onRestore={(id) => { void onboarding.complete('history'); restoreTaskById(id); }} onSaveDailyReview={saveDailyReview} onSaveMonthlyReflectionCard={saveMonthlyReflectionCard} onUpdateReview={updateWishReview} onDeleteReview={deleteWishReview} styles={styles} helpers={{ dateKey, formatLiveTime, getThemeTokens: getThemedThemeTokens }} components={{ AchievementVessel, CalendarMarkPicker }} />}

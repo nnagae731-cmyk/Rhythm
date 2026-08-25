@@ -7,7 +7,7 @@ import { buildRoutineInterruptionSummary, formatRoutineDate, getRoutineHistories
 import { hasPremiumAccess, PlanTier } from './premiumAccess';
 import { PremiumGuideFeatureId } from './premiumGuide';
 import { ChicCheckColor, ChicPattern, ChicThemePalette, DesignMode, getDesignCheckThemeTokens, getPremiumFeatureCardTheme, getThemeTokens } from './theme';
-import { DeparturePlan, Task } from './types';
+import { DeparturePlan, RoutineArchive, Task } from './types';
 
 type AnalysisTab = 'records' | 'insights' | 'routine';
 
@@ -45,19 +45,58 @@ function RoutineHistoryModal({ summary, title, designMode, chicPalette, onClose 
   </Modal>;
 }
 
-function RoutineProgressPanel({ events, tasks, designMode, chicPalette, onRemoveRoutine }: { events: BehaviorEvent[]; tasks: Task[]; designMode: DesignMode; chicPalette?: ChicThemePalette; onRemoveRoutine: (taskId: string) => void }) {
+function RoutineArchiveModal({ visible, archives, events, tasks, designMode, chicPalette, onClose, onHistory, onResume, onDelete }: { visible: boolean; archives: RoutineArchive[]; events: BehaviorEvent[]; tasks: Task[]; designMode: DesignMode; chicPalette?: ChicThemePalette; onClose: () => void; onHistory: (title: string, summary: RoutineInterruptionSummary) => void; onResume: (archive: RoutineArchive) => void; onDelete: (archive: RoutineArchive) => void }) {
+  const theme = getThemeTokens(designMode, chicPalette?.id ?? 'cool');
+  const isDark = designMode === 'dark';
+  const routineMap = useMemo(() => new Map(getRoutineHistoryList(events, tasks).map((routine) => [routine.id, routine])), [events, tasks]);
+  return <Modal transparent animationType="slide" visible={visible} onRequestClose={onClose}>
+    <View style={styles.routineHistoryBackdrop}>
+      <View style={[styles.routineHistorySheet, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }, isDark && styles.routineHistorySheetDark, designMode === 'chic' && chicPalette && { backgroundColor: chicPalette.cardSurface, borderColor: chicPalette.border }]}>
+        <View style={styles.routineHistoryHeader}><View style={styles.routineHistoryHeading}><Text style={[styles.routineHistoryTitle, { color: theme.colors.primaryText }, designMode === 'chic' && chicPalette && { color: chicPalette.textPrimary }]}>解除歴</Text><Text style={[styles.routineHistorySubtitle, { color: theme.colors.secondaryText }, designMode === 'chic' && chicPalette && { color: chicPalette.textSecondary }]}>解除から90日間確認できます</Text></View><Pressable onPress={onClose} accessibilityLabel="解除歴を閉じる" style={[styles.routineHistoryClose, { borderColor: theme.colors.border }, designMode === 'chic' && chicPalette && { borderColor: chicPalette.border }]}><Text style={[styles.routineHistoryCloseText, { color: theme.colors.primaryText }, designMode === 'chic' && chicPalette && { color: chicPalette.textPrimary }]}>閉じる</Text></Pressable></View>
+        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.routineHistoryList}>
+          {archives.length === 0 ? <Text style={[styles.routineHistoryEmpty, { color: theme.colors.secondaryText }, designMode === 'chic' && chicPalette && { color: chicPalette.textSecondary }]}>解除したルーティンはありません</Text> : archives.map((archive) => {
+            const routine = routineMap.get(archive.routineId);
+            const summary = routine ? buildRoutineInterruptionSummary(events, tasks, routine) : undefined;
+            const elapsed = Number.isFinite(Date.parse(archive.removedAt)) ? Math.max(0, Math.floor((Date.now() - Date.parse(archive.removedAt)) / 86_400_000)) : 0;
+            const remaining = Math.max(0, 90 - elapsed);
+            const accent = designMode === 'chic' && chicPalette ? chicPalette.accent : theme.colors.primaryAccent;
+            return <View key={archive.id} style={[styles.routineArchiveItem, { backgroundColor: isDark ? '#20293A' : theme.colors.secondarySurface, borderColor: theme.colors.border }, designMode === 'chic' && chicPalette && { backgroundColor: chicPalette.taskBackground, borderColor: chicPalette.border }]}>
+              <Text style={[styles.routineArchiveTitle, { color: theme.colors.primaryText }, designMode === 'chic' && chicPalette && { color: chicPalette.textPrimary }]}>{archive.title}</Text>
+              <Text style={[styles.routineArchiveMeta, { color: theme.colors.secondaryText }, designMode === 'chic' && chicPalette && { color: chicPalette.textSecondary }]}>{formatRoutineDate(archive.removedAt)} 解除 ・ {summary?.longestStreak ?? archive.streakDays}日継続</Text>
+              <Text style={[styles.routineArchiveRemaining, { color: remaining <= 7 ? accent : theme.colors.secondaryText }, designMode === 'chic' && chicPalette && { color: remaining <= 7 ? chicPalette.accent : chicPalette.textSecondary }]}>あと{remaining}日 閲覧できます</Text>
+              <View style={styles.routineArchiveActions}>
+                {summary && <Pressable onPress={() => onHistory(archive.title, summary)} style={[styles.routineArchiveButton, { borderColor: theme.colors.border }]}><Text style={[styles.routineArchiveButtonText, { color: accent }]}>履歴を見る</Text></Pressable>}
+                <Pressable onPress={() => onResume(archive)} style={[styles.routineArchiveButton, { borderColor: accent }]}><Text style={[styles.routineArchiveButtonText, { color: accent }]}>再開</Text></Pressable>
+                <Pressable onPress={() => onDelete(archive)} style={[styles.routineArchiveButton, { borderColor: theme.colors.border }]}><Text style={[styles.routineArchiveButtonText, { color: theme.colors.secondaryText }]}>削除</Text></Pressable>
+              </View>
+            </View>;
+          })}
+        </ScrollView>
+      </View>
+    </View>
+  </Modal>;
+}
+
+function RoutineProgressPanel({ events, tasks, designMode, chicPalette, onRemoveRoutine, routineArchives, onResumeRoutine, onDeleteRoutineArchive }: { events: BehaviorEvent[]; tasks: Task[]; designMode: DesignMode; chicPalette?: ChicThemePalette; onRemoveRoutine: (taskId: string) => void; routineArchives: RoutineArchive[]; onResumeRoutine: (archive: RoutineArchive) => void; onDeleteRoutineArchive: (archive: RoutineArchive) => void }) {
   const routineTasks = useMemo(() => getRoutineHistoryList(events, tasks), [events, tasks]);
   const [historyTarget, setHistoryTarget] = useState<{ title: string; summary: RoutineInterruptionSummary }>();
+  const [archiveOpen, setArchiveOpen] = useState(false);
+  const activeRoutineTasks = routineTasks.filter((routine) => routine.active);
   const resolvedChicPalette = chicPalette ?? getDesignCheckThemeTokens('cool');
   const theme = getThemeTokens(designMode, chicPalette?.id ?? 'cool');
   const palette = designMode === 'chic' ? [resolvedChicPalette.accent, resolvedChicPalette.statusAccent, resolvedChicPalette.patternStripe, resolvedChicPalette.accentSoft, resolvedChicPalette.border] : [theme.colors.primaryAccent, theme.colors.secondaryAccent, theme.colors.border, theme.colors.softAccent, theme.colors.secondaryText];
   const isDark = designMode === 'dark';
-  if (routineTasks.length === 0) return <View style={[styles.routineCard, isDark && styles.routineCardDark, designMode === 'chic' && chicPalette && { backgroundColor: chicPalette.cardSurface, borderColor: chicPalette.border }]}><Text style={[styles.sectionTitle, isDark && styles.darkMetricText, designMode === 'chic' && chicPalette && { color: chicPalette.textPrimary }]}>ルーティンの継続</Text><Text style={[styles.sectionCopy, isDark && styles.darkSecondaryText, designMode === 'chic' && chicPalette && { color: chicPalette.textSecondary }]}>タスク登録時に「ルーティンにする」を選ぶと、継続率を確認できます。</Text></View>;
+  const archiveLink = <Pressable onPress={() => setArchiveOpen(true)} style={styles.routineHistoryLink}><Text style={[styles.routineHistoryLinkText, { color: designMode === 'chic' && chicPalette ? chicPalette.accent : theme.colors.primaryAccent }]}>解除歴 〉</Text></Pressable>;
+  if (activeRoutineTasks.length === 0) return <>
+    <View style={[styles.routineCard, isDark && styles.routineCardDark, designMode === 'chic' && chicPalette && { backgroundColor: chicPalette.cardSurface, borderColor: chicPalette.border }]}><Text style={[styles.sectionTitle, isDark && styles.darkMetricText, designMode === 'chic' && chicPalette && { color: chicPalette.textPrimary }]}>ルーティンの継続</Text><Text style={[styles.sectionCopy, isDark && styles.darkSecondaryText, designMode === 'chic' && chicPalette && { color: chicPalette.textSecondary }]}>タスク登録時に「ルーティンにする」を選ぶと、継続率を確認できます。</Text>{archiveLink}</View>
+    <RoutineArchiveModal visible={archiveOpen} archives={routineArchives} events={events} tasks={tasks} designMode={designMode} chicPalette={chicPalette} onClose={() => setArchiveOpen(false)} onHistory={(title, summary) => { setArchiveOpen(false); setHistoryTarget({ title, summary }); }} onResume={onResumeRoutine} onDelete={onDeleteRoutineArchive} />
+    <RoutineHistoryModal summary={historyTarget?.summary} title={historyTarget?.title} designMode={designMode} chicPalette={chicPalette} onClose={() => setHistoryTarget(undefined)} />
+  </>;
   return <>
     <View style={[styles.routineCard, isDark && styles.routineCardDark, designMode === 'chic' && chicPalette && { backgroundColor: chicPalette.cardSurface, borderColor: chicPalette.border }]}>
       <Text style={[styles.sectionTitle, isDark && styles.darkMetricText, designMode === 'chic' && chicPalette && { color: chicPalette.textPrimary }]}>ルーティンの継続</Text>
       <Text style={[styles.sectionCopy, isDark && styles.darkSecondaryText, designMode === 'chic' && chicPalette && { color: chicPalette.textSecondary }]}>続けられた日が丸で増えていきます。連続日数と継続率を確認できます。</Text>
-      <View style={styles.routineTaskGrid}>{routineTasks.map((routine, taskIndex) => {
+      <View style={styles.routineTaskGrid}>{activeRoutineTasks.map((routine, taskIndex) => {
         const summary = buildRoutineInterruptionSummary(events, tasks, routine);
         const representativeTask = tasks.find((task) => routine.memberIds.has(task.id) && task.isRoutine);
         const color = palette[taskIndex % palette.length]!;
@@ -81,7 +120,9 @@ function RoutineProgressPanel({ events, tasks, designMode, chicPalette, onRemove
           {summary.history.length > 1 && <Pressable onPress={() => setHistoryTarget({ title: routine.title, summary })} style={styles.routineHistoryLink}><Text style={[styles.routineHistoryLinkText, { color }]}>中断・再開の履歴を見る 〉</Text></Pressable>}
         </View>;
       })}</View>
+      {archiveLink}
     </View>
+    <RoutineArchiveModal visible={archiveOpen} archives={routineArchives} events={events} tasks={tasks} designMode={designMode} chicPalette={chicPalette} onClose={() => setArchiveOpen(false)} onHistory={(title, summary) => { setArchiveOpen(false); setHistoryTarget({ title, summary }); }} onResume={onResumeRoutine} onDelete={onDeleteRoutineArchive} />
     <RoutineHistoryModal summary={historyTarget?.summary} title={historyTarget?.title} designMode={designMode} chicPalette={chicPalette} onClose={() => setHistoryTarget(undefined)} />
   </>;
 }
@@ -247,6 +288,9 @@ export function AnalysisScreen({
   events,
   tasks,
   onRemoveRoutine,
+  routineArchives,
+  onResumeRoutine,
+  onDeleteRoutineArchive,
   designMode,
   planTier,
   recordContent,
@@ -263,6 +307,9 @@ export function AnalysisScreen({
   events: BehaviorEvent[];
   tasks: Task[];
   onRemoveRoutine: (taskId: string) => void;
+  routineArchives: RoutineArchive[];
+  onResumeRoutine: (archive: RoutineArchive) => void;
+  onDeleteRoutineArchive: (archive: RoutineArchive) => void;
   designMode: DesignMode;
   planTier: PlanTier;
   recordContent: ReactNode;
@@ -332,7 +379,7 @@ export function AnalysisScreen({
       ) : tab === 'insights' ? (
         <InsightDashboardView events={events} tasks={tasks} plans={departurePlans} designMode={designMode} chicPalette={chicPalette} onApplySuggestion={onApplySuggestion} behaviorOnly={previewKind === 'behavior'} />
       ) : tab === 'routine' ? (
-        <RoutineProgressPanel events={events} tasks={tasks} designMode={designMode} chicPalette={chicPalette} onRemoveRoutine={onRemoveRoutine} />
+        <RoutineProgressPanel events={events} tasks={tasks} designMode={designMode} chicPalette={chicPalette} onRemoveRoutine={onRemoveRoutine} routineArchives={routineArchives} onResumeRoutine={onResumeRoutine} onDeleteRoutineArchive={onDeleteRoutineArchive} />
       ) : null}
     </>
   );
@@ -391,6 +438,13 @@ const styles = StyleSheet.create({
   routineHistoryCloseText: { fontSize: 11, fontWeight: '900' },
   routineHistoryList: { gap: 9, paddingBottom: 16 },
   routineHistoryItem: { borderWidth: 1, borderRadius: 14, padding: 12 },
+  routineArchiveItem: { borderWidth: 1, borderRadius: 14, padding: 12 },
+  routineArchiveTitle: { fontSize: 14, fontWeight: '900' },
+  routineArchiveMeta: { fontSize: 11, fontWeight: '700', marginTop: 5 },
+  routineArchiveRemaining: { fontSize: 11, fontWeight: '900', marginTop: 4 },
+  routineArchiveActions: { flexDirection: 'row', flexWrap: 'wrap', gap: 7, marginTop: 10 },
+  routineArchiveButton: { minHeight: 34, borderWidth: 1, borderRadius: 10, paddingHorizontal: 9, alignItems: 'center', justifyContent: 'center' },
+  routineArchiveButtonText: { fontSize: 10, fontWeight: '900' },
   routineHistoryDate: { fontSize: 13, fontWeight: '900' },
   routineHistoryCopy: { fontSize: 12, lineHeight: 18, fontWeight: '700', marginTop: 5 },
   routineHistoryMeta: { fontSize: 11, fontWeight: '800', marginTop: 4 },

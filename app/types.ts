@@ -60,6 +60,18 @@ export type Task = {
   listItems?: TaskListItem[];
 };
 
+/** A lightweight snapshot for routines that were explicitly deactivated. */
+export type RoutineArchive = {
+  id: string;
+  routineId: string;
+  title: string;
+  removedAt: string;
+  streakDays: number;
+  totalCompletedDays: number;
+  /** Keeps inheritable settings without changing the original task history. */
+  taskTemplate?: Task;
+};
+
 export type DeparturePlan = {
   id?: string;
   title: string;
@@ -252,4 +264,6 @@ export type PersistedState = {
   photoTheme?: PhotoThemeSettings;
   /** Optional external travel-app launch settings. */
   travelApps?: TravelAppSettings;
+  /** Explicitly deactivated routines retained for 90 days. */
+  routineArchives?: RoutineArchive[];
 };
