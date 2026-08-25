@@ -641,7 +641,6 @@ export const styles = StyleSheet.create({
     reviewPhotoPagerDotActive: { backgroundColor: colors.violet },
     reviewPhotoPagerText: { color: colors.ink, fontSize: 9, fontWeight: '900' },
     journalEditor: { marginTop: 14, borderWidth: 1, borderColor: '#E5DDE9', borderRadius: 16, padding: 13, backgroundColor: '#FFFFFF' },
-    journalEditorMinimal: { borderColor: '#161616', borderRadius: 2 },
     journalEditorHeader: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 10 },
     journalEditorTitle: { color: colors.ink, fontSize: 15, fontWeight: '900' },
     journalEditorDate: { color: colors.violet, fontSize: 10, fontWeight: '800', marginTop: 3 },

@@ -569,7 +569,7 @@ function SectionCard({
     ? { primary: chicPalette.textPrimary, secondary: chicPalette.textSecondary }
     : (() => { const colors = getThemeTokens(designMode).colors; return { primary: colors.primaryText, secondary: colors.secondaryText }; })();
   return (
-    <View style={[styles.sectionCard, designMode === 'minimal' ? styles.sectionCardMinimal : styles.sectionCardChic, dark && styles.sectionCardDark, designMode === 'chic' && chicPalette && { backgroundColor: chicPalette.cardSurface, borderColor: chicPalette.border, shadowColor: chicPalette.accent }]}>
+    <View style={[styles.sectionCard, designMode === 'minimal' ? styles.sectionCardMinimal : styles.sectionCardChic, dark && styles.sectionCardDark, designMode === 'minimal' && !dark && { borderColor: getThemeTokens(designMode).colors.border }, designMode === 'chic' && chicPalette && { backgroundColor: chicPalette.cardSurface, borderColor: chicPalette.border, shadowColor: chicPalette.accent }]}>
       {showBRibbon && <BThemeRibbonDecoration journal={title.includes('九☆')} />}
       {showCRibbon && <CThemeRibbonDecoration journal={title.includes('九☆')} />}
       <View style={styles.sectionHeader}>
@@ -592,7 +592,7 @@ const styles = StyleSheet.create({
   pageHeaderTitle: { fontSize: 20, fontWeight: '900' },
   pageHeaderLink: { fontSize: 12, fontWeight: '900' },
   sectionCard: { borderWidth: 1, borderRadius: 22, padding: 14, overflow: 'hidden', position: 'relative' },
-  sectionCardMinimal: { backgroundColor: '#FFFFFF', borderColor: '#111111', borderRadius: 20 },
+  sectionCardMinimal: { backgroundColor: '#FFFFFF', borderColor: '#DCE2EC', borderRadius: 20 },
   sectionCardChic: { backgroundColor: '#FFF3F5', borderColor: '#F0DFE5', borderRadius: 26, shadowColor: '#D986A1', shadowOpacity: 0.08, shadowRadius: 10, shadowOffset: { width: 0, height: 4 } },
   sectionCardDark: { backgroundColor: '#181F2E', borderColor: '#303B50', shadowColor: '#000000', shadowOpacity: 0.16 },
   sectionHeader: { marginBottom: 10, zIndex: 1 },

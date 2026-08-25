@@ -2388,14 +2388,14 @@ export default function App() {
       previewSearchQuery={kind === 'history' ? '洗濯' : undefined}
       previewJournal={kind === 'records'}
     />;
-    const readonly = (node: React.ReactNode, maxHeight = 430) => <View style={[styles.premiumPreview, { minHeight: 300, maxHeight, overflow: 'hidden' }, uiDesignMode === 'dark' && { backgroundColor: '#181F2E', borderColor: '#40506A' }]}>{node}</View>;
+    const readonly = (node: React.ReactNode, maxHeight = 430, minHeight = 300) => <View style={[styles.premiumPreview, { minHeight, maxHeight, overflow: 'hidden' }, uiDesignMode === 'dark' && { backgroundColor: '#181F2E', borderColor: '#40506A' }]}>{node}</View>;
     // Settings-backed Premium features use the production settings surface as
     // their read-only preview.  The capture/preview callbacks are no-ops, so
     // this cannot persist settings, request permissions, or start ads.
     if (kind === 'photo_design') {
       return readonly(<View pointerEvents="none">{renderAppearanceSettingsPreview()}</View>);
     }
-    if (kind === 'nudge') return readonly(<NotificationManagerCard designMode={uiDesignMode} readOnly />);
+    if (kind === 'nudge') return readonly(<NotificationManagerCard designMode={uiDesignMode} readOnly />, 560, 0);
     if (kind === 'travel_apps') return readonly(<TravelAppsSettingsCard settings={travelApps} onChange={() => undefined} planTier="premium" designMode={uiDesignMode} chicPalette={chicPalette} onPremium={() => undefined} readOnlyPreview />, 560);
     if (kind === 'route') {
       const routeTheme = getThemedThemeTokens(uiDesignMode);
@@ -2502,7 +2502,7 @@ export default function App() {
          onAnalysisUsed={() => undefined}
          initialTab={previewOverride?.analysisInitialTab ?? (kind === 'time' || kind === 'behavior' ? 'insights' : 'records')}
          previewKind={previewOverride?.analysisPreviewKind ?? (kind === 'time' || kind === 'behavior' ? kind : undefined)}
-       />);
+       />, 430, previewOverride?.analysisInitialTab === 'routine' ? 0 : 300);
     }
     if (kind === 'templates') {
       return readonly(<TaskModal
@@ -2520,7 +2520,7 @@ export default function App() {
         styles={styles}
         helpers={{ getThemeTokens: getThemedThemeTokens, todayInputValue, hasPremiumAccess, dateForReminder, dateKey, formatLiveTime, colors: themedColors, summarizePremiumTaskTemplate }}
         components={{ CompactNumberSetting }}
-      />);
+      />, 560, 0);
     }
     if (kind === 'affirmation') {
       return readonly(<AffirmationSettingsCard
@@ -3898,7 +3898,8 @@ function TaskScheduleCalendar({ tasks, plans, externalEvents, now, designMode, c
 }
 
 function ScheduleFilterChips({ value, designMode, chicPalette, onChange, compact = false }: { value: 'all' | 'tasks' | 'plans'; designMode: DesignMode; chicPalette?: ChicThemePalette; onChange: (value: 'all' | 'tasks' | 'plans') => void; compact?: boolean }) {
-  return <View style={[styles.scheduleFilterRow, compact && styles.scheduleFilterRowInCalendar, designMode === 'dark' && styles.darkSurface, designMode === 'chic' && chicPalette && { backgroundColor: chicPalette.surfaceSubtle, borderColor: chicPalette.border }]}>{([['all', 'すべて'], ['tasks', 'やること'], ['plans', '予定']] as const).map(([id, label]) => <Pressable key={id} onPress={() => onChange(id)} style={[styles.scheduleFilterChip, value === id && styles.scheduleFilterChipActive, value === id && designMode === 'dark' && styles.scheduleFilterChipActiveDark, value === id && designMode === 'chic' && chicPalette && { backgroundColor: chicPalette.accent, borderColor: chicPalette.accent }]}><Text style={[styles.scheduleFilterText, value === id && styles.scheduleFilterTextActive, value === id && designMode === 'dark' && styles.scheduleFilterTextActiveDark, value === id && designMode === 'chic' && chicPalette && { color: chicPalette.onAccent }, value !== id && designMode === 'chic' && chicPalette && { color: chicPalette.textSecondary }]}>{label}</Text></Pressable>)}</View>;
+  const theme = getThemeTokens(designMode, chicPalette?.id ?? 'cool');
+  return <View style={[styles.scheduleFilterRow, compact && styles.scheduleFilterRowInCalendar, designMode === 'dark' && styles.darkSurface, designMode === 'chic' && chicPalette && { backgroundColor: chicPalette.surfaceSubtle, borderColor: chicPalette.border }]}>{([['all', 'すべて'], ['tasks', 'やること'], ['plans', '予定']] as const).map(([id, label]) => <Pressable key={id} onPress={() => onChange(id)} style={[styles.scheduleFilterChip, value === id && styles.scheduleFilterChipActive, value === id && designMode === 'minimal' && { backgroundColor: theme.colors.primaryAccent, borderColor: theme.colors.primaryAccent }, value === id && designMode === 'dark' && styles.scheduleFilterChipActiveDark, value === id && designMode === 'chic' && chicPalette && { backgroundColor: chicPalette.accent, borderColor: chicPalette.accent }]}><Text style={[styles.scheduleFilterText, value === id && styles.scheduleFilterTextActive, value === id && designMode === 'minimal' && { color: '#FFFFFF' }, value === id && designMode === 'dark' && styles.scheduleFilterTextActiveDark, value === id && designMode === 'chic' && chicPalette && { color: chicPalette.onAccent }, value !== id && designMode === 'chic' && chicPalette && { color: chicPalette.textSecondary }]}>{label}</Text></Pressable>)}</View>;
 }
 
 function CalendarMarkPicker({ date, mark, onSet, designMode, chicPalette }: { date: string; mark?: string; onSet: (date: string, mark?: string) => void; designMode: DesignMode; chicPalette?: ChicThemePalette }) {

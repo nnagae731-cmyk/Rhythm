@@ -107,7 +107,7 @@ export const ONBOARDING_STEPS: Record<
     id: 'completedTasks',
     title: '今日できたことを確認',
     description:
-      '「今日の進み」をタップすると、今日完了したTodoをあとから確認できます。',
+      '「達成グラフ」をタップすると、今日完了したTodoをあとから確認できます。',
     actionLabel: '今日できたことを見る',
   },
 
@@ -180,7 +180,7 @@ export const ONBOARDING_STEPS: Record<
     id: 'photoLog',
     title: '今日を写真で残す',
     description:
-      '日付を選んで写真を追加。一言やメモも一緒に残せます。写真記録はFreeでも利用できます。',
+      '日付を選んで写真を追加。一言やメモも一緒に残せます。今日の記録はPremiumで利用できます。',
     actionLabel: '写真を追加',
   },
 

@@ -220,7 +220,7 @@ export function TaskModal({ visible, task, templates, savedTemplates, designMode
           <Text style={[styles.modalTitle, designMode === 'dark' && styles.modalTitleDark]}>{task ? 'タスクを編集' : '新しいタスク'}</Text>
           <Text style={[styles.fieldLabel, designMode === 'dark' && styles.fieldLabelDark]}>やること・忘れたくないこと</Text>
           <View style={styles.voiceAddInputRow}>
-            <TextInput ref={titleInputRef} value={title} onChangeText={updateTitle} placeholder="例：資料をバッグに入れる" placeholderTextColor={designMode === 'dark' ? '#9CA8BC' : '#69758A'} style={[styles.modalInput, designMode === 'dark' && styles.darkInput]} selectionColor={isChic && chicPalette ? chicPalette.accent : theme.colors.primaryAccent} returnKeyType="done" onSubmitEditing={save} />
+            <TextInput ref={titleInputRef} value={title} onChangeText={updateTitle} placeholder="例：資料をバッグに入れる" placeholderTextColor={designMode === 'dark' ? '#9CA8BC' : '#69758A'} style={[styles.modalInput, { flex: 1, minWidth: 0 }, designMode === 'dark' && styles.darkInput]} selectionColor={isChic && chicPalette ? chicPalette.accent : theme.colors.primaryAccent} returnKeyType="done" onSubmitEditing={save} />
             <Pressable accessibilityRole="button" accessibilityLabel="音声入力" style={[styles.voiceAddMicButton, isDark && styles.voiceAddMicButtonDark]} onPress={() => titleInputRef.current?.focus()}><Text style={styles.voiceAddMicText}>🎙</Text></Pressable>
           </View>
           <Pressable accessibilityRole="button" onPress={() => titleInputRef.current?.focus()}><Text style={[styles.voiceAddHint, isDark && styles.darkMutedText]}>🎙 音声で入力する　日時・通知・繰り返しを解析します</Text></Pressable>

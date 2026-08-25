@@ -80,7 +80,7 @@ export function RecoveryModal({ visible, plan, now, designMode, onClose, onApply
                     <Text style={[styles.recoveryOptionTitle, { color: theme.colors.primaryText }]}>{option.title}</Text>
                     <Text style={[styles.recoveryOptionCopy, { color: theme.colors.secondaryText }]}>{option.description}</Text>
                   </View>
-                  <Text style={[styles.recoveryOptionArrow, { color: theme.colors.primaryAccent }]}>{locked ? '▣' : '›'}</Text>
+                  <Text style={[styles.recoveryOptionArrow, { color: theme.colors.primaryAccent }, locked && { fontSize: 9, fontWeight: '900' }]}>{locked ? 'Premium' : '›'}</Text>
                 </Pressable>
               );
             })}
