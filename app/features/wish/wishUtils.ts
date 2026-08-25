@@ -1,6 +1,6 @@
 import { MonthlyReview, MonthlyWishState, WishMonthMap } from '../../types';
 
-const EMPTY_MONTHLY_WISH_STATE: MonthlyWishState = { theme: '', monthlyGoal: '', wishes: [], actions: [], review: {} };
+const EMPTY_MONTHLY_WISH_STATE: MonthlyWishState = { monthlyGoal: '', wishes: [], actions: [], review: {} };
 
 export function wishMonthKey(now = new Date()) {
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
@@ -12,12 +12,24 @@ export function wishDateKey(now = new Date()) {
 
 export function createEmptyMonthlyWishState(): MonthlyWishState {
   return {
-    theme: '',
     monthlyGoal: '',
     wishes: [],
     actions: [],
     review: {},
   };
+}
+
+/**
+ * Remove the retired monthly theme field when the state is written again.
+ * The rest of the object is intentionally preserved so unknown legacy fields
+ * are not discarded by this small compatibility cleanup.
+ */
+export function normalizeWishMonthsForSave(months: WishMonthMap | undefined): WishMonthMap {
+  if (!months) return {};
+  return Object.fromEntries(Object.entries(months).map(([monthKey, monthState]) => {
+    const { theme: _legacyTheme, ...withoutLegacyTheme } = monthState as MonthlyWishState & { theme?: string };
+    return [monthKey, withoutLegacyTheme as MonthlyWishState];
+  })) as WishMonthMap;
 }
 
 export function getMonthlyWishState(months: WishMonthMap | undefined, monthKey = wishMonthKey()) {

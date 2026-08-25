@@ -2,7 +2,6 @@ import { ChicCheckColor, ChicPattern, DesignMode } from './theme';
 import { RecoveryRecord } from './recovery';
 import { FocusSession } from './focusSession';
 import { DepartureCheckIn } from './departureCheckIn';
-import { PlanTier } from './premiumAccess';
 import { BehaviorEvent } from './behaviorEvents';
 import { PremiumTaskTemplate } from './taskTemplates';
 import type { NormalizedCropRect } from './features/photo/topImageCrop';
@@ -143,7 +142,6 @@ export type MonthlyReflectionCard = {
 };
 
 export type MonthlyWishState = {
-  theme?: string;
   /** Optional monthly goal; omitted in older saved months for compatibility. */
   monthlyGoal?: string;
   wishes: Wish[];
@@ -245,8 +243,6 @@ export type PersistedState = {
   /** Last custom Focus duration in minutes. Kept optional for older saves. */
   focusCustomDurationMinutes?: number;
   departureCheckIns?: DepartureCheckIn[];
-  devPremiumPreview?: boolean;
-  devPlanTier?: PlanTier;
   behaviorEvents?: BehaviorEvent[];
   savedTaskTemplates?: PremiumTaskTemplate[];
   wishMonths?: WishMonthMap;

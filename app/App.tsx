@@ -42,7 +42,7 @@ import { DEFAULT_TRAVEL_APP_SETTINGS, normalizeTravelAppSettings, TravelAppSetti
 import { loadRhythmState, saveRhythmState } from './storage/rhythmStorage';
 import { categories, priorities, completionIcons, categoryColors as baseCategoryColors, designModes, getLateRiskMessage, getNextBestAction, getUrgencyStatus, urgencyLevel } from './features/tasks/taskUtils';
 import { createSharedEventPacket, createSharedEventToken, encodeSharedEventLink, normalizeSharedEvent, parseSharedEventLink, upsertSharedEvent } from './features/shared/sharedUtils';
-import { getMonthlyWishState, wishMonthKey } from './features/wish/wishUtils';
+import { getMonthlyWishState, normalizeWishMonthsForSave, wishMonthKey } from './features/wish/wishUtils';
 import { cancelPendingTaskNotifications } from './features/tasks/taskNotifications';
 import { cancelPendingDepartureNotifications } from './features/departure/departureNotifications';
 import { getDeparturePlanMode, getPlanScheduledTime, isArrivalReversePlan, isDepartureReminderPlan, normalizeDeparturePlanForSave } from './features/departure/departurePlanMode';
@@ -1696,7 +1696,7 @@ export default function App() {
 
   useEffect(() => {
     if (!hydrated) return;
-    const state: PersistedState = { tasks, plan, departurePlans, widgetSize, showCompleted, completionIcon, designMode, monoAppearance, hapticsEnabled, reviewPromptedAt, taskTemplates, savedTaskTemplates, chicPattern, chicCheckColor, recoveryHistory, focusSessions, focusCustomDurationMinutes, departureCheckIns, behaviorEvents, wishMonths, calendarMarks, calendarImportCalendarIds, calendarImportKnownCalendarIds, sharedEvents, sharedParticipantIdsByToken, sharedParticipantPrefsByToken, departurePreparationStatuses, affirmations, affirmationCustomTexts, photoTheme, travelApps, routineArchives: pruneRoutineArchives(routineArchives) };
+    const state: PersistedState = { tasks, plan, departurePlans, widgetSize, showCompleted, completionIcon, designMode, monoAppearance, hapticsEnabled, reviewPromptedAt, taskTemplates, savedTaskTemplates, chicPattern, chicCheckColor, recoveryHistory, focusSessions, focusCustomDurationMinutes, departureCheckIns, behaviorEvents, wishMonths: normalizeWishMonthsForSave(wishMonths), calendarMarks, calendarImportCalendarIds, calendarImportKnownCalendarIds, sharedEvents, sharedParticipantIdsByToken, sharedParticipantPrefsByToken, departurePreparationStatuses, affirmations, affirmationCustomTexts, photoTheme, travelApps, routineArchives: pruneRoutineArchives(routineArchives) };
     latestPersistedStateRef.current = state;
     if (persistenceDisabledRef.current) return;
     if (persistenceTimerRef.current) clearTimeout(persistenceTimerRef.current);
