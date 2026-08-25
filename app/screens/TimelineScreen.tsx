@@ -1,6 +1,6 @@
 import * as Calendar from 'expo-calendar';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, Modal, Pressable, ScrollView, Text, View } from 'react-native';
+import { Alert, Modal, Pressable, SafeAreaView, ScrollView, Text, View } from 'react-native';
 import { ChicPattern, ChicThemePalette, DesignMode, getThemeTokens } from '../theme';
 import { CalendarMarks, DeparturePlan, DeparturePreparationStatus, Task, TimeTab } from '../types';
 import { DepartureCheckIn } from '../departureCheckIn';
@@ -261,7 +261,7 @@ export function TimelineScreen({
     </>}
 
     {planEditorOpen && <Modal visible animationType="slide" presentationStyle="fullScreen" onRequestClose={onClosePlanEditor}>
-      <View style={[styles.planEditorModal, { backgroundColor: theme.colors.screenBackground }]}><ScrollView contentContainerStyle={styles.planEditorScroll} keyboardShouldPersistTaps="handled"><DeparturePlanForm plan={plan} plans={plans} behaviorEvents={behaviorEvents} designMode={designMode} chicPattern={chicPattern} chicPalette={chicPalette} planTier={planTier} onChange={onChange} onSubmit={onSchedule} onClose={onClosePlanEditor} onPremium={onPremium} dateKey={dateKey} formatLiveDate={formatLiveDate} formatLiveTime={formatLiveTime} dateForReminder={dateForReminder} getDepartureMoments={getDepartureMoments} getMapSearchTarget={getMapSearchTarget} openMapSearch={openMapSearch} travelApps={travelApps} onOpenTravelAppSettings={onOpenTravelAppSettings} /></ScrollView></View>
+      <SafeAreaView style={[styles.planEditorModal, { backgroundColor: theme.colors.screenBackground }]}><ScrollView contentContainerStyle={styles.planEditorScroll} keyboardShouldPersistTaps="handled"><DeparturePlanForm plan={plan} plans={plans} behaviorEvents={behaviorEvents} designMode={designMode} chicPattern={chicPattern} chicPalette={chicPalette} planTier={planTier} onChange={onChange} onSubmit={onSchedule} onClose={onClosePlanEditor} onPremium={onPremium} dateKey={dateKey} formatLiveDate={formatLiveDate} formatLiveTime={formatLiveTime} dateForReminder={dateForReminder} getDepartureMoments={getDepartureMoments} getMapSearchTarget={getMapSearchTarget} openMapSearch={openMapSearch} travelApps={travelApps} onOpenTravelAppSettings={onOpenTravelAppSettings} /></ScrollView></SafeAreaView>
     </Modal>}
     <RecoveryModal visible={Boolean(recoveryPlan)} plan={recoveryPlan} now={now} designMode={designMode} styles={styles} travelApps={travelApps} planTier={planTier} chicPalette={chicPalette} onOpenTravelAppSettings={onOpenTravelAppSettings} onPremium={(featureId?: PremiumGuideFeatureId) => onPremium(featureId ?? 'recovery')} onClose={() => { setRecoveryPlan(undefined); onRecoveryClosed(); }} onApply={(record: RecoveryRecord) => { onRecovery(record); setRecoveryPlan(undefined); }} inlinePreview={Boolean(previewMode && recoveryTargetPlanId)} />
   </>;
