@@ -1,5 +1,3 @@
-import './devResetRoutine';
-
 import * as Calendar from 'expo-calendar';
 import * as ImageManipulator from 'expo-image-manipulator';
 import * as ImagePicker from 'expo-image-picker';
@@ -2767,7 +2765,7 @@ export default function App() {
                 if (task.bucket !== bucket) void onboarding.complete('taskBuckets');
               }}
               styles={styles}
-              renderTodayWinStrip={(todayTasks, openFocus, toggleTask) => <TodayWinStrip tasks={todayTasks} designMode={uiDesignMode} chicPattern={effectiveChicPattern} chicPalette={chicPalette} onRestore={restoreTaskById} onOpenCompleted={() => void onboarding.complete('completedTasks')} onOpenFocus={openFocus} onToggleTask={toggleTask} />}
+              renderTodayWinStrip={(todayTasks, openFocus, toggleTask, openTaskActions) => <TodayWinStrip tasks={todayTasks} designMode={uiDesignMode} chicPattern={effectiveChicPattern} chicPalette={chicPalette} onRestore={restoreTaskById} onOpenCompleted={() => void onboarding.complete('completedTasks')} onOpenFocus={openFocus} onToggleTask={toggleTask} onOpenTaskActions={openTaskActions} />}
               todayReviewExists={Boolean((wishMonths[dateKey(now).slice(0, 7)]?.reviews ?? []).some((review) => review.date === dateKey(now)) || wishMonths[dateKey(now).slice(0, 7)]?.review?.date === dateKey(now))}
               onOpenTodayRecord={() => { if (planTier !== 'premium') { openPremiumFeature('records'); return; } setOpenTodayReview(true); }}
               showTodoOnboarding={onboarding.ready && onboarding.isCompleted('intro') && !onboarding.isCompleted('todo')}
@@ -4043,7 +4041,7 @@ function NotificationManagerCard({ designMode, readOnly = false }: { designMode?
   </View>;
 }
 
-function TodayWinStrip({ tasks, designMode, chicPattern, chicPalette, onRestore, onOpenCompleted, onOpenFocus, onToggleTask }: { tasks: Task[]; designMode: ThemeMode; chicPattern: ChicPattern; chicPalette: ChicThemePalette; onRestore: (id: string) => void; onOpenCompleted?: () => void; onOpenFocus?: () => void; onToggleTask?: (id: string) => void }) {
+function TodayWinStrip({ tasks, designMode, chicPattern, chicPalette, onRestore, onOpenCompleted, onOpenFocus, onToggleTask, onOpenTaskActions }: { tasks: Task[]; designMode: ThemeMode; chicPattern: ChicPattern; chicPalette: ChicThemePalette; onRestore: (id: string) => void; onOpenCompleted?: () => void; onOpenFocus?: () => void; onToggleTask?: (id: string) => void; onOpenTaskActions?: (task: Task) => void }) {
   const theme = getThemeTokens(designMode, chicPalette.id);
   const now = new Date();
   const todayKey = dateKey(now);
@@ -4109,7 +4107,7 @@ function TodayWinStrip({ tasks, designMode, chicPattern, chicPalette, onRestore,
             <View style={styles.todayHeroMinimalLeft}>
               <Text style={[styles.todayHeroMinimalKicker, designMode === 'dark' && styles.todayHeroMinimalKickerDark]}>TODAY</Text>
               <Text style={[styles.todayHeroMinimalNowLabel, designMode === 'dark' && styles.todayHeroMinimalTextDark]}>今はこれ</Text>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}><Pressable disabled={!nextNowTask || !onToggleTask} onPress={(event) => { event.stopPropagation(); if (nextNowTask) onToggleTask?.(nextNowTask.id); }} style={[styles.check, designMode === 'dark' && styles.checkDark, nextNowTask?.done && styles.checkDone]}><Text style={styles.checkMark}>{nextNowTask?.done ? '✓' : ''}</Text></Pressable><Text numberOfLines={2} style={[styles.todayHeroMinimalTask, designMode === 'dark' && styles.todayHeroMinimalTextDark, { flex: 1 }]}>{nextNowTask ? nextNowTask.title : remainingNow === 0 ? '今日の分は完了。いい感じ' : '次にやる1つをここで決めます'}</Text></View>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}><Pressable disabled={!nextNowTask || !onToggleTask} onPress={(event) => { event.stopPropagation(); if (nextNowTask) onToggleTask?.(nextNowTask.id); }} style={[styles.check, designMode === 'dark' && styles.checkDark, nextNowTask?.done && styles.checkDone]}><Text style={styles.checkMark}>{nextNowTask?.done ? '✓' : ''}</Text></Pressable><Pressable disabled={!nextNowTask || !onOpenTaskActions} onPress={(event) => { event.stopPropagation(); if (nextNowTask) onOpenTaskActions?.(nextNowTask); }} style={{ flex: 1 }}><Text numberOfLines={2} style={[styles.todayHeroMinimalTask, designMode === 'dark' && styles.todayHeroMinimalTextDark]}>{nextNowTask ? nextNowTask.title : remainingNow === 0 ? '今日の分は完了。いい感じ' : '次にやる1つをここで決めます'}</Text></Pressable></View>
               <Text style={[styles.todayHeroMinimalStats, designMode === 'dark' && styles.todayHeroMinimalStatsDark]}>完了 {count} / 残り {remainingNow}</Text>
             </View>
             <View style={styles.todayUnifiedAchievementMinimal}>
@@ -4119,7 +4117,7 @@ function TodayWinStrip({ tasks, designMode, chicPattern, chicPalette, onRestore,
               <Text style={[styles.todayHeroMinimalStats, { color: theme.colors.secondaryText }]}>今日できたことを確認</Text>
             </View>
           </View>
-          <Pressable accessibilityRole="button" accessibilityLabel="集中する" onPress={(event) => { event.stopPropagation(); onOpenFocus?.(); }} style={{ minHeight: 46, marginTop: 12, borderTopWidth: 1, borderTopColor: theme.colors.border, borderRadius: 12, backgroundColor: theme.colors.softAccent, paddingHorizontal: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}><Text style={{ color: theme.colors.primaryAccent, fontSize: 13, fontWeight: '900' }}>集中する</Text><Text style={{ color: theme.colors.primaryAccent, fontSize: 20 }}>›</Text></Pressable>
+          <Pressable accessibilityRole="button" accessibilityLabel="集中" onPress={(event) => { event.stopPropagation(); onOpenFocus?.(); }} style={{ minHeight: 46, marginTop: 12, borderTopWidth: 1, borderTopColor: theme.colors.border, borderRadius: 12, backgroundColor: theme.colors.softAccent, paddingHorizontal: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}><Text style={{ color: theme.colors.primaryAccent, fontSize: 13, fontWeight: '900' }}>集中</Text><Text style={{ color: theme.colors.primaryAccent, fontSize: 20 }}>›</Text></Pressable>
         </Pressable>
         {details}
       </>
@@ -4136,7 +4134,7 @@ function TodayWinStrip({ tasks, designMode, chicPattern, chicPalette, onRestore,
           <View style={[styles.todayHeroChicPlate, { backgroundColor: chicPalette.cardSurface }] }>
             <View style={[styles.todayChicMark, { backgroundColor: chicPalette.accentSoft }]}><Text style={[styles.todayChicMarkText, { color: chicPalette.accent }]}>✿</Text></View>
             <Text style={[styles.todayHeroKicker, { color: chicPalette.textSecondary }]}>今はこれ</Text>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}><Pressable disabled={!nextNowTask || !onToggleTask} onPress={(event) => { event.stopPropagation(); if (nextNowTask) onToggleTask?.(nextNowTask.id); }} style={[styles.check, nextNowTask?.done && styles.checkDone, { borderColor: chicPalette.accent }]}><Text style={styles.checkMark}>{nextNowTask?.done ? '✓' : ''}</Text></Pressable><Text numberOfLines={2} style={[styles.todayHeroCopy, { color: chicPalette.textPrimary, flex: 1 }]}>{nextNowTask ? nextNowTask.title : remainingNow === 0 ? '今日の分は完了。いい感じ' : '次にやる1つをここで決めます'}</Text></View>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}><Pressable disabled={!nextNowTask || !onToggleTask} onPress={(event) => { event.stopPropagation(); if (nextNowTask) onToggleTask?.(nextNowTask.id); }} style={[styles.check, nextNowTask?.done && styles.checkDone, { borderColor: chicPalette.accent }]}><Text style={styles.checkMark}>{nextNowTask?.done ? '✓' : ''}</Text></Pressable><Pressable disabled={!nextNowTask || !onOpenTaskActions} onPress={(event) => { event.stopPropagation(); if (nextNowTask) onOpenTaskActions?.(nextNowTask); }} style={{ flex: 1 }}><Text numberOfLines={2} style={[styles.todayHeroCopy, { color: chicPalette.textPrimary }]}>{nextNowTask ? nextNowTask.title : remainingNow === 0 ? '今日の分は完了。いい感じ' : '次にやる1つをここで決めます'}</Text></Pressable></View>
             <Text style={[styles.todayHeroStats, { color: chicPalette.textSecondary }]}>完了 {count}　残り {remainingNow}</Text>
           </View>
           <View style={styles.todayHeroJarWrap}>
@@ -4149,7 +4147,7 @@ function TodayWinStrip({ tasks, designMode, chicPattern, chicPalette, onRestore,
             <Text style={[styles.todayHeroJarHint, { color: chicPalette.textMuted }]}>タップして今日できたことを見る</Text>
           </View>
         </View>
-        <Pressable accessibilityRole="button" accessibilityLabel="集中する" onPress={(event) => { event.stopPropagation(); onOpenFocus?.(); }} style={{ minHeight: 46, marginTop: 12, paddingHorizontal: 14, borderTopWidth: 1, borderTopColor: chicPalette.border, borderRadius: 12, backgroundColor: chicPalette.accentSoft, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}><Text style={{ color: chicPalette.accentStrong, fontSize: 13, fontWeight: '900' }}>集中する</Text><Text style={{ color: chicPalette.accent, fontSize: 20 }}>›</Text></Pressable>
+        <Pressable accessibilityRole="button" accessibilityLabel="集中" onPress={(event) => { event.stopPropagation(); onOpenFocus?.(); }} style={{ minHeight: 46, marginTop: 12, paddingHorizontal: 14, borderTopWidth: 1, borderTopColor: chicPalette.border, borderRadius: 12, backgroundColor: chicPalette.accentSoft, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}><Text style={{ color: chicPalette.accentStrong, fontSize: 13, fontWeight: '900' }}>集中</Text><Text style={{ color: chicPalette.accent, fontSize: 20 }}>›</Text></Pressable>
       </Pressable>
       {details}
     </>

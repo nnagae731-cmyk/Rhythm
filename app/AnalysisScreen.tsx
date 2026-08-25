@@ -88,13 +88,13 @@ function RoutineProgressPanel({ events, tasks, designMode, chicPalette, onRemove
   const isDark = designMode === 'dark';
   const archiveLink = <Pressable onPress={() => setArchiveOpen(true)} style={styles.routineHistoryLink}><Text style={[styles.routineHistoryLinkText, { color: designMode === 'chic' && chicPalette ? chicPalette.accent : theme.colors.primaryAccent }]}>解除歴 〉</Text></Pressable>;
   if (activeRoutineTasks.length === 0) return <>
-    <View style={[styles.routineCard, isDark && styles.routineCardDark, designMode === 'chic' && chicPalette && { backgroundColor: chicPalette.cardSurface, borderColor: chicPalette.border }]}><Text style={[styles.sectionTitle, isDark && styles.darkMetricText, designMode === 'chic' && chicPalette && { color: chicPalette.textPrimary }]}>ルーティンの継続</Text><Text style={[styles.sectionCopy, isDark && styles.darkSecondaryText, designMode === 'chic' && chicPalette && { color: chicPalette.textSecondary }]}>タスク登録時に「ルーティンにする」を選ぶと、継続率を確認できます。</Text>{archiveLink}</View>
+    <View style={[styles.routineCard, isDark && styles.routineCardDark, designMode === 'chic' && chicPalette && { backgroundColor: chicPalette.cardSurface, borderColor: chicPalette.border }]}><View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}><Text style={[styles.sectionTitle, isDark && styles.darkMetricText, designMode === 'chic' && chicPalette && { color: chicPalette.textPrimary }]}>ルーティンの継続</Text>{archiveLink}</View><Text style={[styles.sectionCopy, isDark && styles.darkSecondaryText, designMode === 'chic' && chicPalette && { color: chicPalette.textSecondary }]}>タスク登録時に「ルーティンにする」を選ぶと、継続率を確認できます。</Text></View>
     <RoutineArchiveModal visible={archiveOpen} archives={routineArchives} events={events} tasks={tasks} designMode={designMode} chicPalette={chicPalette} onClose={() => setArchiveOpen(false)} onHistory={(title, summary) => { setArchiveOpen(false); setHistoryTarget({ title, summary }); }} onResume={onResumeRoutine} onDelete={onDeleteRoutineArchive} />
     <RoutineHistoryModal summary={historyTarget?.summary} title={historyTarget?.title} designMode={designMode} chicPalette={chicPalette} onClose={() => setHistoryTarget(undefined)} />
   </>;
   return <>
     <View style={[styles.routineCard, isDark && styles.routineCardDark, designMode === 'chic' && chicPalette && { backgroundColor: chicPalette.cardSurface, borderColor: chicPalette.border }]}>
-      <Text style={[styles.sectionTitle, isDark && styles.darkMetricText, designMode === 'chic' && chicPalette && { color: chicPalette.textPrimary }]}>ルーティンの継続</Text>
+      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}><Text style={[styles.sectionTitle, isDark && styles.darkMetricText, designMode === 'chic' && chicPalette && { color: chicPalette.textPrimary }]}>ルーティンの継続</Text>{archiveLink}</View>
       <Text style={[styles.sectionCopy, isDark && styles.darkSecondaryText, designMode === 'chic' && chicPalette && { color: chicPalette.textSecondary }]}>続けられた日が丸で増えていきます。連続日数と継続率を確認できます。</Text>
       <View style={styles.routineTaskGrid}>{activeRoutineTasks.map((routine, taskIndex) => {
         const summary = buildRoutineInterruptionSummary(events, tasks, routine);
@@ -120,7 +120,6 @@ function RoutineProgressPanel({ events, tasks, designMode, chicPalette, onRemove
           {summary.history.length > 1 && <Pressable onPress={() => setHistoryTarget({ title: routine.title, summary })} style={styles.routineHistoryLink}><Text style={[styles.routineHistoryLinkText, { color }]}>中断・再開の履歴を見る 〉</Text></Pressable>}
         </View>;
       })}</View>
-      {archiveLink}
     </View>
     <RoutineArchiveModal visible={archiveOpen} archives={routineArchives} events={events} tasks={tasks} designMode={designMode} chicPalette={chicPalette} onClose={() => setArchiveOpen(false)} onHistory={(title, summary) => { setArchiveOpen(false); setHistoryTarget({ title, summary }); }} onResume={onResumeRoutine} onDelete={onDeleteRoutineArchive} />
     <RoutineHistoryModal summary={historyTarget?.summary} title={historyTarget?.title} designMode={designMode} chicPalette={chicPalette} onClose={() => setHistoryTarget(undefined)} />
