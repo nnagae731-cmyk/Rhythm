@@ -611,7 +611,6 @@ export default function App() {
   const [captureStudioOpen, setCaptureStudioOpen] = useState(false);
   const [onboardingDesignSelectionPending, setOnboardingDesignSelectionPending] = useState(false);
   const [designTrialNoticeOpen, setDesignTrialNoticeOpen] = useState(false);
-  const designTrialExpirySeenRef = React.useRef<string | null>(null);
   const pendingDesignApplyRef = React.useRef<(() => void) | undefined>(undefined);
   const [hydrated, setHydrated] = useState(false);
   const configuredPlanTier: PlanTier = process.env.EXPO_PUBLIC_RHYTHM_PLAN === 'premium' ? 'premium' : 'free';
@@ -813,19 +812,36 @@ export default function App() {
     setPremiumTargetFeature(featureId);
     setPremiumOpen(true);
   }, []);
+  const markDesignNoticeSeen = React.useCallback((expiry: string) => {
+    if (rewardedAccess.premiumDesignNoticeSeenFor === expiry) return;
+    const next = { ...rewardedAccess, premiumDesignNoticeSeenFor: expiry };
+    setRewardedAccess(next);
+    void saveRewardedAccessState(next);
+  }, [rewardedAccess]);
   useEffect(() => {
-    const expiry = rewardedAccess.premiumDesignTrial.expiresAt;
-    if (planTier === 'premium' || !rewardedAccess.premiumDesignTrial.used || !expiry || isPremiumDesignUnlocked(rewardedAccess, now)) return;
-    if (new Date(expiry).getTime() <= now.getTime() && designTrialExpirySeenRef.current !== expiry) {
-      designTrialExpirySeenRef.current = expiry;
-      pendingDesignApplyRef.current = undefined;
-      if (designMode === 'photo' && !rewardedAccess.photoCustomization.backgroundUnlocked) {
-        setDesignMode('chic');
-        setChicPattern('plain');
+    if (planTier === 'premium' || isPremiumDesignUnlocked(rewardedAccess, now) || isPremiumDesignTrialActive(rewardedAccess, now)) return;
+    const trialExpiry = rewardedAccess.premiumDesignTrial.used ? rewardedAccess.premiumDesignTrial.expiresAt : null;
+    const unlockedExpiry = rewardedAccess.premiumDesign.unlockedUntil;
+    const expiredCandidates = [trialExpiry, unlockedExpiry].reduce<string[]>((result, value) => {
+      if (value) {
+        const timestamp = new Date(value).getTime();
+        if (!Number.isNaN(timestamp) && timestamp <= now.getTime()) result.push(value);
       }
-      setDesignTrialNoticeOpen(true);
-    }
-  }, [designMode, now, planTier, rewardedAccess.photoCustomization.backgroundUnlocked, rewardedAccess.premiumDesignTrial.expiresAt, rewardedAccess.premiumDesignTrial.used, rewardedAccess]);
+      return result;
+    }, []);
+    const expiry = expiredCandidates.sort((left, right) => new Date(right).getTime() - new Date(left).getTime())[0];
+    if (!expiry || rewardedAccess.premiumDesignNoticeSeenFor === expiry) return;
+    const trialDesignId = trialExpiry === expiry ? rewardedAccess.premiumDesignTrial.designId : null;
+    const isSelectedExpiredDesign = trialDesignId === 'photo'
+      ? designMode === 'photo'
+      : trialDesignId
+        ? designMode === 'chic' && chicPattern === trialDesignId
+        : designMode === 'photo' || (designMode === 'chic' && chicPattern !== 'plain');
+    if (!isSelectedExpiredDesign || designTrialNoticeOpen) return;
+    pendingDesignApplyRef.current = undefined;
+    markDesignNoticeSeen(expiry);
+    setDesignTrialNoticeOpen(true);
+  }, [chicPattern, designMode, designTrialNoticeOpen, isPremiumDesignUnlocked, markDesignNoticeSeen, now, planTier, rewardedAccess]);
   const startDesignTrial = React.useCallback((pattern: ChicPattern) => {
     if (planTier === 'premium') {
       setDesignMode('chic');
@@ -3157,7 +3173,7 @@ export default function App() {
           startDesignTrial(pattern);
         }
       }} />
-      <DesignTrialExpiredModal visible={designTrialNoticeOpen} designMode={uiDesignMode} chicPalette={chicPalette} onClose={() => { pendingDesignApplyRef.current = undefined; setDesignTrialNoticeOpen(false); designTrialExpirySeenRef.current = rewardedAccess.premiumDesignTrial.expiresAt; }} onPremium={() => { pendingDesignApplyRef.current = undefined; setDesignTrialNoticeOpen(false); openPremiumFeature('photo_design'); }} onReward={() => void requestDesignReward()} />
+      <DesignTrialExpiredModal visible={designTrialNoticeOpen} designMode={uiDesignMode} chicPalette={chicPalette} onClose={() => { pendingDesignApplyRef.current = undefined; setDesignTrialNoticeOpen(false); }} onPremium={() => { pendingDesignApplyRef.current = undefined; setDesignTrialNoticeOpen(false); openPremiumFeature('photo_design'); }} onReward={() => void requestDesignReward()} />
       <TopImageCropModal visible={Boolean(pendingTopPhoto)} uri={pendingTopPhoto?.originalUri} sourceWidth={pendingTopPhoto?.sourceWidth ?? 1} sourceHeight={pendingTopPhoto?.sourceHeight ?? 1} initialRect={pendingTopPhoto?.cropRect} styles={styles} onCancel={() => setPendingTopPhoto(undefined)} onReselect={() => { if (pendingTopPhoto) void pickPhotoTheme(pendingTopPhoto.target); }} onUse={(cropRect) => { void applyPendingTopPhoto(cropRect); }} />
       <OnboardingCarousel
   visible={
@@ -3261,12 +3277,13 @@ function DesignPreviewModal({ visible, initialPattern, initialMode = 'chic', chi
 
 function DesignTrialExpiredModal({ visible, designMode, chicPalette, onClose, onPremium, onReward }: { visible: boolean; designMode: DesignMode; chicPalette?: ChicThemePalette; onClose: () => void; onPremium: () => void; onReward: () => void }) {
   const colors = chicPalette && designMode === 'chic' ? { surface: chicPalette.cardSurface, border: chicPalette.border, text: chicPalette.textPrimary, muted: chicPalette.textSecondary, accent: chicPalette.accent, onAccent: chicPalette.onAccent } : (() => { const theme = getThemeTokens(designMode).colors; return { surface: theme.surface, border: theme.border, text: theme.primaryText, muted: theme.secondaryText, accent: theme.primaryAccent, onAccent: designMode === 'dark' ? theme.screenBackground : '#FFFFFF' }; })();
-  return <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}><Pressable style={designPreviewStyles.backdrop} onPress={onClose}><Pressable style={[designPreviewStyles.sheet, { backgroundColor: colors.surface, borderColor: colors.border }]} onPress={(event) => event.stopPropagation()}><Text style={[designPreviewStyles.eyebrow, { color: colors.accent }]}>DESIGN TRIAL</Text><Text style={[designPreviewStyles.title, { color: colors.text }]}>デザイン体験が終了しました</Text><Text style={[designPreviewStyles.copy, { color: colors.muted }]}>広告を1回確認すると12時間使えます。Premiumなら期限なしで使い続けられます。Freeのテーマへ戻ることもできます。</Text><Pressable style={[designPreviewStyles.primaryButton, { backgroundColor: colors.accent }]} onPress={onReward}><Text style={[designPreviewStyles.primaryButtonText, { color: colors.onAccent }]}>広告を見て取得（12時間）</Text></Pressable><Pressable style={[designPreviewStyles.secondaryButton, { borderColor: colors.border }]} onPress={onPremium}><Text style={[designPreviewStyles.secondaryButtonText, { color: colors.accent }]}>Premiumで使い続ける</Text></Pressable><Pressable style={designPreviewStyles.textButton} onPress={onClose}><Text style={[designPreviewStyles.textButtonText, { color: colors.muted }]}>FreeのThemeへ戻る</Text></Pressable></Pressable></Pressable></Modal>;
+  return <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}><Pressable style={designPreviewStyles.backdrop} onPress={onClose}><Pressable style={[designPreviewStyles.sheet, { backgroundColor: colors.surface, borderColor: colors.border }]} onPress={(event) => event.stopPropagation()}><ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={designPreviewStyles.trialSheetContent}><Text style={[designPreviewStyles.eyebrow, { color: colors.accent }]}>DESIGN TRIAL</Text><Text style={[designPreviewStyles.title, { color: colors.text }]}>デザイン体験が終了しました</Text><Text style={[designPreviewStyles.copy, { color: colors.muted }]}>広告を1回確認すると12時間使えます。Premiumなら期限なしで使い続けられます。Freeのテーマへ戻ることもできます。</Text><Pressable style={[designPreviewStyles.primaryButton, designPreviewStyles.trialActionButton, { backgroundColor: colors.accent }]} onPress={onReward}><Text style={[designPreviewStyles.primaryButtonText, { color: colors.onAccent }]}>広告を見て取得（12時間）</Text></Pressable><Pressable style={[designPreviewStyles.secondaryButton, designPreviewStyles.trialActionButton, { borderColor: colors.border }]} onPress={onPremium}><Text style={[designPreviewStyles.secondaryButtonText, { color: colors.accent }]}>Premiumで使い続ける</Text></Pressable><Pressable style={designPreviewStyles.textButton} onPress={onClose}><Text style={[designPreviewStyles.textButtonText, { color: colors.muted }]}>FreeのThemeへ戻る</Text></Pressable></ScrollView></Pressable></Pressable></Modal>;
 }
 
 const designPreviewStyles = StyleSheet.create({
   backdrop: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(23,24,28,0.28)', paddingHorizontal: 12, paddingBottom: 14 },
   sheet: { width: '100%', maxWidth: 520, alignSelf: 'center', maxHeight: '92%', borderRadius: 22, backgroundColor: '#FFFFFF', padding: 18 },
+  trialSheetContent: { paddingBottom: 8 },
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
   eyebrow: { color: '#7A6C86', fontSize: 10, fontWeight: '900', letterSpacing: 1.2 },
   title: { color: '#282538', fontSize: 21, fontWeight: '900', marginTop: 5 },
@@ -3294,6 +3311,7 @@ const designPreviewStyles = StyleSheet.create({
   photoHint: { color: '#FFFFFF', fontSize: 11, fontWeight: '700', textAlign: 'center' },
   actions: { flexDirection: 'row', gap: 8, marginTop: 14 },
   primaryButton: { minHeight: 46, flex: 1, borderRadius: 11, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 12, marginTop: 10 },
+  trialActionButton: { flex: 0, width: '100%' },
   primaryButtonText: { color: '#FFFFFF', fontSize: 13, fontWeight: '900' },
   secondaryButton: { minHeight: 46, flex: 1, borderRadius: 11, borderWidth: 1, borderColor: '#DDD7E3', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 12, marginTop: 10 },
   secondaryButtonText: { fontSize: 13, fontWeight: '900' },

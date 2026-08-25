@@ -27,6 +27,9 @@ export type RewardedAccessState = {
     expiresAt: string | null;
   };
 
+  /** The last Design access expiry for which the automatic notice was shown. */
+  premiumDesignNoticeSeenFor: string | null;
+
   premiumDesignTrialCredits: Record<string, number>;
 
   calendarImportCredits: number;
@@ -66,6 +69,8 @@ export const DEFAULT_REWARDED_ACCESS_STATE: RewardedAccessState = {
     designId: null,
     expiresAt: null,
   },
+
+  premiumDesignNoticeSeenFor: null,
 
   premiumDesignTrialCredits: {},
 
@@ -178,6 +183,8 @@ export function normalizeRewardedAccessState(
       designId: typeof raw.premiumDesignTrial?.designId === 'string' ? raw.premiumDesignTrial.designId : null,
       expiresAt: normalizeNullableString(raw.premiumDesignTrial?.expiresAt),
     },
+
+    premiumDesignNoticeSeenFor: normalizeNullableString(raw.premiumDesignNoticeSeenFor),
 
     premiumDesignTrialCredits:
       normalizeTrialCredits(
