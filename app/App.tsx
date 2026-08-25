@@ -24,6 +24,7 @@ import { SettingsScreen } from './screens/SettingsScreen';
 import { HistoryScreen, MonthlyReflectionCardView, ReflectionCardModel } from './screens/HistoryScreen';
 import { TaskModal } from './components/TaskModal';
 import { BulkTaskModal } from './components/BulkTaskModal';
+import { DeparturePlanForm } from './components/DeparturePlanForm';
 import { AffirmationSettingsCard } from './components/AffirmationSettingsCard';
 import { PremiumModal } from './components/PremiumModal';
 import { RewardedAccessModal, RewardedAccessResult } from './components/RewardedAccessModal';
@@ -2333,7 +2334,7 @@ export default function App() {
   // callbacks are no-ops, so these screens cannot save tasks, schedule
   // notifications, request permissions, or mutate the user's state while
   // still showing the real layout, scroll behavior, and tokens.
-  const renderPremiumReadOnlyPreview = (kind: PremiumGuideFeatureId, wishPremium = true): React.ReactNode => {
+  const renderPremiumReadOnlyPreview = (kind: PremiumGuideFeatureId, wishPremium = true, previewOverride?: { initialTab?: TimeTab; previewMode?: boolean; previewCustomDurationOpen?: boolean; analysisInitialTab?: 'records' | 'insights' | 'routine'; analysisPreviewKind?: 'time' | 'behavior' }): React.ReactNode => {
     const previewDate = dateKey(now);
     const previewTasks: Task[] = [
       { id: 'premium-preview-task-1', title: '資料をまとめる', done: false, category: '仕事', priority: '中', scheduledDate: previewDate, scheduledTime: '09:00', bucket: 'now' },
@@ -2406,7 +2407,8 @@ export default function App() {
       </View>, 320);
     }
     if (kind === 'calendar' || kind === 'month' || kind === 'recovery' || kind === 'focus_custom_duration') {
-      const initialTab: TimeTab = kind === 'month' ? 'calendar' : kind === 'focus_custom_duration' ? 'focus' : 'departure';
+      const initialTab: TimeTab = previewOverride?.initialTab ?? (kind === 'month' ? 'calendar' : kind === 'focus_custom_duration' ? 'focus' : 'departure');
+      const timelinePreviewMode = previewOverride?.previewMode ?? (kind === 'calendar' || kind === 'recovery');
       return readonly(<TimelineScreen
         plan={previewPlans[0]}
         plans={previewPlans}
@@ -2423,8 +2425,8 @@ export default function App() {
         chicPalette={chicPalette}
         planTier="premium"
         focusCustomDurationMinutes={47}
-        previewCustomDurationOpen={kind === 'focus_custom_duration'}
-        previewMode={kind === 'calendar' || kind === 'recovery'}
+        previewCustomDurationOpen={previewOverride?.previewCustomDurationOpen ?? (kind === 'focus_custom_duration')}
+        previewMode={timelinePreviewMode}
         previewCalendarEvents={previewCalendarEvents}
         previewCalendarOptions={previewCalendarOptions}
         onFocusCustomDurationChange={() => undefined}
@@ -2479,7 +2481,8 @@ export default function App() {
       return readonly(<View style={{ alignItems: 'center', paddingVertical: 12 }}><MonthlyReflectionCardView model={reflectionModel} cardRef={React.createRef<View>()} onReady={() => undefined} /></View>, 560);
     }
     if (kind === 'history') return readonly(<View pointerEvents="none">{previewHistory}</View>, 560);
-    if (kind === 'time' || kind === 'behavior' || kind === 'records') {
+    if (kind === 'records') return readonly(<View pointerEvents="none">{previewHistory}</View>, 560);
+    if (kind === 'time' || kind === 'behavior') {
       return readonly(<AnalysisScreen
         events={previewEvents}
         tasks={previewTasks}
@@ -2497,8 +2500,8 @@ export default function App() {
         departurePlans={previewPlans}
          onApplySuggestion={() => undefined}
          onAnalysisUsed={() => undefined}
-         initialTab={kind === 'time' || kind === 'behavior' ? 'insights' : 'records'}
-         previewKind={kind === 'time' || kind === 'behavior' ? kind : undefined}
+         initialTab={previewOverride?.analysisInitialTab ?? (kind === 'time' || kind === 'behavior' ? 'insights' : 'records')}
+         previewKind={previewOverride?.analysisPreviewKind ?? (kind === 'time' || kind === 'behavior' ? kind : undefined)}
        />);
     }
     if (kind === 'templates') {
@@ -2562,23 +2565,24 @@ export default function App() {
   };
 
   const renderOnboardingCaptureStep = (id: 'quickTodo' | 'today' | 'schedule' | 'focus' | 'records' | 'wish' | 'customize'): React.ReactNode => {
-    if (id === 'schedule') return renderPremiumReadOnlyPreview('calendar');
-    if (id === 'focus') return renderPremiumReadOnlyPreview('focus_custom_duration');
+    if (id === 'schedule') return renderPremiumReadOnlyPreview('calendar', true, { initialTab: 'calendar', previewMode: false });
+    if (id === 'focus') return renderPremiumReadOnlyPreview('focus_custom_duration', true, { initialTab: 'focus', previewMode: false, previewCustomDurationOpen: false });
     if (id === 'records') return renderPremiumReadOnlyPreview('records');
     if (id === 'wish') return renderPremiumReadOnlyPreview('wish', false);
+    if (id === 'quickTodo') return <View pointerEvents="none" style={[styles.premiumPreview, { minHeight: 460, overflow: 'hidden' }]}><TaskModal visible templates={['資料をまとめる', 'スーパーに寄る']} savedTemplates={[]} designMode={uiDesignMode} chicPalette={chicPalette} planTier="premium" onPremium={() => undefined} onClose={() => undefined} onSave={() => undefined} styles={styles} helpers={{ getThemeTokens: getThemedThemeTokens, todayInputValue, hasPremiumAccess, dateForReminder, dateKey, formatLiveTime, colors: themedColors, summarizePremiumTaskTemplate }} components={{ CompactNumberSetting }} readOnlyPreview /></View>;
     const previewDate = dateKey(now);
     const captureTasks: Task[] = [
       { id: 'capture-task-1', title: '資料をまとめる', done: false, category: '仕事', priority: '中', scheduledDate: previewDate, scheduledTime: '09:00', bucket: 'now' },
       { id: 'capture-task-2', title: 'スーパーに寄る', done: false, category: '家事', priority: '低', scheduledDate: previewDate, bucket: 'later' },
       { id: 'capture-task-3', title: '美容室を予約する', done: true, status: 'completed', category: '予定', priority: '高', scheduledDate: previewDate, completedAt: new Date().toISOString(), bucket: 'waiting' },
     ];
-    if (id === 'quickTodo' || id === 'today') {
-      const homeTasks = id === 'quickTodo' ? [] : captureTasks;
+    if (id === 'today') {
+      const homeTasks = captureTasks;
       return <HomeScreen
       tasks={homeTasks}
       allTasks={homeTasks}
       now={now}
-      designMode="minimal"
+      designMode={uiDesignMode}
       chicPalette={chicPalette}
       completionIcon="✓"
       selectionMode={false}
@@ -2602,7 +2606,7 @@ export default function App() {
       onPostpone={() => undefined}
       onBucket={() => undefined}
       styles={styles}
-      renderTodayWinStrip={(todayTasks) => <TodayWinStrip tasks={todayTasks} designMode="minimal" chicPattern="plain" chicPalette={chicPalette} onRestore={() => undefined} />}
+      renderTodayWinStrip={(todayTasks) => <TodayWinStrip tasks={todayTasks} designMode={uiDesignMode} chicPattern={effectiveChicPattern} chicPalette={chicPalette} onRestore={() => undefined} />}
       showTodoOnboarding={false}
       showTodoCompleteOnboarding={false}
       showCompletedTasksOnboarding={false}
@@ -2619,17 +2623,17 @@ export default function App() {
       size="medium"
       showCompleted
       completionIcon="✓"
-      designMode="minimal"
-      selectedDesignMode="minimal"
+      designMode={uiDesignMode}
+      selectedDesignMode={uiDesignMode}
       monoAppearance="auto"
       hapticsEnabled
       chicPalette={chicPalette}
-      chicPattern="plain"
+      chicPattern={effectiveChicPattern}
       chicCheckColor={chicCheckColor}
       affirmations={[{ id: 'capture-affirmation', text: '私は、自分のペースで進める', time: '08:30', enabled: true, createdAt: '2026-01-01T00:00:00.000Z' }]}
       affirmationCustomTexts={[]}
-      photoTheme={{ placement: 'background' }}
-      travelApps={DEFAULT_TRAVEL_APP_SETTINGS}
+      photoTheme={photoTheme}
+      travelApps={travelApps}
       onSize={() => undefined}
       onShowCompleted={() => undefined}
       onCompletionIcon={() => undefined}
@@ -2655,7 +2659,7 @@ export default function App() {
       onGuide={() => undefined}
       onPremium={() => undefined}
       onDeleteSavedTemplate={() => undefined}
-      planTier="premium"
+      planTier={planTier}
       captureDesignOnly
       styles={styles}
       helpers={{ colors: themedColors, getThemeTokens: getThemedThemeTokens, getChicPatternVisual, hasPremiumAccess, getChicCheckColor, chicCheckColorChoices, countdownToClock, getUrgencyStatus, getNextBestAction, designModes, completionIcons, summarizePremiumTaskTemplate }}
@@ -2665,12 +2669,30 @@ export default function App() {
   };
 
   const renderGuideCaptureStep = (id: Exclude<OnboardingFeatureId, 'intro'>): React.ReactNode => {
+    const previewDate = dateKey(now);
+    const guideTasks: Task[] = [
+      { id: 'guide-task-1', title: '資料をまとめる', done: false, category: '仕事', priority: '中', scheduledDate: previewDate, scheduledTime: '09:00', bucket: 'now' },
+      { id: 'guide-task-2', title: '洗濯をする', done: true, status: 'completed', category: '家事', priority: '中', scheduledDate: previewDate, completedAt: new Date().toISOString(), bucket: 'later' },
+      { id: 'guide-task-3', title: 'スーパーに寄る', done: false, category: '家事', priority: '低', scheduledDate: previewDate, bucket: 'waiting' },
+    ];
+    const guidePlan: DeparturePlan = { id: 'guide-plan', title: '資料提出', destination: '天神○○ビル', date: previewDate, arrival: '14:00', departureTime: '13:15', endAt: '15:00', travelMinutes: 30, preparationMinutes: 15, bufferMinutes: 10, planMode: 'arrival_reverse' };
+    const renderTaskForm = (task?: Task) => <View pointerEvents="none" style={[styles.premiumPreview, { minHeight: 460, overflow: 'hidden' }]}><TaskModal visible task={task} templates={['資料をまとめる', 'スーパーに寄る']} savedTemplates={[]} designMode={uiDesignMode} chicPalette={chicPalette} planTier="premium" onPremium={() => undefined} onClose={() => undefined} onSave={() => undefined} styles={styles} helpers={{ getThemeTokens: getThemedThemeTokens, todayInputValue, hasPremiumAccess, dateForReminder, dateKey, formatLiveTime, colors: themedColors, summarizePremiumTaskTemplate }} components={{ CompactNumberSetting }} readOnlyPreview /></View>;
+    const renderPlanForm = () => <View pointerEvents="none" style={[styles.premiumPreview, { minHeight: 620, overflow: 'hidden' }]}><DeparturePlanForm plan={guidePlan} plans={[guidePlan]} behaviorEvents={[]} designMode={uiDesignMode} chicPattern={effectiveChicPattern} chicPalette={chicPalette} planTier="premium" onChange={() => undefined} onSubmit={() => undefined} onClose={() => undefined} onPremium={() => undefined} dateKey={dateKey} formatLiveDate={formatLiveDate} formatLiveTime={formatLiveTime} dateForReminder={dateForReminder} getDepartureMoments={getDepartureMoments} getMapSearchTarget={getMapSearchTarget} openMapSearch={() => undefined} travelApps={travelApps} onOpenTravelAppSettings={() => undefined} /></View>;
     let production: React.ReactNode;
-    if (id === 'todo' || id === 'todoComplete' || id === 'completedTasks' || id === 'taskBuckets' || id === 'taskDetails') production = renderOnboardingCaptureStep(id === 'todo' ? 'quickTodo' : 'today');
-    else if (id === 'schedule' || id === 'planRegistration' || id === 'calendarImport') production = renderPremiumReadOnlyPreview('calendar');
-    else if (id === 'focus') production = renderPremiumReadOnlyPreview('focus_custom_duration');
-    else if (id === 'analysis' || id === 'routine' || id === 'history') production = renderPremiumReadOnlyPreview('behavior');
-    else if (id === 'photoLog' || id === 'affirmation') production = renderOnboardingCaptureStep('customize');
+    if (id === 'todo') production = renderTaskForm();
+    else if (id === 'todoComplete') production = renderOnboardingCaptureStep('today');
+    else if (id === 'completedTasks') production = <View pointerEvents="none" style={{ padding: 8 }}><TodayWinStrip tasks={guideTasks} designMode={uiDesignMode} chicPattern={effectiveChicPattern} chicPalette={chicPalette} onRestore={() => undefined} onOpenCompleted={() => undefined} /></View>;
+    else if (id === 'taskBuckets') production = renderOnboardingCaptureStep('today');
+    else if (id === 'taskDetails') production = renderTaskForm(guideTasks[0]);
+    else if (id === 'schedule') production = renderPremiumReadOnlyPreview('calendar', true, { initialTab: 'calendar', previewMode: false });
+    else if (id === 'planRegistration') production = renderPlanForm();
+    else if (id === 'calendarImport') production = renderPremiumReadOnlyPreview('calendar');
+    else if (id === 'focus') production = renderPremiumReadOnlyPreview('focus_custom_duration', true, { initialTab: 'focus', previewMode: false, previewCustomDurationOpen: false });
+    else if (id === 'analysis') production = renderPremiumReadOnlyPreview('behavior', true, { analysisInitialTab: 'insights' });
+    else if (id === 'routine') production = renderPremiumReadOnlyPreview('behavior', true, { analysisInitialTab: 'routine' });
+    else if (id === 'history') production = renderPremiumReadOnlyPreview('history');
+    else if (id === 'photoLog') production = renderPremiumReadOnlyPreview('records');
+    else if (id === 'affirmation') production = renderPremiumReadOnlyPreview('affirmation');
     else if (id === 'wish') production = renderPremiumReadOnlyPreview('wish');
     else production = renderPremiumReadOnlyPreview('recovery');
     return <View><View style={{ borderWidth: 1, borderColor: chicPalette.border, borderRadius: 14, overflow: 'hidden' }}>{production}</View><OnboardingHint inline featureId={id} designMode={uiDesignMode} chicPalette={chicPalette} onAction={() => undefined} /></View>;

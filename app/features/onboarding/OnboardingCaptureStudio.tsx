@@ -49,7 +49,7 @@ export function OnboardingCaptureStudio({ visible, onClose, renderStep, renderGu
       setCapturedUris((current) => ({ ...current, [`${item.mode}:${item.id}`]: uri }));
       return uri;
     } catch {
-      setMessage('画像生成にはDevelopment Buildが必要です。');
+      setMessage('画像を生成できませんでした。もう一度お試しください。');
       return undefined;
     }
   };
