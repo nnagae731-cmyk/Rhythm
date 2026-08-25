@@ -4087,7 +4087,7 @@ function TodayWinStrip({ tasks, designMode, chicPattern, chicPalette, onRestore,
               <Text style={[styles.todayHeroMinimalStats, { color: theme.colors.secondaryText }]}>今日できたことを確認</Text>
             </View>
           </View>
-          <Pressable accessibilityRole="button" accessibilityLabel="集中" onPress={(event) => { event.stopPropagation(); onOpenFocus?.(); }} style={{ minHeight: 38, marginTop: 12, borderTopWidth: 1, borderTopColor: theme.colors.border, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}><Text style={{ color: theme.colors.primaryText, fontSize: 13, fontWeight: '800' }}>集中</Text><Text style={{ color: theme.colors.primaryAccent, fontSize: 20 }}>›</Text></Pressable>
+          <Pressable accessibilityRole="button" accessibilityLabel="集中する" onPress={(event) => { event.stopPropagation(); onOpenFocus?.(); }} style={{ minHeight: 46, marginTop: 12, borderTopWidth: 1, borderTopColor: theme.colors.border, borderRadius: 12, backgroundColor: theme.colors.softAccent, paddingHorizontal: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}><Text style={{ color: theme.colors.primaryAccent, fontSize: 13, fontWeight: '900' }}>集中する</Text><Text style={{ color: theme.colors.primaryAccent, fontSize: 20 }}>›</Text></Pressable>
         </Pressable>
         {details}
       </>
@@ -4117,7 +4117,7 @@ function TodayWinStrip({ tasks, designMode, chicPattern, chicPalette, onRestore,
             <Text style={[styles.todayHeroJarHint, { color: chicPalette.textMuted }]}>タップして今日できたことを見る</Text>
           </View>
         </View>
-        <Pressable accessibilityRole="button" accessibilityLabel="集中" onPress={(event) => { event.stopPropagation(); onOpenFocus?.(); }} style={{ minHeight: 38, marginTop: 12, paddingHorizontal: 14, borderTopWidth: 1, borderTopColor: chicPalette.border, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}><Text style={{ color: chicPalette.textPrimary, fontSize: 13, fontWeight: '800' }}>集中</Text><Text style={{ color: chicPalette.accent, fontSize: 20 }}>›</Text></Pressable>
+        <Pressable accessibilityRole="button" accessibilityLabel="集中する" onPress={(event) => { event.stopPropagation(); onOpenFocus?.(); }} style={{ minHeight: 46, marginTop: 12, paddingHorizontal: 14, borderTopWidth: 1, borderTopColor: chicPalette.border, borderRadius: 12, backgroundColor: chicPalette.accentSoft, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}><Text style={{ color: chicPalette.accentStrong, fontSize: 13, fontWeight: '900' }}>集中する</Text><Text style={{ color: chicPalette.accent, fontSize: 20 }}>›</Text></Pressable>
       </Pressable>
       {details}
     </>
