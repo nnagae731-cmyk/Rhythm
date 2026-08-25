@@ -5,6 +5,13 @@ import { Category, Priority, Task, TaskBucket, TaskListItem } from '../types';
 import { categories } from '../features/tasks/taskUtils';
 import { OnboardingHint } from '../features/onboarding/OnboardingHint';
 import { TaskListSheet } from '../components/TaskListSheet';
+type TaskSortOrder = 'recommended' | 'scheduled' | 'priority' | 'created';
+const taskSortOptions: { id: TaskSortOrder; label: string }[] = [
+  { id: 'recommended', label: 'おすすめ' },
+  { id: 'scheduled', label: '実行日が近い順' },
+  { id: 'priority', label: '優先度順' },
+  { id: 'created', label: '登録順' },
+];
 export function HomeScreen({
   tasks,
   allTasks,
@@ -102,9 +109,21 @@ export function HomeScreen({
   const [expandedSubtasks, setExpandedSubtasks] = useState<Record<string, boolean>>({});
   const [listTask, setListTask] = useState<Task | undefined>();
   const [homeTab, setHomeTab] = useState<'now' | 'list'>('now');
+  const [categoryPickerOpen, setCategoryPickerOpen] = useState(false);
+  const [sortPickerOpen, setSortPickerOpen] = useState(false);
+  const [sortOrder, setSortOrder] = useState<TaskSortOrder>('recommended');
   const bucketTasks = tasks.filter((task) => (task.bucket ?? 'now') === bucketFilter);
   const categoryTasks = categoryFilter === 'すべて' ? bucketTasks : bucketTasks.filter((task) => task.category === categoryFilter);
-  const displayTasks = [...categoryTasks].sort((a, b) => priorityOrder[a.priority] - priorityOrder[b.priority]);
+  const displayTasks = [...categoryTasks].sort((a, b) => {
+    if (sortOrder === 'priority') return priorityOrder[a.priority] - priorityOrder[b.priority];
+    if (sortOrder === 'created') return tasks.indexOf(a) - tasks.indexOf(b);
+    const aDate = a.scheduledDate ?? '9999-99-99';
+    const bDate = b.scheduledDate ?? '9999-99-99';
+    const dateResult = (aDate + (a.scheduledTime ?? '99:99')).localeCompare(bDate + (b.scheduledTime ?? '99:99'));
+    if (sortOrder === 'scheduled' && dateResult !== 0) return dateResult;
+    if (sortOrder === 'recommended' && dateResult !== 0) return dateResult;
+    return priorityOrder[a.priority] - priorityOrder[b.priority] || tasks.indexOf(a) - tasks.indexOf(b);
+  });
   const focusShortcutBackground = designMode === 'chic' ? chicPalette.cardSurface : theme?.colors?.surface ?? '#FFFFFF';
   const focusShortcutBorder = designMode === 'chic' ? chicPalette.border : theme?.colors?.border ?? '#DCE2EC';
   const focusShortcutAccent = designMode === 'chic' ? chicPalette.accent : theme?.colors?.primaryAccent ?? '#4F6FED';
@@ -136,7 +155,6 @@ export function HomeScreen({
   const todayKey = dateKey(now);
   const nowClock = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
   const nextScheduledTask = allTasks.filter((task) => task.scheduledDate === todayKey && task.scheduledTime && !task.done && task.scheduledTime >= nowClock).sort((a, b) => (a.scheduledTime ?? '').localeCompare(b.scheduledTime ?? ''))[0];
-  const todayScheduledTasks = allTasks.filter((task) => task.scheduledDate === todayKey && task.scheduledTime).sort((a, b) => (a.scheduledTime ?? '').localeCompare(b.scheduledTime ?? ''));
   const nowTasks = tasks.filter((task) => (task.bucket ?? 'now') === 'now');
   const featuredNowTask = [...nowTasks].filter((task) => !task.done).sort((a, b) => priorityOrder[a.priority] - priorityOrder[b.priority])[0];
   const remainingNowTasks = nowTasks.filter((task) => !task.done && task.id !== featuredNowTask?.id);
@@ -223,14 +241,8 @@ export function HomeScreen({
         return <Pressable key={item.id} style={[styles.bucketTab, designMode === 'minimal' && styles.bucketTabMinimal, designMode === 'chic' && styles.bucketTabChic, isDark && styles.darkSurface, designMode === 'chic' && { backgroundColor: activeChic ? chicPalette.accent : chicPalette.cardSurface, borderColor: activeChic ? chicPalette.accent : chicPalette.border }, bucketFilter === item.id && styles.bucketTabActive, bucketFilter === item.id && isDark && styles.bucketTabActiveDark, bucketFilter === item.id && designMode === 'chic' && styles.bucketTabActiveChic, activeChic && { backgroundColor: chicPalette.accent, borderColor: chicPalette.accent }]} onPress={() => { clearSelectionForViewChange(); setBucketFilter(item.id); }}><Text style={[styles.bucketTabText, isDark && styles.darkBodyText, bucketFilter === item.id && styles.bucketTabTextActive, designMode === 'chic' && { color: activeChic ? chicPalette.onAccent : chicPalette.textSecondary }, activeChic && { color: chicPalette.onAccent }]}>{item.label} {count}</Text></Pressable>;
       })}</View>
 
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterChips}>
-        {(['すべて', ...categories] as const).map((category) => <Pressable key={category} style={[styles.filterChip, isDark && styles.filterChipDark, categoryFilter === category && styles.filterChipActive, categoryFilter === category && isDark && styles.filterChipActiveDark, designMode === 'chic' && { backgroundColor: categoryFilter === category ? chicPalette.accentSoft : chicPalette.cardSurface, borderColor: categoryFilter === category ? chicPalette.accent : chicPalette.border }]} onPress={() => { clearSelectionForViewChange(); setCategoryFilter(category); }}><Text style={[styles.filterChipText, isDark && styles.darkMutedText, categoryFilter === category && styles.filterChipTextActive, categoryFilter === category && isDark && styles.filterChipTextActiveDark, designMode === 'chic' && { color: categoryFilter === category ? chicPalette.accentStrong : chicPalette.textSecondary }]}>{category}</Text></Pressable>)}
-      </ScrollView>
-
-      <View style={{ marginBottom: 12, paddingHorizontal: 4 }}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}><Text style={[styles.sectionTitle, isDark && styles.darkBodyText]}>今日の予定</Text><Pressable onPress={onOpenSchedule}><Text style={{ color: focusShortcutAccent, fontSize: 12, fontWeight: '800' }}>予定をすべて見る ›</Text></Pressable></View>
-        {todayScheduledTasks.length === 0 ? <Text style={{ color: focusShortcutMuted, fontSize: 12, marginTop: 6 }}>時間を指定した予定はありません</Text> : todayScheduledTasks.slice(0, 5).map((task) => <View key={`schedule-row-${task.id}`} style={{ minHeight: 34, flexDirection: 'row', alignItems: 'center', borderBottomWidth: 1, borderBottomColor: focusShortcutBorder }}><Text style={{ width: 58, color: focusShortcutAccent, fontSize: 12, fontWeight: '800' }}>{task.scheduledTime}</Text><Text numberOfLines={1} style={{ flex: 1, color: focusShortcutText, fontSize: 13, fontWeight: '700' }}>{task.title}</Text></View>)}
-      </View>
+      <Pressable accessibilityRole="button" onPress={() => setCategoryPickerOpen(true)} style={{ minHeight: 44, marginBottom: 2, paddingHorizontal: 4, borderBottomWidth: 1, borderBottomColor: focusShortcutBorder, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}><Text style={{ color: focusShortcutText, fontSize: 13, fontWeight: '800' }}>絞り込み</Text><Text style={{ color: focusShortcutAccent, fontSize: 13, fontWeight: '800' }}>{categoryFilter} ›</Text></Pressable>
+      <Pressable accessibilityRole="button" onPress={() => setSortPickerOpen(true)} style={{ minHeight: 44, marginBottom: 10, paddingHorizontal: 4, borderBottomWidth: 1, borderBottomColor: focusShortcutBorder, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}><Text style={{ color: focusShortcutText, fontSize: 13, fontWeight: '800' }}>並び順</Text><Text style={{ color: focusShortcutAccent, fontSize: 13, fontWeight: '800' }}>{taskSortOptions.find((item) => item.id === sortOrder)?.label ?? 'おすすめ'} ›</Text></Pressable>
 
       {displayTasks.length === 0 ? (
         <View style={[styles.emptyCard, designMode === 'minimal' && styles.emptyCardMinimal, designMode === 'chic' && styles.emptyCardChic, isDark && styles.darkEmptyCard, designMode === 'chic' && { backgroundColor: chicPalette.cardSurface, borderColor: chicPalette.border }]}>
@@ -244,6 +256,22 @@ export function HomeScreen({
         </React.Fragment>
       ); })}
       </>}
+      <Modal visible={categoryPickerOpen} transparent animationType="fade" onRequestClose={() => setCategoryPickerOpen(false)}>
+        <Pressable style={styles.bucketModalBackdrop} onPress={() => setCategoryPickerOpen(false)}>
+          <Pressable style={[styles.bucketModalCard, { backgroundColor: popupSurface, borderColor: popupBorder }]} onPress={(event) => event.stopPropagation()}>
+            <Text style={[styles.bucketModalTitle, { color: popupText }]}>絞り込み</Text>
+            {(['すべて', ...categories] as const).map((category) => <Pressable key={category} style={{ minHeight: 42, justifyContent: 'center', borderBottomWidth: 1, borderBottomColor: popupBorder }} onPress={() => { clearSelectionForViewChange(); setCategoryFilter(category); setCategoryPickerOpen(false); }}><Text style={{ color: categoryFilter === category ? popupAccent : popupText, fontSize: 14, fontWeight: categoryFilter === category ? '800' : '500' }}>{category}{categoryFilter === category ? '  ✓' : ''}</Text></Pressable>)}
+          </Pressable>
+        </Pressable>
+      </Modal>
+      <Modal visible={sortPickerOpen} transparent animationType="fade" onRequestClose={() => setSortPickerOpen(false)}>
+        <Pressable style={styles.bucketModalBackdrop} onPress={() => setSortPickerOpen(false)}>
+          <Pressable style={[styles.bucketModalCard, { backgroundColor: popupSurface, borderColor: popupBorder }]} onPress={(event) => event.stopPropagation()}>
+            <Text style={[styles.bucketModalTitle, { color: popupText }]}>並び順</Text>
+            {taskSortOptions.map((option) => <Pressable key={option.id} style={{ minHeight: 42, justifyContent: 'center', borderBottomWidth: 1, borderBottomColor: popupBorder }} onPress={() => { setSortOrder(option.id); setSortPickerOpen(false); }}><Text style={{ color: sortOrder === option.id ? popupAccent : popupText, fontSize: 14, fontWeight: sortOrder === option.id ? '800' : '500' }}>{option.label}{sortOrder === option.id ? '  ✓' : ''}</Text></Pressable>)}
+          </Pressable>
+        </Pressable>
+      </Modal>
       <Modal visible={Boolean(bucketTask)} transparent animationType="fade" onRequestClose={() => setBucketTask(null)}>
         <Pressable style={styles.bucketModalBackdrop} onPress={() => setBucketTask(null)}>
           <Pressable style={[styles.bucketModalCard, { backgroundColor: popupSurface, borderColor: popupBorder }]} onPress={(event) => event.stopPropagation()}>
