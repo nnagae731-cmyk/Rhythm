@@ -53,6 +53,7 @@ export function SettingsScreen({
   onPremium,
   onDeleteSavedTemplate,
   onOpenCaptureStudio,
+  initialAppearanceOpen = false,
   captureDesignOnly = false,
   planTier,
   styles,
@@ -104,6 +105,8 @@ export function SettingsScreen({
   onPremium: (featureId?: PremiumGuideFeatureId) => void;
   onDeleteSavedTemplate: (template: PremiumTaskTemplate) => void;
   onOpenCaptureStudio?: () => void;
+  /** Opens the appearance section for the first-run design choice. */
+  initialAppearanceOpen?: boolean;
   /** Development capture only: stop after the production design selector. */
   captureDesignOnly?: boolean;
   planTier: PlanTier;
@@ -117,7 +120,7 @@ export function SettingsScreen({
   const selectedMode = selectedDesignMode ?? designMode;
   const isDark = designMode === 'dark';
   const isDesign = selectedMode === 'chic' || selectedMode === 'photo';
-  const [expandedSetting, setExpandedSetting] = useState<'appearance' | 'travelApps' | 'notifications' | 'taskDisplay' | 'quick' | 'widget' | 'premium' | 'about' | null>(captureDesignOnly ? 'appearance' : null);
+  const [expandedSetting, setExpandedSetting] = useState<'appearance' | 'travelApps' | 'notifications' | 'taskDisplay' | 'quick' | 'widget' | 'premium' | 'about' | null>(captureDesignOnly || initialAppearanceOpen ? 'appearance' : null);
   const previewTasks = tasks.filter((task) => showCompleted || !task.done).slice(0, size === 'small' ? 2 : 3);
   const isCheckPattern = chicPattern === 'checkLavenderSatin' || chicPattern === 'checkBeigeNoir' || chicPattern === 'checkMauveFrame';
   const patternVisual = isCheckPattern ? getChicCheckColor(chicCheckColor) : getChicPatternVisual(chicPattern, chicPalette);

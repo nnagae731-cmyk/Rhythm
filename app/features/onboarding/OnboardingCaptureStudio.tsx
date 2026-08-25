@@ -6,7 +6,7 @@ import type { PremiumGuideFeatureId } from '../../premiumGuide';
 type CaptureMode = 'onboarding' | 'guide' | 'premium';
 type GuideId = Exclude<OnboardingFeatureId, 'intro'>;
 type CaptureItem = { id: string; label: string; mode: CaptureMode };
-const ONBOARDING_ITEMS: CaptureItem[] = ['quickTodo', 'today', 'schedule', 'focus', 'records', 'wish', 'customize'].map((id) => ({ id, label: id, mode: 'onboarding' as const }));
+const ONBOARDING_ITEMS: CaptureItem[] = ['quickTodo', 'today', 'schedule', 'focus', 'recovery', 'records'].map((id) => ({ id, label: id, mode: 'onboarding' as const }));
 const GUIDE_ITEMS: CaptureItem[] = ['todo', 'todoComplete', 'completedTasks', 'taskBuckets', 'taskDetails', 'schedule', 'planRegistration', 'calendarImport', 'focus', 'analysis', 'routine', 'history', 'photoLog', 'wish', 'affirmation', 'recovery'].map((id) => ({ id, label: id, mode: 'guide' as const }));
 const PREMIUM_ITEMS: CaptureItem[] = ['focus_custom_duration', 'records', 'reflection', 'calendar', 'route', 'travel_apps', 'nudge', 'time', 'behavior', 'month', 'history', 'recovery', 'templates', 'wish', 'affirmation', 'photo_design'].map((id) => ({ id, label: id, mode: 'premium' as const }));
 

@@ -32,7 +32,7 @@ import { BottomNav } from './components/BottomNav';
 import { OnboardingCarousel } from './features/onboarding/OnboardingCarousel';
 import { OnboardingCaptureStudio } from './features/onboarding/OnboardingCaptureStudio';
 import { OnboardingHint } from './features/onboarding/OnboardingHint';
-import type { OnboardingFeatureId } from './features/onboarding/onboardingSteps';
+import type { IntroCardId, OnboardingFeatureId } from './features/onboarding/onboardingSteps';
 import { useOnboarding } from './features/onboarding/useOnboarding';
 import { RecoveryModal } from './components/RecoveryModal';
 import { TravelAppsSettingsCard } from './components/TravelAppsSettingsCard';
@@ -2393,7 +2393,7 @@ export default function App() {
     // their read-only preview.  The capture/preview callbacks are no-ops, so
     // this cannot persist settings, request permissions, or start ads.
     if (kind === 'photo_design') {
-      return readonly(<View pointerEvents="none">{renderOnboardingCaptureStep('customize')}</View>);
+      return readonly(<View pointerEvents="none">{renderAppearanceSettingsPreview()}</View>);
     }
     if (kind === 'nudge') return readonly(<NotificationManagerCard designMode={uiDesignMode} readOnly />);
     if (kind === 'travel_apps') return readonly(<TravelAppsSettingsCard settings={travelApps} onChange={() => undefined} planTier="premium" designMode={uiDesignMode} chicPalette={chicPalette} onPremium={() => undefined} readOnlyPreview />, 560);
@@ -2564,11 +2564,15 @@ export default function App() {
     return undefined;
   };
 
-  const renderOnboardingCaptureStep = (id: 'quickTodo' | 'today' | 'schedule' | 'focus' | 'records' | 'wish' | 'customize'): React.ReactNode => {
+  // Premium photo-design previews need the real appearance selector, but it
+  // is intentionally kept separate from the six-card first-run intro.
+  const renderAppearanceSettingsPreview = (): React.ReactNode => renderOnboardingCaptureStep('customize');
+
+  const renderOnboardingCaptureStep = (id: IntroCardId | 'customize'): React.ReactNode => {
     if (id === 'schedule') return renderPremiumReadOnlyPreview('calendar', true, { initialTab: 'calendar', previewMode: false });
     if (id === 'focus') return renderPremiumReadOnlyPreview('focus_custom_duration', true, { initialTab: 'focus', previewMode: false, previewCustomDurationOpen: false });
+    if (id === 'recovery') return renderPremiumReadOnlyPreview('recovery');
     if (id === 'records') return renderPremiumReadOnlyPreview('records');
-    if (id === 'wish') return renderPremiumReadOnlyPreview('wish', false);
     if (id === 'quickTodo') return <View pointerEvents="none" style={[styles.premiumPreview, { minHeight: 460, overflow: 'hidden' }]}><TaskModal visible templates={['資料をまとめる', 'スーパーに寄る']} savedTemplates={[]} designMode={uiDesignMode} chicPalette={chicPalette} planTier="premium" onPremium={() => undefined} onClose={() => undefined} onSave={() => undefined} styles={styles} helpers={{ getThemeTokens: getThemedThemeTokens, todayInputValue, hasPremiumAccess, dateForReminder, dateKey, formatLiveTime, colors: themedColors, summarizePremiumTaskTemplate }} components={{ CompactNumberSetting }} readOnlyPreview /></View>;
     const previewDate = dateKey(now);
     const captureTasks: Task[] = [
@@ -3005,6 +3009,7 @@ export default function App() {
               onPremium={openPremiumFeature}
               onDeleteSavedTemplate={deleteSavedTaskTemplate}
               onOpenCaptureStudio={__DEV__ ? () => setCaptureStudioOpen(true) : undefined}
+              initialAppearanceOpen={onboardingDesignSelectionPending}
                           styles={styles}
               helpers={{ colors: themedColors, getThemeTokens: getThemedThemeTokens, getChicPatternVisual, hasPremiumAccess, getChicCheckColor, chicCheckColorChoices, countdownToClock, getUrgencyStatus, getNextBestAction, designModes, completionIcons, summarizePremiumTaskTemplate }}
               components={{ BThemeRibbonDecoration, CThemeRibbonDecoration, ChicPatternDecor, ChicPatternSelector, SettingsDisclosure, NotificationManagerCard }}
@@ -3155,13 +3160,18 @@ export default function App() {
           if (!designPreviewPhotoUri) { void pickPhotoForDesignPreview(); return; }
           if (planTier === 'premium' || activeDesignTrialId === 'photo' || isPremiumDesignUnlocked(rewardedAccess, now)) {
             applyPhotoDesign();
+            completeInitialDesignSelection();
             return;
           }
           if (canStartPremiumDesignTrial(rewardedAccess)) {
             startPhotoDesignTrial();
+            completeInitialDesignSelection();
             return;
           }
-          pendingDesignApplyRef.current = () => applyPhotoDesign();
+          pendingDesignApplyRef.current = () => {
+            applyPhotoDesign();
+            completeInitialDesignSelection();
+          };
           setDesignPreviewPattern(undefined);
           setDesignTrialNoticeOpen(true);
           return;
@@ -3171,6 +3181,7 @@ export default function App() {
           setMonoAppearance(mode === 'dark' ? 'dark' : 'light');
           setDesignPreviewPattern(undefined);
           void onboarding.complete('design');
+          completeInitialDesignSelection();
           return;
         }
         if (pattern === 'plain') {
@@ -3178,6 +3189,7 @@ export default function App() {
           setChicPattern('plain');
           setDesignPreviewPattern(undefined);
           void onboarding.complete('design');
+          completeInitialDesignSelection();
           return;
         }
         if (pattern) {
@@ -3187,12 +3199,14 @@ export default function App() {
               setChicPattern(pattern);
               setDesignPreviewPattern(undefined);
               void onboarding.complete('design');
+              completeInitialDesignSelection();
             };
             setDesignPreviewPattern(undefined);
             setDesignTrialNoticeOpen(true);
             return;
           }
           startDesignTrial(pattern);
+          completeInitialDesignSelection();
         }
       }} />
       <DesignTrialExpiredModal visible={designTrialNoticeOpen} designMode={uiDesignMode} chicPalette={chicPalette} onClose={() => { pendingDesignApplyRef.current = undefined; setDesignTrialNoticeOpen(false); }} onPremium={() => { pendingDesignApplyRef.current = undefined; setDesignTrialNoticeOpen(false); openPremiumFeature('photo_design'); }} onReward={() => void requestDesignReward()} />
@@ -3205,9 +3219,17 @@ export default function App() {
   onDismiss={
     onboarding.isCompleted('intro')
       ? onboarding.closeIntro
-      : onboarding.finishIntro
+      : () => {
+          void onboarding.finishIntro();
+          setOnboardingDesignSelectionPending(true);
+          setScreen('settings');
+      }
   }
       onFinalAction={() => {
+    if (onboarding.isCompleted('intro')) {
+      onboarding.closeIntro();
+      return;
+    }
     void onboarding.finishIntro();
     setOnboardingDesignSelectionPending(true);
     setScreen('settings');
