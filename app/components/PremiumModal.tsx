@@ -108,7 +108,7 @@ function PremiumFeatureDetail({ number, kind, title, description, designMode, ch
   const previewStyles = designMode === 'dark' ? { ...styles, ...darkPreviewStyleOverrides } : styles;
   return <View style={[styles.premiumFeatureBlock, isMono && styles.premiumFeatureMinimal, designMode === 'dark' && styles.premiumFeatureDark, designMode === 'chic' && styles.premiumFeatureChic, designMode === 'chic' && chicPalette && { backgroundColor: chicPalette.cardSurface, borderColor: chicPalette.border }]}>
     <View style={styles.premiumFeatureInner}>
-      <View style={styles.premiumFeatureTop}><Text style={[styles.premiumFeatureNumber, designMode === 'minimal' && styles.premiumFeatureNumberMinimal, designMode === 'dark' && styles.premiumFeatureNumberDark, designMode === 'chic' && chicPalette && { color: chicPalette.accentStrong }]}>{number}</Text><View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}><Text style={[styles.premiumFeatureLabel, designMode === 'dark' && { color: '#8EA6FF', backgroundColor: '#20293A' }, designMode === 'chic' && chicPalette && { color: chicPalette.accent }]}>Premium機能</Text><Text style={[styles.premiumFeatureLabel, { color: designMode === 'chic' && chicPalette ? chicPalette.textMuted : designMode === 'dark' ? '#8F9BB0' : '#777772' }, designMode === 'dark' && { backgroundColor: '#20293A' }]}>READ ONLY</Text></View></View>
+      <View style={styles.premiumFeatureTop}><Text style={[styles.premiumFeatureNumber, designMode === 'minimal' && styles.premiumFeatureNumberMinimal, designMode === 'dark' && styles.premiumFeatureNumberDark, designMode === 'chic' && chicPalette && { color: chicPalette.accentStrong }]}>{number}</Text><View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}><Text style={[styles.premiumFeatureLabel, designMode === 'dark' && { color: '#8EA6FF', backgroundColor: '#20293A' }, designMode === 'chic' && chicPalette && { color: chicPalette.accent, backgroundColor: chicPalette.cardTint } ]}>Premium機能</Text><Text style={[styles.premiumFeatureLabel, { color: designMode === 'chic' && chicPalette ? chicPalette.textMuted : designMode === 'dark' ? '#8F9BB0' : '#777772', backgroundColor: designMode === 'chic' && chicPalette ? chicPalette.surfaceSubtle : undefined }, designMode === 'dark' && { backgroundColor: '#20293A' }]}>READ ONLY</Text></View></View>
       <PremiumPreviewViewport styles={styles} dark={designMode === 'dark'}>{renderReadOnlyPreview?.(kind) ?? <LegacyPreviewFallback kind={kind} styles={previewStyles} />}</PremiumPreviewViewport>
       <View style={[styles.premiumFeatureTextPlate, isMono && styles.premiumFeatureTextMinimal, designMode === 'dark' && styles.premiumFeatureTextDark, designMode === 'chic' && styles.premiumFeatureTextChic, designMode === 'chic' && chicPalette && { backgroundColor: chicPalette.surfaceSubtle, borderColor: chicPalette.border }]}><Text style={[styles.premiumFeatureTitle, isMono && styles.premiumFeatureTitleMinimal, designMode === 'dark' && styles.premiumFeatureTitleDark, designMode === 'chic' && chicPalette && { color: chicPalette.textPrimary }]}>{title}</Text><Text style={[styles.premiumFeatureDescription, isMono && styles.premiumFeatureDescriptionMinimal, designMode === 'dark' && styles.premiumFeatureDescriptionDark, designMode === 'chic' && chicPalette && { color: chicPalette.textSecondary }]}>{description}</Text></View>
     </View>
@@ -134,7 +134,6 @@ export function PremiumModal({ visible, initialFeatureId, designMode, chicPalett
     previewTime: { ...styles.previewTime, color: primaryText },
     previewScheduleTitle: { ...styles.previewScheduleTitle, color: primaryText },
     previewSource: { ...styles.previewSource, color: primaryText, backgroundColor: surfaceSoft },
-    previewSourceRhythm: { ...styles.previewSourceRhythm, color: accentText, backgroundColor: accent },
     previewFlowText: { ...styles.previewFlowText, color: secondaryText },
     previewArrow: { ...styles.previewArrow, color: secondaryText },
     previewFlowButton: { ...styles.previewFlowButton, color: accentText, backgroundColor: accent },
@@ -147,6 +146,32 @@ export function PremiumModal({ visible, initialFeatureId, designMode, chicPalett
     previewTemplateReady: { ...styles.previewTemplateReady, color: secondaryText },
     previewCompareTag: { ...styles.previewCompareTag, color: secondaryText },
     previewRecoveryText: { ...styles.previewRecoveryText, color: primaryText },
+    previewScheduleRow: { ...styles.previewScheduleRow, borderBottomColor: theme.colors.border },
+    previewSourceRhythm: { ...styles.previewSourceRhythm, color: accentText, backgroundColor: accent },
+    previewRouteMap: { ...styles.previewRouteMap, backgroundColor: surfaceSoft, borderColor: theme.colors.border },
+    previewRouteMapTitle: { ...styles.previewRouteMapTitle, color: accent },
+    previewRouteMapPlace: { ...styles.previewRouteMapPlace, color: primaryText },
+    previewRouteCopy: { ...styles.previewRouteCopy, color: secondaryText },
+    previewNotification: { ...styles.previewNotification, backgroundColor: surfaceSoft, borderColor: theme.colors.border },
+    previewNotificationTime: { ...styles.previewNotificationTime, color: primaryText },
+    previewNotificationTitle: { ...styles.previewNotificationTitle, color: primaryText },
+    previewNotificationCopy: { ...styles.previewNotificationCopy, color: secondaryText },
+    previewCompareLabel: { ...styles.previewCompareLabel, color: secondaryText },
+    previewCompareValue: { ...styles.previewCompareValue, color: primaryText },
+    previewCompareArrow: { ...styles.previewCompareArrow, color: secondaryText },
+    previewInsightRow: { ...styles.previewInsightRow, borderTopColor: theme.colors.border },
+    previewInsightLabel: { ...styles.previewInsightLabel, color: secondaryText },
+    previewInsightValue: { ...styles.previewInsightValue, color: primaryText },
+    previewWeekDay: { ...styles.previewWeekDay, color: primaryText, borderColor: theme.colors.border },
+    previewMonth: { ...styles.previewMonth, backgroundColor: surfaceSoft },
+    previewMonthTitle: { ...styles.previewMonthTitle, color: primaryText },
+    previewMonthWeek: { ...styles.previewMonthWeek, color: secondaryText },
+    previewMonthDays: { ...styles.previewMonthDays, color: primaryText },
+    previewTemplateSource: { ...styles.previewTemplateSource, borderColor: theme.colors.border },
+    previewTemplateSaved: { ...styles.previewTemplateSaved, backgroundColor: surfaceSoft },
+    previewDanger: { ...styles.previewDanger, backgroundColor: surfaceSoft },
+    previewDangerText: { ...styles.previewDangerText, color: theme.colors.danger },
+    previewRecoveryOption: { ...styles.previewRecoveryOption, backgroundColor: surfaceSoft },
   };
   const initialIndex = Math.max(0, PREMIUM_GUIDE_FEATURES.findIndex((feature) => feature.id === initialFeatureId));
   const [selectedFeatureId, setSelectedFeatureId] = useState<PremiumGuideFeatureId>(initialFeatureId);
