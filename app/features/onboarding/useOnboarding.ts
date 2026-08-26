@@ -9,6 +9,7 @@ import {
   loadOnboardingState,
   markOnboardingCompleted,
   OnboardingState,
+  setOnboardingFirstRunStage,
 } from './onboardingStorage';
 import { OnboardingFeatureId } from './onboardingSteps';
 
@@ -88,9 +89,17 @@ export function useOnboarding() {
   const finishIntro = useCallback(
     async () => {
       await complete('intro');
+      const next = await setOnboardingFirstRunStage('demo');
+      setState(next);
     },
     [complete],
   );
+
+  const setFirstRunStage = useCallback(async (stage: OnboardingState['firstRunStage']) => {
+    const next = await setOnboardingFirstRunStage(stage);
+    setState(next);
+    return next;
+  }, []);
 
   /**
    * 設定 → Rhythmの使い方
@@ -119,6 +128,7 @@ export function useOnboarding() {
     openIntro,
     closeIntro,
     finishIntro,
+    setFirstRunStage,
 
     isCompleted,
     complete,

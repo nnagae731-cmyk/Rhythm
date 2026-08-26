@@ -940,7 +940,10 @@ export default function App() {
     if (!onboardingDesignSelectionPending) return;
     setOnboardingDesignSelectionPending(false);
     setScreen('home');
-  }, [onboardingDesignSelectionPending]);
+    if (onboarding.state.firstRunStage === 'design') {
+      void onboarding.setFirstRunStage('done');
+    }
+  }, [onboarding, onboardingDesignSelectionPending]);
   const requestWishReward = React.useCallback(async () => {
     if (hasPremiumAccess(planTier, 'wish_planning')) return { success: true, completed: true } as RewardedAccessResult;
     if (canCreateWish(rewardedAccess)) return { success: true, completed: true } as RewardedAccessResult;
@@ -2807,11 +2810,30 @@ export default function App() {
   // Production GUIDE placement is an explicit, stateful tour.  Completion
   // callbacks from the real screens still mark a feature complete, while the
   // transition state keeps the next card hidden until its target is ready.
-  const activeGuideTour: readonly Exclude<OnboardingFeatureId, 'intro'>[] = planTier === 'premium' ? PREMIUM_GUIDE_TOUR : FREE_GUIDE_TOUR;
-  const firstIncompleteGuide = onboarding.ready && onboarding.isCompleted('intro') && onboarding.isCompleted('design')
+  const firstRunDemoActive = onboarding.state.firstRunStage === 'demo';
+  const activeGuideTour: readonly Exclude<OnboardingFeatureId, 'intro'>[] = firstRunDemoActive
+    ? FREE_GUIDE_TOUR
+    : planTier === 'premium' ? PREMIUM_GUIDE_TOUR : FREE_GUIDE_TOUR;
+  // New users run the Free demo before choosing a design.  Existing users do
+  // not have firstRunStage, so the legacy Premium tour remains gated by their
+  // completed design selection and is never unexpectedly restarted.
+  const premiumTourReady = planTier === 'premium' && onboarding.isCompleted('intro') && onboarding.isCompleted('design');
+  const firstIncompleteGuide = onboarding.ready && onboarding.isCompleted('intro') && (firstRunDemoActive || premiumTourReady)
     ? activeGuideTour.find((feature) => !onboarding.isCompleted(feature))
     : undefined;
   const productionGuideFeature = pendingGuideFeature ?? currentGuideFeature;
+
+  // Resume an interrupted first-run experience at the design step after a
+  // restart.  The persisted stage is optional, so older users are untouched.
+  React.useEffect(() => {
+    if (!onboarding.ready || onboarding.introVisible) return;
+    if (onboarding.state.firstRunStage === 'design' && !onboardingDesignSelectionPending) {
+      setOnboardingDesignSelectionPending(true);
+      setCurrentGuideFeature(undefined);
+      setPendingGuideFeature(undefined);
+      setScreen('settings');
+    }
+  }, [onboarding.introVisible, onboarding.ready, onboarding.state.firstRunStage, onboardingDesignSelectionPending]);
 
   const navigateToGuideFeature = React.useCallback((feature: Exclude<OnboardingFeatureId, 'intro'>) => {
     setAddOpen(false);
@@ -2908,11 +2930,16 @@ export default function App() {
       setPendingGuideFeature(undefined);
       setGuideTransitioning(false);
       guideTransitioningRef.current = false;
+      if (onboarding.state.firstRunStage === 'demo') {
+        await onboarding.setFirstRunStage('design');
+        setOnboardingDesignSelectionPending(true);
+        setScreen('settings');
+      }
       return;
     }
     setPendingGuideFeature(next);
     navigateToGuideFeature(next);
-  }, [activeGuideTour, guideTransitioning, navigateToGuideFeature, onboarding, pendingGuideFeature]);
+  }, [activeGuideTour, guideTransitioning, navigateToGuideFeature, onboarding, pendingGuideFeature, planTier]);
 
   React.useEffect(() => {
     if (!onboarding.ready || onboarding.introVisible || onboardingDesignSelectionPending || guideTransitioning || pendingGuideFeature) return;
@@ -2964,7 +2991,9 @@ export default function App() {
     if (guideTransitioningRef.current) return;
     guideTransitioningRef.current = true;
     setGuideTransitioning(true);
-    const tour = planTier === 'premium' ? PREMIUM_GUIDE_TOUR : FREE_GUIDE_TOUR;
+    const tour = onboarding.state.firstRunStage === 'demo'
+      ? FREE_GUIDE_TOUR
+      : planTier === 'premium' ? PREMIUM_GUIDE_TOUR : FREE_GUIDE_TOUR;
     void (async () => {
       try {
         for (const feature of tour) {
@@ -2975,6 +3004,11 @@ export default function App() {
         setPendingGuideFeature(undefined);
         setGuideTransitioning(false);
         guideTransitioningRef.current = false;
+        if (onboarding.state.firstRunStage === 'demo') {
+          void onboarding.setFirstRunStage('design');
+          setOnboardingDesignSelectionPending(true);
+          setScreen('settings');
+        }
       }
     })();
   }, [onboarding, planTier]);
@@ -3476,7 +3510,20 @@ export default function App() {
       <PremiumModal visible={premiumOpen} initialFeatureId={premiumTargetFeature} designMode={uiDesignMode} chicPalette={chicPalette} planTier={planTier} isDevelopment={__DEV__} onMockPlanTier={setDevPlanTierOverride} onClose={() => setPremiumOpen(false)} styles={styles} helpers={{ getThemeTokens: getThemedThemeTokens }} renderReadOnlyPreview={renderPremiumReadOnlyPreview} />
       <DesignCustomizeModal visible={designCustomizeOpen} designMode={uiDesignMode} chicPalette={chicPalette} purchased={designCustomizePurchased} isDevelopment={__DEV__} onPurchase={purchaseDesignCustomize} onRestore={restoreDesignCustomizePurchase} onPremium={() => { setDesignCustomizeOpen(false); openPremiumFeature('photo_design'); }} onClose={() => setDesignCustomizeOpen(false)} />
       {__DEV__ && <OnboardingCaptureStudio visible={captureStudioOpen} onClose={() => setCaptureStudioOpen(false)} renderStep={renderOnboardingCaptureStep} renderGuideStep={renderGuideCaptureStep} renderPremiumStep={renderPremiumReadOnlyPreview} colors={{ background: theme.colors.screenBackground, surface: theme.colors.surface, border: theme.colors.border, text: theme.colors.primaryText, muted: theme.colors.secondaryText, accent: theme.colors.primaryAccent, onAccent: uiDesignMode === 'dark' ? theme.colors.screenBackground : '#FFFFFF' }} />}
-      <DesignPreviewModal visible={Boolean(designPreviewPattern)} initialPattern={designPreviewPattern} initialMode={designPreviewMode} chicCheckColor={chicCheckColor} planTier={planTier} photoUri={designPreviewPhotoUri} onPickPhoto={() => void pickPhotoForDesignPreview()} onClose={() => { setDesignPreviewPattern(undefined); setDesignPreviewPhotoUri(undefined); setDesignPreviewMode('chic'); }} onUse={(mode, pattern) => {
+      <DesignPreviewModal visible={Boolean(designPreviewPattern)} initialPattern={designPreviewPattern} initialMode={designPreviewMode} chicCheckColor={chicCheckColor} planTier={planTier} photoUri={designPreviewPhotoUri} onPickPhoto={() => void pickPhotoForDesignPreview()} onClose={() => { setDesignPreviewPattern(undefined); setDesignPreviewPhotoUri(undefined); setDesignPreviewMode('chic'); }} onTrial={(mode, pattern) => {
+        if (mode === 'chic' && pattern && canStartPremiumDesignTrial(rewardedAccess)) {
+          startDesignTrial(pattern);
+          completeInitialDesignSelection();
+          return;
+        }
+        if (mode === 'photo' && designPreviewPhotoUri && canStartPremiumDesignTrial(rewardedAccess)) {
+          startPhotoDesignTrial();
+          completeInitialDesignSelection();
+          return;
+        }
+        setDesignPreviewPattern(undefined);
+        setDesignTrialNoticeOpen(true);
+      }} onUse={(mode, pattern) => {
         if (mode === 'photo') {
           if (!designPreviewPhotoUri) { void pickPhotoForDesignPreview(); return; }
           if (planTier === 'premium' || designCustomizePurchased || activeDesignTrialId === 'photo' || isPremiumDesignUnlocked(rewardedAccess, now)) {
@@ -3485,8 +3532,7 @@ export default function App() {
             return;
           }
           if (canStartPremiumDesignTrial(rewardedAccess)) {
-            startPhotoDesignTrial();
-            completeInitialDesignSelection();
+            setDesignTrialNoticeOpen(true);
             return;
           }
           pendingDesignApplyRef.current = () => {
@@ -3514,7 +3560,7 @@ export default function App() {
           return;
         }
         if (pattern) {
-          if (planTier !== 'premium' && !designCustomizePurchased && !isPremiumDesignUnlocked(rewardedAccess, now) && !isPremiumDesignTrialActive(rewardedAccess, now) && !canStartPremiumDesignTrial(rewardedAccess)) {
+          if (planTier !== 'premium' && !designCustomizePurchased && !isPremiumDesignUnlocked(rewardedAccess, now) && !isPremiumDesignTrialActive(rewardedAccess, now)) {
             pendingDesignApplyRef.current = () => {
               setDesignMode('chic');
               setChicPattern(pattern);
@@ -3526,8 +3572,11 @@ export default function App() {
             setDesignTrialNoticeOpen(true);
             return;
           }
-          startDesignTrial(pattern);
-          completeInitialDesignSelection();
+          if (canStartPremiumDesignTrial(rewardedAccess)) {
+            setDesignTrialNoticeOpen(true);
+          } else {
+            setDesignTrialNoticeOpen(true);
+          }
         }
       }} />
       <DesignTrialExpiredModal visible={designTrialNoticeOpen} designMode={uiDesignMode} chicPalette={chicPalette} onClose={() => { pendingDesignApplyRef.current = undefined; setDesignTrialNoticeOpen(false); }} onPremium={() => { pendingDesignApplyRef.current = undefined; setDesignTrialNoticeOpen(false); openPremiumFeature('photo_design'); }} onReward={() => void requestDesignReward()} />
@@ -3542,18 +3591,15 @@ export default function App() {
       ? onboarding.closeIntro
       : () => {
           void onboarding.finishIntro();
-          setOnboardingDesignSelectionPending(true);
-          setScreen('settings');
       }
   }
-      onFinalAction={() => {
+  finalActionLabel="Rhythmを体験する"
+  onFinalAction={() => {
     if (onboarding.isCompleted('intro')) {
       onboarding.closeIntro();
       return;
     }
     void onboarding.finishIntro();
-    setOnboardingDesignSelectionPending(true);
-    setScreen('settings');
   }}
   renderStep={renderOnboardingCaptureStep}
 />
@@ -3563,7 +3609,7 @@ export default function App() {
 
 type DesignPreviewMode = 'minimal' | 'dark' | 'chic' | 'photo';
 
-function DesignPreviewModal({ visible, initialPattern, initialMode = 'chic', chicCheckColor, planTier, photoUri, onPickPhoto, onClose, onUse }: { visible: boolean; initialPattern?: ChicPattern; initialMode?: DesignPreviewMode; chicCheckColor: ChicCheckColor; planTier: PlanTier; photoUri?: string; onPickPhoto: () => void; onClose: () => void; onUse: (mode: DesignPreviewMode, pattern?: ChicPattern) => void }) {
+function DesignPreviewModal({ visible, initialPattern, initialMode = 'chic', chicCheckColor, planTier, photoUri, onPickPhoto, onClose, onUse, onTrial }: { visible: boolean; initialPattern?: ChicPattern; initialMode?: DesignPreviewMode; chicCheckColor: ChicCheckColor; planTier: PlanTier; photoUri?: string; onPickPhoto: () => void; onClose: () => void; onUse: (mode: DesignPreviewMode, pattern?: ChicPattern) => void; onTrial?: (mode: DesignPreviewMode, pattern?: ChicPattern) => void }) {
   const [mode, setMode] = useState<DesignPreviewMode>('chic');
   const [pattern, setPattern] = useState<ChicPattern>(initialPattern ?? 'plain');
   const [floralSoftPreviewStatus, setFloralSoftPreviewStatus] = useState<'idle' | 'loading' | 'loaded' | 'error'>('idle');
@@ -3574,6 +3620,7 @@ function DesignPreviewModal({ visible, initialPattern, initialMode = 'chic', chi
     }
   }, [initialMode, initialPattern, visible]);
   const isFreeFloralSoftPreview = planTier !== 'premium' && mode === 'chic' && pattern === 'floralSoft';
+  const isLockedPremiumPattern = planTier !== 'premium' && mode === 'chic' && pattern !== 'plain';
   useEffect(() => {
     if (!visible || !isFreeFloralSoftPreview) {
       setFloralSoftPreviewStatus('idle');
@@ -3633,7 +3680,8 @@ function DesignPreviewModal({ visible, initialPattern, initialMode = 'chic', chi
           </>}
         </View>
         {mode === 'photo' && <Pressable style={[designPreviewStyles.secondaryButton, { borderColor: uiPreview.border, backgroundColor: uiPreview.surface }]} onPress={onPickPhoto}><Text style={[designPreviewStyles.secondaryButtonText, { color: uiPreview.accent }]}>{photoUri ? '写真を選び直す' : '写真で試す'}</Text></Pressable>}
-        <View style={designPreviewStyles.actions}><Pressable style={[designPreviewStyles.secondaryButton, { borderColor: uiPreview.border, backgroundColor: uiPreview.surface }]} onPress={onClose}><Text style={[designPreviewStyles.secondaryButtonText, { color: uiPreview.accent }]} >閉じる</Text></Pressable><Pressable style={[designPreviewStyles.primaryButton, { backgroundColor: uiPreview.accent }]} onPress={() => { if (mode === 'photo' && !photoUri) { onPickPhoto(); return; } onUse(mode, mode === 'chic' ? pattern : undefined); }}><Text style={[designPreviewStyles.primaryButtonText, { color: uiPreview.onAccent }]}>{mode === 'photo' ? (photoUri ? 'この写真を使う' : '写真で試す') : isFreeFloralSoftPreview ? 'Premiumで使う' : 'このデザインを使う'}</Text></Pressable></View>
+        {isLockedPremiumPattern && <Text style={[designPreviewStyles.trialHint, { color: uiPreview.muted }]}>試着だけではお試し時間は開始されません。</Text>}
+        <View style={designPreviewStyles.actions}><Pressable style={[designPreviewStyles.secondaryButton, { borderColor: uiPreview.border, backgroundColor: uiPreview.surface }]} onPress={onClose}><Text style={[designPreviewStyles.secondaryButtonText, { color: uiPreview.accent }]} >閉じる</Text></Pressable><Pressable style={[designPreviewStyles.primaryButton, { backgroundColor: uiPreview.accent }]} onPress={() => { if (mode === 'photo' && !photoUri) { onPickPhoto(); return; } if (isLockedPremiumPattern) { onTrial?.(mode, pattern); return; } onUse(mode, mode === 'chic' ? pattern : undefined); }}><Text style={[designPreviewStyles.primaryButtonText, { color: uiPreview.onAccent }]}>{mode === 'photo' ? (photoUri ? 'この写真を使う' : '写真で試す') : isLockedPremiumPattern ? '24時間無料で使ってみる' : 'このデザインを使う'}</Text></Pressable></View>
       </Pressable>
     </Pressable>
     </Modal>
@@ -3677,6 +3725,7 @@ const designPreviewStyles = StyleSheet.create({
   actions: { flexDirection: 'row', gap: 8, marginTop: 14 },
   primaryButton: { minHeight: 46, flex: 1, borderRadius: 11, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 12, marginTop: 10 },
   trialActionButton: { flex: 0, width: '100%' },
+  trialHint: { fontSize: 11, lineHeight: 16, marginTop: 8, textAlign: 'center' },
   primaryButtonText: { color: '#FFFFFF', fontSize: 13, fontWeight: '900' },
   secondaryButton: { minHeight: 46, flex: 1, borderRadius: 11, borderWidth: 1, borderColor: '#DDD7E3', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 12, marginTop: 10 },
   secondaryButtonText: { fontSize: 13, fontWeight: '900' },

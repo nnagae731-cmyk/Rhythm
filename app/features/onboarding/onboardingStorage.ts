@@ -7,11 +7,14 @@ export const ONBOARDING_STORAGE_KEY =
 export type OnboardingState = {
   version: 1;
   completed: Partial<Record<OnboardingFeatureId, string>>;
+  /** Explicit first-run progression. Optional for backwards compatibility. */
+  firstRunStage?: 'demo' | 'design' | 'done';
 };
 
 export const DEFAULT_ONBOARDING_STATE: OnboardingState = {
   version: 1,
   completed: {},
+  firstRunStage: undefined,
 };
 
 const ONBOARDING_FEATURE_IDS: readonly OnboardingFeatureId[] = [
@@ -80,6 +83,9 @@ export function normalizeOnboardingState(
   return {
     version: 1,
     completed,
+    firstRunStage: raw.firstRunStage === 'demo' || raw.firstRunStage === 'design' || raw.firstRunStage === 'done'
+      ? raw.firstRunStage
+      : undefined,
   };
 }
 
@@ -162,4 +168,16 @@ export async function resetAllOnboarding(): Promise<void> {
   await AsyncStorage.removeItem(
     ONBOARDING_STORAGE_KEY,
   );
+}
+
+export async function setOnboardingFirstRunStage(
+  stage: OnboardingState['firstRunStage'],
+): Promise<OnboardingState> {
+  const current = await loadOnboardingState();
+  const next: OnboardingState = {
+    ...current,
+    ...(stage ? { firstRunStage: stage } : { firstRunStage: undefined }),
+  };
+  await AsyncStorage.setItem(ONBOARDING_STORAGE_KEY, JSON.stringify(next));
+  return next;
 }
