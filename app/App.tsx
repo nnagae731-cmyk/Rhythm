@@ -3560,23 +3560,17 @@ export default function App() {
           return;
         }
         if (pattern) {
-          if (planTier !== 'premium' && !designCustomizePurchased && !isPremiumDesignUnlocked(rewardedAccess, now) && !isPremiumDesignTrialActive(rewardedAccess, now)) {
-            pendingDesignApplyRef.current = () => {
-              setDesignMode('chic');
-              setChicPattern(pattern);
-              setDesignPreviewPattern(undefined);
-              void onboarding.complete('design');
-              completeInitialDesignSelection();
-            };
+          const hasPatternAccess = planTier === 'premium' || designCustomizePurchased || isPremiumDesignUnlocked(rewardedAccess, now) || isPremiumDesignTrialActive(rewardedAccess, now);
+          if (!hasPatternAccess) {
             setDesignPreviewPattern(undefined);
             setDesignTrialNoticeOpen(true);
             return;
           }
-          if (canStartPremiumDesignTrial(rewardedAccess)) {
-            setDesignTrialNoticeOpen(true);
-          } else {
-            setDesignTrialNoticeOpen(true);
-          }
+          setDesignMode('chic');
+          setChicPattern(pattern);
+          setDesignPreviewPattern(undefined);
+          void onboarding.complete('design');
+          completeInitialDesignSelection();
         }
       }} />
       <DesignTrialExpiredModal visible={designTrialNoticeOpen} designMode={uiDesignMode} chicPalette={chicPalette} onClose={() => { pendingDesignApplyRef.current = undefined; setDesignTrialNoticeOpen(false); }} onPremium={() => { pendingDesignApplyRef.current = undefined; setDesignTrialNoticeOpen(false); openPremiumFeature('photo_design'); }} onReward={() => void requestDesignReward()} />
