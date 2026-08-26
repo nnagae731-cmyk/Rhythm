@@ -2734,13 +2734,14 @@ export default function App() {
     else if (id === 'affirmation') production = renderPremiumReadOnlyPreview('affirmation');
     else if (id === 'wish') production = renderPremiumReadOnlyPreview('wish');
     else production = renderPremiumReadOnlyPreview('recovery');
+    if (id === 'schedule') {
+      return <View><View style={{ height: 330, borderWidth: 1, borderColor: chicPalette.border, borderRadius: 14, overflow: 'hidden' }}>{production}</View><View style={{ marginTop: 16 }}><OnboardingHint inline featureId="schedule" designMode={uiDesignMode} chicPalette={chicPalette} onAction={() => undefined} /></View></View>;
+    }
     const productionGuideHasAction = id === 'todo' || id === 'schedule' || id === 'planRegistration' || id === 'focus';
     // Keep the real screen visible, but reserve the lower portion of the
     // fixed 9:16 stage for the complete GUIDE card.  This prevents the
     // badge/title/description/CTA from being clipped by the capture frame.
-    const guideStageMinHeight = id === 'schedule' ? 500 : 560;
-    const guideProductionMaxHeight = id === 'schedule' ? 330 : 360;
-    return <View style={{ minHeight: guideStageMinHeight, position: 'relative' }}><View style={{ maxHeight: guideProductionMaxHeight, borderWidth: 1, borderColor: chicPalette.border, borderRadius: 14, overflow: 'hidden' }}>{production}</View><View pointerEvents="box-none" style={{ position: 'absolute', left: 12, right: 12, bottom: 0 }}><OnboardingHint inline featureId={id} designMode={uiDesignMode} chicPalette={chicPalette} onAction={productionGuideHasAction ? () => undefined : undefined} /></View></View>;
+    return <View style={{ minHeight: 560, position: 'relative' }}><View style={{ maxHeight: 360, borderWidth: 1, borderColor: chicPalette.border, borderRadius: 14, overflow: 'hidden' }}>{production}</View><View pointerEvents="box-none" style={{ position: 'absolute', left: 12, right: 12, bottom: 0 }}><OnboardingHint inline featureId={id} designMode={uiDesignMode} chicPalette={chicPalette} onAction={productionGuideHasAction ? () => undefined : undefined} /></View></View>;
   };
 
   return (
