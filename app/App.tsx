@@ -2341,7 +2341,7 @@ export default function App() {
       ...(premium ? [{ id: 'capture-preview-action-2', wishId, title: '通勤中に5ページ読む', completed: false }] : []),
     ];
     return (
-      <View pointerEvents="none">
+      <View pointerEvents="none" style={{ width: '100%', height: premium ? 740 : 620 }}>
         <WishScreen
           designMode={uiDesignMode}
           chicPattern={effectiveChicPattern}
