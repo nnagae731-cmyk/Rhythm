@@ -2821,6 +2821,22 @@ export default function App() {
   const firstIncompleteGuide = onboarding.ready && onboarding.isCompleted('intro') && (firstRunDemoActive || premiumTourReady)
     ? activeGuideTour.find((feature) => !onboarding.isCompleted(feature))
     : undefined;
+  // The first-run tour uses an in-memory snapshot so the screens remain
+  // meaningful even for a brand-new account.  It is never passed to the
+  // persistence callbacks and is discarded when the tour reaches design.
+  const guideDemoTasks: Task[] = [
+    { id: 'guide-demo-now', title: '資料をまとめる', done: false, status: 'active', category: '仕事', priority: '高', bucket: 'now', scheduledDate: dateKey(now) },
+    { id: 'guide-demo-later', title: 'スーパーに寄る', done: false, status: 'active', category: '家事', priority: '中', bucket: 'later', scheduledDate: dateKey(now) },
+    { id: 'guide-demo-complete', title: '朝のメールを確認', done: true, status: 'completed', category: '仕事', priority: '低', bucket: 'now', scheduledDate: dateKey(now), completedAt: new Date(now.getTime() - 3_600_000).toISOString() },
+  ];
+  const guideDemoPlan: DeparturePlan = { id: 'guide-demo-plan', title: '資料提出', destination: '天神○○ビル', date: dateKey(now), arrival: '18:00', travelMinutes: 30, preparationMinutes: 15, bufferMinutes: 10, planMode: 'arrival_reverse' };
+  const guideDemoWishState: MonthlyWishState = {
+    monthlyGoal: '毎日少しでも自分の時間をつくる',
+    wishes: [{ id: 'guide-demo-wish', title: '週に1冊、本を読む', completed: false, createdAt: now.toISOString() }],
+    actions: [{ id: 'guide-demo-action', wishId: 'guide-demo-wish', title: '寝る前に10分読む', completed: false }],
+    review: {},
+  };
+  const guideDemoAffirmations: Affirmation[] = [{ id: 'guide-demo-affirmation', text: '私は自分のペースで続けられる', time: '09:00', enabled: true, createdAt: now.toISOString() }];
   const productionGuideFeature = pendingGuideFeature ?? currentGuideFeature;
 
   // Resume an interrupted first-run experience at the design step after a
@@ -3048,8 +3064,8 @@ export default function App() {
         <ScrollView contentContainerStyle={[styles.content, screen === 'timeline' && styles.contentTimeline]} keyboardShouldPersistTaps="handled">
           {screen === 'home' && (
             <HomeScreen
-              tasks={visibleTasks}
-              allTasks={tasks}
+              tasks={firstRunDemoActive ? guideDemoTasks : visibleTasks}
+              allTasks={firstRunDemoActive ? guideDemoTasks : tasks}
               now={now}
               designMode={uiDesignMode}
               chicPalette={chicPalette}
@@ -3147,25 +3163,25 @@ export default function App() {
               chicPattern={effectiveChicPattern}
               chicPalette={chicPalette}
               monthLabel={`${now.getFullYear()}年${now.getMonth() + 1}月`}
-              state={currentWishState}
-              wishMonths={wishMonths}
-              onSaveState={saveCurrentWishState}
+              state={firstRunDemoActive ? guideDemoWishState : currentWishState}
+              wishMonths={firstRunDemoActive ? { [currentWishMonthKey]: guideDemoWishState } : wishMonths}
+              onSaveState={firstRunDemoActive ? () => undefined : saveCurrentWishState}
               onCreateTaskFromAction={createTaskFromWishAction}
-              affirmations={affirmations}
+              affirmations={firstRunDemoActive ? guideDemoAffirmations : affirmations}
               affirmationCustomTexts={affirmationCustomTexts}
               planTier={planTier}
-              onSaveAffirmation={saveAffirmation}
-              onDeleteAffirmation={deleteAffirmation}
-              onSaveAffirmationCustomText={saveAffirmationCustomText}
-              onDeleteAffirmationCustomText={deleteAffirmationCustomText}
+              onSaveAffirmation={firstRunDemoActive ? () => undefined : saveAffirmation}
+              onDeleteAffirmation={firstRunDemoActive ? () => undefined : deleteAffirmation}
+              onSaveAffirmationCustomText={firstRunDemoActive ? () => undefined : saveAffirmationCustomText}
+              onDeleteAffirmationCustomText={firstRunDemoActive ? () => undefined : deleteAffirmationCustomText}
               canCreateWish={hasPremiumAccess(planTier, 'wish_planning') || canCreateWish(rewardedAccess)}
               wishRewardProgress={{ current: rewardedAccess.wishCreateProgress, required: 2 }}
-              onRequestWishReward={requestWishReward}
-              onWishCreated={consumeWishReward}
+              onRequestWishReward={firstRunDemoActive ? undefined : requestWishReward}
+              onWishCreated={firstRunDemoActive ? undefined : consumeWishReward}
               canCreateWishAction={hasPremiumAccess(planTier, 'wish_planning')}
               monthlyGoalUnlocked={planTier === 'premium' || isWishMonthlyGoalUnlocked(rewardedAccess, now)}
               monthlyGoalRewardProgress={getRewardedPromptProgress('wishMonthlyGoal')}
-              onRequestMonthlyGoalReward={requestMonthlyGoalReward}
+              onRequestMonthlyGoalReward={firstRunDemoActive ? undefined : requestMonthlyGoalReward}
               onPremium={() => openPremiumFeature('wish')}
               onBack={() => setScreen('home')}
             />
@@ -3173,12 +3189,12 @@ export default function App() {
 
           {screen === 'timeline' && (
             <TimelineScreen
-              plan={plan}
-              plans={departurePlans}
+              plan={firstRunDemoActive ? guideDemoPlan : plan}
+              plans={firstRunDemoActive ? [guideDemoPlan] : departurePlans}
               departureCheckIns={departureCheckIns}
               departurePreparationStatuses={departurePreparationStatuses}
               behaviorEvents={behaviorEvents}
-              tasks={tasks}
+              tasks={firstRunDemoActive ? guideDemoTasks : tasks}
               now={now}
               designMode={uiDesignMode}
               focusBackgroundUri={focusBackgroundUri}
@@ -3349,8 +3365,8 @@ export default function App() {
 
           {screen === 'analysis' && (
             <AnalysisScreen
-              events={behaviorEvents}
-              tasks={tasks}
+              events={firstRunDemoActive ? [] : behaviorEvents}
+              tasks={firstRunDemoActive ? guideDemoTasks : tasks}
               designMode={uiDesignMode}
               chicPalette={chicPalette}
               chicPattern={chicPattern}
@@ -3377,7 +3393,7 @@ export default function App() {
                 else void onboarding.complete('analysis');
               }}
               initialTab={analysisInitialTab}
-              departurePlans={departurePlans}
+              departurePlans={firstRunDemoActive ? [guideDemoPlan] : departurePlans}
               onApplySuggestion={(suggestion) => {
                 const nextPlans = departurePlansRef.current.map((item) => item.id === suggestion.planId ? { ...item, preparationMinutes: suggestion.nextPreparationMinutes } : item);
                 const updatedPlan = nextPlans.find((item) => item.id === suggestion.planId);
@@ -3489,7 +3505,7 @@ export default function App() {
         onShareCurrentEvent={shareCurrentSharedEvent}
       />
 
-      {addOpen && <TaskModal visible templates={taskTemplates} savedTemplates={savedTaskTemplates} designMode={uiDesignMode} chicPalette={chicPalette} planTier={planTier} onPremium={openPremiumFeature} onClose={() => setAddOpen(false)} onOpenBulkAdd={() => { setAddOpen(false); setBulkAddOpen(true); }} onSave={addTask} guideOverlay={productionGuideFeature === 'taskDetails' ? productionGuideCard : undefined} styles={styles} helpers={{ getThemeTokens: getThemedThemeTokens, todayInputValue, hasPremiumAccess, dateForReminder, dateKey, formatLiveTime, colors: themedColors, summarizePremiumTaskTemplate }} components={{ CompactNumberSetting }} />}
+      {addOpen && <TaskModal visible templates={taskTemplates} savedTemplates={savedTaskTemplates} designMode={uiDesignMode} chicPalette={chicPalette} planTier={planTier} onPremium={openPremiumFeature} onClose={() => setAddOpen(false)} onOpenBulkAdd={() => { setAddOpen(false); setBulkAddOpen(true); }} onSave={addTask} readOnlyPreview={firstRunDemoActive} guideOverlay={productionGuideFeature === 'taskDetails' ? productionGuideCard : undefined} styles={styles} helpers={{ getThemeTokens: getThemedThemeTokens, todayInputValue, hasPremiumAccess, dateForReminder, dateKey, formatLiveTime, colors: themedColors, summarizePremiumTaskTemplate }} components={{ CompactNumberSetting }} />}
       <BulkTaskModal visible={bulkAddOpen} designMode={uiDesignMode} chicPalette={chicPalette} styles={styles} today={todayInputValue()} onClose={() => setBulkAddOpen(false)} onSave={addBulkTasks} />
       {editingTask !== null && <TaskModal
         visible
@@ -3502,6 +3518,7 @@ export default function App() {
         onPremium={openPremiumFeature}
         onClose={() => setEditingTask(null)}
         onSave={updateTask}
+        readOnlyPreview={firstRunDemoActive}
         guideOverlay={productionGuideFeature === 'taskDetails' ? productionGuideCard : undefined}
         styles={styles}
         helpers={{ getThemeTokens: getThemedThemeTokens, todayInputValue, hasPremiumAccess, dateForReminder, dateKey, formatLiveTime, colors: themedColors, summarizePremiumTaskTemplate }}
