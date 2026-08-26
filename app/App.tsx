@@ -2824,11 +2824,14 @@ export default function App() {
   // The first-run tour uses an in-memory snapshot so the screens remain
   // meaningful even for a brand-new account.  It is never passed to the
   // persistence callbacks and is discarded when the tour reaches design.
-  const guideDemoTasks: Task[] = [
-    { id: 'guide-demo-now', title: '資料をまとめる', done: false, status: 'active', category: '仕事', priority: '高', bucket: 'now', scheduledDate: dateKey(now) },
-    { id: 'guide-demo-later', title: 'スーパーに寄る', done: false, status: 'active', category: '家事', priority: '中', bucket: 'later', scheduledDate: dateKey(now) },
-    { id: 'guide-demo-complete', title: '朝のメールを確認', done: true, status: 'completed', category: '仕事', priority: '低', bucket: 'now', scheduledDate: dateKey(now), completedAt: new Date(now.getTime() - 3_600_000).toISOString() },
-  ];
+  const guideDemoTasks = useMemo<Task[]>(() => {
+    const demoDate = dateKey();
+    return [
+      { id: 'guide-demo-now', title: '資料をまとめる', done: false, status: 'active', category: '仕事', priority: '高', bucket: 'now', scheduledDate: demoDate },
+      { id: 'guide-demo-later', title: 'スーパーに寄る', done: false, status: 'active', category: '家事', priority: '中', bucket: 'later', scheduledDate: demoDate },
+      { id: 'guide-demo-complete', title: '朝のメールを確認', done: true, status: 'completed', category: '仕事', priority: '低', bucket: 'now', scheduledDate: demoDate, completedAt: new Date(Date.now() - 3_600_000).toISOString() },
+    ];
+  }, []);
   const guideDemoPlan: DeparturePlan = { id: 'guide-demo-plan', title: '資料提出', destination: '天神○○ビル', date: dateKey(now), arrival: '18:00', travelMinutes: 30, preparationMinutes: 15, bufferMinutes: 10, planMode: 'arrival_reverse' };
   const guideDemoWishState: MonthlyWishState = {
     monthlyGoal: '毎日少しでも自分の時間をつくる',
@@ -2856,6 +2859,15 @@ export default function App() {
     setEditingTask(null);
     setPlanEditorOpen(false);
     setOpenTodayReview(false);
+    if (feature === 'taskDetails') {
+      setScreen('home');
+      const taskForDetails = firstRunDemoActive
+        ? guideDemoTasks[0]
+        : tasksRef.current.find((task) => !task.done) ?? tasksRef.current[0];
+      if (taskForDetails) setEditingTask(taskForDetails);
+      else setAddOpen(true);
+      return;
+    }
     if (feature === 'schedule') {
       setTimelineInitialTab('deadline');
       setScreen('timeline');
@@ -2906,7 +2918,7 @@ export default function App() {
       return;
     }
     setScreen('home');
-  }, [openNewPlanEditor]);
+  }, [firstRunDemoActive, guideDemoTasks, openNewPlanEditor]);
 
   React.useEffect(() => {
     if (!productionGuideFeature || onboarding.introVisible || onboardingDesignSelectionPending || guideTransitioning) return;
