@@ -263,5 +263,5 @@ export function TaskModal({ visible, task, templates, savedTemplates, designMode
       </Pressable>
       </KeyboardAvoidingView>
   );
-  return readOnlyPreview ? <View style={{ width: '100%' }} pointerEvents="none">{modalContent}</View> : <Modal visible={visible} transparent animationType="slide" onRequestClose={closeForm}>{modalContent}</Modal>;
+  return readOnlyPreview ? <View style={{ width: '100%' }} pointerEvents={guideOverlay ? 'box-none' : 'none'}>{modalContent}</View> : <Modal visible={visible} transparent animationType="slide" onRequestClose={closeForm}>{modalContent}</Modal>;
 }

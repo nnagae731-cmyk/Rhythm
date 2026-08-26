@@ -2808,8 +2808,9 @@ export default function App() {
   };
 
   // Production GUIDE placement is an explicit, stateful tour.  Completion
-  // callbacks from the real screens still mark a feature complete, while the
-  // transition state keeps the next card hidden until its target is ready.
+  // Callbacks from the real screens still mark a feature complete.  Demo
+  // transitions are bounded so a target that is slow or unavailable cannot
+  // hide the next GUIDE indefinitely.
   const firstRunDemoActive = onboarding.state.firstRunStage === 'demo';
   const activeGuideTour: readonly Exclude<OnboardingFeatureId, 'intro'>[] = firstRunDemoActive
     ? FREE_GUIDE_TOUR
@@ -2832,7 +2833,36 @@ export default function App() {
       { id: 'guide-demo-complete', title: '朝のメールを確認', done: true, status: 'completed', category: '仕事', priority: '低', bucket: 'now', scheduledDate: demoDate, completedAt: new Date(Date.now() - 3_600_000).toISOString() },
     ];
   }, []);
+  const [guideDemoTasksState, setGuideDemoTasksState] = useState<Task[]>([]);
+  const guideDemoInitializedRef = React.useRef(false);
+  React.useEffect(() => {
+    if (firstRunDemoActive) {
+      if (!guideDemoInitializedRef.current) {
+        guideDemoInitializedRef.current = true;
+        setGuideDemoTasksState(guideDemoTasks);
+      }
+    } else if (guideDemoInitializedRef.current) {
+      guideDemoInitializedRef.current = false;
+      setGuideDemoTasksState([]);
+    }
+  }, [firstRunDemoActive, guideDemoTasks]);
+  const updateGuideDemoTasks = React.useCallback((updater: (current: Task[]) => Task[]) => {
+    setGuideDemoTasksState((current) => {
+      const next = updater(current);
+      return next;
+    });
+  }, []);
+  const activeGuideDemoTasks = firstRunDemoActive && !guideDemoInitializedRef.current ? guideDemoTasks : guideDemoTasksState;
   const guideDemoPlan: DeparturePlan = { id: 'guide-demo-plan', title: '資料提出', destination: '天神○○ビル', date: dateKey(now), arrival: '18:00', travelMinutes: 30, preparationMinutes: 15, bufferMinutes: 10, planMode: 'arrival_reverse' };
+  const guideDemoCalendarOptions = useMemo(() => [
+    { id: 'guide-demo-personal-calendar', title: '個人', type: 'local' },
+    { id: 'guide-demo-work-calendar', title: '仕事', type: 'local' },
+  ] as Calendar.Calendar[], []);
+  const guideDemoCalendarEvents = useMemo(() => [
+    { id: 'guide-demo-calendar-hospital', calendarId: 'guide-demo-personal-calendar', title: '病院', startDate: `${dateKey(now)}T10:00:00`, endDate: `${dateKey(now)}T11:00:00`, allDay: false },
+    { id: 'guide-demo-calendar-meeting', calendarId: 'guide-demo-work-calendar', title: '打ち合わせ', startDate: `${dateKey(now)}T14:00:00`, endDate: `${dateKey(now)}T15:00:00`, allDay: false },
+    { id: 'guide-demo-calendar-hair', calendarId: 'guide-demo-personal-calendar', title: '美容院', startDate: `${dateKey(now)}T18:00:00`, endDate: `${dateKey(now)}T19:00:00`, allDay: false },
+  ] as Calendar.Event[], [now]);
   const guideDemoWishState: MonthlyWishState = {
     monthlyGoal: '毎日少しでも自分の時間をつくる',
     wishes: [{ id: 'guide-demo-wish', title: '週に1冊、本を読む', completed: false, createdAt: now.toISOString() }],
@@ -2862,7 +2892,7 @@ export default function App() {
     if (feature === 'taskDetails') {
       setScreen('home');
       const taskForDetails = firstRunDemoActive
-        ? guideDemoTasks[0]
+        ? guideDemoTasksState[0] ?? guideDemoTasks[0]
         : tasksRef.current.find((task) => !task.done) ?? tasksRef.current[0];
       if (taskForDetails) setEditingTask(taskForDetails);
       else setAddOpen(true);
@@ -2921,58 +2951,50 @@ export default function App() {
       return;
     }
     setScreen('home');
-  }, [firstRunDemoActive, guideDemoTasks, openNewPlanEditor]);
+  }, [firstRunDemoActive, guideDemoTasks, guideDemoTasksState, openNewPlanEditor]);
 
   React.useEffect(() => {
     if (!productionGuideFeature || onboarding.introVisible || onboardingDesignSelectionPending || guideTransitioning) return;
     navigateToGuideFeature(productionGuideFeature);
   }, [guideTransitioning, navigateToGuideFeature, onboarding.introVisible, onboardingDesignSelectionPending, productionGuideFeature]);
 
-  const guideTargetReady = React.useCallback((feature: Exclude<OnboardingFeatureId, 'intro'>) => {
-    if (feature === 'taskDetails') return screen === 'home' && (Boolean(editingTask) || addOpen);
-    if (feature === 'planRegistration') {
-      return screen === 'timeline' && (planEditorOpen || (firstRunDemoActive && timelineInitialTab === 'departure'));
-    }
-    if (feature === 'photoLog') return screen === 'home' && openTodayReview;
-    if (feature === 'recovery') return screen === 'timeline';
-    if (feature === 'schedule') return screen === 'timeline' && timelineInitialTab === 'deadline';
-    if (feature === 'focus') return screen === 'timeline' && timelineInitialTab === 'focus';
-    if (feature === 'calendarImport') return screen === 'timeline' && timelineInitialTab === 'calendar';
-    if (feature === 'analysis') return screen === 'analysis' && analysisInitialTab === 'records';
-    if (feature === 'routine') return screen === 'analysis' && analysisInitialTab === 'routine';
-    if (feature === 'history') return screen === 'analysis' && analysisInitialTab === 'records';
-    if (feature === 'wish' || feature === 'affirmation') return screen === 'wish';
-    return screen === 'home';
-  }, [addOpen, analysisInitialTab, editingTask, firstRunDemoActive, openTodayReview, planEditorOpen, screen, timelineInitialTab]);
+  const releaseGuideTransition = React.useCallback(() => {
+    setPendingGuideFeature(undefined);
+    setGuideTransitioning(false);
+    guideTransitioningRef.current = false;
+  }, []);
 
   const advanceGuide = React.useCallback(async (feature: Exclude<OnboardingFeatureId, 'intro'>) => {
     if (guideTransitioningRef.current || guideTransitioning || pendingGuideFeature) return;
     guideTransitioningRef.current = true;
     setGuideTransitioning(true);
+    let waitingForTarget = false;
     let completedState: typeof onboarding.state = onboarding.state;
     try {
       if (!onboarding.isCompleted(feature)) completedState = await onboarding.complete(feature);
-    } catch {
-      guideTransitioningRef.current = false;
-      setGuideTransitioning(false);
-      return;
-    }
-    const next = activeGuideTour.find((item) => !completedState.completed[item]);
-    if (!next) {
-      setCurrentGuideFeature(undefined);
-      setPendingGuideFeature(undefined);
-      setGuideTransitioning(false);
-      guideTransitioningRef.current = false;
-      if (onboarding.state.firstRunStage === 'demo') {
-        await onboarding.setFirstRunStage('design');
-        setOnboardingDesignSelectionPending(true);
-        setScreen('settings');
+      const next = activeGuideTour.find((item) => !completedState.completed[item]);
+      if (!next) {
+        setCurrentGuideFeature(undefined);
+        releaseGuideTransition();
+        if (onboarding.state.firstRunStage === 'demo') {
+          await onboarding.setFirstRunStage('design');
+          setOnboardingDesignSelectionPending(true);
+          setScreen('settings');
+        }
+        return;
       }
-      return;
+      waitingForTarget = true;
+      setPendingGuideFeature(next);
+      navigateToGuideFeature(next);
+    } catch {
+      // A failed completion or navigation must never leave the app in a
+      // permanently locked GUIDE state.
+      waitingForTarget = false;
+      releaseGuideTransition();
+    } finally {
+      if (!waitingForTarget) releaseGuideTransition();
     }
-    setPendingGuideFeature(next);
-    navigateToGuideFeature(next);
-  }, [activeGuideTour, guideTransitioning, navigateToGuideFeature, onboarding, pendingGuideFeature, planTier]);
+  }, [activeGuideTour, guideTransitioning, navigateToGuideFeature, onboarding, pendingGuideFeature, planTier, releaseGuideTransition]);
 
   React.useEffect(() => {
     if (!onboarding.ready || onboarding.introVisible || onboardingDesignSelectionPending || guideTransitioning || pendingGuideFeature) return;
@@ -2989,16 +3011,33 @@ export default function App() {
   }, [activeGuideTour, advanceGuide, currentGuideFeature, firstIncompleteGuide, guideTransitioning, navigateToGuideFeature, onboarding, onboardingDesignSelectionPending, pendingGuideFeature]);
 
   React.useEffect(() => {
-    if (!pendingGuideFeature || !guideTargetReady(pendingGuideFeature)) return;
+    if (!pendingGuideFeature) return;
+    const nextFeature = pendingGuideFeature;
+    let secondFrame = 0;
     const frame = requestAnimationFrame(() => {
-      setCurrentGuideFeature(pendingGuideFeature);
-      setPendingGuideFeature(undefined);
-      setGuideTransitioning(false);
-      guideTransitioningRef.current = false;
+      secondFrame = requestAnimationFrame(() => {
+        setCurrentGuideFeature(nextFeature);
+        releaseGuideTransition();
+      });
     });
-    return () => cancelAnimationFrame(frame);
-  }, [guideTargetReady, pendingGuideFeature]);
+    const fallback = setTimeout(() => {
+      if (__DEV__) console.warn('[GUIDE] transition fallback', nextFeature);
+      setCurrentGuideFeature(nextFeature);
+      releaseGuideTransition();
+    }, 1200);
+    return () => {
+      cancelAnimationFrame(frame);
+      if (secondFrame) cancelAnimationFrame(secondFrame);
+      clearTimeout(fallback);
+    };
+  }, [pendingGuideFeature, releaseGuideTransition]);
 
+  /*
+   * Target readiness is advisory only.  It can help a screen position a
+   * spotlight, but it must never prevent the next GUIDE card from appearing.
+  * The two-frame handoff above guarantees that pending/transitioning cannot
+  * become a permanent interaction lock.
+  */
   const productionGuideAction = productionGuideFeature === 'todo'
     ? () => {
         if (firstRunDemoActive) {
@@ -3062,9 +3101,7 @@ export default function App() {
         }
       } finally {
         setCurrentGuideFeature(undefined);
-        setPendingGuideFeature(undefined);
-        setGuideTransitioning(false);
-        guideTransitioningRef.current = false;
+        releaseGuideTransition();
         if (onboarding.state.firstRunStage === 'demo') {
           void onboarding.setFirstRunStage('design');
           setOnboardingDesignSelectionPending(true);
@@ -3072,13 +3109,13 @@ export default function App() {
         }
       }
     })();
-  }, [onboarding, planTier]);
+  }, [onboarding, planTier, releaseGuideTransition]);
   const guideTargetLabels: Partial<Record<Exclude<OnboardingFeatureId, 'intro'>, string>> = {
     todo: '＋追加', taskDetails: '詳しく設定', taskBuckets: '一覧', todoComplete: '完了チェック', completedTasks: '達成グラフ',
     schedule: 'スケジュール', planRegistration: '予定を登録', focus: '集中', calendarImport: 'カレンダー', analysis: '分析', routine: 'ルーティン', history: '履歴',
     wish: '叶えたいこと', affirmation: 'アファメーション', photoLog: '今日の記録', recovery: '立て直し',
   };
-  const productionGuideCard = productionGuideFeature && !guideTransitioning && guideTargetReady(productionGuideFeature) ? <OnboardingHint key={productionGuideFeature} inline featureId={productionGuideFeature} designMode={uiDesignMode} chicPalette={chicPalette} targetLabel={guideTargetLabels[productionGuideFeature]} onAction={productionGuideAction} onDismiss={() => completeTourGuide(productionGuideFeature)} onNext={() => completeTourGuide(productionGuideFeature)} onExitTour={exitGuideTour} /> : null;
+  const productionGuideCard = productionGuideFeature && !guideTransitioning ? <OnboardingHint key={productionGuideFeature} inline featureId={productionGuideFeature} designMode={uiDesignMode} chicPalette={chicPalette} targetLabel={guideTargetLabels[productionGuideFeature]} onAction={productionGuideAction} onDismiss={() => completeTourGuide(productionGuideFeature)} onNext={() => completeTourGuide(productionGuideFeature)} onExitTour={exitGuideTour} /> : null;
   const productionGuideOverlay = productionGuideFeature && !guideTransitioning && !planEditorOpen && !openTodayReview && !addOpen && !editingTask && !recoveryTargetPlanId && productionGuideFeature !== 'recovery' ? (
     <View pointerEvents="box-none" style={{ position: 'absolute', left: 12, right: 12, bottom: 78, zIndex: 40 }}>{productionGuideCard}</View>
   ) : null;
@@ -3109,8 +3146,8 @@ export default function App() {
         <ScrollView contentContainerStyle={[styles.content, screen === 'timeline' && styles.contentTimeline]} keyboardShouldPersistTaps="handled">
           {screen === 'home' && (
             <HomeScreen
-              tasks={firstRunDemoActive ? guideDemoTasks : visibleTasks}
-              allTasks={firstRunDemoActive ? guideDemoTasks : tasks}
+              tasks={firstRunDemoActive ? activeGuideDemoTasks : visibleTasks}
+              allTasks={firstRunDemoActive ? activeGuideDemoTasks : tasks}
               now={now}
               designMode={uiDesignMode}
               chicPalette={chicPalette}
@@ -3133,17 +3170,41 @@ export default function App() {
                 setTimelineInitialTab('departure');
                 navigateWithinApp('timeline');
               }}
-              onUpdateTaskList={updateTaskList}
+              onUpdateTaskList={(taskId, items) => {
+                if (firstRunDemoActive) {
+                  updateGuideDemoTasks((current) => current.map((task) => task.id === taskId ? { ...task, listItems: items } : task));
+                  return;
+                }
+                updateTaskList(taskId, items);
+              }}
               onToggle={(id) => {
+                if (firstRunDemoActive) {
+                  updateGuideDemoTasks((current) => current.map((task) => task.id === id ? { ...task, done: !task.done, status: !task.done ? 'completed' : 'active', completedAt: !task.done ? new Date().toISOString() : undefined } : task));
+                  if (productionGuideFeature === 'todoComplete') void advanceGuide('todoComplete');
+                  return;
+                }
                 const task = tasksRef.current.find((item) => item.id === id);
                 completeTaskIds([id]);
                 if (task && !task.done) void onboarding.complete('todoComplete');
               }}
-              onToggleSubtask={toggleSubtask}
-              onCompleteParent={completeParentTask}
+              onToggleSubtask={(taskId, subtaskId) => {
+                if (firstRunDemoActive) {
+                  updateGuideDemoTasks((current) => current.map((task) => task.id === taskId ? { ...task, subtasks: task.subtasks?.map((item) => item.id === subtaskId ? { ...item, done: !item.done } : item) } : task));
+                  return;
+                }
+                toggleSubtask(taskId, subtaskId);
+              }}
+              onCompleteParent={(taskId) => {
+                if (firstRunDemoActive) {
+                  updateGuideDemoTasks((current) => current.map((task) => task.id === taskId ? { ...task, done: true, status: 'completed', completedAt: new Date().toISOString(), subtasks: task.subtasks?.map((item) => ({ ...item, done: true })) } : task));
+                  if (productionGuideFeature === 'todoComplete') void advanceGuide('todoComplete');
+                  return;
+                }
+                completeParentTask(taskId);
+              }}
               onEdit={(task) => {
                 setEditingTask(task);
-                void onboarding.complete('taskDetails');
+                if (!firstRunDemoActive) void onboarding.complete('taskDetails');
               }}
               onToggleSelection={(id) => setSelectedTaskIds((current) => current.includes(id) ? current.filter((item) => item !== id) : [...current, id])}
               onClearSelection={() => setSelectedTaskIds([])}
@@ -3152,6 +3213,13 @@ export default function App() {
                 setSelectedTaskIds([]);
               }}
               onCompleteSelected={() => {
+                if (firstRunDemoActive) {
+                  updateGuideDemoTasks((current) => current.map((task) => selectedTaskIds.includes(task.id) ? { ...task, done: true, status: 'completed', completedAt: new Date().toISOString(), subtasks: task.subtasks?.map((item) => ({ ...item, done: true })) } : task));
+                  if (selectedTaskIds.length > 0 && productionGuideFeature === 'todoComplete') void advanceGuide('todoComplete');
+                  setSelectionMode(false);
+                  setSelectedTaskIds([]);
+                  return;
+                }
                 const selected = selectedTaskIds.map((id) => tasksRef.current.find((task) => task.id === id)).filter((task): task is Task => Boolean(task));
                 const parentIds = selected.filter((task) => !task.done && task.subtasks?.some((item) => !item.done)).map((task) => task.id);
                 const regularIds = selected.filter((task) => !parentIds.includes(task.id)).map((task) => task.id);
@@ -3161,13 +3229,38 @@ export default function App() {
                 setSelectionMode(false);
                 setSelectedTaskIds([]);
               }}
-              onDelete={deleteTaskById}
-              onSkip={skipTaskById}
-              onOpenSkipBonusReward={planTier === 'premium' ? undefined : () => openRewardedPrompt('routineSkipBonus', 'Skip Bonus', '広告を2回見ると、ルーティンのスキップ権を1回分追加できます。')}
+              onDelete={(id) => {
+                if (firstRunDemoActive) {
+                  updateGuideDemoTasks((current) => current.filter((task) => task.id !== id));
+                  return;
+                }
+                deleteTaskById(id);
+              }}
+              onSkip={(id) => {
+                if (firstRunDemoActive) {
+                  updateGuideDemoTasks((current) => current.map((task) => task.id === id ? { ...task, done: false, status: 'skipped', skippedAt: new Date().toISOString() } : task));
+                  return;
+                }
+                skipTaskById(id);
+              }}
+              onOpenSkipBonusReward={firstRunDemoActive || planTier === 'premium' ? undefined : () => openRewardedPrompt('routineSkipBonus', 'Skip Bonus', '広告を2回見ると、ルーティンのスキップ権を1回分追加できます。')}
               skipBonusAdded={rewardedAccess.routine.skipBonusAdded}
               skipBonusMax={2}
-              onDeleteSelected={() => deleteSelectedTasks(selectedTaskIds)}
+              onDeleteSelected={() => {
+                if (firstRunDemoActive) {
+                  updateGuideDemoTasks((current) => current.filter((task) => !selectedTaskIds.includes(task.id)));
+                  setSelectionMode(false);
+                  setSelectedTaskIds([]);
+                  return;
+                }
+                deleteSelectedTasks(selectedTaskIds);
+              }}
               onDuplicate={(task) => {
+                if (firstRunDemoActive) {
+                  const duplicateId = `${task.id}-copy`;
+                  updateGuideDemoTasks((current) => [{ ...task, id: duplicateId, title: `${task.title}（コピー）`, done: false, status: 'active', completedAt: undefined }, ...current]);
+                  return;
+                }
                 // 通知は複製せず、複製後にユーザーが改めて設定する。
                 // 過去のルーティンIDも引き継がない独立したタスクにする。
                  const duplicateId = `${Date.now()}-${Math.random().toString(16).slice(2)}-copy`;
@@ -3175,8 +3268,14 @@ export default function App() {
                 tasksRef.current = [duplicate, ...tasksRef.current];
                 setTasks(tasksRef.current);
               }}
-              onSaveTemplate={saveTaskAsTemplate}
+              onSaveTemplate={(task) => {
+                if (!firstRunDemoActive) saveTaskAsTemplate(task);
+              }}
               onPostpone={(id) => {
+                if (firstRunDemoActive) {
+                  updateGuideDemoTasks((current) => current.map((task) => task.id === id ? { ...task, scheduledDate: todayInputValue(1), bucket: 'later' } : task));
+                  return;
+                }
                 const task = tasksRef.current.find((item) => item.id === id);
                 if (!task) return;
                 const tomorrow = todayInputValue(1);
@@ -3186,6 +3285,11 @@ export default function App() {
                 void scheduleAllTaskNotifications(updated);
               }}
               onBucket={(id, bucket) => {
+                if (firstRunDemoActive) {
+                  updateGuideDemoTasks((current) => current.map((task) => task.id === id ? { ...task, bucket } : task));
+                  if (productionGuideFeature === 'taskBuckets') void advanceGuide('taskBuckets');
+                  return;
+                }
                 const task = tasksRef.current.find((item) => item.id === id);
                 if (!task) return;
                 const updated = { ...task, bucket };
@@ -3195,7 +3299,7 @@ export default function App() {
                 if (task.bucket !== bucket) void onboarding.complete('taskBuckets');
               }}
               styles={styles}
-              renderTodayWinStrip={(todayTasks, openFocus, toggleTask, openTaskActions, isSelectionMode, selectedIds) => <TodayWinStrip tasks={todayTasks} designMode={uiDesignMode} chicPattern={effectiveChicPattern} chicPalette={chicPalette} onRestore={restoreTaskById} onOpenCompleted={() => void onboarding.complete('completedTasks')} onOpenFocus={openFocus} onToggleTask={toggleTask} onOpenTaskActions={openTaskActions} selectionMode={isSelectionMode} selectedTaskIds={selectedIds} />}
+              renderTodayWinStrip={(todayTasks, openFocus, toggleTask, openTaskActions, isSelectionMode, selectedIds) => <TodayWinStrip tasks={todayTasks} designMode={uiDesignMode} chicPattern={effectiveChicPattern} chicPalette={chicPalette} onRestore={firstRunDemoActive ? () => undefined : restoreTaskById} onOpenCompleted={() => firstRunDemoActive ? void advanceGuide('completedTasks') : void onboarding.complete('completedTasks')} onOpenFocus={openFocus} onToggleTask={toggleTask} onOpenTaskActions={openTaskActions} selectionMode={isSelectionMode} selectedTaskIds={selectedIds} />}
               todayReviewExists={Boolean((wishMonths[dateKey(now).slice(0, 7)]?.reviews ?? []).some((review) => review.date === dateKey(now)) || wishMonths[dateKey(now).slice(0, 7)]?.review?.date === dateKey(now))}
               onOpenTodayRecord={() => { if (planTier !== 'premium') { openPremiumFeature('records'); return; } setOpenTodayReview(true); }}
               showTodoOnboarding={false}
@@ -3223,7 +3327,7 @@ export default function App() {
               state={firstRunDemoActive ? guideDemoWishState : currentWishState}
               wishMonths={firstRunDemoActive ? { [currentWishMonthKey]: guideDemoWishState } : wishMonths}
               onSaveState={firstRunDemoActive ? () => undefined : saveCurrentWishState}
-              onCreateTaskFromAction={createTaskFromWishAction}
+              onCreateTaskFromAction={firstRunDemoActive ? () => undefined : createTaskFromWishAction}
               affirmations={firstRunDemoActive ? guideDemoAffirmations : affirmations}
               affirmationCustomTexts={affirmationCustomTexts}
               planTier={planTier}
@@ -3239,7 +3343,7 @@ export default function App() {
               monthlyGoalUnlocked={planTier === 'premium' || isWishMonthlyGoalUnlocked(rewardedAccess, now)}
               monthlyGoalRewardProgress={getRewardedPromptProgress('wishMonthlyGoal')}
               onRequestMonthlyGoalReward={firstRunDemoActive ? undefined : requestMonthlyGoalReward}
-              onPremium={() => openPremiumFeature('wish')}
+              onPremium={() => { if (!firstRunDemoActive) openPremiumFeature('wish'); }}
               onBack={() => setScreen('home')}
             />
           )}
@@ -3248,10 +3352,10 @@ export default function App() {
             <TimelineScreen
               plan={firstRunDemoActive ? guideDemoPlan : plan}
               plans={firstRunDemoActive ? [guideDemoPlan] : departurePlans}
-              departureCheckIns={departureCheckIns}
-              departurePreparationStatuses={departurePreparationStatuses}
-              behaviorEvents={behaviorEvents}
-              tasks={firstRunDemoActive ? guideDemoTasks : tasks}
+              departureCheckIns={firstRunDemoActive ? [] : departureCheckIns}
+              departurePreparationStatuses={firstRunDemoActive ? {} : departurePreparationStatuses}
+              behaviorEvents={firstRunDemoActive ? [] : behaviorEvents}
+              tasks={firstRunDemoActive ? activeGuideDemoTasks : tasks}
               now={now}
               designMode={uiDesignMode}
               focusBackgroundUri={focusBackgroundUri}
@@ -3259,52 +3363,68 @@ export default function App() {
               chicPalette={chicPalette}
               planTier={planTier}
               initialTab={timelineInitialTab}
+              previewMode={firstRunDemoActive}
+              previewCalendarEvents={firstRunDemoActive ? guideDemoCalendarEvents : undefined}
+              previewCalendarOptions={firstRunDemoActive ? guideDemoCalendarOptions : undefined}
               recoveryTargetPlanId={recoveryTargetPlanId}
-              onChange={setPlan}
-              onSchedule={saveDeparturePlan}
+              onChange={firstRunDemoActive ? () => undefined : setPlan}
+              onSchedule={firstRunDemoActive ? () => undefined : saveDeparturePlan}
               planEditorOpen={planEditorOpen}
               onTimeTabChange={setTimelineInitialTab}
               planEditorGuide={productionGuideFeature === 'schedule' || productionGuideFeature === 'planRegistration' ? productionGuideCard : undefined}
-              onOpenNewPlan={openNewPlanEditor}
+              onOpenNewPlan={firstRunDemoActive ? () => { void advanceGuide(productionGuideFeature === 'schedule' ? 'schedule' : 'planRegistration'); } : openNewPlanEditor}
               onClosePlanEditor={closePlanEditor}
-              onScheduleUsed={() => void onboarding.complete('schedule')}
-              onImportCalendarEvent={importCalendarEventAsPlan}
-              onEdit={(item: DeparturePlan) => openPlanEditor(item)}
-              onSharePlan={shareDeparturePlan}
-              onDelete={deleteDeparturePlan}
-              onEditTask={(task: Task) => setEditingTask(task)}
-              onDeleteTask={deleteTaskById}
-              onPremium={openPremiumFeature}
-              onRecovery={applyRecovery}
+              onScheduleUsed={() => {
+                if (firstRunDemoActive) {
+                  if (productionGuideFeature === 'schedule') void advanceGuide('schedule');
+                  return;
+                }
+                void onboarding.complete('schedule');
+              }}
+              onImportCalendarEvent={firstRunDemoActive ? () => false : importCalendarEventAsPlan}
+              onEdit={(item: DeparturePlan) => { if (!firstRunDemoActive) openPlanEditor(item); }}
+              onSharePlan={firstRunDemoActive ? () => undefined : shareDeparturePlan}
+              onDelete={firstRunDemoActive ? () => undefined : deleteDeparturePlan}
+              onEditTask={(task: Task) => { if (!firstRunDemoActive) setEditingTask(task); }}
+              onDeleteTask={firstRunDemoActive ? () => undefined : deleteTaskById}
+              onPremium={firstRunDemoActive ? () => undefined : openPremiumFeature}
+              onRecovery={firstRunDemoActive ? () => undefined : applyRecovery}
               onRecoveryOpened={(planId: string) => setRecoveryTargetPlanId(planId)}
               recoveryGuide={productionGuideFeature === 'recovery' ? productionGuideCard : undefined}
               onRecoveryClosed={() => setRecoveryTargetPlanId(undefined)}
-              onFocusCompleted={completeFocusSession}
-              onFocusStarted={() => void onboarding.complete('focus')}
-              onFocusNotificationPermission={ensureNotifications}
+              onFocusCompleted={firstRunDemoActive ? () => undefined : completeFocusSession}
+              onFocusStarted={() => {
+                if (firstRunDemoActive) {
+                  if (productionGuideFeature === 'focus') void advanceGuide('focus');
+                  return;
+                }
+                void onboarding.complete('focus');
+              }}
+              onFocusNotificationPermission={firstRunDemoActive ? async () => false : ensureNotifications}
               onFocusRunningChange={setFocusTimerActive}
               focusCustomDurationMinutes={focusCustomDurationMinutes}
-              onFocusCustomDurationChange={setFocusCustomDurationMinutes}
+              onFocusCustomDurationChange={firstRunDemoActive ? () => undefined : setFocusCustomDurationMinutes}
               focusTimerActive={focusTimerActive}
               onFocusNavigationBlocked={() => setFocusNavigationNotice(true)}
-              onBehaviorEvent={recordBehaviorEvent}
-              onDeparted={markDeparturePlanAsDeparted}
-              onPreparationStarted={markDeparturePreparationStarted}
+              onBehaviorEvent={firstRunDemoActive ? () => undefined : recordBehaviorEvent}
+              onDeparted={firstRunDemoActive ? () => undefined : markDeparturePlanAsDeparted}
+              onPreparationStarted={firstRunDemoActive ? () => undefined : markDeparturePreparationStarted}
               onStill={(planId: string, phase: 'preparation' | 'departure') => {
+                if (firstRunDemoActive) return;
                 const target = departurePlansRef.current.find((item) => item.id === planId);
                 if (target) handleDepartureStill(target, phase);
               }}
-              calendarMarks={calendarMarks}
-              travelApps={travelApps}
+              calendarMarks={firstRunDemoActive ? {} : calendarMarks}
+              travelApps={firstRunDemoActive ? [] : travelApps}
               onOpenTravelAppSettings={() => setScreen('settings')}
-              calendarImportCalendarIds={calendarImportCalendarIds}
-              calendarImportKnownCalendarIds={calendarImportKnownCalendarIds}
-              onCalendarImportCalendarIdsChange={setCalendarImportCalendarIds}
-              onCalendarImportKnownCalendarIdsChange={setCalendarImportKnownCalendarIds}
-              onSetCalendarMark={(date: string, mark?: string) => setCalendarMarks((current) => { const next = { ...current }; if (mark) next[date] = mark; else delete next[date]; return next; })}
-              hapticsEnabled={hapticsEnabled}
+              calendarImportCalendarIds={firstRunDemoActive ? [] : calendarImportCalendarIds}
+              calendarImportKnownCalendarIds={firstRunDemoActive ? [] : calendarImportKnownCalendarIds}
+              onCalendarImportCalendarIdsChange={firstRunDemoActive ? () => undefined : setCalendarImportCalendarIds}
+              onCalendarImportKnownCalendarIdsChange={firstRunDemoActive ? () => undefined : setCalendarImportKnownCalendarIds}
+              onSetCalendarMark={firstRunDemoActive ? () => undefined : (date: string, mark?: string) => setCalendarMarks((current) => { const next = { ...current }; if (mark) next[date] = mark; else delete next[date]; return next; })}
+              hapticsEnabled={firstRunDemoActive ? false : hapticsEnabled}
               styles={styles}
-              helpers={{ getThemeTokens: getThemedThemeTokens, dateKey, planDateKey, hasPremiumAccess, formatLiveDate, formatLiveTime, getDepartureMoments, normalizePlanDate, countdownToDate, dateForReminder, getMapSearchTarget, openMapSearch, getPlanCountdownAt, colors: themedColors }}
+              helpers={{ getThemeTokens: getThemedThemeTokens, dateKey, planDateKey, hasPremiumAccess, formatLiveDate, formatLiveTime, getDepartureMoments, normalizePlanDate, countdownToDate, dateForReminder, getMapSearchTarget, openMapSearch: firstRunDemoActive ? async () => undefined : openMapSearch, getPlanCountdownAt, colors: themedColors }}
               components={{ TimeTabButton, FocusMode, TaskScheduleCalendar, DailyScheduleTimeline, RecoveryModal }}
             />
           )}
@@ -3423,15 +3543,16 @@ export default function App() {
           {screen === 'analysis' && (
             <AnalysisScreen
               events={firstRunDemoActive ? [] : behaviorEvents}
-              tasks={firstRunDemoActive ? guideDemoTasks : tasks}
+              tasks={firstRunDemoActive ? activeGuideDemoTasks : tasks}
               designMode={uiDesignMode}
               chicPalette={chicPalette}
               chicPattern={chicPattern}
               PatternDecor={ChicPatternDecor}
               planTier={planTier}
-              onPremium={openPremiumFeature}
-              routineArchives={routineArchives}
+              onPremium={firstRunDemoActive ? () => undefined : openPremiumFeature}
+              routineArchives={firstRunDemoActive ? [] : routineArchives}
               onResumeRoutine={(archive) => {
+                if (firstRunDemoActive) return;
                 const duplicate = tasksRef.current.some((task) => task.isRoutine && (task.title.trim() === archive.title.trim() || (archive.routineId && task.routineId === archive.routineId)));
                 if (duplicate) {
                   Alert.alert('同じルーティンがすでにあります', '使用中のルーティンを重複して再開することはできません。');
@@ -3444,14 +3565,20 @@ export default function App() {
                 }
                 addTask(template.title, template.category, template.priority, template.remindDate, template.remindAt, template.deadlineDate, template.deadlineTime, template.deadlineNotifyBefore, template.navigationEnabled, template.preparationMinutes, template.travelMinutes, template.bufferMinutes, template.repeatRule ?? 'none', template.nudgeMode ?? 'once', dateKey(now), template.scheduledTime, template.endAt, true, template.subtasks ?? [], template.listItems ?? []);
               }}
-              onDeleteRoutineArchive={(archive) => Alert.alert('この解除履歴を削除しますか？', '解除履歴を削除すると、この解除歴画面からは確認できなくなります。', [{ text: 'キャンセル', style: 'cancel' }, { text: '削除する', style: 'destructive', onPress: () => setRoutineArchives((current) => current.filter((item) => item.id !== archive.id)) }])}
+              onDeleteRoutineArchive={(archive) => { if (firstRunDemoActive) return; Alert.alert('この解除履歴を削除しますか？', '解除履歴を削除すると、この解除歴画面からは確認できなくなります。', [{ text: 'キャンセル', style: 'cancel' }, { text: '削除する', style: 'destructive', onPress: () => setRoutineArchives((current) => current.filter((item) => item.id !== archive.id)) }]); }}
               onAnalysisUsed={(tab) => {
+                if (firstRunDemoActive) {
+                  const feature = tab === 'routine' ? 'routine' : 'analysis';
+                  if (productionGuideFeature === feature) void advanceGuide(feature);
+                  return;
+                }
                 if (tab === 'routine') void onboarding.complete('routine');
                 else void onboarding.complete('analysis');
               }}
               initialTab={analysisInitialTab}
               departurePlans={firstRunDemoActive ? [guideDemoPlan] : departurePlans}
               onApplySuggestion={(suggestion) => {
+                if (firstRunDemoActive) return;
                 const nextPlans = departurePlansRef.current.map((item) => item.id === suggestion.planId ? { ...item, preparationMinutes: suggestion.nextPreparationMinutes } : item);
                 const updatedPlan = nextPlans.find((item) => item.id === suggestion.planId);
                 departurePlansRef.current = nextPlans;
@@ -3464,7 +3591,7 @@ export default function App() {
                   })();
                 }
               }}
-              onRemoveRoutine={(taskId) => Alert.alert('ルーティンから外しますか？', 'タスク自体と完了履歴は残ります。', [{ text: 'キャンセル', style: 'cancel' }, { text: 'ルーティンから外す', style: 'destructive', onPress: () => {
+              onRemoveRoutine={(taskId) => { if (firstRunDemoActive) return; Alert.alert('ルーティンから外しますか？', 'タスク自体と完了履歴は残ります。', [{ text: 'キャンセル', style: 'cancel' }, { text: 'ルーティンから外す', style: 'destructive', onPress: () => {
                 const target = tasksRef.current.find((task) => task.id === taskId);
                 if (!target) return;
                 const endedAt = new Date().toISOString();
@@ -3485,8 +3612,8 @@ export default function App() {
                 setTasks(next);
                 setRoutineArchives((current) => pruneRoutineArchives([...current.filter((item) => item.routineId !== routineId), archive]));
                 recordBehaviorEvent(createRoutineDeactivatedBehaviorEvent({ routineId, routineTitle: target.title, taskId: target.id, occurredAt: new Date(endedAt), targetDate: dateKey(endedAt) }));
-              } }])}
-              recordContent={<HistoryScreen openDailyReview={openTodayReview} initialDate={dateKey(now)} tasks={tasks} wishMonths={wishMonths} calendarMarks={calendarMarks} onSetCalendarMark={(date, mark) => setCalendarMarks((current) => { const next = { ...current }; if (mark) next[date] = mark; else delete next[date]; return next; })} recoveryHistory={recoveryHistory} focusSessions={focusSessions} departureCheckIns={departureCheckIns} departurePlans={departurePlans} behaviorEvents={behaviorEvents} completionIcon={completionIcon} designMode={uiDesignMode} chicPattern={effectiveChicPattern} chicPalette={chicPalette} planTier={planTier} onPremium={openPremiumFeature} onSaveTemplate={saveTaskAsTemplate} onRestore={(id) => { void onboarding.complete('history'); restoreTaskById(id); }} onSaveDailyReview={saveDailyReview} onSaveMonthlyReflectionCard={saveMonthlyReflectionCard} onUpdateReview={updateWishReview} onDeleteReview={deleteWishReview} styles={styles} helpers={{ dateKey, formatLiveTime, getThemeTokens: getThemedThemeTokens }} components={{ AchievementVessel, CalendarMarkPicker }} />}
+              } }]); }}
+              recordContent={<HistoryScreen openDailyReview={openTodayReview} initialDate={dateKey(now)} tasks={firstRunDemoActive ? activeGuideDemoTasks : tasks} wishMonths={firstRunDemoActive ? { [currentWishMonthKey]: guideDemoWishState } : wishMonths} calendarMarks={firstRunDemoActive ? {} : calendarMarks} onSetCalendarMark={firstRunDemoActive ? () => undefined : (date, mark) => setCalendarMarks((current) => { const next = { ...current }; if (mark) next[date] = mark; else delete next[date]; return next; })} recoveryHistory={firstRunDemoActive ? [] : recoveryHistory} focusSessions={firstRunDemoActive ? [] : focusSessions} departureCheckIns={firstRunDemoActive ? [] : departureCheckIns} departurePlans={firstRunDemoActive ? [guideDemoPlan] : departurePlans} behaviorEvents={firstRunDemoActive ? [] : behaviorEvents} completionIcon={completionIcon} designMode={uiDesignMode} chicPattern={effectiveChicPattern} chicPalette={chicPalette} planTier={planTier} onPremium={firstRunDemoActive ? () => undefined : openPremiumFeature} onSaveTemplate={firstRunDemoActive ? () => undefined : saveTaskAsTemplate} onRestore={firstRunDemoActive ? () => undefined : (id) => { void onboarding.complete('history'); restoreTaskById(id); }} onSaveDailyReview={firstRunDemoActive ? () => undefined : saveDailyReview} onSaveMonthlyReflectionCard={firstRunDemoActive ? () => undefined : saveMonthlyReflectionCard} onUpdateReview={firstRunDemoActive ? () => undefined : updateWishReview} onDeleteReview={firstRunDemoActive ? () => undefined : deleteWishReview} styles={styles} helpers={{ dateKey, formatLiveTime, getThemeTokens: getThemedThemeTokens }} components={{ AchievementVessel, CalendarMarkPicker }} />}
             />
           )}
         </ScrollView>
@@ -3562,8 +3689,8 @@ export default function App() {
         onShareCurrentEvent={shareCurrentSharedEvent}
       />
 
-      {addOpen && <TaskModal visible templates={taskTemplates} savedTemplates={savedTaskTemplates} designMode={uiDesignMode} chicPalette={chicPalette} planTier={planTier} onPremium={openPremiumFeature} onClose={() => setAddOpen(false)} onOpenBulkAdd={() => { setAddOpen(false); setBulkAddOpen(true); }} onSave={addTask} readOnlyPreview={firstRunDemoActive} guideOverlay={productionGuideFeature === 'taskDetails' ? productionGuideCard : undefined} styles={styles} helpers={{ getThemeTokens: getThemedThemeTokens, todayInputValue, hasPremiumAccess, dateForReminder, dateKey, formatLiveTime, colors: themedColors, summarizePremiumTaskTemplate }} components={{ CompactNumberSetting }} />}
-      <BulkTaskModal visible={bulkAddOpen} designMode={uiDesignMode} chicPalette={chicPalette} styles={styles} today={todayInputValue()} onClose={() => setBulkAddOpen(false)} onSave={addBulkTasks} />
+      {addOpen && <TaskModal visible templates={taskTemplates} savedTemplates={savedTaskTemplates} designMode={uiDesignMode} chicPalette={chicPalette} planTier={planTier} onPremium={firstRunDemoActive ? () => undefined : openPremiumFeature} onClose={() => setAddOpen(false)} onOpenBulkAdd={() => { setAddOpen(false); setBulkAddOpen(true); }} onSave={firstRunDemoActive ? () => undefined : addTask} readOnlyPreview={firstRunDemoActive} guideOverlay={productionGuideFeature === 'taskDetails' ? productionGuideCard : undefined} styles={styles} helpers={{ getThemeTokens: getThemedThemeTokens, todayInputValue, hasPremiumAccess, dateForReminder, dateKey, formatLiveTime, colors: themedColors, summarizePremiumTaskTemplate }} components={{ CompactNumberSetting }} />}
+      <BulkTaskModal visible={bulkAddOpen} designMode={uiDesignMode} chicPalette={chicPalette} styles={styles} today={todayInputValue()} onClose={() => setBulkAddOpen(false)} onSave={firstRunDemoActive ? () => undefined : addBulkTasks} />
       {editingTask !== null && <TaskModal
         visible
         task={editingTask}
@@ -3572,9 +3699,9 @@ export default function App() {
         designMode={uiDesignMode}
         chicPalette={chicPalette}
         planTier={planTier}
-        onPremium={openPremiumFeature}
+        onPremium={firstRunDemoActive ? () => undefined : openPremiumFeature}
         onClose={() => setEditingTask(null)}
-        onSave={updateTask}
+        onSave={firstRunDemoActive ? () => undefined : updateTask}
         readOnlyPreview={firstRunDemoActive}
         guideOverlay={productionGuideFeature === 'taskDetails' ? productionGuideCard : undefined}
         styles={styles}
@@ -3809,7 +3936,7 @@ function TimeTabButton({ tab, active, designMode, chicPattern, chicPalette, them
      return <Pressable style={[styles.timeTab, styles.timeTabMinimal, isDark && styles.darkSurface, active && styles.timeTabActive, active && { backgroundColor: isDark ? '#26365F' : themeAccent, borderColor: isDark ? '#6F8DFF' : themeAccent }]} onPress={onPress}><Text numberOfLines={1} style={[styles.timeTabText, { color: isDark ? '#F4F7FC' : secondaryText }, active && styles.timeTabTextActive, active && styles.timeTabTextActiveMinimal]}>{label}</Text></Pressable>;
 }
 
-function FocusMode({ tasks, designMode, chicPalette, backgroundImageUri, planTier, onPremium, customDurationMinutes, onCustomDurationChange, onFocusCompleted, onFocusStarted, onFocusNotificationPermission, onFocusRunningChange, onBehaviorEvent, hapticsEnabled = true, previewCustomDurationOpen = false }: { tasks: Task[]; designMode: DesignMode; chicPalette?: ChicThemePalette; backgroundImageUri?: string; planTier: PlanTier; onPremium?: (featureId?: PremiumGuideFeatureId) => void; customDurationMinutes?: number; onCustomDurationChange?: (minutes: number) => void; onFocusCompleted: (session: FocusSession) => void; onFocusStarted?: () => void; onFocusNotificationPermission?: () => Promise<boolean>; onFocusRunningChange?: (running: boolean) => void; onBehaviorEvent: (event: BehaviorEvent) => void; hapticsEnabled?: boolean; previewCustomDurationOpen?: boolean }) {
+function FocusMode({ tasks, designMode, chicPalette, backgroundImageUri, planTier, onPremium, customDurationMinutes, onCustomDurationChange, onFocusCompleted, onFocusStarted, onFocusNotificationPermission, onFocusRunningChange, onBehaviorEvent, hapticsEnabled = true, previewCustomDurationOpen = false, previewMode = false }: { tasks: Task[]; designMode: DesignMode; chicPalette?: ChicThemePalette; backgroundImageUri?: string; planTier: PlanTier; onPremium?: (featureId?: PremiumGuideFeatureId) => void; customDurationMinutes?: number; onCustomDurationChange?: (minutes: number) => void; onFocusCompleted: (session: FocusSession) => void; onFocusStarted?: () => void; onFocusNotificationPermission?: () => Promise<boolean>; onFocusRunningChange?: (running: boolean) => void; onBehaviorEvent: (event: BehaviorEvent) => void; hapticsEnabled?: boolean; previewCustomDurationOpen?: boolean; previewMode?: boolean }) {
   const availableTasks = React.useMemo(() => {
     const today = dateKey();
     const seenTitles = new Set<string>();
@@ -3946,6 +4073,13 @@ function FocusMode({ tasks, designMode, chicPalette, backgroundImageUri, planTie
     endAtRef.current = undefined;
   };
   const toggleTimer = async () => {
+    // First-run GUIDE uses the real Focus screen as a read-only demo.  The
+    // CTA should advance the tour without starting a timer, writing a focus
+    // session, scheduling a notification, or activating the navigation guard.
+    if (previewMode) {
+      onFocusStarted?.();
+      return;
+    }
     if (running) {
       const endAt = endAtRef.current;
       if (endAt) {
