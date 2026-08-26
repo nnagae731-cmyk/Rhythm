@@ -23,10 +23,12 @@ type RecoveryModalProps = {
   chicPalette?: ChicThemePalette;
   onOpenTravelAppSettings?: () => void;
   inlinePreview?: boolean;
+  /** Premium GUIDE tutorial mode: show the real recovery UI without mutations. */
+  readOnly?: boolean;
   guideOverlay?: React.ReactNode;
 };
 
-export function RecoveryModal({ visible, plan, now, designMode, onClose, onApply, onPremium, styles, travelApps, planTier = 'free', chicPalette, onOpenTravelAppSettings, inlinePreview = false, guideOverlay }: RecoveryModalProps) {
+export function RecoveryModal({ visible, plan, now, designMode, onClose, onApply, onPremium, styles, travelApps, planTier = 'free', chicPalette, onOpenTravelAppSettings, inlinePreview = false, readOnly = false, guideOverlay }: RecoveryModalProps) {
   const [contactEditing, setContactEditing] = React.useState(false);
   const [contactDraft, setContactDraft] = React.useState('');
   if (!plan) return null;
@@ -63,7 +65,7 @@ export function RecoveryModal({ visible, plan, now, designMode, onClose, onApply
             {options.map((option) => {
               const locked = option.action === 'delay_arrival' || option.action === 'reschedule';
               return (
-                <Pressable key={option.action} style={[styles.recoveryOption, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]} onPress={() => {
+                <Pressable key={option.action} disabled={readOnly} style={[styles.recoveryOption, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }, readOnly && { opacity: 0.96 }]} onPress={() => {
                   if (locked) {
                     onClose();
                     onPremium();
@@ -94,7 +96,7 @@ export function RecoveryModal({ visible, plan, now, designMode, onClose, onApply
               </View>
             </View>}
             <Text style={[styles.recoveryNote, { color: theme.colors.secondaryText }]}>位置情報や経路検索はまだ使わず、登録済みの移動時間から計算しています。</Text>
-            {plan.destination?.trim() ? <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginTop: 8 }}><TravelAppLaunchActions settings={travelApps} category="transit" destination={plan.destination} planTier={planTier} designMode={designMode} chicPalette={chicPalette} onPremium={(featureId) => onPremium(featureId)} onOpenSettings={onOpenTravelAppSettings} /><TravelAppLaunchActions settings={travelApps} category="taxi" destination={plan.destination} planTier={planTier} designMode={designMode} chicPalette={chicPalette} onPremium={(featureId) => onPremium(featureId)} onOpenSettings={onOpenTravelAppSettings} /></View> : null}
+            {!readOnly && plan.destination?.trim() ? <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginTop: 8 }}><TravelAppLaunchActions settings={travelApps} category="transit" destination={plan.destination} planTier={planTier} designMode={designMode} chicPalette={chicPalette} onPremium={(featureId) => onPremium(featureId)} onOpenSettings={onOpenTravelAppSettings} /><TravelAppLaunchActions settings={travelApps} category="taxi" destination={plan.destination} planTier={planTier} designMode={designMode} chicPalette={chicPalette} onPremium={(featureId) => onPremium(featureId)} onOpenSettings={onOpenTravelAppSettings} /></View> : null}
             <Pressable onPress={onClose}><Text style={[styles.cancelText, { color: theme.colors.secondaryText }]}>閉じる</Text></Pressable>
   </ScrollView>;
   if (inlinePreview) return <View style={[styles.modalSheet, { backgroundColor: theme.colors.screenBackground, borderRadius: theme.radius.modal, position: 'relative', width: '100%', zIndex: 20 }]} pointerEvents="none">{content}</View>;

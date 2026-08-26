@@ -26,6 +26,34 @@ export type OnboardingFeatureId =
   | 'design'
   | 'recovery';
 
+/**
+ * The first-run tour is intentionally explicit. It is separate from the
+ * feature completion callbacks so a user can move through the tour without
+ * having to mutate real data first.
+ */
+export const FREE_GUIDE_TOUR = [
+  'todo',
+  'taskDetails',
+  'taskBuckets',
+  'todoComplete',
+  'completedTasks',
+  'schedule',
+  'planRegistration',
+  'focus',
+  'calendarImport',
+  'analysis',
+  'routine',
+  'history',
+  'wish',
+] as const satisfies readonly Exclude<OnboardingFeatureId, 'intro'>[];
+
+/** Premium-only guides are kept out of the Free first-run tour. */
+export const PREMIUM_GUIDE_TOUR = [
+  'photoLog',
+  'affirmation',
+  'recovery',
+] as const satisfies readonly Exclude<OnboardingFeatureId, 'intro'>[];
+
 export type IntroCardId =
   | 'quickTodo'
   | 'today'
@@ -123,6 +151,7 @@ export const ONBOARDING_STEPS: Record<
     title: '必要な時だけ、細かく設定',
     description:
       '通知・期限・繰り返し・ルーティン・サブタスクなどを設定できます。',
+    actionLabel: '詳しく設定を見る',
   },
 
   schedule: {

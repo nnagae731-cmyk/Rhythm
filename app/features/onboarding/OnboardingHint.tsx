@@ -35,6 +35,13 @@ type Props = {
    */
   onAction?: () => void;
 
+  /** First-run tour control. It marks the current guide as seen without
+   * requiring the feature's real operation. */
+  onNext?: () => void;
+  nextLabel?: string;
+  /** Ends the current first-run/Premium tour without changing the UI flow. */
+  onExitTour?: () => void;
+
   /**
    * onboardingSteps.ts の actionLabel を
    * 画面ごとに一時的に変えたい場合だけ指定する。
@@ -56,6 +63,9 @@ export function OnboardingHint({
   visible = true,
   onDismiss,
   onAction,
+  onNext,
+  nextLabel = '次へ',
+  onExitTour,
   actionLabel,
   designMode = ONBOARDING_DESIGN_MODE,
   chicPalette,
@@ -87,6 +97,7 @@ export function OnboardingHint({
 
   const dismiss = () => { setOpen(false); onDismiss?.(); };
   const action = () => { setOpen(false); onAction?.(); };
+  const next = () => { setOpen(false); onNext?.(); };
   const card = <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]} accessibilityRole="summary">
       <View style={styles.topRow}>
         <View style={styles.badge}>
@@ -136,6 +147,30 @@ export function OnboardingHint({
             {buttonLabel}
           </Text>
       </Pressable>
+      ) : null}
+      {onNext ? (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={nextLabel}
+          onPress={next}
+          style={({ pressed }) => [
+            styles.nextButton,
+            { borderColor: colors.border },
+            pressed && styles.actionButtonPressed,
+          ]}
+        >
+          <Text style={[styles.nextText, { color: colors.accent }]}>{nextLabel}</Text>
+        </Pressable>
+      ) : null}
+      {onExitTour ? (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="GUIDEを終了"
+          onPress={() => { setOpen(false); onExitTour(); }}
+          style={styles.exitTourButton}
+        >
+          <Text style={[styles.exitTourText, { color: colors.muted }]}>GUIDEを終了</Text>
+        </Pressable>
       ) : null}
       </View>;
   if (inline) return <View style={styles.inlineWrap}>{card}</View>;
@@ -249,6 +284,33 @@ const styles = StyleSheet.create({
 
   actionButtonPressed: {
     opacity: 0.82,
+  },
+
+  nextButton: {
+    minHeight: 40,
+    marginTop: 8,
+    paddingHorizontal: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: theme.radius.button,
+    borderWidth: 1,
+  },
+
+  nextText: {
+    fontSize: 13,
+    fontWeight: '800',
+  },
+
+  exitTourButton: {
+    alignSelf: 'center',
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    marginTop: 2,
+  },
+
+  exitTourText: {
+    fontSize: 11,
+    fontWeight: '700',
   },
 
   actionText: {

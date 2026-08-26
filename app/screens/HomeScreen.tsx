@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Modal, Pressable, ScrollView, Text, View } from 'react-native';
 import { ChicThemePalette, DesignMode } from '../theme';
 import { Category, Priority, Task, TaskBucket, TaskListItem } from '../types';
@@ -23,6 +23,7 @@ export function HomeScreen({
   selectedTaskIds,
   onAdd,
   onOpenFocus,
+  initialTab = 'now',
   todayReviewExists = false,
   onOpenTodayRecord,
   onOpenSchedule,
@@ -65,6 +66,7 @@ export function HomeScreen({
   selectedTaskIds: string[];
   onAdd: () => void;
   onOpenFocus: () => void;
+  initialTab?: 'now' | 'list';
   todayReviewExists?: boolean;
   onOpenTodayRecord?: () => void;
   onOpenSchedule?: () => void;
@@ -108,10 +110,14 @@ export function HomeScreen({
   const [tomorrowOpen, setTomorrowOpen] = useState(false);
   const [expandedSubtasks, setExpandedSubtasks] = useState<Record<string, boolean>>({});
   const [listTask, setListTask] = useState<Task | undefined>();
-  const [homeTab, setHomeTab] = useState<'now' | 'list'>('now');
+  const [homeTab, setHomeTab] = useState<'now' | 'list'>(initialTab);
   const [categoryPickerOpen, setCategoryPickerOpen] = useState(false);
   const [sortPickerOpen, setSortPickerOpen] = useState(false);
   const [sortOrder, setSortOrder] = useState<TaskSortOrder>('recommended');
+  useEffect(() => {
+    setHomeTab(initialTab);
+    if (initialTab === 'list') setBucketFilter('later');
+  }, [initialTab]);
   const bucketTasks = tasks.filter((task) => (task.bucket ?? 'now') === bucketFilter);
   const categoryTasks = categoryFilter === 'すべて' ? bucketTasks : bucketTasks.filter((task) => task.category === categoryFilter);
   const displayTasks = [...categoryTasks].sort((a, b) => {

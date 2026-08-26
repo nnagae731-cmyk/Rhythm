@@ -318,7 +318,7 @@ export function AnalysisScreen({
   chicPattern?: ChicPattern;
   PatternDecor?: (props: { pattern: ChicPattern; accent: string; warm: string; checkColor?: ChicCheckColor }) => ReactNode;
   onApplySuggestion: (suggestion: InsightSuggestion) => void;
-  onAnalysisUsed?: () => void;
+  onAnalysisUsed?: (tab: AnalysisTab) => void;
   initialTab?: AnalysisTab;
   previewKind?: 'time' | 'behavior';
 }) {
@@ -344,7 +344,7 @@ export function AnalysisScreen({
           ['routine', 'ルーティン'],
           ['insights', '時間と行動'],
         ] as [AnalysisTab, string][]).map(([id, label]) => (
-          <Pressable key={id} style={[styles.tab, designMode === 'dark' && styles.tabDark, isChic && chicPalette && { backgroundColor: chicPalette.surfaceSubtle, borderColor: chicPalette.border }, tab === id && (designMode === 'dark' ? styles.tabDarkActive : { backgroundColor: theme.colors.primaryAccent, borderColor: theme.colors.primaryAccent }), tab === id && isChic && chicPalette && { backgroundColor: chicPalette.accent, borderColor: chicPalette.accent }]} onPress={() => { setTab(id); onAnalysisUsed?.(); }}>
+          <Pressable key={id} style={[styles.tab, designMode === 'dark' && styles.tabDark, isChic && chicPalette && { backgroundColor: chicPalette.surfaceSubtle, borderColor: chicPalette.border }, tab === id && (designMode === 'dark' ? styles.tabDarkActive : { backgroundColor: theme.colors.primaryAccent, borderColor: theme.colors.primaryAccent }), tab === id && isChic && chicPalette && { backgroundColor: chicPalette.accent, borderColor: chicPalette.accent }]} onPress={() => { setTab(id); onAnalysisUsed?.(id); }}>
             <Text style={[styles.tabText, designMode === 'dark' && styles.tabTextDark, isChic && chicPalette && { color: chicPalette.textSecondary }, tab === id && styles.tabTextActive, tab === id && designMode === 'dark' && styles.tabTextActiveDark, tab === id && isChic && chicPalette && { color: chicPalette.onAccent }]}>{label}{id === 'insights' && planTier === 'free' ? ' 🔒' : ''}</Text>
           </Pressable>
         ))}
