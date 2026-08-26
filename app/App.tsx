@@ -4163,7 +4163,7 @@ function DailyScheduleTimeline({ date, tasks, plans, externalEvents, now, design
   const theme = getThemeTokens(designMode, chicPalette?.id ?? 'cool');
   const isDark = designMode === 'dark';
   const categoryColors = Object.fromEntries(categories.map((category) => [category, designMode === 'chic' && chicPalette ? chicPalette.accentStrong : theme.colors.primaryAccent])) as Record<Category, string>;
-  type ScheduleItem = { id: string; time?: string; endTime?: string; title: string; meta: string; kind: 'task' | 'plan' | 'external' | 'done'; onPress?: () => void };
+  type ScheduleItem = { id: string; time?: string; endTime?: string; title: string; meta?: string; kind: 'task' | 'plan' | 'external' | 'done'; onPress?: () => void };
   const items: ScheduleItem[] = [];
   tasks.filter((task) => {
     const dates = [task.scheduledDate, task.deadlineDate, task.remindDate, task.done && task.completedAt ? dateKey(task.completedAt) : undefined];
@@ -4188,7 +4188,7 @@ function DailyScheduleTimeline({ date, tasks, plans, externalEvents, now, design
   });
   externalEvents.filter((event) => dateKey(new Date(event.startDate)) === date).forEach((event) => {
     const eventStart = new Date(event.startDate);
-    items.push({ id: `external-${event.id}`, time: event.allDay ? undefined : formatLiveTime(eventStart), title: event.title || 'カレンダー予定', meta: event.allDay ? '終日 ・ 端末カレンダー' : '端末カレンダー', kind: 'external' });
+    items.push({ id: `external-${event.id}`, time: event.allDay ? undefined : formatLiveTime(eventStart), title: event.title || 'カレンダー予定', meta: event.allDay ? '終日' : undefined, kind: 'external' });
   });
   const allDayItems = items.filter((item) => !item.time);
   const timed = items.filter((item) => item.time).sort((a, b) => parseClock(a.time!) - parseClock(b.time!));
@@ -4208,8 +4208,8 @@ function DailyScheduleTimeline({ date, tasks, plans, externalEvents, now, design
   const timelineHeight = timelineHours.length * hourHeight;
   const placements = timed.reduce<Array<ScheduleItem & { startMinutes: number; endMinutes: number; column: number }>>((result, item) => {
     const startMinutes = parseClock(item.time!);
-    const minimumCardMinutes = designMode === 'chic' ? 96 : 48;
-    const endMinutes = item.endTime ? Math.max(startMinutes + (designMode === 'chic' ? 96 : 30), parseClock(item.endTime)) : startMinutes + minimumCardMinutes;
+    const minimumCardMinutes = designMode === 'chic' ? 96 : item.kind === 'external' ? 45 : 30;
+    const endMinutes = item.endTime ? Math.max(startMinutes + minimumCardMinutes, parseClock(item.endTime)) : startMinutes + minimumCardMinutes;
     let column = 0;
     while (result.some((placed) => placed.column === column && startMinutes < placed.endMinutes && endMinutes > placed.startMinutes)) column += 1;
     result.push({ ...item, startMinutes, endMinutes, column });
@@ -4234,8 +4234,8 @@ function DailyScheduleTimeline({ date, tasks, plans, externalEvents, now, design
       {placements.map((item) => {
         const accent = item.kind === 'plan' ? theme.colors.primaryAccent : item.kind === 'external' ? theme.colors.secondaryAccent : item.kind === 'done' ? theme.colors.secondaryText : categoryColors[tasks.find((task) => `task-${task.id}` === item.id)?.category ?? categories[0]!];
         const top = ((item.startMinutes - axisStartMinutes) / 60) * hourHeight + 4;
-        const height = Math.max(designMode === 'chic' ? 96 : 58, ((item.endMinutes - item.startMinutes) / 60) * hourHeight - 8);
-        const content = <View style={{ flex: 1, padding: 10, borderLeftWidth: 4, borderLeftColor: accent, borderRadius: 10, backgroundColor: theme.colors.secondarySurface, opacity: item.kind === 'done' ? 0.58 : 1, justifyContent: 'space-between' }}><Text style={{ color: accent, fontSize: 10, fontWeight: '900' }}>{item.time}</Text><Text numberOfLines={designMode === 'chic' ? 3 : 2} ellipsizeMode="tail" style={{ color: theme.colors.primaryText, fontSize: designMode === 'chic' ? 13 : 14, lineHeight: designMode === 'chic' ? 18 : undefined, fontWeight: '800', marginTop: 2, flexShrink: designMode === 'chic' ? 0 : 1 }}>{item.kind === 'done' ? '✓ ' : ''}{item.title}</Text><Text numberOfLines={1} style={{ color: theme.colors.secondaryText, fontSize: 10, marginTop: 3 }}>{item.meta}</Text>{item.endTime && <Text style={{ color: theme.colors.secondaryText, fontSize: 10, fontWeight: '800', marginTop: 4 }}>終了 {item.endTime}</Text>}</View>;
+        const height = Math.max(designMode === 'chic' ? 96 : item.kind === 'external' ? 68 : 58, ((item.endMinutes - item.startMinutes) / 60) * hourHeight - 8);
+        const content = <View style={{ flex: 1, padding: designMode === 'chic' ? 10 : 7, borderLeftWidth: 4, borderLeftColor: accent, borderRadius: 10, backgroundColor: theme.colors.secondarySurface, opacity: item.kind === 'done' ? 0.58 : 1, justifyContent: 'flex-start' }}><Text style={{ color: accent, fontSize: 10, lineHeight: 12, fontWeight: '900' }}>{item.time}</Text><Text numberOfLines={designMode === 'chic' ? 3 : 2} ellipsizeMode="tail" style={{ color: theme.colors.primaryText, fontSize: designMode === 'chic' ? 13 : 14, lineHeight: designMode === 'chic' ? 18 : 17, fontWeight: '800', marginTop: 2, flexShrink: 1 }}>{item.kind === 'done' ? '✓ ' : ''}{item.title}</Text>{item.kind !== 'external' && item.meta && <Text numberOfLines={1} style={{ color: theme.colors.secondaryText, fontSize: 10, lineHeight: 13, marginTop: 3 }}>{item.meta}</Text>}{item.kind !== 'external' && item.endTime && <Text style={{ color: theme.colors.secondaryText, fontSize: 10, lineHeight: 13, fontWeight: '800', marginTop: 3 }}>終了 {item.endTime}</Text>}</View>;
         const card = item.onPress ? <Pressable onPress={item.onPress} style={{ flex: 1 }}>{content}</Pressable> : <View style={{ flex: 1 }}>{content}</View>;
         return <View key={`timeline-item-${item.id}`} style={{ position: 'absolute', top, left: `${(item.column * 100) / columnCount}%`, width: `${100 / columnCount}%`, height, paddingHorizontal: 4 }}>{card}</View>;
       })}
@@ -4464,7 +4464,7 @@ function TaskScheduleCalendar({ tasks, plans, externalEvents, now, designMode, c
       {visibleSelectedCompletedTasks.map((task) => <View key={`completed-${task.id}`} style={[styles.scheduleAgendaItem, styles.scheduleCompletedAgendaItem, isDark && styles.scheduleCompletedAgendaItemDark, chicAgendaStyle]}><View style={[styles.scheduleAgendaDot, styles.scheduleCompletedDot]} /><View style={{ flex: 1 }}><Text style={[styles.scheduleAgendaTitle, styles.scheduleCompletedTitle, isDark && styles.scheduleCompletedTitleDark]}>✓ {task.title}</Text><Text style={[styles.scheduleAgendaMeta, styles.scheduleCompletedMeta, isDark && styles.scheduleCompletedMetaDark]}>完了したタスク ・ {task.completedAt ? formatLiveTime(new Date(task.completedAt)) : '記録あり'}</Text></View><Text style={[styles.scheduleCompletedLabel, isDark && styles.scheduleCompletedLabelDark]}>完了</Text></View>)}
       {visibleSelectedPlans.map(renderPlanAgenda)}
       {hiddenSelectedPlanCount > 0 && <View style={styles.departureEmpty}><Text style={styles.emptyCopy}>この日は{calendarPlanDisplayLimit}件まで表示しています。</Text></View>}
-      {visibleSelectedExternalEvents.map((event) => <View key={`external-agenda-${event.id}`} style={[styles.scheduleAgendaItem, isDark && styles.scheduleAgendaItemDark, chicAgendaStyle]}><View style={[styles.scheduleAgendaDot, { backgroundColor: designExternalAccent }]} /><View style={{ flex: 1 }}><Text style={[styles.scheduleAgendaTitle, isDark && styles.darkBodyText]}>{event.title || 'カレンダー予定'}</Text><Text style={[styles.scheduleAgendaMeta, { color: designMode === 'chic' && chicPalette ? chicPalette.textSecondary : theme.colors.secondaryText }, isDark && styles.darkAccentText]}>端末カレンダー ・ {event.allDay ? '終日' : formatLiveTime(new Date(event.startDate))}</Text></View><Text style={[styles.scheduleAgendaEdit, { color: designMode === 'chic' && chicPalette ? chicPalette.accent : theme.colors.primaryAccent }, isDark && styles.darkAccentText]}>外部</Text></View>)}
+      {visibleSelectedExternalEvents.map((event) => <View key={`external-agenda-${event.id}`} style={[styles.scheduleAgendaItem, isDark && styles.scheduleAgendaItemDark, chicAgendaStyle]}><View style={[styles.scheduleAgendaDot, { backgroundColor: designExternalAccent }]} /><View style={{ flex: 1 }}><Text style={[styles.scheduleAgendaTitle, isDark && styles.darkBodyText]}>{event.title || 'カレンダー予定'}</Text><Text style={[styles.scheduleAgendaMeta, { color: designMode === 'chic' && chicPalette ? chicPalette.textSecondary : theme.colors.secondaryText }, isDark && styles.darkAccentText]}>{event.allDay ? '終日' : formatLiveTime(new Date(event.startDate))}</Text></View></View>)}
     </>}
   </>;
 }
