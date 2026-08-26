@@ -2765,6 +2765,64 @@ export default function App() {
     return <View style={{ minHeight: 560, position: 'relative' }}><View style={{ maxHeight: 360, borderWidth: 1, borderColor: chicPalette.border, borderRadius: 14, overflow: 'hidden' }}>{production}</View><View pointerEvents="box-none" style={{ position: 'absolute', left: 12, right: 12, bottom: 0 }}><OnboardingHint inline featureId={id} designMode={uiDesignMode} chicPalette={chicPalette} onAction={productionGuideHasAction ? () => undefined : undefined} /></View></View>;
   };
 
+  // Production GUIDE placement: keep the real screen in the normal layout and
+  // layer one inline hint above it. Capture-only sizing is intentionally not
+  // used here.
+  let productionGuideFeature: Exclude<OnboardingFeatureId, 'intro'> | undefined;
+  let productionGuideAction: (() => void) | undefined;
+  if (onboarding.ready) {
+    if (screen === 'home') {
+      if (onboarding.isCompleted('intro') && !onboarding.isCompleted('todo')) {
+        productionGuideFeature = 'todo';
+        productionGuideAction = () => setAddOpen(true);
+      }
+      else if (onboarding.isCompleted('todo') && !onboarding.isCompleted('todoComplete')) productionGuideFeature = 'todoComplete';
+      else if (onboarding.isCompleted('focus') && !onboarding.isCompleted('completedTasks') && tasks.some((task) => task.done)) productionGuideFeature = 'completedTasks';
+      else if (onboarding.isCompleted('focus') && onboarding.isCompleted('completedTasks') && !onboarding.isCompleted('taskBuckets') && tasks.length > 0) productionGuideFeature = 'taskBuckets';
+      else if (onboarding.isCompleted('focus') && onboarding.isCompleted('completedTasks') && onboarding.isCompleted('taskBuckets') && !onboarding.isCompleted('taskDetails') && tasks.length > 0) productionGuideFeature = 'taskDetails';
+      else if (onboarding.isCompleted('todoComplete') && !onboarding.isCompleted('design')) {
+        productionGuideFeature = 'design';
+        productionGuideAction = () => { setScreen('settings'); setDesignPreviewMode('chic'); setDesignPreviewPattern('plain'); };
+      } else if (onboarding.isCompleted('design') && !onboarding.isCompleted('photoLog')) {
+        productionGuideFeature = 'photoLog';
+        productionGuideAction = () => { if (planTier === 'premium') setOpenTodayReview(true); else openPremiumFeature('records'); };
+      }
+    } else if (screen === 'settings' && !onboarding.isCompleted('design')) {
+      productionGuideFeature = 'design';
+    } else if (screen === 'timeline') {
+      if (onboarding.isCompleted('todoComplete') && onboarding.isCompleted('design') && !onboarding.isCompleted('schedule')) {
+        productionGuideFeature = 'schedule';
+        productionGuideAction = openNewPlanEditor;
+      } else if (onboarding.isCompleted('schedule') && !onboarding.isCompleted('planRegistration')) {
+        productionGuideFeature = 'planRegistration';
+        productionGuideAction = openNewPlanEditor;
+      } else if (onboarding.isCompleted('planRegistration') && !onboarding.isCompleted('focus')) {
+        productionGuideFeature = 'focus';
+        productionGuideAction = () => setTimelineInitialTab('focus');
+      } else if (onboarding.isCompleted('focus') && timelineInitialTab === 'calendar' && !onboarding.isCompleted('calendarImport')) {
+        productionGuideFeature = 'calendarImport';
+      } else if (recoveryTargetPlanId && !onboarding.isCompleted('recovery')) {
+        productionGuideFeature = 'recovery';
+      }
+    } else if (screen === 'analysis') {
+      if (!onboarding.isCompleted('analysis')) productionGuideFeature = 'analysis';
+      else if (!onboarding.isCompleted('routine')) productionGuideFeature = 'routine';
+      else if (!onboarding.isCompleted('history')) productionGuideFeature = 'history';
+    } else if (screen === 'wish') {
+      if (!onboarding.isCompleted('wish')) {
+        productionGuideFeature = 'wish';
+        productionGuideAction = openWish;
+      } else if (!onboarding.isCompleted('affirmation')) {
+        productionGuideFeature = 'affirmation';
+        productionGuideAction = openWish;
+      }
+    }
+  }
+  const productionGuideCard = productionGuideFeature ? <OnboardingHint inline featureId={productionGuideFeature} designMode={uiDesignMode} chicPalette={chicPalette} onAction={productionGuideAction} onDismiss={productionGuideFeature === 'history' ? () => void onboarding.complete('history') : undefined} /> : null;
+  const productionGuideOverlay = productionGuideFeature && !planEditorOpen && !recoveryTargetPlanId ? (
+    <View pointerEvents="box-none" style={{ position: 'absolute', left: 12, right: 12, bottom: 78, zIndex: 40 }}>{productionGuideCard}</View>
+  ) : null;
+
   return (
         <SafeAreaView style={[styles.safe, uiDesignMode === 'minimal' && styles.safeMinimal, uiDesignMode === 'dark' && styles.safeDark, designMode === 'photo' && styles.safePhoto, { backgroundColor: uiDesignMode === 'chic' ? getChicPatternVisual(effectiveChicPattern, chicPalette).background : theme.colors.screenBackground }]}>
       <StatusBar style={uiDesignMode === 'dark' ? 'light' : 'dark'} />
@@ -2777,14 +2835,6 @@ export default function App() {
         {completionAffirmation && <Animated.View pointerEvents="none" style={{ position: 'absolute', top: 72, left: 20, right: 20, zIndex: 30, opacity: completionAffirmationOpacity, alignItems: 'center' }}><View style={{ maxWidth: 340, paddingHorizontal: 18, paddingVertical: 12, borderRadius: 18, backgroundColor: uiDesignMode === 'dark' ? '#20293A' : uiDesignMode === 'chic' ? chicPalette.cardSurface : '#FFFFFF', borderWidth: 1, borderColor: uiDesignMode === 'dark' ? '#40506A' : uiDesignMode === 'chic' ? chicPalette.border : '#E5E0E5', shadowColor: '#000', shadowOpacity: 0.12, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 4 }}><Text style={{ textAlign: 'center', color: uiDesignMode === 'dark' ? '#F4F7FC' : uiDesignMode === 'chic' ? chicPalette.textPrimary : '#282538', fontSize: 14, fontWeight: '600' }}>{completionAffirmation}</Text></View></Animated.View>}
 
         <ScrollView contentContainerStyle={[styles.content, screen === 'timeline' && styles.contentTimeline]} keyboardShouldPersistTaps="handled">
-          {onboarding.ready && onboarding.isCompleted('todoComplete') && onboarding.isCompleted('design') && screen === 'timeline' && !onboarding.isCompleted('schedule') && <View style={{ marginBottom: 12 }}><OnboardingHint featureId="schedule" designMode={uiDesignMode} chicPalette={chicPalette} onAction={() => openNewPlanEditor()} /></View>}
-          {onboarding.ready && onboarding.isCompleted('schedule') && screen === 'timeline' && !onboarding.isCompleted('planRegistration') && <View style={{ marginBottom: 12 }}><OnboardingHint featureId="planRegistration" designMode={uiDesignMode} chicPalette={chicPalette} onAction={() => openNewPlanEditor()} /></View>}
-          {/* Calendar import remains an individual feature flow; it is not part of the basic guide sequence. */}
-          {onboarding.ready && screen === 'analysis' && !onboarding.isCompleted('analysis') && <View style={{ marginBottom: 12 }}><OnboardingHint featureId="analysis" designMode={uiDesignMode} chicPalette={chicPalette} /></View>}
-          {onboarding.ready && screen === 'analysis' && onboarding.isCompleted('analysis') && !onboarding.isCompleted('routine') && <View style={{ marginBottom: 12 }}><OnboardingHint featureId="routine" designMode={uiDesignMode} chicPalette={chicPalette} /></View>}
-          {onboarding.ready && screen === 'analysis' && onboarding.isCompleted('analysis') && onboarding.isCompleted('routine') && !onboarding.isCompleted('history') && <View style={{ marginBottom: 12 }}><OnboardingHint featureId="history" designMode={uiDesignMode} chicPalette={chicPalette} onDismiss={() => void onboarding.complete('history')} /></View>}
-          {onboarding.ready && onboarding.isCompleted('todoComplete') && screen === 'home' && !onboarding.isCompleted('design') && <OnboardingHint featureId="design" designMode={uiDesignMode} chicPalette={chicPalette} onAction={() => { setScreen('settings'); setDesignPreviewMode('chic'); setDesignPreviewPattern('plain'); }} />}
-          {onboarding.ready && onboarding.isCompleted('planRegistration') && screen === 'timeline' && !onboarding.isCompleted('focus') && <OnboardingHint featureId="focus" designMode={uiDesignMode} chicPalette={chicPalette} onAction={() => setTimelineInitialTab('focus')} />}
           {screen === 'home' && (
             <HomeScreen
               tasks={visibleTasks}
@@ -2869,12 +2919,12 @@ export default function App() {
               renderTodayWinStrip={(todayTasks, openFocus, toggleTask, openTaskActions, isSelectionMode, selectedIds) => <TodayWinStrip tasks={todayTasks} designMode={uiDesignMode} chicPattern={effectiveChicPattern} chicPalette={chicPalette} onRestore={restoreTaskById} onOpenCompleted={() => void onboarding.complete('completedTasks')} onOpenFocus={openFocus} onToggleTask={toggleTask} onOpenTaskActions={openTaskActions} selectionMode={isSelectionMode} selectedTaskIds={selectedIds} />}
               todayReviewExists={Boolean((wishMonths[dateKey(now).slice(0, 7)]?.reviews ?? []).some((review) => review.date === dateKey(now)) || wishMonths[dateKey(now).slice(0, 7)]?.review?.date === dateKey(now))}
               onOpenTodayRecord={() => { if (planTier !== 'premium') { openPremiumFeature('records'); return; } setOpenTodayReview(true); }}
-              showTodoOnboarding={onboarding.ready && onboarding.isCompleted('intro') && !onboarding.isCompleted('todo')}
+              showTodoOnboarding={false}
               onTodoOnboardingAction={() => setAddOpen(true)}
-              showTodoCompleteOnboarding={onboarding.ready && onboarding.isCompleted('todo') && !onboarding.isCompleted('todoComplete') && tasks.some((task) => !task.done)}
-              showCompletedTasksOnboarding={onboarding.ready && onboarding.isCompleted('focus') && !onboarding.isCompleted('completedTasks') && tasks.some((task) => task.done)}
-              showTaskBucketsOnboarding={onboarding.ready && onboarding.isCompleted('focus') && onboarding.isCompleted('completedTasks') && !onboarding.isCompleted('taskBuckets') && tasks.length > 0}
-              showTaskDetailsOnboarding={onboarding.ready && onboarding.isCompleted('focus') && onboarding.isCompleted('taskBuckets') && !onboarding.isCompleted('taskDetails') && tasks.length > 0}
+              showTodoCompleteOnboarding={false}
+              showCompletedTasksOnboarding={false}
+              showTaskBucketsOnboarding={false}
+              showTaskDetailsOnboarding={false}
               helpers={{ deadlineLabel, getUrgencyStatus, getLateRiskMessage, dateForReminder, dateKey, formatLiveTime, isCheckChicPattern, todayInputValue, getThemeTokens: getThemedThemeTokens }}
             />
           )}
@@ -2928,6 +2978,8 @@ export default function App() {
               onChange={setPlan}
               onSchedule={saveDeparturePlan}
               planEditorOpen={planEditorOpen}
+              onTimeTabChange={setTimelineInitialTab}
+              planEditorGuide={productionGuideFeature === 'schedule' || productionGuideFeature === 'planRegistration' ? productionGuideCard : undefined}
               onOpenNewPlan={openNewPlanEditor}
               onClosePlanEditor={closePlanEditor}
               onScheduleUsed={() => void onboarding.complete('schedule')}
@@ -2939,6 +2991,8 @@ export default function App() {
               onDeleteTask={deleteTaskById}
               onPremium={openPremiumFeature}
               onRecovery={applyRecovery}
+              onRecoveryOpened={(planId: string) => setRecoveryTargetPlanId(planId)}
+              recoveryGuide={productionGuideFeature === 'recovery' ? productionGuideCard : undefined}
               onRecoveryClosed={() => setRecoveryTargetPlanId(undefined)}
               onFocusCompleted={completeFocusSession}
               onFocusStarted={() => void onboarding.complete('focus')}
@@ -3146,6 +3200,8 @@ export default function App() {
             />
           )}
         </ScrollView>
+
+        {productionGuideOverlay}
 
         <BottomNav screen={screen} designMode={uiDesignMode} chicPalette={chicPalette} onChange={navigateWithinApp} />
       </View>

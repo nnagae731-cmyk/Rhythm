@@ -23,9 +23,10 @@ type RecoveryModalProps = {
   chicPalette?: ChicThemePalette;
   onOpenTravelAppSettings?: () => void;
   inlinePreview?: boolean;
+  guideOverlay?: React.ReactNode;
 };
 
-export function RecoveryModal({ visible, plan, now, designMode, onClose, onApply, onPremium, styles, travelApps, planTier = 'free', chicPalette, onOpenTravelAppSettings, inlinePreview = false }: RecoveryModalProps) {
+export function RecoveryModal({ visible, plan, now, designMode, onClose, onApply, onPremium, styles, travelApps, planTier = 'free', chicPalette, onOpenTravelAppSettings, inlinePreview = false, guideOverlay }: RecoveryModalProps) {
   const [contactEditing, setContactEditing] = React.useState(false);
   const [contactDraft, setContactDraft] = React.useState('');
   if (!plan) return null;
@@ -97,5 +98,5 @@ export function RecoveryModal({ visible, plan, now, designMode, onClose, onApply
             <Pressable onPress={onClose}><Text style={[styles.cancelText, { color: theme.colors.secondaryText }]}>閉じる</Text></Pressable>
   </ScrollView>;
   if (inlinePreview) return <View style={[styles.modalSheet, { backgroundColor: theme.colors.screenBackground, borderRadius: theme.radius.modal, position: 'relative', width: '100%', zIndex: 20 }]} pointerEvents="none">{content}</View>;
-  return <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}><Pressable style={styles.modalBackdrop} onPress={onClose}><Pressable style={[styles.modalSheet, { backgroundColor: theme.colors.screenBackground, borderRadius: theme.radius.modal }]} onPress={(event) => event.stopPropagation()}>{content}</Pressable></Pressable></Modal>;
+  return <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}><Pressable style={styles.modalBackdrop} onPress={onClose}><Pressable style={[styles.modalSheet, { backgroundColor: theme.colors.screenBackground, borderRadius: theme.radius.modal, position: 'relative' }]} onPress={(event) => event.stopPropagation()}>{content}{guideOverlay ? <View pointerEvents="box-none" style={{ position: 'absolute', left: 12, right: 12, bottom: 12 }}>{guideOverlay}</View> : null}</Pressable></Pressable></Modal>;
 }
