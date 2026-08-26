@@ -879,14 +879,14 @@ export default function App() {
       setDesignMode('chic');
       setChicPattern(pattern);
       setDesignPreviewPattern(undefined);
-      void onboarding.complete('design');
+      if (!onboardingDesignSelectionPending) void onboarding.complete('design');
       return;
     }
     if (isPremiumDesignTrialActive(rewardedAccess, now) || isPremiumDesignUnlocked(rewardedAccess, now)) {
       setDesignMode('chic');
       setChicPattern(pattern);
       setDesignPreviewPattern(undefined);
-      void onboarding.complete('design');
+      if (!onboardingDesignSelectionPending) void onboarding.complete('design');
       return;
     }
     if (!canStartPremiumDesignTrial(rewardedAccess)) {
@@ -899,8 +899,8 @@ export default function App() {
     void saveRewardedAccessState(next);
     setDesignMode('chic');
     setDesignPreviewPattern(undefined);
-    void onboarding.complete('design');
-  }, [hasDesignCustomizeAccess, now, onboarding, planTier, rewardedAccess]);
+    if (!onboardingDesignSelectionPending) void onboarding.complete('design');
+  }, [hasDesignCustomizeAccess, now, onboarding, onboardingDesignSelectionPending, planTier, rewardedAccess]);
   const requestDesignReward = React.useCallback(async () => {
     if (planTier === 'premium' || rewardedAccess.premiumDesignTrial.designId == null) return false;
     if (rewardedDesignBusyRef.current) return false;
@@ -941,7 +941,7 @@ export default function App() {
     setOnboardingDesignSelectionPending(false);
     setScreen('home');
     if (onboarding.state.firstRunStage === 'design') {
-      void onboarding.setFirstRunStage('done');
+      void onboarding.complete('design').then(() => onboarding.setFirstRunStage('done'));
     }
   }, [onboarding, onboardingDesignSelectionPending]);
   const requestWishReward = React.useCallback(async () => {
@@ -1030,11 +1030,11 @@ export default function App() {
       setDesignMode('photo');
       setDesignPreviewPattern(undefined);
       setDesignPreviewPhotoUri(undefined);
-      void onboarding.complete('design');
+      if (!onboardingDesignSelectionPending) void onboarding.complete('design');
     } catch {
       Alert.alert('写真を保存できませんでした', 'もう一度選び直してください。');
     }
-  }, [designPreviewPhotoUri, onboarding]);
+  }, [designPreviewPhotoUri, onboarding, onboardingDesignSelectionPending]);
   const startPhotoDesignTrial = React.useCallback(() => {
     if (!designPreviewPhotoUri) return;
     const next: RewardedAccessState = { ...rewardedAccess, premiumDesignTrial: { used: true, designId: 'photo', expiresAt: addHours(new Date(), 24) } };
@@ -3307,13 +3307,13 @@ export default function App() {
                  } else {
                    setDesignMode(mode);
                  }
-                 void onboarding.complete('design');
+                 if (!onboardingDesignSelectionPending) void onboarding.complete('design');
                  if (mode !== 'chic') completeInitialDesignSelection();
                }}
                onMonoAppearance={(appearance) => {
                  setDesignMode('minimal');
                  setMonoAppearance(appearance);
-                 void onboarding.complete('design');
+                 if (!onboardingDesignSelectionPending) void onboarding.complete('design');
                  completeInitialDesignSelection();
                }}
                onHapticsEnabled={handleHapticsEnabled}
@@ -3322,11 +3322,11 @@ export default function App() {
                 const feature = pattern === 'plain' ? undefined : getChicPatternFeatureId(pattern);
                 if (feature && !hasPremiumAccess(planTier, feature) && !designCustomizePurchased) { openPremiumFeature(); return; }
                 setChicPattern(pattern);
-                void onboarding.complete('design');
+                if (!onboardingDesignSelectionPending) void onboarding.complete('design');
                 completeInitialDesignSelection();
               }}
                onDesignPreview={(pattern) => { setDesignPreviewMode('chic'); setDesignPreviewPattern(pattern); }}
-               onChicCheckColor={(color) => { setChicCheckColor(color); void onboarding.complete('design'); completeInitialDesignSelection(); }}
+               onChicCheckColor={(color) => { setChicCheckColor(color); if (!onboardingDesignSelectionPending) void onboarding.complete('design'); completeInitialDesignSelection(); }}
                onSaveAffirmation={saveAffirmation}
                onDeleteAffirmation={deleteAffirmation}
                onSaveAffirmationCustomText={saveAffirmationCustomText}
@@ -3576,7 +3576,7 @@ export default function App() {
           setDesignMode('minimal');
           setMonoAppearance(mode === 'dark' ? 'dark' : 'light');
           setDesignPreviewPattern(undefined);
-          void onboarding.complete('design');
+          if (!onboardingDesignSelectionPending) void onboarding.complete('design');
           completeInitialDesignSelection();
           return;
         }
@@ -3584,7 +3584,7 @@ export default function App() {
           setDesignMode('chic');
           setChicPattern('plain');
           setDesignPreviewPattern(undefined);
-          void onboarding.complete('design');
+          if (!onboardingDesignSelectionPending) void onboarding.complete('design');
           completeInitialDesignSelection();
           return;
         }
@@ -3598,7 +3598,7 @@ export default function App() {
           setDesignMode('chic');
           setChicPattern(pattern);
           setDesignPreviewPattern(undefined);
-          void onboarding.complete('design');
+          if (!onboardingDesignSelectionPending) void onboarding.complete('design');
           completeInitialDesignSelection();
         }
       }} />
