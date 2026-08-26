@@ -69,7 +69,7 @@ const PREMIUM_GUIDE_FEATURES: Array<{ id: PremiumGuideFeatureId; kind: PremiumPr
   { id: 'templates', kind: 'templates', title: 'タスクひな型', description: '一度作ったタスクのカテゴリ・優先度・通知設定をひな型として保存し、次回の登録を簡単にします。' },
   { id: 'wish', kind: 'wish', title: '叶えるための行動', description: '叶えたいことはFreeでも記録できます。Premiumなら「叶えるための行動」に分けて管理し、今月の進捗まで確認できます。' },
   { id: 'affirmation', kind: 'affirmation', title: '好きな言葉を、選んだ時間に届ける', description: '自分で書いたアファメーションを毎日指定時刻に通知。忙しい日も、自分の軸へ静かに戻れます。' },
-  { id: 'photo_design', kind: 'photo_design', title: '選べるデザイン', description: '花柄1〜3、ドット、チェックデザイン、写真背景はPremium対象です。通常プレビューは無料、初回24時間Trial後は広告で12時間、Premiumなら常時利用できます。' },
+  { id: 'photo_design', kind: 'photo_design', title: '選べるデザイン', description: '花柄1〜3、ドット、チェックデザイン、写真背景はPremiumで利用できます。FreeでもTrialや広告で試せます。Design Customizeを¥500で買い切れば、Premiumなしでも広告なしでずっと利用できます。' },
 ];
 
 function LegacyPreviewFallback({ kind, styles }: { kind: PremiumPreviewKind; styles: any }) {

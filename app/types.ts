@@ -260,6 +260,8 @@ export type PersistedState = {
   photoTheme?: PhotoThemeSettings;
   /** Optional external travel-app launch settings. */
   travelApps?: TravelAppSettings;
+  /** Design/Photo-only one-time purchase entitlement. */
+  designCustomizePurchased?: boolean;
   /** Explicitly deactivated routines retained for 90 days. */
   routineArchives?: RoutineArchive[];
 };

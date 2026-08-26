@@ -33,9 +33,9 @@ export function getEffectiveNudgeMode<T extends 'once' | 'repeat' | 'strong'>(ti
   return tier === 'premium' ? mode : 'once';
 }
 
-export function getEffectiveChicPattern<T extends 'plain' | 'floral' | 'floralSoft' | 'floralSeasonal' | 'floralDark' | 'dot' | 'checkLavenderSatin' | 'checkBeigeNoir' | 'checkMauveFrame'>(tier: PlanTier, pattern: T): T | 'plain' {
+export function getEffectiveChicPattern<T extends 'plain' | 'floral' | 'floralSoft' | 'floralSeasonal' | 'floralDark' | 'dot' | 'checkLavenderSatin' | 'checkBeigeNoir' | 'checkMauveFrame'>(tier: PlanTier, pattern: T, designCustomizePurchased = false): T | 'plain' {
   if (pattern === 'plain') return pattern;
-  return tier === 'premium' ? pattern : 'plain';
+  return tier === 'premium' || designCustomizePurchased ? pattern : 'plain';
 }
 
 export function getChicPatternFeatureId(pattern: 'floral' | 'floralSoft' | 'floralSeasonal' | 'floralDark' | 'dot' | 'checkLavenderSatin' | 'checkBeigeNoir' | 'checkMauveFrame'): PremiumFeature {
