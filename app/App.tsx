@@ -2876,7 +2876,10 @@ export default function App() {
     if (feature === 'planRegistration') {
       setTimelineInitialTab('departure');
       setScreen('timeline');
-      openNewPlanEditor();
+      // The first-run tour is a read-only demo.  Keep the guide on the
+      // schedule screen instead of opening the production editor, which
+      // would hide the guide without providing a demo action to complete.
+      if (!firstRunDemoActive) openNewPlanEditor();
       return;
     }
     if (feature === 'focus') {
@@ -2927,7 +2930,9 @@ export default function App() {
 
   const guideTargetReady = React.useCallback((feature: Exclude<OnboardingFeatureId, 'intro'>) => {
     if (feature === 'taskDetails') return screen === 'home' && (Boolean(editingTask) || addOpen);
-    if (feature === 'planRegistration') return screen === 'timeline' && planEditorOpen;
+    if (feature === 'planRegistration') {
+      return screen === 'timeline' && (planEditorOpen || (firstRunDemoActive && timelineInitialTab === 'departure'));
+    }
     if (feature === 'photoLog') return screen === 'home' && openTodayReview;
     if (feature === 'recovery') return screen === 'timeline';
     if (feature === 'schedule') return screen === 'timeline' && timelineInitialTab === 'deadline';
@@ -2938,7 +2943,7 @@ export default function App() {
     if (feature === 'history') return screen === 'analysis' && analysisInitialTab === 'records';
     if (feature === 'wish' || feature === 'affirmation') return screen === 'wish';
     return screen === 'home';
-  }, [addOpen, analysisInitialTab, editingTask, openTodayReview, planEditorOpen, screen, timelineInitialTab]);
+  }, [addOpen, analysisInitialTab, editingTask, firstRunDemoActive, openTodayReview, planEditorOpen, screen, timelineInitialTab]);
 
   const advanceGuide = React.useCallback(async (feature: Exclude<OnboardingFeatureId, 'intro'>) => {
     if (guideTransitioningRef.current || guideTransitioning || pendingGuideFeature) return;
@@ -2995,20 +3000,48 @@ export default function App() {
   }, [guideTargetReady, pendingGuideFeature]);
 
   const productionGuideAction = productionGuideFeature === 'todo'
-    ? () => setAddOpen(true)
+    ? () => {
+        if (firstRunDemoActive) {
+          void advanceGuide('todo');
+          return;
+        }
+        setAddOpen(true);
+      }
     : productionGuideFeature === 'taskDetails'
       ? () => {
+          if (firstRunDemoActive) {
+            void advanceGuide('taskDetails');
+            return;
+          }
           const firstTask = tasks.find((task) => !task.done) ?? tasks[0];
           if (firstTask) setEditingTask(firstTask);
           else setAddOpen(true);
           void onboarding.complete('taskDetails');
         }
     : productionGuideFeature === 'schedule' || productionGuideFeature === 'planRegistration'
-      ? openNewPlanEditor
-      : productionGuideFeature === 'focus'
-        ? () => setTimelineInitialTab('focus')
+      ? () => {
+          if (firstRunDemoActive) {
+            void advanceGuide(productionGuideFeature);
+            return;
+          }
+          openNewPlanEditor();
+        }
+    : productionGuideFeature === 'focus'
+        ? () => {
+            if (firstRunDemoActive) {
+              void advanceGuide('focus');
+              return;
+            }
+            setTimelineInitialTab('focus');
+          }
         : productionGuideFeature === 'wish' || productionGuideFeature === 'affirmation'
-          ? openWish
+          ? () => {
+              if (firstRunDemoActive) {
+                void advanceGuide(productionGuideFeature);
+                return;
+              }
+              openWish();
+            }
           : productionGuideFeature === 'photoLog'
             ? () => { if (planTier === 'premium') setOpenTodayReview(true); }
             : undefined;
@@ -3084,7 +3117,13 @@ export default function App() {
               completionIcon={completionIcon}
               selectionMode={selectionMode}
               selectedTaskIds={selectedTaskIds}
-              onAdd={() => setAddOpen(true)}
+              onAdd={() => {
+                if (firstRunDemoActive && productionGuideFeature === 'todo') {
+                  void advanceGuide('todo');
+                  return;
+                }
+                setAddOpen(true);
+              }}
               onOpenFocus={() => {
                 setTimelineInitialTab('focus');
                 navigateWithinApp('timeline');
@@ -3160,7 +3199,13 @@ export default function App() {
               todayReviewExists={Boolean((wishMonths[dateKey(now).slice(0, 7)]?.reviews ?? []).some((review) => review.date === dateKey(now)) || wishMonths[dateKey(now).slice(0, 7)]?.review?.date === dateKey(now))}
               onOpenTodayRecord={() => { if (planTier !== 'premium') { openPremiumFeature('records'); return; } setOpenTodayReview(true); }}
               showTodoOnboarding={false}
-              onTodoOnboardingAction={() => setAddOpen(true)}
+              onTodoOnboardingAction={() => {
+                if (firstRunDemoActive && productionGuideFeature === 'todo') {
+                  void advanceGuide('todo');
+                  return;
+                }
+                setAddOpen(true);
+              }}
               showTodoCompleteOnboarding={false}
               showCompletedTasksOnboarding={false}
               showTaskBucketsOnboarding={false}
