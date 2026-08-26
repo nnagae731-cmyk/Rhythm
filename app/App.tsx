@@ -2334,10 +2334,10 @@ export default function App() {
   // callbacks are no-ops, so these screens cannot save tasks, schedule
   // notifications, request permissions, or mutate the user's state while
   // still showing the real layout, scroll behavior, and tokens.
-  const renderCaptureWishPreview = (premium: boolean): React.ReactNode => {
+  const renderWishCapturePreview = (premium: boolean): React.ReactNode => {
     const wishId = 'capture-preview-wish';
     const actions: WishAction[] = [
-      { id: 'capture-preview-action-1', wishId, title: '寝る前に10分読む', completed: false },
+      { id: 'capture-preview-action-1', wishId, title: '寝る前に10分読む', completed: premium },
       ...(premium ? [{ id: 'capture-preview-action-2', wishId, title: '通勤中に5ページ読む', completed: false }] : []),
     ];
     return (
@@ -2607,7 +2607,7 @@ export default function App() {
       />, 560);
     }
     if (kind === 'wish') {
-      return readonly(renderCaptureWishPreview(true), 760);
+      return readonly(renderWishCapturePreview(true), 760);
     }
     return undefined;
   };
@@ -2750,7 +2750,7 @@ export default function App() {
     else if (id === 'history') production = renderPremiumReadOnlyPreview('history');
     else if (id === 'photoLog') production = renderPremiumReadOnlyPreview('records');
     else if (id === 'affirmation') production = renderPremiumReadOnlyPreview('affirmation');
-    else if (id === 'wish') production = renderCaptureWishPreview(false);
+    else if (id === 'wish') production = renderWishCapturePreview(false);
     else production = renderPremiumReadOnlyPreview('recovery');
     if (id === 'schedule') {
       return <View style={{ minHeight: 560, position: 'relative' }}><View style={{ height: 560, borderWidth: 1, borderColor: chicPalette.border, borderRadius: 14, overflow: 'hidden' }}>{production}</View><View pointerEvents="box-none" style={{ position: 'absolute', left: 12, right: 12, bottom: 16 }}><OnboardingHint inline featureId="schedule" designMode={uiDesignMode} chicPalette={chicPalette} onAction={() => undefined} /></View></View>;
