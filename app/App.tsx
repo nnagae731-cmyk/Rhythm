@@ -2334,6 +2334,44 @@ export default function App() {
   // callbacks are no-ops, so these screens cannot save tasks, schedule
   // notifications, request permissions, or mutate the user's state while
   // still showing the real layout, scroll behavior, and tokens.
+  const renderCaptureWishPreview = (premium: boolean): React.ReactNode => {
+    const wishId = 'capture-preview-wish';
+    const actions: WishAction[] = [
+      { id: 'capture-preview-action-1', wishId, title: '寝る前に10分読む', completed: false },
+      ...(premium ? [{ id: 'capture-preview-action-2', wishId, title: '通勤中に5ページ読む', completed: false }] : []),
+    ];
+    return (
+      <View pointerEvents="none">
+        <WishScreen
+          designMode={uiDesignMode}
+          chicPattern={effectiveChicPattern}
+          chicPalette={chicPalette}
+          monthLabel="2026年8月"
+          state={{
+            monthlyGoal: '毎日少しでも自分の時間をつくる',
+            wishes: [{ id: wishId, title: '週に1冊、本を読む', completed: false, createdAt: '2026-01-01T00:00:00.000Z' }],
+            actions,
+            review: {},
+          }}
+          onSaveState={() => undefined}
+          onCreateTaskFromAction={() => undefined}
+          affirmations={premium ? [{ id: 'capture-preview-affirmation', text: '私は自分のペースで続けられる', time: '08:30', enabled: true, createdAt: '2026-01-01T00:00:00.000Z' }] : []}
+          affirmationCustomTexts={[]}
+          planTier="premium"
+          onSaveAffirmation={() => undefined}
+          onDeleteAffirmation={() => undefined}
+          onSaveAffirmationCustomText={() => undefined}
+          onDeleteAffirmationCustomText={() => undefined}
+          canCreateWish
+          canCreateWishAction
+          monthlyGoalUnlocked
+          onPremium={() => undefined}
+          onBack={() => undefined}
+        />
+      </View>
+    );
+  };
+
   const renderPremiumReadOnlyPreview = (kind: PremiumGuideFeatureId, wishPremium = true, previewOverride?: { initialTab?: TimeTab; previewMode?: boolean; previewCustomDurationOpen?: boolean; maxHeight?: number; analysisInitialTab?: 'records' | 'insights' | 'routine'; analysisPreviewKind?: 'time' | 'behavior' }): React.ReactNode => {
     const previewDate = dateKey(now);
     const previewTasks: Task[] = [
@@ -2569,27 +2607,7 @@ export default function App() {
       />, 560);
     }
     if (kind === 'wish') {
-      return readonly(<WishScreen
-        designMode={uiDesignMode}
-        chicPattern={effectiveChicPattern}
-        chicPalette={chicPalette}
-        monthLabel="2026年8月"
-        state={{ monthlyGoal: '毎月1つ、新しい習慣を続ける', wishes: [{ id: 'preview-wish', title: '週に1冊、本を読む', completed: false, createdAt: new Date().toISOString() }], actions: [{ id: 'preview-action', wishId: 'preview-wish', title: '10分読む', completed: false }], review: {} }}
-        onSaveState={() => undefined}
-        onCreateTaskFromAction={() => undefined}
-        affirmations={[]}
-        affirmationCustomTexts={[]}
-        planTier="premium"
-        onSaveAffirmation={() => undefined}
-        onDeleteAffirmation={() => undefined}
-        onSaveAffirmationCustomText={() => undefined}
-        onDeleteAffirmationCustomText={() => undefined}
-        canCreateWish={false}
-        canCreateWishAction={true}
-        monthlyGoalUnlocked
-        onPremium={() => undefined}
-        onBack={() => undefined}
-      />, 640);
+      return readonly(renderCaptureWishPreview(true), 760);
     }
     return undefined;
   };
@@ -2732,10 +2750,13 @@ export default function App() {
     else if (id === 'history') production = renderPremiumReadOnlyPreview('history');
     else if (id === 'photoLog') production = renderPremiumReadOnlyPreview('records');
     else if (id === 'affirmation') production = renderPremiumReadOnlyPreview('affirmation');
-    else if (id === 'wish') production = renderPremiumReadOnlyPreview('wish');
+    else if (id === 'wish') production = renderCaptureWishPreview(false);
     else production = renderPremiumReadOnlyPreview('recovery');
     if (id === 'schedule') {
       return <View style={{ minHeight: 560, position: 'relative' }}><View style={{ height: 560, borderWidth: 1, borderColor: chicPalette.border, borderRadius: 14, overflow: 'hidden' }}>{production}</View><View pointerEvents="box-none" style={{ position: 'absolute', left: 12, right: 12, bottom: 16 }}><OnboardingHint inline featureId="schedule" designMode={uiDesignMode} chicPalette={chicPalette} onAction={() => undefined} /></View></View>;
+    }
+    if (id === 'wish') {
+      return <View style={{ minHeight: 760, position: 'relative' }}><View style={{ height: 620, borderWidth: 1, borderColor: chicPalette.border, borderRadius: 14, overflow: 'hidden' }}>{production}</View><View pointerEvents="box-none" style={{ position: 'absolute', left: 12, right: 12, bottom: 16 }}><OnboardingHint inline featureId="wish" designMode={uiDesignMode} chicPalette={chicPalette} onAction={() => undefined} /></View></View>;
     }
     const productionGuideHasAction = id === 'todo' || id === 'schedule' || id === 'planRegistration' || id === 'focus';
     // Keep the real screen visible, but reserve the lower portion of the
