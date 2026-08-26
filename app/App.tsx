@@ -4178,7 +4178,7 @@ function DailyScheduleTimeline({ date, tasks, plans, externalEvents, now, design
     const time = getPlanScheduledTime(plan);
     const canUseReversePlan = isArrivalReversePlan(plan) && planTier === 'premium';
     const meta = mode === 'calendar_only'
-      ? time ? '予定表の予定' : '終日'
+      ? time ? undefined : '終日'
       : mode === 'departure_reminder'
         ? `出発 ${time}`
         : canUseReversePlan
@@ -4343,7 +4343,7 @@ function TaskScheduleCalendar({ tasks, plans, externalEvents, now, designMode, c
     const scheduledTime = getPlanScheduledTime(item);
     const timeLabel = item.allDay ? '終日' : scheduledTime ? `${scheduledTime}${endSuffix}` : '終日';
     const meta = mode === 'calendar_only'
-      ? `予定表の予定 ・ ${timeLabel}`
+      ? timeLabel
       : mode === 'departure_reminder'
         ? `出発時刻 ・ ${timeLabel}`
         : canUseReversePlan
