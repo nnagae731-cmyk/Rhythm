@@ -2431,7 +2431,10 @@ export default function App() {
       // TaskScheduleCalendar reserved for the dedicated month preview.
       const initialTab: TimeTab = previewOverride?.initialTab ?? (kind === 'month' ? 'calendar' : kind === 'focus_custom_duration' ? 'focus' : 'departure');
       const timelinePreviewMode = previewOverride?.previewMode ?? (kind === 'calendar' || kind === 'recovery');
-      const timelineMaxHeight = previewOverride?.maxHeight ?? (kind === 'calendar' ? 680 : kind === 'month' ? 620 : 560);
+      // Leave enough room for the production calendar-import card and all
+      // three fixed read-only event rows.  The month preview keeps its own
+      // compact monthly-calendar viewport.
+      const timelineMaxHeight = previewOverride?.maxHeight ?? (kind === 'calendar' ? 760 : kind === 'month' ? 620 : 560);
       return readonly(<TimelineScreen
         plan={(kind === 'month' ? monthPreviewPlans : previewPlans)[0]}
         plans={kind === 'month' ? monthPreviewPlans : previewPlans}
@@ -2604,7 +2607,7 @@ export default function App() {
     ];
     if (id === 'schedule') return renderPremiumReadOnlyPreview('calendar', true, { initialTab: 'deadline', previewMode: false, maxHeight: 680 });
     if (id === 'focus') return renderPremiumReadOnlyPreview('calendar', true, { initialTab: 'focus', previewMode: false, previewCustomDurationOpen: false, maxHeight: 680 });
-    if (id === 'recovery') return <View style={{ minHeight: 560, justifyContent: 'center', paddingVertical: 24 }}>{renderPremiumReadOnlyPreview('recovery')}</View>;
+    if (id === 'recovery') return <View style={{ minHeight: 560, justifyContent: 'center', paddingVertical: 24, overflow: 'hidden', backgroundColor: getThemeTokens(uiDesignMode, chicPalette.id).colors.screenBackground }}>{renderPremiumReadOnlyPreview('recovery')}</View>;
     if (id === 'records') return <View pointerEvents="none" style={{ minHeight: 520, justifyContent: 'center', paddingVertical: 20 }}><TodayWinStrip tasks={completedCaptureTasks} designMode={uiDesignMode} chicPattern={effectiveChicPattern} chicPalette={chicPalette} onRestore={() => undefined} /><View style={[styles.premiumPreview, { marginTop: 10, padding: 14, minHeight: 0, backgroundColor: getThemeTokens(uiDesignMode, chicPalette.id).colors.surface, borderColor: getThemeTokens(uiDesignMode, chicPalette.id).colors.border }]}><Text style={{ color: getThemeTokens(uiDesignMode, chicPalette.id).colors.primaryText, fontSize: 15, fontWeight: '900' }}>今日できたこと</Text>{completedCaptureTasks.map((task) => <View key={task.id} style={{ marginTop: 9, paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: getThemeTokens(uiDesignMode, chicPalette.id).colors.border }}><Text style={{ color: getThemeTokens(uiDesignMode, chicPalette.id).colors.primaryText, fontSize: 13, fontWeight: '800' }}>✓ {task.title}</Text><Text style={{ color: getThemeTokens(uiDesignMode, chicPalette.id).colors.secondaryText, fontSize: 11, marginTop: 2 }}>{task.category} ・ 完了</Text></View>)}</View></View>;
     if (id === 'quickTodo') return <View pointerEvents="none" style={[styles.premiumPreview, { minHeight: 460, overflow: 'hidden' }]}><TaskModal visible templates={['資料をまとめる', 'スーパーに寄る']} savedTemplates={[]} designMode={uiDesignMode} chicPalette={chicPalette} planTier="premium" onPremium={() => undefined} onClose={() => undefined} onSave={() => undefined} styles={styles} helpers={{ getThemeTokens: getThemedThemeTokens, todayInputValue, hasPremiumAccess, dateForReminder, dateKey, formatLiveTime, colors: themedColors, summarizePremiumTaskTemplate }} components={{ CompactNumberSetting }} readOnlyPreview /></View>;
     const captureTasks: Task[] = [
@@ -2735,7 +2738,9 @@ export default function App() {
     // Keep the real screen visible, but reserve the lower portion of the
     // fixed 9:16 stage for the complete GUIDE card.  This prevents the
     // badge/title/description/CTA from being clipped by the capture frame.
-    return <View style={{ minHeight: 560, position: 'relative' }}><View style={{ maxHeight: 360, borderWidth: 1, borderColor: chicPalette.border, borderRadius: 14, overflow: 'hidden' }}>{production}</View><View pointerEvents="box-none" style={{ position: 'absolute', left: 12, right: 12, bottom: 0 }}><OnboardingHint inline featureId={id} designMode={uiDesignMode} chicPalette={chicPalette} onAction={productionGuideHasAction ? () => undefined : undefined} /></View></View>;
+    const guideStageMinHeight = id === 'schedule' ? 500 : 560;
+    const guideProductionMaxHeight = id === 'schedule' ? 330 : 360;
+    return <View style={{ minHeight: guideStageMinHeight, position: 'relative' }}><View style={{ maxHeight: guideProductionMaxHeight, borderWidth: 1, borderColor: chicPalette.border, borderRadius: 14, overflow: 'hidden' }}>{production}</View><View pointerEvents="box-none" style={{ position: 'absolute', left: 12, right: 12, bottom: 0 }}><OnboardingHint inline featureId={id} designMode={uiDesignMode} chicPalette={chicPalette} onAction={productionGuideHasAction ? () => undefined : undefined} /></View></View>;
   };
 
   return (
