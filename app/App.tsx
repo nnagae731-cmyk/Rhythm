@@ -501,6 +501,10 @@ export default function App() {
   const [focusNavigationNotice, setFocusNavigationNotice] = useState(false);
   const [timelineInitialTab, setTimelineInitialTab] = useState<TimeTab>('departure');
   const [analysisInitialTab, setAnalysisInitialTab] = useState<'records' | 'insights' | 'routine'>('records');
+  const [currentGuideFeature, setCurrentGuideFeature] = useState<Exclude<OnboardingFeatureId, 'intro'>>();
+  const [guideTransitioning, setGuideTransitioning] = useState(false);
+  const [pendingGuideFeature, setPendingGuideFeature] = useState<Exclude<OnboardingFeatureId, 'intro'>>();
+  const guideTransitioningRef = React.useRef(false);
   const [openTodayReview, setOpenTodayReview] = useState(false);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [focusTimerActive, setFocusTimerActive] = useState(false);
@@ -2800,19 +2804,20 @@ export default function App() {
     return <View style={{ minHeight: 560, position: 'relative' }}><View style={{ maxHeight: 360, borderWidth: 1, borderColor: chicPalette.border, borderRadius: 14, overflow: 'hidden' }}>{production}</View><View pointerEvents="box-none" style={{ position: 'absolute', left: 12, right: 12, bottom: 0 }}><OnboardingHint inline featureId={id} designMode={uiDesignMode} chicPalette={chicPalette} onAction={productionGuideHasAction ? () => undefined : undefined} /></View></View>;
   };
 
-  // Production GUIDE placement is an explicit tour. The feature completion
-  // callbacks still mark guides complete during real use, while the tour's
-  // secondary "次へ" action lets a first-time user continue without mutating
-  // data first.
-  const freeTourFeature = onboarding.ready && onboarding.isCompleted('intro') && onboarding.isCompleted('design') && planTier !== 'premium'
-    ? FREE_GUIDE_TOUR.find((feature) => !onboarding.isCompleted(feature))
+  // Production GUIDE placement is an explicit, stateful tour.  Completion
+  // callbacks from the real screens still mark a feature complete, while the
+  // transition state keeps the next card hidden until its target is ready.
+  const activeGuideTour: readonly Exclude<OnboardingFeatureId, 'intro'>[] = planTier === 'premium' ? PREMIUM_GUIDE_TOUR : FREE_GUIDE_TOUR;
+  const firstIncompleteGuide = onboarding.ready && onboarding.isCompleted('intro') && onboarding.isCompleted('design')
+    ? activeGuideTour.find((feature) => !onboarding.isCompleted(feature))
     : undefined;
-  const premiumTourFeature = onboarding.ready && onboarding.isCompleted('intro') && onboarding.isCompleted('design') && planTier === 'premium'
-    ? PREMIUM_GUIDE_TOUR.find((feature) => !onboarding.isCompleted(feature))
-    : undefined;
-  const productionGuideFeature: Exclude<OnboardingFeatureId, 'intro'> | undefined = premiumTourFeature ?? freeTourFeature;
+  const productionGuideFeature = pendingGuideFeature ?? currentGuideFeature;
 
   const navigateToGuideFeature = React.useCallback((feature: Exclude<OnboardingFeatureId, 'intro'>) => {
+    setAddOpen(false);
+    setEditingTask(null);
+    setPlanEditorOpen(false);
+    setOpenTodayReview(false);
     if (feature === 'schedule') {
       setTimelineInitialTab('deadline');
       setScreen('timeline');
@@ -2821,6 +2826,7 @@ export default function App() {
     if (feature === 'planRegistration') {
       setTimelineInitialTab('departure');
       setScreen('timeline');
+      openNewPlanEditor();
       return;
     }
     if (feature === 'focus') {
@@ -2852,18 +2858,86 @@ export default function App() {
       setScreen('wish');
       return;
     }
-    if (feature === 'photoLog' || feature === 'recovery') {
-      if (feature === 'photoLog') setScreen('home');
-      else setScreen('timeline');
+    if (feature === 'photoLog') {
+      setScreen('home');
+      setOpenTodayReview(true);
+      return;
+    }
+    if (feature === 'recovery') {
+      setScreen('timeline');
       return;
     }
     setScreen('home');
-  }, []);
+  }, [openNewPlanEditor]);
 
   React.useEffect(() => {
-    if (!productionGuideFeature || onboarding.introVisible || onboardingDesignSelectionPending) return;
+    if (!productionGuideFeature || onboarding.introVisible || onboardingDesignSelectionPending || guideTransitioning) return;
     navigateToGuideFeature(productionGuideFeature);
-  }, [navigateToGuideFeature, onboarding.introVisible, onboardingDesignSelectionPending, productionGuideFeature]);
+  }, [guideTransitioning, navigateToGuideFeature, onboarding.introVisible, onboardingDesignSelectionPending, productionGuideFeature]);
+
+  const guideTargetReady = React.useCallback((feature: Exclude<OnboardingFeatureId, 'intro'>) => {
+    if (feature === 'taskDetails') return screen === 'home' && (Boolean(editingTask) || addOpen);
+    if (feature === 'planRegistration') return screen === 'timeline' && planEditorOpen;
+    if (feature === 'photoLog') return screen === 'home' && openTodayReview;
+    if (feature === 'recovery') return screen === 'timeline';
+    if (feature === 'schedule') return screen === 'timeline' && timelineInitialTab === 'deadline';
+    if (feature === 'focus') return screen === 'timeline' && timelineInitialTab === 'focus';
+    if (feature === 'calendarImport') return screen === 'timeline' && timelineInitialTab === 'calendar';
+    if (feature === 'analysis') return screen === 'analysis' && analysisInitialTab === 'records';
+    if (feature === 'routine') return screen === 'analysis' && analysisInitialTab === 'routine';
+    if (feature === 'history') return screen === 'analysis' && analysisInitialTab === 'records';
+    if (feature === 'wish' || feature === 'affirmation') return screen === 'wish';
+    return screen === 'home';
+  }, [addOpen, analysisInitialTab, editingTask, openTodayReview, planEditorOpen, screen, timelineInitialTab]);
+
+  const advanceGuide = React.useCallback(async (feature: Exclude<OnboardingFeatureId, 'intro'>) => {
+    if (guideTransitioningRef.current || guideTransitioning || pendingGuideFeature) return;
+    guideTransitioningRef.current = true;
+    setGuideTransitioning(true);
+    let completedState: typeof onboarding.state = onboarding.state;
+    try {
+      if (!onboarding.isCompleted(feature)) completedState = await onboarding.complete(feature);
+    } catch {
+      guideTransitioningRef.current = false;
+      setGuideTransitioning(false);
+      return;
+    }
+    const next = activeGuideTour.find((item) => !completedState.completed[item]);
+    if (!next) {
+      setCurrentGuideFeature(undefined);
+      setPendingGuideFeature(undefined);
+      setGuideTransitioning(false);
+      guideTransitioningRef.current = false;
+      return;
+    }
+    setPendingGuideFeature(next);
+    navigateToGuideFeature(next);
+  }, [activeGuideTour, guideTransitioning, navigateToGuideFeature, onboarding, pendingGuideFeature]);
+
+  React.useEffect(() => {
+    if (!onboarding.ready || onboarding.introVisible || onboardingDesignSelectionPending || guideTransitioning || pendingGuideFeature) return;
+    if (!currentGuideFeature) {
+      if (firstIncompleteGuide) {
+        setCurrentGuideFeature(firstIncompleteGuide);
+        navigateToGuideFeature(firstIncompleteGuide);
+      }
+      return;
+    }
+    if (!activeGuideTour.includes(currentGuideFeature) || onboarding.isCompleted(currentGuideFeature)) {
+      void advanceGuide(currentGuideFeature);
+    }
+  }, [activeGuideTour, advanceGuide, currentGuideFeature, firstIncompleteGuide, guideTransitioning, navigateToGuideFeature, onboarding, onboardingDesignSelectionPending, pendingGuideFeature]);
+
+  React.useEffect(() => {
+    if (!pendingGuideFeature || !guideTargetReady(pendingGuideFeature)) return;
+    const frame = requestAnimationFrame(() => {
+      setCurrentGuideFeature(pendingGuideFeature);
+      setPendingGuideFeature(undefined);
+      setGuideTransitioning(false);
+      guideTransitioningRef.current = false;
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [guideTargetReady, pendingGuideFeature]);
 
   const productionGuideAction = productionGuideFeature === 'todo'
     ? () => setAddOpen(true)
@@ -2884,18 +2958,33 @@ export default function App() {
             ? () => { if (planTier === 'premium') setOpenTodayReview(true); }
             : undefined;
   const completeTourGuide = React.useCallback((feature: Exclude<OnboardingFeatureId, 'intro'>) => {
-    void onboarding.complete(feature);
-  }, [onboarding]);
+    void advanceGuide(feature);
+  }, [advanceGuide]);
   const exitGuideTour = React.useCallback(() => {
+    if (guideTransitioningRef.current) return;
+    guideTransitioningRef.current = true;
+    setGuideTransitioning(true);
     const tour = planTier === 'premium' ? PREMIUM_GUIDE_TOUR : FREE_GUIDE_TOUR;
     void (async () => {
-      for (const feature of tour) {
-        if (!onboarding.isCompleted(feature)) await onboarding.complete(feature);
+      try {
+        for (const feature of tour) {
+          if (!onboarding.isCompleted(feature)) await onboarding.complete(feature);
+        }
+      } finally {
+        setCurrentGuideFeature(undefined);
+        setPendingGuideFeature(undefined);
+        setGuideTransitioning(false);
+        guideTransitioningRef.current = false;
       }
     })();
   }, [onboarding, planTier]);
-  const productionGuideCard = productionGuideFeature ? <OnboardingHint key={productionGuideFeature} inline featureId={productionGuideFeature} designMode={uiDesignMode} chicPalette={chicPalette} onAction={productionGuideAction} onDismiss={() => completeTourGuide(productionGuideFeature)} onNext={() => completeTourGuide(productionGuideFeature)} onExitTour={exitGuideTour} /> : null;
-  const productionGuideOverlay = productionGuideFeature && !planEditorOpen && !recoveryTargetPlanId && productionGuideFeature !== 'recovery' ? (
+  const guideTargetLabels: Partial<Record<Exclude<OnboardingFeatureId, 'intro'>, string>> = {
+    todo: '＋追加', taskDetails: '詳しく設定', taskBuckets: '一覧', todoComplete: '完了チェック', completedTasks: '達成グラフ',
+    schedule: 'スケジュール', planRegistration: '予定を登録', focus: '集中', calendarImport: 'カレンダー', analysis: '分析', routine: 'ルーティン', history: '履歴',
+    wish: '叶えたいこと', affirmation: 'アファメーション', photoLog: '今日の記録', recovery: '立て直し',
+  };
+  const productionGuideCard = productionGuideFeature && !guideTransitioning && guideTargetReady(productionGuideFeature) ? <OnboardingHint key={productionGuideFeature} inline featureId={productionGuideFeature} designMode={uiDesignMode} chicPalette={chicPalette} targetLabel={guideTargetLabels[productionGuideFeature]} onAction={productionGuideAction} onDismiss={() => completeTourGuide(productionGuideFeature)} onNext={() => completeTourGuide(productionGuideFeature)} onExitTour={exitGuideTour} /> : null;
+  const productionGuideOverlay = productionGuideFeature && !guideTransitioning && !planEditorOpen && !openTodayReview && !addOpen && !editingTask && !recoveryTargetPlanId && productionGuideFeature !== 'recovery' ? (
     <View pointerEvents="box-none" style={{ position: 'absolute', left: 12, right: 12, bottom: 78, zIndex: 40 }}>{productionGuideCard}</View>
   ) : null;
   const premiumGuideRecoveryPlan: DeparturePlan = {
@@ -3305,7 +3394,7 @@ export default function App() {
           <Pressable style={[styles.modalSheet, { backgroundColor: theme.colors.screenBackground, maxHeight: '92%' }]} onPress={(event) => event.stopPropagation()}>
             <View style={{ flexDirection: 'row', justifyContent: 'flex-end', marginBottom: 4 }}><Pressable onPress={() => setOpenTodayReview(false)}><Text style={{ color: theme.colors.primaryAccent, fontSize: 13, fontWeight: '800' }}>閉じる</Text></Pressable></View>
             <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
-              <HistoryScreen dailyReviewOnly openDailyReview={openTodayReview} initialDate={dateKey(now)} tasks={tasks} wishMonths={wishMonths} calendarMarks={calendarMarks} onSetCalendarMark={(date, mark) => setCalendarMarks((current) => { const next = { ...current }; if (mark) next[date] = mark; else delete next[date]; return next; })} recoveryHistory={recoveryHistory} focusSessions={focusSessions} departureCheckIns={departureCheckIns} departurePlans={departurePlans} behaviorEvents={behaviorEvents} completionIcon={completionIcon} designMode={uiDesignMode} chicPattern={effectiveChicPattern} chicPalette={chicPalette} planTier={planTier} onPremium={openPremiumFeature} onSaveTemplate={saveTaskAsTemplate} onRestore={restoreTaskById} onSaveDailyReview={saveDailyReview} onSaveMonthlyReflectionCard={saveMonthlyReflectionCard} onUpdateReview={updateWishReview} onDeleteReview={deleteWishReview} styles={styles} helpers={{ dateKey, formatLiveTime, getThemeTokens: getThemedThemeTokens }} components={{ AchievementVessel, CalendarMarkPicker }} />
+              <HistoryScreen dailyReviewOnly openDailyReview={openTodayReview} initialDate={dateKey(now)} tasks={tasks} wishMonths={wishMonths} calendarMarks={calendarMarks} onSetCalendarMark={(date, mark) => setCalendarMarks((current) => { const next = { ...current }; if (mark) next[date] = mark; else delete next[date]; return next; })} recoveryHistory={recoveryHistory} focusSessions={focusSessions} departureCheckIns={departureCheckIns} departurePlans={departurePlans} behaviorEvents={behaviorEvents} completionIcon={completionIcon} designMode={uiDesignMode} chicPattern={effectiveChicPattern} chicPalette={chicPalette} planTier={planTier} onPremium={openPremiumFeature} onSaveTemplate={saveTaskAsTemplate} onRestore={restoreTaskById} onSaveDailyReview={saveDailyReview} onSaveMonthlyReflectionCard={saveMonthlyReflectionCard} onUpdateReview={updateWishReview} onDeleteReview={deleteWishReview} guideOverlay={productionGuideFeature === 'photoLog' ? productionGuideCard : undefined} styles={styles} helpers={{ dateKey, formatLiveTime, getThemeTokens: getThemedThemeTokens }} components={{ AchievementVessel, CalendarMarkPicker }} />
             </ScrollView>
           </Pressable>
         </Pressable>
@@ -3366,7 +3455,7 @@ export default function App() {
         onShareCurrentEvent={shareCurrentSharedEvent}
       />
 
-      {addOpen && <TaskModal visible templates={taskTemplates} savedTemplates={savedTaskTemplates} designMode={uiDesignMode} chicPalette={chicPalette} planTier={planTier} onPremium={openPremiumFeature} onClose={() => setAddOpen(false)} onOpenBulkAdd={() => { setAddOpen(false); setBulkAddOpen(true); }} onSave={addTask} styles={styles} helpers={{ getThemeTokens: getThemedThemeTokens, todayInputValue, hasPremiumAccess, dateForReminder, dateKey, formatLiveTime, colors: themedColors, summarizePremiumTaskTemplate }} components={{ CompactNumberSetting }} />}
+      {addOpen && <TaskModal visible templates={taskTemplates} savedTemplates={savedTaskTemplates} designMode={uiDesignMode} chicPalette={chicPalette} planTier={planTier} onPremium={openPremiumFeature} onClose={() => setAddOpen(false)} onOpenBulkAdd={() => { setAddOpen(false); setBulkAddOpen(true); }} onSave={addTask} guideOverlay={productionGuideFeature === 'taskDetails' ? productionGuideCard : undefined} styles={styles} helpers={{ getThemeTokens: getThemedThemeTokens, todayInputValue, hasPremiumAccess, dateForReminder, dateKey, formatLiveTime, colors: themedColors, summarizePremiumTaskTemplate }} components={{ CompactNumberSetting }} />}
       <BulkTaskModal visible={bulkAddOpen} designMode={uiDesignMode} chicPalette={chicPalette} styles={styles} today={todayInputValue()} onClose={() => setBulkAddOpen(false)} onSave={addBulkTasks} />
       {editingTask !== null && <TaskModal
         visible
@@ -3379,6 +3468,7 @@ export default function App() {
         onPremium={openPremiumFeature}
         onClose={() => setEditingTask(null)}
         onSave={updateTask}
+        guideOverlay={productionGuideFeature === 'taskDetails' ? productionGuideCard : undefined}
         styles={styles}
         helpers={{ getThemeTokens: getThemedThemeTokens, todayInputValue, hasPremiumAccess, dateForReminder, dateKey, formatLiveTime, colors: themedColors, summarizePremiumTaskTemplate }}
         components={{ CompactNumberSetting }}

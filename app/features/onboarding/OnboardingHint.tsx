@@ -1,5 +1,7 @@
 import React from 'react';
 import {
+  Animated,
+  Easing,
   Modal,
   Pressable,
   StyleSheet,
@@ -52,6 +54,8 @@ type Props = {
   chicPalette?: ChicThemePalette;
   /** Development-only inline rendering for Capture Studio review. */
   inline?: boolean;
+  /** Short label for the real UI control highlighted by this guide. */
+  targetLabel?: string;
 };
 
 const theme = getThemeTokens(
@@ -70,9 +74,20 @@ export function OnboardingHint({
   designMode = ONBOARDING_DESIGN_MODE,
   chicPalette,
   inline = false,
+  targetLabel,
 }: Props) {
   const [open, setOpen] = React.useState(visible);
+  const pulse = React.useRef(new Animated.Value(0)).current;
   React.useEffect(() => setOpen(visible), [visible]);
+  React.useEffect(() => {
+    if (!targetLabel) return;
+    const loop = Animated.loop(Animated.sequence([
+      Animated.timing(pulse, { toValue: 1, duration: 720, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+      Animated.timing(pulse, { toValue: 0, duration: 720, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+    ]));
+    loop.start();
+    return () => loop.stop();
+  }, [pulse, targetLabel]);
   if (!visible || !open) return null;
 
   const step = getOnboardingStep(featureId);
@@ -173,7 +188,8 @@ export function OnboardingHint({
         </Pressable>
       ) : null}
       </View>;
-  if (inline) return <View style={styles.inlineWrap}>{card}</View>;
+  const targetHint = targetLabel ? <Animated.View pointerEvents="none" style={[styles.targetHint, { borderColor: colors.accent, backgroundColor: colors.soft, opacity: pulse.interpolate({ inputRange: [0, 1], outputRange: [0.82, 1] }), transform: [{ scale: pulse.interpolate({ inputRange: [0, 1], outputRange: [1, 1.035] }) }] }]}><Text style={[styles.targetHintText, { color: colors.accent }]}>ここをタップ · {targetLabel}</Text></Animated.View> : null;
+  if (inline) return <View style={styles.inlineWrap}>{targetHint}{card}</View>;
   return <Modal visible transparent animationType="fade" onRequestClose={dismiss}>
     <Pressable style={styles.backdrop} onPress={dismiss}>
       <Pressable style={styles.sheet} onPress={(event) => event.stopPropagation()}>{card}</Pressable>
@@ -183,6 +199,8 @@ export function OnboardingHint({
 
 const styles = StyleSheet.create({
   inlineWrap: { marginTop: 10 },
+  targetHint: { alignSelf: 'flex-start', marginBottom: 6, borderWidth: 1, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 5 },
+  targetHintText: { fontSize: 11, fontWeight: '800' },
   card: {
     width: '100%',
     backgroundColor:
