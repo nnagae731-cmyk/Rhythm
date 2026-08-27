@@ -3140,6 +3140,10 @@ export default function App() {
     planMode: 'arrival_reverse',
   };
   const premiumRecoveryGuideVisible = planTier === 'premium' && productionGuideFeature === 'recovery' && !recoveryTargetPlanId;
+  const backgroundVeilVisible = (screen === 'home' || screen === 'timeline' || screen === 'wish')
+    && ((designMode === 'chic' && effectiveChicPattern !== 'plain') || (designMode === 'photo' && photoThemeEnabled));
+  const backgroundVeilOpacity = designMode === 'photo' ? 0.28 : (effectiveChicPattern === 'floral' || effectiveChicPattern === 'floralSoft' || effectiveChicPattern === 'floralSeasonal' || effectiveChicPattern === 'floralDark' ? 0.18 : 0.12);
+  const backgroundVeilColor = designMode === 'photo' ? theme.colors.screenBackground : chicPalette.background;
 
   return (
         <SafeAreaView style={[styles.safe, uiDesignMode === 'minimal' && styles.safeMinimal, uiDesignMode === 'dark' && styles.safeDark, designMode === 'photo' && styles.safePhoto, { backgroundColor: uiDesignMode === 'chic' ? getChicPatternVisual(effectiveChicPattern, chicPalette).background : theme.colors.screenBackground }]}>
@@ -3149,7 +3153,7 @@ export default function App() {
         <BThemeRibbonPreload />
         <CThemeRibbonPreload />
         {uiDesignMode === 'chic' && !photoThemeEnabled && <View pointerEvents="none" style={StyleSheet.absoluteFillObject}><ChicPatternDecor pattern={effectiveChicPattern} accent={chicPalette.accent} warm={chicPalette.accentSoft} checkColor={chicCheckColor} /></View>}
-        {(screen === 'home' || screen === 'wish') && (uiDesignMode === 'chic' || uiDesignMode === 'photo') && <View pointerEvents="none" style={[StyleSheet.absoluteFillObject, { backgroundColor: uiDesignMode === 'chic' ? chicPalette.background : theme.colors.screenBackground, opacity: uiDesignMode === 'chic' ? 0.18 : 0.28 }]} />}
+        {backgroundVeilVisible && <View pointerEvents="none" style={[StyleSheet.absoluteFillObject, { backgroundColor: backgroundVeilColor, opacity: backgroundVeilOpacity }]} />}
         {photoTopImageUri ? <><Header designMode={uiDesignMode} now={now} compact chicPalette={chicPalette} /><View style={styles.photoThemeTopImage}><Image source={{ uri: photoTopImageUri }} resizeMode="contain" style={styles.photoThemeTopImageContent} /></View></> : <Header designMode={uiDesignMode} now={now} chicPalette={chicPalette} />}
         {completionAffirmation && <Animated.View pointerEvents="none" style={{ position: 'absolute', top: 72, left: 20, right: 20, zIndex: 30, opacity: completionAffirmationOpacity, alignItems: 'center' }}><View style={{ maxWidth: 340, paddingHorizontal: 18, paddingVertical: 12, borderRadius: 18, backgroundColor: uiDesignMode === 'dark' ? '#20293A' : uiDesignMode === 'chic' ? chicPalette.cardSurface : '#FFFFFF', borderWidth: 1, borderColor: uiDesignMode === 'dark' ? '#40506A' : uiDesignMode === 'chic' ? chicPalette.border : '#E5E0E5', shadowColor: '#000', shadowOpacity: 0.12, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 4 }}><Text style={{ textAlign: 'center', color: uiDesignMode === 'dark' ? '#F4F7FC' : uiDesignMode === 'chic' ? chicPalette.textPrimary : '#282538', fontSize: 14, fontWeight: '600' }}>{completionAffirmation}</Text></View></Animated.View>}
 
