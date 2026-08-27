@@ -72,6 +72,12 @@ const PREMIUM_GUIDE_FEATURES: Array<{ id: PremiumGuideFeatureId; kind: PremiumPr
   { id: 'photo_design', kind: 'photo_design', title: '選べるデザイン', description: '花柄1〜3、ドット、チェックデザイン、写真背景はPremiumで利用できます。FreeでもTrialや広告で試せます。Design Customizeを¥500で買い切れば、Premiumなしでも広告なしでずっと利用できます。' },
 ];
 
+const PREMIUM_FEATURE_ICONS: Record<PremiumGuideFeatureId, string> = {
+  focus_custom_duration: '◷', records: '▤', reflection: '◌', calendar: '▦', route: '↗', travel_apps: '⌁',
+  nudge: '◒', time: '◴', behavior: '◍', month: '▦', history: '⌕', recovery: '↺', templates: '▧', wish: '♡',
+  affirmation: '✦', photo_design: '✧', floral: '✿', dot: '⁙', check: '▦',
+};
+
 const PREMIUM_COMPARISON_ROWS: Array<{ label: string; free: '○' | '△' | '×'; premium: '○' | '△' | '×'; note?: string }> = [
   { label: '基本のToDo・予定管理', free: '○', premium: '○' },
   { label: '基本の集中タイム', free: '○', premium: '○' },
@@ -118,24 +124,23 @@ function LegacyPreviewFallback({ kind, styles }: { kind: PremiumPreviewKind; sty
   return <View style={styles.premiumPreview}><Text style={styles.previewImageLabel}>立て直しの表示イメージ</Text><View style={styles.previewDanger}><Text style={styles.previewDangerText}>予定どおりは厳しい</Text></View><View style={styles.previewRecoveryGrid}>{['今から出発', '到着予定を変更', '遅れる連絡', '予定を組み直す'].map((label) => <View key={label} style={styles.previewRecoveryOption}><Text style={styles.previewRecoveryText}>{label}</Text></View>)}</View></View>;
 }
 
-function PremiumPreviewViewport({ children, styles, dark }: { children: React.ReactNode; styles: any; dark: boolean }) {
-  return <View style={[styles.premiumPreviewViewport, dark && { backgroundColor: '#181F2E', borderColor: '#40506A' }]} pointerEvents="none"><View style={styles.premiumPreviewViewportContent}>{children}</View></View>;
+function PremiumPreviewViewport({ children, styles, surface, border }: { children: React.ReactNode; styles: any; surface: string; border: string }) {
+  return <View style={[styles.premiumPreviewViewport, { backgroundColor: surface, borderColor: border }]} pointerEvents="none"><View style={styles.premiumPreviewViewportContent}>{children}</View></View>;
 }
 
-function PremiumFeatureEntryCard({ title, active, chicPalette, onPress, styles, primaryText, accent, accentStrong, border }: { title: string; active: boolean; chicPalette?: ChicThemePalette; onPress: () => void; styles: any; primaryText: string; accent: string; accentStrong: string; border: string }) {
+function PremiumFeatureEntryCard({ icon, title, active, chicPalette, onPress, styles, primaryText, accent, accentStrong, border }: { icon: string; title: string; active: boolean; chicPalette?: ChicThemePalette; onPress: () => void; styles: any; primaryText: string; accent: string; accentStrong: string; border: string }) {
   return <Pressable onPress={onPress} style={[styles.premiumEntryCard, { width: 132, minHeight: 44, backgroundColor: 'transparent', borderWidth: 0, borderBottomWidth: active ? 2 : 1, borderBottomColor: active ? accent : border, borderRadius: 0, paddingHorizontal: 2, paddingVertical: 9 }]}>
-    <Text numberOfLines={2} style={[styles.premiumEntryTitle, { color: active ? accentStrong : primaryText, marginTop: 0 }, chicPalette && { color: active ? chicPalette.accentStrong : chicPalette.textPrimary }]}>{title}</Text>
+    <Text style={[styles.premiumFeatureIcon, { color: active ? accent : primaryText }, chicPalette && { color: active ? chicPalette.accent : chicPalette.textSecondary }]}>{icon}</Text>
+    <Text numberOfLines={2} style={[styles.premiumEntryTitle, { color: active ? accentStrong : primaryText, marginTop: 3 }, chicPalette && { color: active ? chicPalette.accentStrong : chicPalette.textPrimary }]}>{title}</Text>
   </Pressable>;
 }
 
-function PremiumFeatureDetail({ kind, title, description, designMode, chicPalette, styles, renderReadOnlyPreview }: { kind: PremiumPreviewKind; title: string; description: string; designMode: DesignMode; chicPalette?: ChicThemePalette; styles: any; renderReadOnlyPreview?: (kind: PremiumPreviewKind) => React.ReactNode }) {
+function PremiumFeatureDetail({ icon, kind, title, description, designMode, chicPalette, styles, renderReadOnlyPreview, surface, border, primaryText, secondaryText, accentColor }: { icon: string; kind: PremiumPreviewKind; title: string; description: string; designMode: DesignMode; chicPalette?: ChicThemePalette; styles: any; renderReadOnlyPreview?: (kind: PremiumPreviewKind) => React.ReactNode; surface: string; border: string; primaryText: string; secondaryText: string; accentColor: string }) {
   const isMono = designMode !== 'chic';
   const previewStyles = designMode === 'dark' ? { ...styles, ...darkPreviewStyleOverrides } : styles;
-  return <View style={[styles.premiumFeatureBlock, { backgroundColor: 'transparent', borderWidth: 0, borderLeftWidth: 0, borderRadius: 0, marginBottom: 12, overflow: 'visible' }, isMono && styles.premiumFeatureMinimal, designMode === 'dark' && styles.premiumFeatureDark, designMode === 'chic' && styles.premiumFeatureChic, { backgroundColor: 'transparent', borderWidth: 0, borderLeftWidth: 0 }]}>
-    <View style={styles.premiumFeatureInner}>
-      <PremiumPreviewViewport styles={styles} dark={designMode === 'dark'}>{renderReadOnlyPreview?.(kind) ?? <LegacyPreviewFallback kind={kind} styles={previewStyles} />}</PremiumPreviewViewport>
-      <View style={[styles.premiumFeatureTextPlate, { backgroundColor: 'transparent', borderWidth: 0, paddingHorizontal: 0, paddingTop: 14 }]}><Text style={[styles.premiumFeatureTitle, isMono && styles.premiumFeatureTitleMinimal, designMode === 'dark' && styles.premiumFeatureTitleDark, designMode === 'chic' && chicPalette && { color: chicPalette.textPrimary }]}>{title}</Text><Text style={[styles.premiumFeatureDescription, isMono && styles.premiumFeatureDescriptionMinimal, designMode === 'dark' && styles.premiumFeatureDescriptionDark, designMode === 'chic' && chicPalette && { color: chicPalette.textSecondary }]}>{description}</Text></View>
-    </View>
+  return <View style={styles.premiumFeatureBlock}>
+    <PremiumPreviewViewport styles={styles} surface={surface} border={border}>{renderReadOnlyPreview?.(kind) ?? <LegacyPreviewFallback kind={kind} styles={previewStyles} />}</PremiumPreviewViewport>
+    <View style={[styles.premiumFeatureTextPlate, { paddingHorizontal: 0, paddingTop: 16 }]}><View style={styles.premiumDetailHeading}><Text style={[styles.premiumDetailIcon, { color: accentColor }]}>{icon}</Text><Text style={[styles.premiumFeatureTitle, { color: primaryText }]}>{title}</Text></View><Text style={[styles.premiumFeatureDescription, { color: secondaryText }]}>{description}</Text></View>
   </View>;
 }
 
@@ -149,7 +154,7 @@ export function PremiumModal({ visible, initialFeatureId, designMode, chicPalett
   const surfaceSoft = designMode === 'chic' && chicPalette ? chicPalette.cardTint : theme.colors.secondarySurface;
   const primaryText = designMode === 'chic' && chicPalette ? chicPalette.textPrimary : theme.colors.primaryText;
   const secondaryText = designMode === 'chic' && chicPalette ? chicPalette.textSecondary : theme.colors.secondaryText;
-  const accentText = designMode === 'chic' && chicPalette ? chicPalette.onAccent : designMode === 'dark' ? theme.colors.screenBackground : '#FFFFFF';
+  const accentText = designMode === 'chic' && chicPalette ? chicPalette.onAccent : designMode === 'dark' ? theme.colors.screenBackground : theme.colors.surface;
   const previewStyles = {
     ...styles,
     ...(designMode === 'dark' ? darkPreviewStyleOverrides : {}),
@@ -203,16 +208,19 @@ export function PremiumModal({ visible, initialFeatureId, designMode, chicPalett
   const selectedFeature = PREMIUM_GUIDE_FEATURES.find((feature) => feature.id === selectedFeatureId) ?? PREMIUM_GUIDE_FEATURES[initialIndex] ?? PREMIUM_GUIDE_FEATURES[0]!;
   const selectedIndex = Math.max(0, PREMIUM_GUIDE_FEATURES.findIndex((feature) => feature.id === selectedFeature.id));
   const [purchaseOpen, setPurchaseOpen] = useState(false);
+  const [comparisonOpen, setComparisonOpen] = useState(false);
   const [purchaseStatus, setPurchaseStatus] = useState<'idle' | 'processing' | 'success' | 'unavailable'>('idle');
   useEffect(() => {
     if (!visible) return;
     setSelectedFeatureId(initialFeatureId);
     setPurchaseOpen(false);
+    setComparisonOpen(false);
     setPurchaseStatus('idle');
   }, [initialFeatureId, visible]);
   useEffect(() => {
     if (!visible) {
       setPurchaseOpen(false);
+      setComparisonOpen(false);
       setPurchaseStatus('idle');
     }
   }, [visible]);
@@ -235,13 +243,14 @@ export function PremiumModal({ visible, initialFeatureId, designMode, chicPalett
           </View>
           {purchaseOpen ? <Pressable style={[styles.premiumHeaderClose, { borderColor: accent }]} onPress={() => { setPurchaseOpen(false); setPurchaseStatus('idle'); }}><Text style={[styles.premiumCloseButtonText, { color: accentStrong }]}>戻る</Text></Pressable> : <Pressable style={[styles.premiumHeaderClose, { borderColor: accent }]} onPress={onClose}><Text style={[styles.premiumCloseButtonText, { color: accentStrong }]}>閉じる</Text></Pressable>}
         </View>
-        {!purchaseOpen && <Pressable accessibilityRole="button" style={[styles.premiumCloseButton, { borderColor: accent, backgroundColor: accent, marginHorizontal: 8, marginTop: 0, marginBottom: 8 }]} onPress={() => setPurchaseOpen(true)}><Text style={[styles.premiumCloseButtonText, { color: accentText }]}>{planTier === 'premium' ? 'Premiumの状態を確認' : 'Premiumを始める'}</Text></Pressable>}
+        {!purchaseOpen && <View style={styles.premiumTopActions}><Pressable accessibilityRole="button" style={[styles.premiumTopCta, { backgroundColor: accent }]} onPress={() => setPurchaseOpen(true)}><Text style={[styles.premiumTopCtaText, { color: accentText }]}>{planTier === 'premium' ? 'Premium有効中' : 'Premiumを始める'}</Text></Pressable><Pressable accessibilityRole="button" style={styles.premiumComparisonLink} onPress={() => setComparisonOpen(true)}><Text style={[styles.premiumComparisonLinkText, { color: accentStrong }]}>Freeとの違いを見る</Text></Pressable></View>}
         {purchaseOpen ? <ScrollView style={styles.premiumCarouselArea} contentContainerStyle={styles.premiumModalScroll} showsVerticalScrollIndicator={false}>
           <View style={[styles.premiumPurchasePanel, { backgroundColor: surface, borderColor: accent }]}>
             <Text style={[styles.premiumPurchaseTitle, { color: primaryText }]}>Premiumを始める</Text>
-            <Text style={[styles.premiumPurchaseCopy, { color: secondaryText }]}>今日の記録、今月を振り返る、選べるデザイン、行動分析、詳細な履歴・検索などを利用できます。</Text>
-            <View style={[styles.premiumPricingRow, { backgroundColor: surfaceSoft }]}><View style={{ flex: 1 }}><Text style={[styles.premiumPricingTitle, { color: primaryText }]}>Premium</Text><Text style={[styles.premiumPricingCopy, { color: secondaryText }]}>料金はApp Storeで確認できます</Text></View><Text style={[styles.premiumPricingValue, { color: accentStrong }]}>App Storeで確認</Text></View>
-            <Text style={[styles.premiumPurchaseNote, { color: secondaryText }]}>価格は購入前にApp Storeで表示されます。</Text>
+            <Text style={[styles.premiumPurchaseCopy, { color: secondaryText }]}>記録・振り返り・デザイン・分析を、Rhythmの使い方に合わせて広げます。</Text>
+            <View style={[styles.premiumPurchaseBenefits, { borderTopColor: theme.colors.border, borderBottomColor: theme.colors.border }]}><Text style={[styles.premiumPurchaseBenefit, { color: primaryText }]}>今日の記録と今月の振り返り</Text><Text style={[styles.premiumPurchaseBenefit, { color: primaryText }]}>行動分析・詳細な履歴・検索</Text><Text style={[styles.premiumPurchaseBenefit, { color: primaryText }]}>選べるデザイン・写真・アファメーション</Text></View>
+            <View style={[styles.premiumPricingRow, { backgroundColor: surfaceSoft }]}><View style={{ flex: 1 }}><Text style={[styles.premiumPricingTitle, { color: primaryText }]}>月額 / 年額</Text><Text style={[styles.premiumPricingCopy, { color: secondaryText }]}>料金はApp Storeで確認できます</Text></View><Text style={[styles.premiumPricingValue, { color: accentStrong }]}>App Storeで確認</Text></View>
+            <Text style={[styles.premiumPurchaseNote, { color: secondaryText }]}>購入前にApp Storeの表示をご確認ください。いつでも解約できます。</Text>
             {purchaseStatus === 'success' && <View style={[styles.premiumPurchaseStatus, { borderColor: accent }]}><Text style={[styles.premiumPurchaseStatusTitle, { color: accentStrong }]}>Premiumを有効にしました</Text><Text style={[styles.premiumPurchaseStatusCopy, { color: secondaryText }]}>すべてのPremium機能を利用できます。</Text></View>}
             {purchaseStatus === 'unavailable' && <View style={[styles.premiumPurchaseStatus, { borderColor: theme.colors.border }]}><Text style={[styles.premiumPurchaseStatusTitle, { color: primaryText }]}>購入処理を準備しています</Text><Text style={[styles.premiumPurchaseStatusCopy, { color: secondaryText }]}>現在はApp Storeの購入画面を利用できません。しばらくしてから再度お試しください。</Text></View>}
             <Pressable disabled={purchaseStatus === 'processing' || planTier === 'premium'} onPress={() => {
@@ -261,13 +270,11 @@ export function PremiumModal({ visible, initialFeatureId, designMode, chicPalett
           <Pressable style={styles.premiumTextLink} onPress={onClose}><Text style={[styles.premiumTextLinkText, { color: accentStrong }]}>閉じる</Text></Pressable>
         </ScrollView> : <ScrollView style={styles.premiumCarouselArea} contentContainerStyle={styles.premiumModalScroll} showsVerticalScrollIndicator={false}>
           <ScrollView ref={featurePickerRef} horizontal showsHorizontalScrollIndicator={false} style={styles.premiumFeaturePicker} contentContainerStyle={styles.premiumFeaturePickerContent}>
-            {PREMIUM_GUIDE_FEATURES.map((feature) => <PremiumFeatureEntryCard key={feature.id} title={feature.title} active={feature.id === selectedFeature.id} chicPalette={chicPalette} accent={accent} accentStrong={accentStrong} primaryText={primaryText} border={theme.colors.border} onPress={() => setSelectedFeatureId(feature.id)} styles={styles} />)}
+            {PREMIUM_GUIDE_FEATURES.map((feature) => <PremiumFeatureEntryCard key={feature.id} icon={PREMIUM_FEATURE_ICONS[feature.id]} title={feature.title} active={feature.id === selectedFeature.id} chicPalette={chicPalette} accent={accent} accentStrong={accentStrong} primaryText={primaryText} border={theme.colors.border} onPress={() => setSelectedFeatureId(feature.id)} styles={styles} />)}
           </ScrollView>
           <View style={styles.premiumFeatureStage}>
-            <PremiumFeatureDetail key={selectedFeature.id} kind={selectedFeature.kind} title={selectedFeature.title} description={selectedFeature.description} designMode={designMode} chicPalette={chicPalette} styles={styles} renderReadOnlyPreview={renderReadOnlyPreview} />
-            {selectedFeature.id === 'month' && <View style={styles.premiumHistoryNote}><Text style={styles.premiumHistoryTitle}>月表示と過去の記録</Text><Text style={styles.premiumHistoryCopy}>7日を超えた予定や完了・集中・出発の記録も確認できます。</Text></View>}
+            <PremiumFeatureDetail key={selectedFeature.id} icon={PREMIUM_FEATURE_ICONS[selectedFeature.id]} kind={selectedFeature.kind} title={selectedFeature.title} description={selectedFeature.description} designMode={designMode} chicPalette={chicPalette} styles={styles} renderReadOnlyPreview={renderReadOnlyPreview} surface={surface} border={theme.colors.border} primaryText={primaryText} secondaryText={secondaryText} accentColor={accent} />
           </View>
-          <PremiumComparison styles={styles} primaryText={primaryText} secondaryText={secondaryText} border={theme.colors.border} surfaceSoft={surfaceSoft} accent={accent} />
           <View style={[styles.premiumPricingSection, { borderTopColor: theme.colors.border }]}>
             <Text style={[styles.premiumSectionTitle, { color: primaryText }]}>料金</Text>
             <View style={[styles.premiumPricingFreeRow, { borderBottomColor: theme.colors.border }]}><Text style={[styles.premiumPricingTitle, { color: primaryText }]}>Free</Text><Text style={[styles.premiumPricingCopy, { color: secondaryText }]}>¥0 / ずっと無料</Text></View>
@@ -277,6 +284,7 @@ export function PremiumModal({ visible, initialFeatureId, designMode, chicPalett
           {planTier !== 'premium' && <Pressable accessibilityRole="button" style={[styles.premiumBottomCta, { backgroundColor: accent }]} onPress={() => setPurchaseOpen(true)}><Text style={[styles.premiumBottomCtaText, { color: accentText }]}>Premiumを始める</Text></Pressable>}
           <Pressable style={styles.premiumTextLink} onPress={onClose}><Text style={[styles.premiumTextLinkText, { color: accentStrong }]}>Rhythmに戻る</Text></Pressable>
         </ScrollView>}
+        {comparisonOpen && <Modal visible transparent animationType="slide" onRequestClose={() => setComparisonOpen(false)}><Pressable style={styles.modalBackdrop} onPress={() => setComparisonOpen(false)}><Pressable style={[styles.premiumComparisonSheet, { backgroundColor: theme.colors.screenBackground, borderColor: theme.colors.border }]} onPress={(event) => event.stopPropagation()}><View style={styles.modalHandle} /><View style={styles.premiumComparisonSheetHeader}><View style={{ flex: 1 }}><Text style={[styles.premiumSectionTitle, { color: primaryText }]}>Freeとの違い</Text><Text style={[styles.premiumSectionCopy, { color: secondaryText }]}>Premiumで広がる機能を確認できます。</Text></View><Pressable onPress={() => setComparisonOpen(false)} style={[styles.premiumHeaderClose, { borderColor: accent }]}><Text style={[styles.premiumCloseButtonText, { color: accentStrong }]}>閉じる</Text></Pressable></View><ScrollView contentContainerStyle={styles.premiumComparisonSheetScroll} showsVerticalScrollIndicator={false}><PremiumComparison styles={styles} primaryText={primaryText} secondaryText={secondaryText} border={theme.colors.border} surfaceSoft={surfaceSoft} accent={accent} /><Pressable accessibilityRole="button" style={[styles.premiumBottomCta, { backgroundColor: accent }]} onPress={() => { setComparisonOpen(false); setPurchaseOpen(true); }}><Text style={[styles.premiumBottomCtaText, { color: accentText }]}>Premiumを始める</Text></Pressable><Pressable style={styles.premiumTextLink} onPress={() => setComparisonOpen(false)}><Text style={[styles.premiumTextLinkText, { color: accentStrong }]}>閉じる</Text></Pressable></ScrollView></Pressable></Pressable></Modal>}
       </Pressable>
     </Pressable>
   </Modal>;
