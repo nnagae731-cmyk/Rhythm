@@ -4,8 +4,6 @@ import { ChicPattern, ChicThemePalette, DesignMode, getThemeTokens } from './the
 import { Affirmation, AffirmationCustomText, MonthlyWishState, Wish, WishAction, WishMonthMap } from './types';
 import { PlanTier } from './premiumAccess';
 import { calculateWishProgress, wishMonthKey } from './features/wish/wishUtils';
-import { BThemeRibbonDecoration } from './components/BThemeRibbonDecoration';
-import { CThemeRibbonDecoration } from './components/CThemeRibbonDecoration';
 import { RewardedAccessModal, RewardedAccessResult } from './components/RewardedAccessModal';
 import { AffirmationSettingsCard } from './components/AffirmationSettingsCard';
 
@@ -33,6 +31,8 @@ type WishScreenProps = {
   monthlyGoalUnlocked?: boolean;
   monthlyGoalRewardProgress?: { current: number; required: number };
   onRequestMonthlyGoalReward?: () => Promise<RewardedAccessResult> | RewardedAccessResult;
+  topImageUri?: string;
+  onPickTopImage?: () => void;
   onPremium?: () => void;
   onBack: () => void;
 };
@@ -76,7 +76,7 @@ function formatHistoryDate(value?: string) {
   return Number.isNaN(date.getTime()) ? '' : `${date.getMonth() + 1}/${date.getDate()} 完了`;
 }
 
-export function WishScreen({ designMode: rawDesignMode, chicPattern, chicPalette, monthLabel, state, wishMonths = {}, onSaveState, onCreateTaskFromAction, canCreateWish = true, wishRewardProgress, onRequestWishReward, onWishCreated, affirmations, affirmationCustomTexts, planTier, onSaveAffirmation, onDeleteAffirmation, onSaveAffirmationCustomText, onDeleteAffirmationCustomText, canCreateWishAction = true, monthlyGoalUnlocked = false, monthlyGoalRewardProgress, onRequestMonthlyGoalReward, onPremium, onBack }: WishScreenProps) {
+export function WishScreen({ designMode: rawDesignMode, chicPalette, monthLabel, state, wishMonths = {}, onSaveState, onCreateTaskFromAction, canCreateWish = true, wishRewardProgress, onRequestWishReward, onWishCreated, affirmations, affirmationCustomTexts, planTier, onSaveAffirmation, onDeleteAffirmation, onSaveAffirmationCustomText, onDeleteAffirmationCustomText, canCreateWishAction = true, monthlyGoalUnlocked = false, monthlyGoalRewardProgress, onRequestMonthlyGoalReward, topImageUri, onPickTopImage, onPremium, onBack }: WishScreenProps) {
   // Mono DarkはMono Lightと同じレイアウトを使い、色だけを反転する。
   const designMode: 'minimal' | 'chic' = rawDesignMode === 'dark' || rawDesignMode === 'photo' ? 'minimal' : rawDesignMode;
   const isDark = rawDesignMode === 'dark';
@@ -94,11 +94,17 @@ export function WishScreen({ designMode: rawDesignMode, chicPattern, chicPalette
   const [historyMonthKey, setHistoryMonthKey] = useState<string>();
   const [monthlyGoalDraft, setMonthlyGoalDraft] = useState(state.monthlyGoal ?? '');
   const [monthlyGoalEditing, setMonthlyGoalEditing] = useState(!(state.monthlyGoal ?? '').trim());
+  const [selectedWishIndex, setSelectedWishIndex] = useState(0);
+  const [wishPageWidth, setWishPageWidth] = useState(0);
 
   useEffect(() => {
     setMonthlyGoalDraft(state.monthlyGoal ?? '');
     if (!(state.monthlyGoal ?? '').trim()) setMonthlyGoalEditing(true);
   }, [state.monthlyGoal]);
+
+  useEffect(() => {
+    setSelectedWishIndex((current) => Math.min(current, Math.max(0, state.wishes.length - 1)));
+  }, [state.wishes.length]);
 
   const commit = (updater: (current: MonthlyWishState) => MonthlyWishState) => {
     onSaveState(updater);
@@ -219,6 +225,8 @@ export function WishScreen({ designMode: rawDesignMode, chicPattern, chicPalette
 
   const wishes = state.wishes;
   const actions = state.actions;
+  const selectedWish = wishes[selectedWishIndex];
+  const selectedActions = selectedWish ? actions.filter((action) => action.wishId === selectedWish.id) : [];
   const historyMonths = useMemo(() => Object.entries(wishMonths)
     .filter(([monthKey, monthState]) => monthKey !== wishMonthKey() && (Boolean(monthState.monthlyGoal?.trim()) || (monthState.wishes ?? []).length > 0 || (monthState.actions ?? []).length > 0))
     .sort(([left], [right]) => right.localeCompare(left)), [wishMonths]);
@@ -230,19 +238,28 @@ export function WishScreen({ designMode: rawDesignMode, chicPattern, chicPalette
       <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
           <View style={styles.pageHeader}>
-            <Text style={[styles.pageHeaderTitle, { color: rawDesignMode === 'chic' && palette ? palette.textPrimary : theme.colors.primaryText }]}>叶えたいこと</Text>
+            <View>
+              <Text style={[styles.pageHeaderEyebrow, { color: rawDesignMode === 'chic' && palette ? palette.accent : theme.colors.primaryAccent }]}>{monthLabel}</Text>
+              <Text style={[styles.pageHeaderTitle, { color: rawDesignMode === 'chic' && palette ? palette.textPrimary : theme.colors.primaryText }]}>叶えたいこと</Text>
+            </View>
             <Pressable onPress={() => { setHistoryMonthKey(undefined); setHistoryOpen(true); }} hitSlop={8}>
               <Text style={[styles.pageHeaderLink, { color: rawDesignMode === 'chic' && palette ? palette.accent : theme.colors.primaryAccent }]}>過去を見る ›</Text>
             </Pressable>
           </View>
-          <SectionCard
-            designMode={designMode}
-            dark={isDark}
-            chicPattern={chicPattern}
-            chicPalette={palette}
-            title="今月の目標"
-            subtitle={monthLabel}
-          >
+
+          {topImageUri ? (
+            <View style={[styles.visionImageWrap, { borderColor: rawDesignMode === 'chic' && palette ? palette.border : theme.colors.border, backgroundColor: rawDesignMode === 'chic' && palette ? palette.cardSurface : theme.colors.surface }]}>
+              <Image source={{ uri: topImageUri }} resizeMode="cover" style={styles.visionImage} />
+              {onPickTopImage ? <Pressable accessibilityLabel="トップ画像を変更" onPress={onPickTopImage} style={[styles.visionImageEdit, { backgroundColor: rawDesignMode === 'chic' && palette ? palette.cardSurface : theme.colors.surface, borderColor: rawDesignMode === 'chic' && palette ? palette.border : theme.colors.border }]}><Text style={{ color: rawDesignMode === 'chic' && palette ? palette.accent : theme.colors.primaryAccent }}>編集</Text></Pressable> : null}
+            </View>
+          ) : onPickTopImage ? (
+            <Pressable style={[styles.topImageLink, { borderBottomColor: rawDesignMode === 'chic' && palette ? palette.border : theme.colors.border }]} onPress={onPickTopImage}>
+              <View style={styles.topImageLinkCopy}><Text style={[styles.topImageLinkTitle, { color: rawDesignMode === 'chic' && palette ? palette.textPrimary : theme.colors.primaryText }]}>トップ画像を設定</Text><Text style={[styles.topImageLinkHint, { color: rawDesignMode === 'chic' && palette ? palette.textSecondary : theme.colors.secondaryText }]}>写真を添えて、今月の方向性を眺める</Text></View><Text style={[styles.itemChevron, { color: rawDesignMode === 'chic' && palette ? palette.accent : theme.colors.secondaryText }]}>›</Text>
+            </Pressable>
+          ) : null}
+
+          <View style={[styles.visionHero, rawDesignMode === 'chic' && palette ? { borderBottomColor: palette.border } : { borderBottomColor: theme.colors.border }]}>
+            <Text style={[styles.visionEyebrow, { color: rawDesignMode === 'chic' && palette ? palette.accent : theme.colors.primaryAccent }]}>今月のテーマ</Text>
             {monthlyGoalUnlocked ? (
               monthlyGoalEditing ? (
                 <View style={[styles.themePanel, designMode === 'minimal' ? styles.themePanelMinimal : styles.themePanelChic, isDark && styles.themePanelDark, designSubtle]}>
@@ -253,164 +270,42 @@ export function WishScreen({ designMode: rawDesignMode, chicPattern, chicPalette
                   </View>
                 </View>
               ) : (
-                <Pressable style={[styles.savedThemeCard, isDark && styles.savedThemeCardDark]} onPress={() => setMonthlyGoalEditing(true)}>
-                  <Text style={[styles.savedThemeText, { color: rawDesignMode === 'chic' && palette ? palette.textPrimary : theme.colors.primaryText }]}>{state.monthlyGoal}</Text>
-                  <Text style={[styles.savedThemeEdit, { color: rawDesignMode === 'chic' && palette ? palette.accentStrong : theme.colors.primaryAccent }]}>編集</Text>
+                <Pressable onPress={() => setMonthlyGoalEditing(true)}>
+                  <Text style={[styles.visionHeroText, { color: rawDesignMode === 'chic' && palette ? palette.textPrimary : theme.colors.primaryText }]}>{state.monthlyGoal}</Text>
+                  <Text style={[styles.visionEditHint, { color: rawDesignMode === 'chic' && palette ? palette.accent : theme.colors.primaryAccent }]}>タップして編集</Text>
                 </Pressable>
               )
             ) : (
-              <View>
-                <Text style={[styles.emptyText, { color: theme.colors.secondaryText }]}>今月いちばん意識したいことを1つ決めて、毎日の行動につなげます。</Text>
-                <Text style={[styles.itemMeta, { color: theme.colors.secondaryText, marginTop: 8 }]}>広告を5回見ると、今月の目標を設定できます。 {monthlyGoalRewardProgress?.current ?? 0} / {monthlyGoalRewardProgress?.required ?? 5} 回視聴済み</Text>
-                <Pressable style={[styles.addRow, designMode === 'minimal' ? styles.addRowMinimal : styles.addRowChic, isDark && styles.addRowDark, designSubtle]} onPress={() => setRewardPrompt('monthlyGoal')}><Text style={[styles.addRowText, { color: darkAccent }]}>広告を見て取得</Text></Pressable>
-              </View>
+              <View><Text style={[styles.visionEmptyText, { color: theme.colors.secondaryText }]}>今月の方向性を1つ決めて、毎日の行動につなげます。</Text><Text style={[styles.itemMeta, { color: theme.colors.secondaryText, marginTop: 8 }]}>広告を5回見ると、今月の目標を設定できます。 {monthlyGoalRewardProgress?.current ?? 0} / {monthlyGoalRewardProgress?.required ?? 5} 回視聴済み</Text><Pressable style={[styles.addRow, designMode === 'minimal' ? styles.addRowMinimal : styles.addRowChic, isDark && styles.addRowDark, designSubtle]} onPress={() => setRewardPrompt('monthlyGoal')}><Text style={[styles.addRowText, { color: darkAccent }]}>広告を見て取得</Text></Pressable></View>
             )}
-          </SectionCard>
+          </View>
 
-          <AffirmationSettingsCard
-            affirmations={affirmations}
-            customTexts={affirmationCustomTexts}
-            designMode={rawDesignMode}
-            chicPalette={palette}
-            planTier={planTier}
-            onPremium={onPremium ?? (() => undefined)}
-            onSave={onSaveAffirmation}
-            onDelete={onDeleteAffirmation}
-            onSaveCustomText={onSaveAffirmationCustomText}
-            onDeleteCustomText={onDeleteAffirmationCustomText}
-            styles={styles}
-            compact
-          />
+          <View style={[styles.visionSection, rawDesignMode === 'chic' && palette ? { borderBottomColor: palette.border } : { borderBottomColor: theme.colors.border }]}>
+            <View style={styles.sectionHeaderInline}><View><Text style={[styles.visionSectionTitle, { color: rawDesignMode === 'chic' && palette ? palette.textPrimary : theme.colors.primaryText }]}>叶えたいこと</Text><Text style={[styles.sectionSubtitle, { color: rawDesignMode === 'chic' && palette ? palette.textSecondary : theme.colors.secondaryText }]}>今月の願い</Text></View><Pressable onPress={() => openWishEditor()}><Text style={[styles.lightAction, { color: rawDesignMode === 'chic' && palette ? palette.accent : theme.colors.primaryAccent }]}>＋ 追加</Text></Pressable></View>
+            {wishes.length > 0 ? <>
+              <ScrollView horizontal pagingEnabled showsHorizontalScrollIndicator={false} contentContainerStyle={styles.wishPager} onLayout={(event) => setWishPageWidth(event.nativeEvent.layout.width)} onMomentumScrollEnd={(event) => { const width = Math.max(1, event.nativeEvent.layoutMeasurement.width); setSelectedWishIndex(Math.round(event.nativeEvent.contentOffset.x / width)); }}>
+                {wishes.map((wish) => <Pressable key={wish.id} style={[styles.wishPage, { width: wishPageWidth || 320 }]} onPress={() => openWishEditor(wish)}><Text style={[styles.wishHeroTitle, { color: rawDesignMode === 'chic' && palette ? palette.textPrimary : theme.colors.primaryText }, wish.completed && styles.itemTitleDone]}>{wish.title}</Text><Text style={[styles.wishHeroMeta, { color: rawDesignMode === 'chic' && palette ? palette.textSecondary : theme.colors.secondaryText }]}>{wish.completed ? '叶いました' : 'ここから一歩ずつ'}</Text></Pressable>)}
+              </ScrollView>
+              <View style={styles.pageIndicators}>{wishes.map((wish, index) => <View key={wish.id} style={[styles.pageIndicator, { backgroundColor: index === selectedWishIndex ? (rawDesignMode === 'chic' && palette ? palette.accent : theme.colors.primaryAccent) : (rawDesignMode === 'chic' && palette ? palette.border : theme.colors.border) }]} />)}</View>
+            </> : <Text style={[styles.visionEmptyText, { color: theme.colors.secondaryText }]}>まだありません。今月の願いを1つ書いてみよう。</Text>}
+            {!canCreateWish && wishRewardProgress ? <Text style={[styles.itemMeta, { color: theme.colors.secondaryText, marginTop: 8 }]}>広告を2回見ると、叶えたいことを1件追加できます。 {wishRewardProgress.current} / {wishRewardProgress.required}</Text> : null}
+            <Pressable style={[styles.lightActionRow, { borderTopColor: rawDesignMode === 'chic' && palette ? palette.border : theme.colors.border }]} onPress={() => openWishEditor()}><Text style={[styles.lightAction, { color: rawDesignMode === 'chic' && palette ? palette.accent : theme.colors.primaryAccent }]}>叶えたいことを追加</Text><Text style={[styles.itemChevron, { color: rawDesignMode === 'chic' && palette ? palette.accent : theme.colors.secondaryText }]}>›</Text></Pressable>
+          </View>
 
-          <SectionCard
-            designMode={designMode}
-            dark={isDark}
-            chicPattern={chicPattern}
-            chicPalette={palette}
-            title="叶えたいこと"
-            subtitle="今月の願い"
-          >
-            <View style={styles.listGap}>
-              {wishes.length === 0 ? (
-                <Text style={[styles.emptyText, { color: theme.colors.secondaryText }]}>まだありません。今月の願いを1つ書いてみよう。</Text>
-              ) : wishes.map((wish) => (
-                <Pressable
-                  key={wish.id}
-                  style={[styles.itemRow, designMode === 'minimal' ? styles.itemRowMinimal : styles.itemRowChic, isDark && styles.itemRowDark, wish.completed && styles.itemRowDone, designMode === 'chic' && palette && { borderBottomColor: palette.border }]}
-                  onPress={() => openWishEditor(wish)}
-                >
-                  <Pressable
-                    accessibilityRole="checkbox"
-                    accessibilityState={{ checked: wish.completed }}
-                    style={[styles.completionCheck, designMode === 'minimal' && styles.completionCheckMinimal, isDark && styles.completionCheckDark, wish.completed && styles.completionCheckActive, wish.completed && isDark && styles.completionCheckActiveDark, designMode === 'chic' && palette && { borderColor: palette.accent, backgroundColor: wish.completed ? palette.accent : palette.cardSurface }]}
-                    onPress={(event) => { event.stopPropagation(); toggleWish(wish.id); }}
-                  >
-                    <Text style={[styles.completionCheckText, isDark && styles.completionCheckTextDark, designMode === 'minimal' && { color: theme.colors.primaryAccent }, rawDesignMode === 'chic' && palette && { color: palette.accent }, wish.completed && styles.completionCheckTextActive]}>{wish.completed ? '✓' : ''}</Text>
-                  </Pressable>
-                  <View style={styles.itemBody}>
-                    <Text style={[styles.itemTitle, isDark && styles.itemTitleDark, wish.completed && styles.itemTitleDone, designText]}>{wish.title}</Text>
-                    {wish.completed ? <Text style={[styles.itemMeta, { color: theme.colors.secondaryText }]}>完了{wish.completedAt ? ` ・ ${new Date(wish.completedAt).getMonth() + 1}/${new Date(wish.completedAt).getDate()}` : ''}</Text> : null}
-                  </View>
-                  <Text style={[styles.itemChevron, { color: rawDesignMode === 'chic' && palette ? palette.accent : theme.colors.secondaryText }]}>›</Text>
-                </Pressable>
-              ))}
-            </View>
+          <View style={[styles.visionSection, rawDesignMode === 'chic' && palette ? { borderBottomColor: palette.border } : { borderBottomColor: theme.colors.border }]}>
+            <View style={styles.sectionHeaderInline}><View><Text style={[styles.visionSectionTitle, { color: rawDesignMode === 'chic' && palette ? palette.textPrimary : theme.colors.primaryText }]}>そのためにやること</Text><Text style={[styles.sectionSubtitle, { color: rawDesignMode === 'chic' && palette ? palette.textSecondary : theme.colors.secondaryText }]}>{selectedWish ? selectedWish.title : '叶えたいことに紐づく行動'}</Text></View>{canCreateWishAction && selectedWish ? <Pressable onPress={() => openActionEditor()}><Text style={[styles.lightAction, { color: rawDesignMode === 'chic' && palette ? palette.accent : theme.colors.primaryAccent }]}>＋ 追加</Text></Pressable> : null}</View>
+            {canCreateWishAction ? selectedWish ? selectedActions.length > 0 ? <View style={styles.actionList}>{selectedActions.map((action) => <Pressable key={action.id} style={styles.actionRow} onPress={() => openActionEditor(action)}><Pressable accessibilityRole="checkbox" accessibilityState={{ checked: action.completed }} onPress={(event) => { event.stopPropagation(); toggleAction(action.id); }} style={[styles.actionCheck, { borderColor: rawDesignMode === 'chic' && palette ? palette.accent : theme.colors.border, backgroundColor: action.completed ? (rawDesignMode === 'chic' && palette ? palette.accent : theme.colors.primaryAccent) : 'transparent' }]}><Text style={{ color: rawDesignMode === 'chic' && palette ? palette.onAccent : '#FFFFFF', fontWeight: '900' }}>{action.completed ? '✓' : ''}</Text></Pressable><Text style={[styles.actionTitle, { color: rawDesignMode === 'chic' && palette ? palette.textPrimary : theme.colors.primaryText }, action.completed && styles.itemTitleDone]}>{action.title}</Text><Text style={[styles.itemChevron, { color: rawDesignMode === 'chic' && palette ? palette.accent : theme.colors.secondaryText }]}>›</Text></Pressable>)}</View> : <Text style={[styles.visionEmptyText, { color: theme.colors.secondaryText }]}>この願いのための行動を追加してみよう。</Text> : <Text style={[styles.visionEmptyText, { color: theme.colors.secondaryText }]}>先に叶えたいことを1つ作ると、行動を結びつけられます。</Text> : <Pressable style={[styles.lockedFeatureCard, isDark && styles.lockedFeatureCardDark, rawDesignMode === 'chic' && palette && { backgroundColor: palette.surfaceSubtle, borderColor: palette.border }]} onPress={onPremium}><Text style={[styles.lockedFeatureTitle, isDark && styles.lockedFeatureTitleDark, rawDesignMode === 'chic' && palette && { color: palette.textPrimary }]}>🔒 叶えるための行動</Text><Text style={[styles.lockedFeatureText, isDark && styles.lockedFeatureTextDark, rawDesignMode === 'chic' && palette && { color: palette.textSecondary }]}>叶えたいことを、今日できる行動に分けられます。</Text><Text style={[styles.lockedFeatureCta, { color: rawDesignMode === 'chic' && palette ? palette.accent : darkAccent }]}>Premiumで利用できます</Text></Pressable>}
+          </View>
 
-            <Pressable style={[styles.addRow, designMode === 'minimal' ? styles.addRowMinimal : styles.addRowChic, isDark && styles.addRowDark, designSubtle]} onPress={() => openWishEditor()}>
-              <Text style={[styles.addRowText, { color: darkAccent }]}>＋ 叶えたいことを追加</Text>
-            </Pressable>
-            {!canCreateWish && wishRewardProgress && <Text style={[styles.itemMeta, { color: theme.colors.secondaryText, marginTop: 8 }]}>広告を2回見ると、叶えたいことを1件追加できます。 {wishRewardProgress.current} / {wishRewardProgress.required}</Text>}
-          </SectionCard>
+          <View style={[styles.visionSection, rawDesignMode === 'chic' && palette ? { borderBottomColor: palette.border } : { borderBottomColor: theme.colors.border }]}>
+            <View style={styles.sectionHeaderInline}><View><Text style={[styles.visionSectionTitle, { color: rawDesignMode === 'chic' && palette ? palette.textPrimary : theme.colors.primaryText }]}>今月の言葉</Text><Text style={[styles.sectionSubtitle, { color: rawDesignMode === 'chic' && palette ? palette.textSecondary : theme.colors.secondaryText }]}>アファメーション</Text></View></View>
+            <AffirmationSettingsCard affirmations={affirmations} customTexts={affirmationCustomTexts} designMode={rawDesignMode} chicPalette={palette} planTier={planTier} onPremium={onPremium ?? (() => undefined)} onSave={onSaveAffirmation} onDelete={onDeleteAffirmation} onSaveCustomText={onSaveAffirmationCustomText} onDeleteCustomText={onDeleteAffirmationCustomText} styles={styles} compact />
+          </View>
 
-          <SectionCard
-            designMode={designMode}
-            dark={isDark}
-            chicPattern={chicPattern}
-            chicPalette={palette}
-            title="叶えるための行動"
-            subtitle="行動"
-          >
-            {canCreateWishAction ? <>
-              {wishes.length === 0 ? (
-                <Text style={[styles.emptyText, { color: theme.colors.secondaryText }]}>先に叶えたいことを1つ作ると、行動を結びつけられます。</Text>
-              ) : null}
-              <View style={styles.listGap}>
-                {actions.length === 0 ? (
-                  <Text style={[styles.emptyText, { color: theme.colors.secondaryText }]}>行動はまだありません。</Text>
-                ) : actions.map((action) => {
-                  const wish = wishes.find((item) => item.id === action.wishId);
-                  return (
-                    <Pressable
-                      key={action.id}
-                      style={[styles.itemRow, designMode === 'minimal' ? styles.itemRowMinimal : styles.itemRowChic, isDark && styles.itemRowDark, action.completed && styles.itemRowDone, designMode === 'chic' && palette && { borderBottomColor: palette.border }]}
-                      onPress={() => openActionEditor(action)}
-                    >
-                      <Pressable
-                        accessibilityRole="checkbox"
-                        accessibilityState={{ checked: action.completed }}
-                        style={[styles.completionCheck, designMode === 'minimal' && styles.completionCheckMinimal, isDark && styles.completionCheckDark, action.completed && styles.completionCheckActive, action.completed && isDark && styles.completionCheckActiveDark, designMode === 'chic' && palette && { borderColor: palette.accent, backgroundColor: action.completed ? palette.accent : palette.cardSurface }]}
-                        onPress={(event) => { event.stopPropagation(); toggleAction(action.id); }}
-                      >
-                        <Text style={[styles.completionCheckText, isDark && styles.completionCheckTextDark, designMode === 'minimal' && { color: theme.colors.primaryAccent }, rawDesignMode === 'chic' && palette && { color: palette.accent }, action.completed && styles.completionCheckTextActive]}>{action.completed ? '✓' : ''}</Text>
-                      </Pressable>
-                      <View style={styles.itemBody}>
-                        <Text style={[styles.itemTitle, isDark && styles.itemTitleDark, action.completed && styles.itemTitleDone, designText]}>{action.title}</Text>
-                        <Text style={[styles.itemMeta, { color: theme.colors.secondaryText }]}>{wish ? wish.title : '願い未選択'}</Text>
-                        {action.completed ? <Text style={[styles.itemMeta, { color: theme.colors.secondaryText }]}>完了{action.completedAt ? ` ・ ${new Date(action.completedAt).getMonth() + 1}/${new Date(action.completedAt).getDate()}` : ''}</Text> : null}
-                      </View>
-                      <Text style={[styles.itemChevron, { color: rawDesignMode === 'chic' && palette ? palette.accent : theme.colors.secondaryText }]}>›</Text>
-                    </Pressable>
-                  );
-                })}
-              </View>
-
-              <Pressable
-                style={[styles.addRow, designMode === 'minimal' ? styles.addRowMinimal : styles.addRowChic, isDark && styles.addRowDark, !wishes.length && styles.addRowDisabled, designSubtle]}
-                onPress={() => wishes.length ? openActionEditor() : Alert.alert('先に叶えたいことを1つ作ってね')}
-              >
-                <Text style={[styles.addRowText, { color: rawDesignMode === 'dark' ? darkAccent : wishes.length ? theme.colors.primaryAccent : theme.colors.secondaryText }]}>＋ 行動を追加</Text>
-              </Pressable>
-            </> : (
-              <Pressable
-                style={[styles.lockedFeatureCard, isDark && styles.lockedFeatureCardDark, rawDesignMode === 'chic' && palette && { backgroundColor: palette.surfaceSubtle, borderColor: palette.border }]}
-                onPress={onPremium}
-              >
-                <Text style={[styles.lockedFeatureTitle, isDark && styles.lockedFeatureTitleDark, rawDesignMode === 'chic' && palette && { color: palette.textPrimary }]}>🔒 叶えるための行動</Text>
-                <Text style={[styles.lockedFeatureText, isDark && styles.lockedFeatureTextDark, rawDesignMode === 'chic' && palette && { color: palette.textSecondary }]}>叶えたいことを、今日できる行動に分けられます。</Text>
-                <Text style={[styles.lockedFeatureCta, { color: rawDesignMode === 'chic' && palette ? palette.accent : darkAccent }]}>Premiumで利用できます</Text>
-              </Pressable>
-            )}
-          </SectionCard>
-
-          <SectionCard
-            designMode={designMode}
-            chicPattern={chicPattern}
-            chicPalette={palette}
-            title="今月の進捗"
-            dark={isDark}
-            subtitle={canCreateWishAction ? `${progress.progress}%` : 'Premium限定'}
-          >
-            {canCreateWishAction ? (
-              <View style={styles.progressCompact}>
-                <View style={styles.progressSummaryRow}>
-                  <Text style={[styles.progressNumberCompact, isDark && styles.progressNumberDark, rawDesignMode === 'chic' && palette && { color: palette.accent }]}>{progress.progress}%</Text>
-                  <Text style={[styles.progressSummary, { color: rawDesignMode === 'chic' && palette ? palette.textSecondary : theme.colors.secondaryText }]}>{progress.wishCompleted}/{progress.wishTotal}件の願い ・ {progress.actionCompleted}/{progress.actionTotal}件の行動</Text>
-                </View>
-                <View style={[styles.progressTrack, { backgroundColor: rawDesignMode === 'chic' && palette ? palette.surfaceSubtle : theme.colors.secondarySurface }]}>
-                  <View style={[styles.progressFill, { width: `${progress.progress}%`, backgroundColor: rawDesignMode === 'chic' && palette ? palette.accent : theme.colors.primaryAccent }]} />
-                </View>
-              </View>
-            ) : (
-              <Pressable
-                style={[styles.lockedFeatureCard, isDark && styles.lockedFeatureCardDark, rawDesignMode === 'chic' && palette && { backgroundColor: palette.surfaceSubtle, borderColor: palette.border }]}
-                onPress={onPremium}
-              >
-                <Text style={[styles.lockedFeatureTitle, isDark && styles.lockedFeatureTitleDark, rawDesignMode === 'chic' && palette && { color: palette.textPrimary }]}>🔒 今月の進捗</Text>
-                <Text style={[styles.lockedFeatureText, isDark && styles.lockedFeatureTextDark, rawDesignMode === 'chic' && palette && { color: palette.textSecondary }]}>叶えたいことと行動の達成状況をまとめて振り返れます。</Text>
-                <Text style={[styles.lockedFeatureCta, { color: rawDesignMode === 'chic' && palette ? palette.accent : darkAccent }]}>Premiumで確認</Text>
-              </Pressable>
-            )}
-          </SectionCard>
+          <View style={styles.visionSection}>
+            <View style={styles.sectionHeaderInline}><View><Text style={[styles.visionSectionTitle, { color: rawDesignMode === 'chic' && palette ? palette.textPrimary : theme.colors.primaryText }]}>今月の進み方</Text><Text style={[styles.sectionSubtitle, { color: rawDesignMode === 'chic' && palette ? palette.textSecondary : theme.colors.secondaryText }]}>できたことを、静かに振り返る</Text></View><Text style={[styles.progressNumberCompact, { color: rawDesignMode === 'chic' && palette ? palette.accent : theme.colors.primaryAccent }]}>{canCreateWishAction ? `${progress.progress}%` : 'Premium'}</Text></View>
+            {canCreateWishAction ? <><Text style={[styles.progressSummary, { color: rawDesignMode === 'chic' && palette ? palette.textSecondary : theme.colors.secondaryText }]}>{progress.wishCompleted}/{progress.wishTotal}件の願い ・ {progress.actionCompleted}/{progress.actionTotal}件の行動</Text><View style={[styles.progressTrack, { backgroundColor: rawDesignMode === 'chic' && palette ? palette.surfaceSubtle : theme.colors.secondarySurface }]}><View style={[styles.progressFill, { width: `${progress.progress}%`, backgroundColor: rawDesignMode === 'chic' && palette ? palette.accent : theme.colors.primaryAccent }]} /></View></> : <Pressable onPress={onPremium}><Text style={[styles.lockedFeatureText, isDark && styles.lockedFeatureTextDark, rawDesignMode === 'chic' && palette && { color: palette.textSecondary }]}>叶えたいことと行動の達成状況をまとめて振り返れます。 <Text style={{ color: rawDesignMode === 'chic' && palette ? palette.accent : darkAccent, fontWeight: '900' }}>Premiumで確認 ›</Text></Text></Pressable>}
+          </View>
 
         </ScrollView>
         <RewardedAccessModal
@@ -544,43 +439,6 @@ function HistoryReadOnlyRow({ title, meta, completed, theme, palette }: { title:
   </View>;
 }
 
-function SectionCard({
-  title,
-  subtitle,
-  designMode,
-  dark = false,
-  chicPattern,
-  chicPalette,
-  showBRibbon = false,
-  showCRibbon = false,
-  children,
-}: {
-  title: string;
-  subtitle?: string;
-  designMode: DesignMode;
-  dark?: boolean;
-  chicPattern: ChicPattern;
-  chicPalette?: ChicThemePalette;
-  showBRibbon?: boolean;
-  showCRibbon?: boolean;
-  children: React.ReactNode;
-}) {
-  const tokens = designMode === 'chic' && chicPalette
-    ? { primary: chicPalette.textPrimary, secondary: chicPalette.textSecondary }
-    : (() => { const colors = getThemeTokens(designMode).colors; return { primary: colors.primaryText, secondary: colors.secondaryText }; })();
-  return (
-    <View style={[styles.sectionCard, designMode === 'minimal' ? styles.sectionCardMinimal : styles.sectionCardChic, dark && styles.sectionCardDark, designMode === 'minimal' && !dark && { borderColor: getThemeTokens(designMode).colors.border }, designMode === 'chic' && chicPalette && { backgroundColor: chicPalette.cardSurface, borderColor: chicPalette.border, shadowColor: chicPalette.accent }]}>
-      {showBRibbon && <BThemeRibbonDecoration journal={title.includes('九☆')} />}
-      {showCRibbon && <CThemeRibbonDecoration journal={title.includes('九☆')} />}
-      <View style={styles.sectionHeader}>
-        <Text style={[styles.sectionTitle, { color: tokens.primary }, dark && styles.sectionTitleDark]}>{title}</Text>
-        {subtitle ? <Text style={[styles.sectionSubtitle, { color: tokens.secondary }, dark && styles.sectionSubtitleDark]}>{subtitle}</Text> : null}
-      </View>
-      {children}
-    </View>
-  );
-}
-
 const styles = StyleSheet.create({
   flex: { flex: 1 },
   screen: { flex: 1 },
@@ -589,8 +447,36 @@ const styles = StyleSheet.create({
   screenChic: { backgroundColor: '#FFF9F6' },
   scroll: { paddingHorizontal: 16, paddingTop: 12, paddingBottom: 120, gap: 12 },
   pageHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', minHeight: 34 },
+  pageHeaderEyebrow: { fontSize: 11, fontWeight: '800', letterSpacing: 0.5, marginBottom: 2 },
   pageHeaderTitle: { fontSize: 20, fontWeight: '900' },
   pageHeaderLink: { fontSize: 12, fontWeight: '900' },
+  visionImageWrap: { height: 150, borderRadius: 18, borderWidth: 1, overflow: 'hidden', position: 'relative' },
+  visionImage: { width: '100%', height: '100%' },
+  visionImageEdit: { position: 'absolute', right: 10, bottom: 10, borderRadius: 999, borderWidth: 1, paddingHorizontal: 11, paddingVertical: 7 },
+  topImageLink: { minHeight: 52, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderBottomWidth: 1, paddingVertical: 8 },
+  topImageLinkCopy: { flex: 1, gap: 2 },
+  topImageLinkTitle: { fontSize: 13, fontWeight: '900' },
+  topImageLinkHint: { fontSize: 10, fontWeight: '700' },
+  visionHero: { paddingTop: 10, paddingBottom: 20, borderBottomWidth: 1 },
+  visionEyebrow: { fontSize: 12, fontWeight: '900', marginBottom: 8 },
+  visionHeroText: { fontSize: 28, lineHeight: 36, fontWeight: '900', letterSpacing: 0.2 },
+  visionEditHint: { fontSize: 10, fontWeight: '800', marginTop: 8 },
+  visionEmptyText: { fontSize: 12, lineHeight: 19, fontWeight: '700' },
+  visionSection: { paddingVertical: 16, borderBottomWidth: 1, gap: 10 },
+  sectionHeaderInline: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 },
+  visionSectionTitle: { fontSize: 17, fontWeight: '900' },
+  lightAction: { fontSize: 12, fontWeight: '900' },
+  lightActionRow: { minHeight: 38, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderTopWidth: 1, paddingTop: 8 },
+  wishPager: { width: '100%' },
+  wishPage: { width: 320, minHeight: 92, justifyContent: 'center', paddingVertical: 8, paddingRight: 18 },
+  wishHeroTitle: { fontSize: 23, lineHeight: 31, fontWeight: '900' },
+  wishHeroMeta: { fontSize: 11, fontWeight: '700', marginTop: 8 },
+  pageIndicators: { flexDirection: 'row', alignItems: 'center', gap: 5, minHeight: 10 },
+  pageIndicator: { width: 6, height: 6, borderRadius: 3 },
+  actionList: { gap: 0 },
+  actionRow: { minHeight: 48, flexDirection: 'row', alignItems: 'center', gap: 10, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#D8D8D3' },
+  actionCheck: { width: 22, height: 22, borderRadius: 11, borderWidth: 1.5, alignItems: 'center', justifyContent: 'center' },
+  actionTitle: { flex: 1, fontSize: 14, lineHeight: 20, fontWeight: '800' },
   sectionCard: { borderWidth: 1, borderRadius: 22, padding: 14, overflow: 'hidden', position: 'relative' },
   sectionCardMinimal: { backgroundColor: '#FFFFFF', borderColor: '#DCE2EC', borderRadius: 20 },
   sectionCardChic: { backgroundColor: '#FFF3F5', borderColor: '#F0DFE5', borderRadius: 26, shadowColor: '#D986A1', shadowOpacity: 0.08, shadowRadius: 10, shadowOffset: { width: 0, height: 4 } },

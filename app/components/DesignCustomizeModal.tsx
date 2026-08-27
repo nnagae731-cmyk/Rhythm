@@ -2,12 +2,6 @@ import React from 'react';
 import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { ChicThemePalette, DesignMode, getThemeTokens } from '../theme';
 
-export const DESIGN_CUSTOMIZE_PRICE = {
-  amount: 500,
-  currency: 'JPY',
-  localizedPrice: '¥500',
-} as const;
-
 type Props = {
   visible: boolean;
   designMode: DesignMode;
@@ -18,9 +12,10 @@ type Props = {
   onRestore: () => void;
   onPremium: () => void;
   onClose: () => void;
+  localizedPrice?: string;
 };
 
-export function DesignCustomizeModal({ visible, designMode, chicPalette, purchased, isDevelopment = false, onPurchase, onRestore, onPremium, onClose }: Props) {
+export function DesignCustomizeModal({ visible, designMode, chicPalette, purchased, isDevelopment = false, onPurchase, onRestore, onPremium, onClose, localizedPrice }: Props) {
   const theme = getThemeTokens(designMode, chicPalette?.id ?? 'cool');
   const colors = designMode === 'chic' && chicPalette
     ? { background: chicPalette.cardSurface, surface: chicPalette.surfaceSubtle, text: chicPalette.textPrimary, muted: chicPalette.textSecondary, border: chicPalette.border, accent: chicPalette.accent, onAccent: chicPalette.onAccent }
@@ -37,9 +32,9 @@ export function DesignCustomizeModal({ visible, designMode, chicPalette, purchas
               {['花柄・チェック・ドット', '写真背景', '画面ごとのトップ画像', '集中タイマー背景'].map((label) => <Text key={label} style={[styles.feature, { color: colors.text }]}>• {label}</Text>)}
             </View>
             <Text style={[styles.description, { color: colors.muted }]}>を広告なしでずっと利用できます。</Text>
-            <Text style={[styles.price, { color: colors.accent }]}>{DESIGN_CUSTOMIZE_PRICE.localizedPrice} 買い切り</Text>
+            <Text style={[styles.price, { color: colors.accent }]}>{localizedPrice ? `${localizedPrice} 買い切り` : '買い切り（価格はApp Storeで表示）'}</Text>
             {purchased ? <View style={[styles.purchased, { borderColor: colors.border, backgroundColor: colors.surface }]}><Text style={[styles.purchasedText, { color: colors.accent }]}>購入済み</Text></View> : <>
-              <Pressable accessibilityRole="button" onPress={onPurchase} style={[styles.primaryButton, { backgroundColor: colors.accent }]}><Text style={[styles.primaryText, { color: colors.onAccent }]}>¥500で買い切る</Text></Pressable>
+              <Pressable accessibilityRole="button" onPress={onPurchase} style={[styles.primaryButton, { backgroundColor: colors.accent }]}><Text style={[styles.primaryText, { color: colors.onAccent }]}>{localizedPrice ? `${localizedPrice}で買い切る` : '価格を確認して購入'}</Text></Pressable>
               <Pressable accessibilityRole="button" onPress={onRestore} style={[styles.secondaryButton, { borderColor: colors.border }]}><Text style={[styles.secondaryText, { color: colors.accent }]}>購入を復元</Text></Pressable>
             </>}
             <Pressable accessibilityRole="button" onPress={onPremium} style={styles.linkButton}><Text style={[styles.linkText, { color: colors.accent }]}>Premiumを見る</Text></Pressable>

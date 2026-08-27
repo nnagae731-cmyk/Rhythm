@@ -22,10 +22,10 @@ function DesignCustomizeCard({ designMode, chicPalette, planTier, purchased, onO
     <Text style={{ color: colors.text, fontSize: 15, fontWeight: '900' }}>Design Customize</Text>
     {planTier === 'premium' ? <Text style={{ color: colors.accent, marginTop: 6, fontSize: 12, fontWeight: '800' }}>Premiumで利用できます</Text> : purchased ? <Text style={{ color: colors.accent, marginTop: 6, fontSize: 12, fontWeight: '800' }}>購入済み</Text> : <>
       <Text style={{ color: colors.muted, marginTop: 6, fontSize: 12, lineHeight: 18, fontWeight: '600' }}>Rhythmの見た目を、もっと自分らしく。{ '\n' }Designと写真カスタマイズを広告なしでずっと使えます。</Text>
-      <Text style={{ color: colors.accent, marginTop: 8, fontSize: 14, fontWeight: '900' }}>買い切り ¥500</Text>
+      <Text style={{ color: colors.accent, marginTop: 8, fontSize: 14, fontWeight: '900' }}>買い切り（価格はApp Storeで表示）</Text>
       <View style={{ flexDirection: 'row', gap: 8, marginTop: 11 }}>
         <Pressable onPress={onTry} style={{ flex: 1, minHeight: 40, borderRadius: 11, borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center' }}><Text style={{ color: colors.accent, fontSize: 12, fontWeight: '900' }}>試してみる</Text></Pressable>
-        <Pressable onPress={onOpen} style={{ flex: 1, minHeight: 40, borderRadius: 11, backgroundColor: colors.accent, alignItems: 'center', justifyContent: 'center' }}><Text style={{ color: colors.onAccent, fontSize: 12, fontWeight: '900' }}>¥500で買い切る</Text></Pressable>
+        <Pressable onPress={onOpen} style={{ flex: 1, minHeight: 40, borderRadius: 11, backgroundColor: colors.accent, alignItems: 'center', justifyContent: 'center' }}><Text style={{ color: colors.onAccent, fontSize: 12, fontWeight: '900' }}>購入画面を開く</Text></Pressable>
       </View>
       <Text style={{ color: colors.muted, marginTop: 8, fontSize: 10, lineHeight: 15 }}>広告やTrialで無料で試すこともできます。</Text>
     </>}

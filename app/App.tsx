@@ -3343,6 +3343,8 @@ export default function App() {
               monthlyGoalUnlocked={planTier === 'premium' || isWishMonthlyGoalUnlocked(rewardedAccess, now)}
               monthlyGoalRewardProgress={getRewardedPromptProgress('wishMonthlyGoal')}
               onRequestMonthlyGoalReward={firstRunDemoActive ? undefined : requestMonthlyGoalReward}
+              topImageUri={firstRunDemoActive ? undefined : photoTopImageUri}
+              onPickTopImage={firstRunDemoActive ? undefined : () => { void pickPhotoTheme('wish'); }}
               onPremium={() => { if (!firstRunDemoActive) openPremiumFeature('wish'); }}
               onBack={() => setScreen('home')}
             />
