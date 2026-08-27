@@ -78,6 +78,7 @@ export function DeparturePlanForm({
   const isReverse = isArrivalReversePlan(plan);
   const canUseReverse = isReverse && planTier === 'premium';
   const isDirectDeparture = isDepartureReminderPlan(plan);
+  const onAccent = isDesign && chicPalette ? chicPalette.onAccent : isDark ? theme.colors.screenBackground : '#FFFFFF';
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showTimePicker, setShowTimePicker] = useState(false);
   const [showEndTimePicker, setShowEndTimePicker] = useState(false);
@@ -219,19 +220,19 @@ export function DeparturePlanForm({
         onPress={() => selectMode('calendar_only')}
         style={[styles.segmentButton, mode === 'calendar_only' && { backgroundColor: theme.colors.primaryAccent }, mode === 'calendar_only' && styles.segmentActive]}
       >
-        <Text style={[styles.segmentText, { color: mode === 'calendar_only' ? '#FFFFFF' : theme.colors.primaryText }]}>予定表だけ</Text>
+        <Text style={[styles.segmentText, { color: mode === 'calendar_only' ? onAccent : theme.colors.primaryText }]}>予定表だけ</Text>
       </Pressable>
       <Pressable
         onPress={() => selectMode('departure_reminder')}
         style={[styles.segmentButton, mode === 'departure_reminder' && { backgroundColor: theme.colors.primaryAccent }, mode === 'departure_reminder' && styles.segmentActive]}
       >
-        <Text style={[styles.segmentText, { color: mode === 'departure_reminder' ? '#FFFFFF' : theme.colors.primaryText }]}>出発時刻</Text>
+        <Text style={[styles.segmentText, { color: mode === 'departure_reminder' ? onAccent : theme.colors.primaryText }]}>出発時刻</Text>
       </Pressable>
       <Pressable
         onPress={() => selectMode('arrival_reverse')}
         style={[styles.segmentButton, isReverse && { backgroundColor: theme.colors.primaryAccent }, isReverse && styles.segmentActive]}
       >
-        <Text style={[styles.segmentText, { color: isReverse ? '#FFFFFF' : theme.colors.primaryText }]}>到着から逆算{planTier === 'free' ? '\nPremium' : ''}</Text>
+        <Text style={[styles.segmentText, { color: isReverse ? onAccent : theme.colors.primaryText }]}>到着から逆算{planTier === 'free' ? '\nPremium' : ''}</Text>
       </Pressable>
     </View>
 
@@ -268,6 +269,8 @@ export function DeparturePlanForm({
         minimumDate={new Date()}
         display={Platform.OS === 'ios' ? 'inline' : 'default'}
         themeVariant={isDark ? 'dark' : 'light'}
+        textColor={theme.colors.primaryText}
+        accentColor={theme.colors.primaryAccent}
         onChange={(event, selected) => {
           if (Platform.OS !== 'ios') setShowDatePicker(false);
           if (event.type === 'set' && selected) updatePlan({ date: dateKey(selected) });
@@ -278,6 +281,8 @@ export function DeparturePlanForm({
         mode="time"
         display={Platform.OS === 'ios' ? 'spinner' : 'default'}
         themeVariant={isDark ? 'dark' : 'light'}
+        textColor={theme.colors.primaryText}
+        accentColor={theme.colors.primaryAccent}
         onChange={(event, selected) => {
           if (Platform.OS !== 'ios') setShowTimePicker(false);
           if (event.type === 'set' && selected) {
@@ -297,6 +302,8 @@ export function DeparturePlanForm({
         mode="time"
         display={Platform.OS === 'ios' ? 'spinner' : 'default'}
         themeVariant={isDark ? 'dark' : 'light'}
+        textColor={theme.colors.primaryText}
+        accentColor={theme.colors.primaryAccent}
         onChange={(event, selected) => {
           if (Platform.OS !== 'ios') setShowEndTimePicker(false);
           if (event.type === 'set' && selected) {
@@ -360,7 +367,7 @@ export function DeparturePlanForm({
     <View style={[styles.submitArea, { borderColor: theme.colors.border }]}>
       {canUseReverse && <Text style={[styles.finalTimeline, secondaryText]}>{formatLiveTime(moments.prepare)} 準備開始 ・ {formatLiveTime(moments.leave)} 出発</Text>}
       <Pressable accessibilityRole="button" style={[styles.submitButton, { backgroundColor: theme.colors.primaryAccent }]} onPress={() => void handleSubmit()}>
-        <Text style={styles.submitButtonText}>{plan.id ? '変更を保存' : canUseReverse ? 'この予定を登録' : isDirectDeparture ? '出発時刻を登録' : '予定表に追加'}</Text>
+        <Text style={[styles.submitButtonText, { color: onAccent }]}>{plan.id ? '変更を保存' : canUseReverse ? 'この予定を登録' : isDirectDeparture ? '出発時刻を登録' : '予定表に追加'}</Text>
       </Pressable>
       <Pressable accessibilityRole="button" accessibilityLabel="予定の追加を閉じる" style={[styles.bottomCloseButton, { borderColor: theme.colors.border, backgroundColor: isDark ? theme.colors.secondarySurface : theme.colors.surface }]} onPress={onClose}>
         <Text style={[styles.bottomCloseButtonText, fieldText]}>閉じる</Text>
@@ -382,7 +389,7 @@ export function DeparturePlanForm({
             <Text style={[styles.customDurationValue, fieldText]}>{durationLabel(currentDuration)}</Text>
             <Pressable style={[styles.adjustButton, { borderColor: theme.colors.border }]} onPress={() => adjustCustomDuration(5)}><Text style={[styles.adjustButtonText, { color: theme.colors.primaryAccent }]}>＋</Text></Pressable>
           </View>}
-          {showOtherDuration && durationEditor && <Pressable style={[styles.applyDurationButton, { backgroundColor: theme.colors.primaryAccent }]} onPress={() => applyDuration(durationEditor.field, currentDuration, true)}><Text style={styles.applyDurationButtonText}>この時間にする</Text></Pressable>}
+          {showOtherDuration && durationEditor && <Pressable style={[styles.applyDurationButton, { backgroundColor: theme.colors.primaryAccent }]} onPress={() => applyDuration(durationEditor.field, currentDuration, true)}><Text style={[styles.applyDurationButtonText, { color: onAccent }]}>この時間にする</Text></Pressable>}
         </Pressable>
       </Pressable>
     </Modal>

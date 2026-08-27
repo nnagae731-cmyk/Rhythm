@@ -32,6 +32,7 @@ export function RewardedAccessModal({ visible, title, description, current = 0, 
     muted: chicPalette.textSecondary,
     accent: chicPalette.accent,
     soft: chicPalette.accentSoft,
+    onAccent: chicPalette.onAccent,
   } : {
     surface: theme.colors.surface,
     border: theme.colors.border,
@@ -39,6 +40,7 @@ export function RewardedAccessModal({ visible, title, description, current = 0, 
     muted: theme.colors.secondaryText,
     accent: theme.colors.primaryAccent,
     soft: theme.colors.softAccent,
+    onAccent: designMode === 'dark' ? theme.colors.screenBackground : '#FFFFFF',
   };
 
   const handleReward = async () => {
@@ -68,7 +70,7 @@ export function RewardedAccessModal({ visible, title, description, current = 0, 
         {required > 1 && <Text style={{ color: colors.text, fontSize: 14, fontWeight: '800', marginTop: 14 }}>{current} / {required} 回視聴済み</Text>}
         {message ? <Text style={{ color: colors.accent, fontSize: 12, fontWeight: '800', marginTop: 12 }}>{message}</Text> : null}
         <Pressable accessibilityRole="button" disabled={busy} onPress={() => void handleReward()} style={{ minHeight: 50, marginTop: 18, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.accent, opacity: busy ? 0.65 : 1 }}>
-          {busy ? <ActivityIndicator color="#FFFFFF" /> : <Text style={{ color: '#FFFFFF', fontSize: 14, fontWeight: '900' }}>広告を見て取得</Text>}
+          {busy ? <ActivityIndicator color={colors.onAccent} /> : <Text style={{ color: colors.onAccent, fontSize: 14, fontWeight: '900' }}>広告を見て取得</Text>}
         </Pressable>
         {onPremium && <Pressable onPress={onPremium} style={{ minHeight: 42, alignItems: 'center', justifyContent: 'center', marginTop: 4 }}><Text style={{ color: colors.accent, fontSize: 12, fontWeight: '800' }}>Premiumなら広告なしで使えます</Text></Pressable>}
         <Pressable onPress={onClose} style={{ minHeight: 44, alignItems: 'center', justifyContent: 'center' }}><Text style={{ color: colors.muted, fontSize: 13, fontWeight: '800' }}>閉じる</Text></Pressable>

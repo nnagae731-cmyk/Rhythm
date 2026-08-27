@@ -87,6 +87,7 @@ export function WishScreen({ designMode: rawDesignMode, chicPalette, monthLabel,
   const designSubtle = rawDesignMode === 'chic' && palette ? { backgroundColor: palette.surfaceSubtle, borderColor: palette.border } : undefined;
   const designAccent = rawDesignMode === 'chic' && palette ? { backgroundColor: palette.accent, borderColor: palette.accent } : undefined;
   const designText = rawDesignMode === 'chic' && palette ? { color: palette.textPrimary } : undefined;
+  const primaryButtonTextColor = rawDesignMode === 'chic' && palette ? palette.onAccent : rawDesignMode === 'dark' ? theme.colors.screenBackground : '#FFFFFF';
   const darkAccent = rawDesignMode === 'dark' ? '#8EA6FF' : theme.colors.primaryAccent;
   const progress = useMemo(() => calculateWishProgress(state), [state]);
   const [editor, setEditor] = useState<EditorState>(emptyEditor);
@@ -269,7 +270,7 @@ export function WishScreen({ designMode: rawDesignMode, chicPalette, monthLabel,
                   <TextInput value={monthlyGoalDraft} onChangeText={setMonthlyGoalDraft} placeholder="今月いちばん意識したいこと" placeholderTextColor={theme.colors.secondaryText} style={[styles.themeInput, designMode === 'minimal' ? styles.themeInputMinimal : styles.themeInputChic, isDark && styles.themeInputDark, designSurface, designText]} multiline />
                   <View style={styles.rowActions}>
                     <Pressable style={[styles.secondaryButton, designMode === 'minimal' ? styles.secondaryButtonMinimal : styles.secondaryButtonChic, isDark && styles.secondaryButtonDark, designSubtle]} onPress={() => { setMonthlyGoalDraft(''); commit((current) => ({ ...current, monthlyGoal: '' })); setMonthlyGoalEditing(false); }}><Text style={[styles.secondaryButtonText, { color: theme.colors.secondaryText }]}>削除</Text></Pressable>
-                    <Pressable style={[styles.primaryButton, designMode === 'minimal' ? styles.primaryButtonMinimal : styles.primaryButtonChic, isDark && styles.primaryButtonDark, designAccent]} onPress={() => { const value = monthlyGoalDraft.trim(); commit((current) => ({ ...current, monthlyGoal: value })); setMonthlyGoalDraft(value); setMonthlyGoalEditing(false); Keyboard.dismiss(); Alert.alert('保存しました', '今月の目標を保存しました。'); }}><Text style={styles.primaryButtonText}>保存</Text></Pressable>
+                    <Pressable style={[styles.primaryButton, designMode === 'minimal' ? styles.primaryButtonMinimal : styles.primaryButtonChic, isDark && styles.primaryButtonDark, designAccent]} onPress={() => { const value = monthlyGoalDraft.trim(); commit((current) => ({ ...current, monthlyGoal: value })); setMonthlyGoalDraft(value); setMonthlyGoalEditing(false); Keyboard.dismiss(); Alert.alert('保存しました', '今月の目標を保存しました。'); }}><Text style={[styles.primaryButtonText, { color: primaryButtonTextColor }]}>保存</Text></Pressable>
                   </View>
                 </View>
               ) : state.monthlyGoal?.trim() ? (
@@ -425,7 +426,7 @@ export function WishScreen({ designMode: rawDesignMode, chicPalette, monthLabel,
                 <Text style={styles.editorDeleteText}>削除</Text>
               </Pressable>}
               <Pressable style={[styles.primaryButton, designMode === 'minimal' ? styles.primaryButtonMinimal : styles.primaryButtonChic, isDark && styles.primaryButtonDark, styles.editorSaveButton, designMode === 'chic' && palette && { backgroundColor: palette.accent, borderColor: palette.accent }]} onPress={saveEditor}>
-                <Text style={styles.primaryButtonText}>保存</Text>
+                <Text style={[styles.primaryButtonText, { color: primaryButtonTextColor }]}>保存</Text>
               </Pressable>
             </View>
           </Pressable>

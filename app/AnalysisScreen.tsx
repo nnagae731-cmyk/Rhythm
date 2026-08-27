@@ -159,6 +159,7 @@ function ProgressRing({ rate, designMode, chicPalette }: { rate: InsightRate; de
 
 function LineChart({ points, metric, selectedDate, onSelect, designMode, chicPalette }: { points: { date: string; value: number; sampleCount: number }[]; metric: InsightMetric; selectedDate?: string; onSelect: (date: string) => void; designMode: DesignMode; chicPalette?: ChicThemePalette }) {
   const theme = getThemeTokens(designMode, chicPalette?.id ?? 'cool');
+  const onAccent = designMode === 'chic' && chicPalette ? chicPalette.onAccent : designMode === 'dark' ? theme.colors.screenBackground : '#FFFFFF';
   const width = 320;
   const height = 148;
   const padding = { top: 14, right: 12, bottom: 22, left: 30 };
@@ -192,7 +193,7 @@ function LineChart({ points, metric, selectedDate, onSelect, designMode, chicPal
     </View>
     <View style={[styles.selectedPoint, { borderColor: theme.colors.border, backgroundColor: theme.colors.surface }]}><Text style={[styles.selectedPointLabel, { color: theme.colors.secondaryText }]}>選択した日</Text><Text style={[styles.selectedPointValue, { color: theme.colors.primaryText }]}>{insightPointDateLabel(selected.date)}　{formatPointValue(metric, selected.value)}</Text></View>
     <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.pointSelector}>
-      {points.map((point) => <Pressable key={point.date} onPress={() => onSelect(point.date)} style={[styles.pointChip, { borderColor: theme.colors.border, backgroundColor: theme.colors.secondarySurface }, point.date === selected.date && { backgroundColor: theme.colors.primaryAccent, borderColor: theme.colors.primaryAccent }]}><Text style={[styles.pointChipText, { color: theme.colors.secondaryText }, point.date === selected.date && styles.pointChipTextActive]}>{insightPointDateLabel(point.date)}</Text></Pressable>)}
+      {points.map((point) => <Pressable key={point.date} onPress={() => onSelect(point.date)} style={[styles.pointChip, { borderColor: theme.colors.border, backgroundColor: theme.colors.secondarySurface }, point.date === selected.date && { backgroundColor: theme.colors.primaryAccent, borderColor: theme.colors.primaryAccent }]}><Text style={[styles.pointChipText, { color: point.date === selected.date ? onAccent : theme.colors.secondaryText }]}>{insightPointDateLabel(point.date)}</Text></Pressable>)}
     </ScrollView>
   </>;
 }
@@ -221,10 +222,11 @@ function InsightDashboardView({ events, tasks, plans, designMode, chicPalette, o
   const activeMetric = dashboard.metrics[metric];
   const conditionData = conditionView === 'weekday' ? dashboard.weekdayConditions : dashboard.timeOfDayConditions;
   const isDark = designMode === 'dark';
+  const onAccent = designMode === 'chic' && chicPalette ? chicPalette.onAccent : designMode === 'dark' ? theme.colors.screenBackground : '#FFFFFF';
 
   return <View style={styles.dashboard}>
     <View style={[styles.rangeControl, { backgroundColor: isDark ? '#20293A' : theme.colors.secondarySurface, borderColor: theme.colors.border }]}>
-      {([['7d', '7日'], ['30d', '30日'], ['all', '全期間']] as [InsightRange, string][]).map(([id, label]) => <Pressable key={id} onPress={() => setRange(id)} style={[styles.rangeButton, range === id && { backgroundColor: theme.colors.primaryAccent }]}><Text style={[styles.rangeButtonText, { color: range === id ? '#FFFFFF' : theme.colors.secondaryText }]}>{label}</Text></Pressable>)}
+      {([['7d', '7日'], ['30d', '30日'], ['all', '全期間']] as [InsightRange, string][]).map(([id, label]) => <Pressable key={id} onPress={() => setRange(id)} style={[styles.rangeButton, range === id && { backgroundColor: theme.colors.primaryAccent }]}><Text style={[styles.rangeButtonText, { color: range === id ? onAccent : theme.colors.secondaryText }]}>{label}</Text></Pressable>)}
     </View>
     <Text style={[styles.dashboardRangeLabel, { color: theme.colors.secondaryText }]}>{dashboard.rangeLabel}</Text>
 
@@ -236,7 +238,7 @@ function InsightDashboardView({ events, tasks, plans, designMode, chicPalette, o
 
     {!behaviorOnly && <DashboardCard designMode={designMode} chicPalette={chicPalette}>
       <View style={styles.cardTitleRow}><View><Text style={[styles.dashboardTitle, { color: theme.colors.primaryText }]}>時間の変化</Text><Text style={[styles.dashboardCaption, { color: theme.colors.secondaryText }]}>予定どおりは基準線の0です</Text></View><Text style={[styles.metricAverage, { color: theme.colors.primaryAccent }]}>{formatMetricAverage(metric, activeMetric.average)}</Text></View>
-      <View style={styles.metricSwitcher}>{([['preparation', '準備'], ['departure', '出発'], ['notification', '通知'], ['focus', '集中']] as [InsightMetric, string][]).map(([id, label]) => <Pressable key={id} onPress={() => { setMetric(id); setSelectedPointDate(undefined); }} style={[styles.metricSwitch, { borderColor: theme.colors.border, backgroundColor: isDark ? '#20293A' : theme.colors.secondarySurface }, metric === id && { backgroundColor: theme.colors.primaryAccent, borderColor: theme.colors.primaryAccent }]}><Text style={[styles.metricSwitchText, { color: metric === id ? '#FFFFFF' : theme.colors.secondaryText }]}>{label}</Text></Pressable>)}</View>
+      <View style={styles.metricSwitcher}>{([['preparation', '準備'], ['departure', '出発'], ['notification', '通知'], ['focus', '集中']] as [InsightMetric, string][]).map(([id, label]) => <Pressable key={id} onPress={() => { setMetric(id); setSelectedPointDate(undefined); }} style={[styles.metricSwitch, { borderColor: theme.colors.border, backgroundColor: isDark ? '#20293A' : theme.colors.secondarySurface }, metric === id && { backgroundColor: theme.colors.primaryAccent, borderColor: theme.colors.primaryAccent }]}><Text style={[styles.metricSwitchText, { color: metric === id ? onAccent : theme.colors.secondaryText }]}>{label}</Text></Pressable>)}</View>
       <LineChart points={activeMetric.points} metric={metric} selectedDate={selectedPointDate} onSelect={setSelectedPointDate} designMode={designMode} chicPalette={chicPalette} />
       <View style={[styles.chartFooter, { borderTopColor: theme.colors.border }]}><Text style={[styles.chartFooterText, { color: theme.colors.secondaryText }]}>平均 {formatMetricAverage(metric, activeMetric.average)}</Text><Text style={[styles.chartFooterText, { color: theme.colors.secondaryText }]}>{formatComparison(metric, activeMetric.average, activeMetric.previousAverage)}</Text></View>
     </DashboardCard>}
@@ -260,7 +262,7 @@ function InsightDashboardView({ events, tasks, plans, designMode, chicPalette, o
     </DashboardCard>
 
     <DashboardCard designMode={designMode} chicPalette={chicPalette}>
-      <View style={styles.cardTitleRow}><View><Text style={[styles.dashboardTitle, { color: theme.colors.primaryText }]}>曜日・時間帯別の傾向</Text><Text style={[styles.dashboardCaption, { color: theme.colors.secondaryText }]}>出発記録をもとに表示します</Text></View><View style={styles.conditionSwitch}>{([['weekday', '曜日'], ['timeOfDay', '時間帯']] as [InsightConditionView, string][]).map(([id, label]) => <Pressable key={id} onPress={() => setConditionView(id)} style={[styles.conditionSwitchButton, conditionView === id && { backgroundColor: theme.colors.primaryAccent }]}><Text style={[styles.conditionSwitchText, { color: conditionView === id ? '#FFFFFF' : theme.colors.secondaryText }]}>{label}</Text></Pressable>)}</View></View>
+      <View style={styles.cardTitleRow}><View><Text style={[styles.dashboardTitle, { color: theme.colors.primaryText }]}>曜日・時間帯別の傾向</Text><Text style={[styles.dashboardCaption, { color: theme.colors.secondaryText }]}>出発記録をもとに表示します</Text></View><View style={styles.conditionSwitch}>{([['weekday', '曜日'], ['timeOfDay', '時間帯']] as [InsightConditionView, string][]).map(([id, label]) => <Pressable key={id} onPress={() => setConditionView(id)} style={[styles.conditionSwitchButton, conditionView === id && { backgroundColor: theme.colors.primaryAccent }]}><Text style={[styles.conditionSwitchText, { color: conditionView === id ? onAccent : theme.colors.secondaryText }]}>{label}</Text></Pressable>)}</View></View>
       <ConditionChart data={conditionData} designMode={designMode} chicPalette={chicPalette} />
       <Text style={[styles.dashboardCaption, { color: theme.colors.secondaryText }]}>記録が少ない曜日・時間帯は、傾向として断定しません</Text>
     </DashboardCard>
@@ -270,14 +272,14 @@ function InsightDashboardView({ events, tasks, plans, designMode, chicPalette, o
       <Text style={[styles.suggestionTitle, { color: theme.colors.primaryText }]}>{dashboard.suggestion.title}</Text>
       <Text style={[styles.dashboardCaption, { color: theme.colors.secondaryText }]}>{dashboard.suggestion.reason}</Text>
       <View style={styles.suggestionValues}><View><Text style={[styles.suggestionValueLabel, { color: theme.colors.secondaryText }]}>現在</Text><Text style={[styles.suggestionValue, { color: theme.colors.primaryText }]}>{dashboard.suggestion.currentValue}</Text></View><Text style={[styles.suggestionArrow, { color: theme.colors.primaryAccent }]}>→</Text><View><Text style={[styles.suggestionValueLabel, { color: theme.colors.secondaryText }]}>変更後</Text><Text style={[styles.suggestionValue, { color: theme.colors.primaryAccent }]}>{dashboard.suggestion.nextValue}</Text></View></View>
-      <Pressable onPress={() => setSuggestionOpen(true)} style={[styles.applySuggestionButton, { backgroundColor: theme.colors.primaryAccent }]}><Text style={styles.applySuggestionText}>設定へ反映</Text></Pressable>
+      <Pressable onPress={() => setSuggestionOpen(true)} style={[styles.applySuggestionButton, { backgroundColor: theme.colors.primaryAccent }]}><Text style={[styles.applySuggestionText, { color: onAccent }]}>設定へ反映</Text></Pressable>
     </DashboardCard>}
 
     <Modal visible={suggestionOpen} transparent animationType="fade" onRequestClose={() => setSuggestionOpen(false)}>
       <View style={styles.suggestionModalBackdrop}><View style={[styles.suggestionModal, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
         <Text style={[styles.suggestionModalTitle, { color: theme.colors.primaryText }]}>変更内容を確認</Text>
         <Text style={[styles.suggestionModalCopy, { color: theme.colors.secondaryText }]}>{dashboard.suggestion ? `${dashboard.suggestion.currentValue}から${dashboard.suggestion.nextValue}へ変更します。` : ''}</Text>
-        <View style={styles.suggestionModalButtons}><Pressable onPress={() => setSuggestionOpen(false)} style={[styles.suggestionModalButton, { borderColor: theme.colors.border }]}><Text style={[styles.suggestionModalButtonText, { color: theme.colors.secondaryText }]}>キャンセル</Text></Pressable><Pressable onPress={() => { if (dashboard.suggestion) onApplySuggestion(dashboard.suggestion); setSuggestionOpen(false); }} style={[styles.suggestionModalButton, { backgroundColor: theme.colors.primaryAccent, borderColor: theme.colors.primaryAccent }]}><Text style={styles.suggestionModalButtonPrimary}>変更する</Text></Pressable></View>
+        <View style={styles.suggestionModalButtons}><Pressable onPress={() => setSuggestionOpen(false)} style={[styles.suggestionModalButton, { borderColor: theme.colors.border }]}><Text style={[styles.suggestionModalButtonText, { color: theme.colors.secondaryText }]}>キャンセル</Text></Pressable><Pressable onPress={() => { if (dashboard.suggestion) onApplySuggestion(dashboard.suggestion); setSuggestionOpen(false); }} style={[styles.suggestionModalButton, { backgroundColor: theme.colors.primaryAccent, borderColor: theme.colors.primaryAccent }]}><Text style={[styles.suggestionModalButtonPrimary, { color: onAccent }]}>変更する</Text></Pressable></View>
       </View></View>
     </Modal>
   </View>;
