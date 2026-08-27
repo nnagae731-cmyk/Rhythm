@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Alert, Image, Keyboard, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Alert, Keyboard, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
 import { ChicPattern, ChicThemePalette, DesignMode, getThemeTokens } from './theme';
 import { Affirmation, AffirmationCustomText, MonthlyWishState, Wish, WishAction, WishMonthMap } from './types';
 import { PlanTier } from './premiumAccess';
@@ -95,7 +95,8 @@ export function WishScreen({ designMode: rawDesignMode, chicPalette, monthLabel,
   const [monthlyGoalDraft, setMonthlyGoalDraft] = useState(state.monthlyGoal ?? '');
   const [monthlyGoalEditing, setMonthlyGoalEditing] = useState(!(state.monthlyGoal ?? '').trim());
   const [selectedWishIndex, setSelectedWishIndex] = useState(0);
-  const [wishPageWidth, setWishPageWidth] = useState(0);
+  const { width: windowWidth } = useWindowDimensions();
+  const wishPageWidth = Math.max(280, windowWidth - 32);
 
   useEffect(() => {
     setMonthlyGoalDraft(state.monthlyGoal ?? '');
@@ -248,10 +249,9 @@ export function WishScreen({ designMode: rawDesignMode, chicPalette, monthLabel,
           </View>
 
           {topImageUri ? (
-            <View style={[styles.visionImageWrap, { borderColor: rawDesignMode === 'chic' && palette ? palette.border : theme.colors.border, backgroundColor: rawDesignMode === 'chic' && palette ? palette.cardSurface : theme.colors.surface }]}>
-              <Image source={{ uri: topImageUri }} resizeMode="cover" style={styles.visionImage} />
-              {onPickTopImage ? <Pressable accessibilityLabel="トップ画像を変更" onPress={onPickTopImage} style={[styles.visionImageEdit, { backgroundColor: rawDesignMode === 'chic' && palette ? palette.cardSurface : theme.colors.surface, borderColor: rawDesignMode === 'chic' && palette ? palette.border : theme.colors.border }]}><Text style={{ color: rawDesignMode === 'chic' && palette ? palette.accent : theme.colors.primaryAccent }}>編集</Text></Pressable> : null}
-            </View>
+            <Pressable style={[styles.topImageLink, { borderBottomColor: rawDesignMode === 'chic' && palette ? palette.border : theme.colors.border }]} onPress={onPickTopImage}>
+              <View style={styles.topImageLinkCopy}><Text style={[styles.topImageLinkTitle, { color: rawDesignMode === 'chic' && palette ? palette.textPrimary : theme.colors.primaryText }]}>トップ画像を変更</Text><Text style={[styles.topImageLinkHint, { color: rawDesignMode === 'chic' && palette ? palette.textSecondary : theme.colors.secondaryText }]}>現在の写真を入れ替える</Text></View><Text style={[styles.itemChevron, { color: rawDesignMode === 'chic' && palette ? palette.accent : theme.colors.secondaryText }]}>›</Text>
+            </Pressable>
           ) : onPickTopImage ? (
             <Pressable style={[styles.topImageLink, { borderBottomColor: rawDesignMode === 'chic' && palette ? palette.border : theme.colors.border }]} onPress={onPickTopImage}>
               <View style={styles.topImageLinkCopy}><Text style={[styles.topImageLinkTitle, { color: rawDesignMode === 'chic' && palette ? palette.textPrimary : theme.colors.primaryText }]}>トップ画像を設定</Text><Text style={[styles.topImageLinkHint, { color: rawDesignMode === 'chic' && palette ? palette.textSecondary : theme.colors.secondaryText }]}>写真を添えて、今月の方向性を眺める</Text></View><Text style={[styles.itemChevron, { color: rawDesignMode === 'chic' && palette ? palette.accent : theme.colors.secondaryText }]}>›</Text>
@@ -283,8 +283,8 @@ export function WishScreen({ designMode: rawDesignMode, chicPalette, monthLabel,
           <View style={[styles.visionSection, rawDesignMode === 'chic' && palette ? { borderBottomColor: palette.border } : { borderBottomColor: theme.colors.border }]}>
             <View style={styles.sectionHeaderInline}><View><Text style={[styles.visionSectionTitle, { color: rawDesignMode === 'chic' && palette ? palette.textPrimary : theme.colors.primaryText }]}>叶えたいこと</Text><Text style={[styles.sectionSubtitle, { color: rawDesignMode === 'chic' && palette ? palette.textSecondary : theme.colors.secondaryText }]}>今月の願い</Text></View><Pressable onPress={() => openWishEditor()}><Text style={[styles.lightAction, { color: rawDesignMode === 'chic' && palette ? palette.accent : theme.colors.primaryAccent }]}>＋ 追加</Text></Pressable></View>
             {wishes.length > 0 ? <>
-              <ScrollView horizontal pagingEnabled showsHorizontalScrollIndicator={false} contentContainerStyle={styles.wishPager} onLayout={(event) => setWishPageWidth(event.nativeEvent.layout.width)} onMomentumScrollEnd={(event) => { const width = Math.max(1, event.nativeEvent.layoutMeasurement.width); setSelectedWishIndex(Math.round(event.nativeEvent.contentOffset.x / width)); }}>
-                {wishes.map((wish) => <Pressable key={wish.id} style={[styles.wishPage, { width: wishPageWidth || 320 }]} onPress={() => openWishEditor(wish)}><Text style={[styles.wishHeroTitle, { color: rawDesignMode === 'chic' && palette ? palette.textPrimary : theme.colors.primaryText }, wish.completed && styles.itemTitleDone]}>{wish.title}</Text><Text style={[styles.wishHeroMeta, { color: rawDesignMode === 'chic' && palette ? palette.textSecondary : theme.colors.secondaryText }]}>{wish.completed ? '叶いました' : 'ここから一歩ずつ'}</Text></Pressable>)}
+              <ScrollView horizontal pagingEnabled nestedScrollEnabled showsHorizontalScrollIndicator={false} contentContainerStyle={styles.wishPager} onMomentumScrollEnd={(event) => { const width = Math.max(1, event.nativeEvent.layoutMeasurement.width); setSelectedWishIndex(Math.round(event.nativeEvent.contentOffset.x / width)); }}>
+                {wishes.map((wish) => <Pressable key={wish.id} style={[styles.wishPage, { width: wishPageWidth }]} onPress={() => openWishEditor(wish)}><Text style={[styles.wishHeroTitle, { color: rawDesignMode === 'chic' && palette ? palette.textPrimary : theme.colors.primaryText }, wish.completed && styles.itemTitleDone]}>{wish.title}</Text><Text style={[styles.wishHeroMeta, { color: rawDesignMode === 'chic' && palette ? palette.textSecondary : theme.colors.secondaryText }]}>{wish.completed ? '叶いました' : 'ここから一歩ずつ'}</Text></Pressable>)}
               </ScrollView>
               <View style={styles.pageIndicators}>{wishes.map((wish, index) => <View key={wish.id} style={[styles.pageIndicator, { backgroundColor: index === selectedWishIndex ? (rawDesignMode === 'chic' && palette ? palette.accent : theme.colors.primaryAccent) : (rawDesignMode === 'chic' && palette ? palette.border : theme.colors.border) }]} />)}</View>
             </> : <Text style={[styles.visionEmptyText, { color: theme.colors.secondaryText }]}>まだありません。今月の願いを1つ書いてみよう。</Text>}
@@ -450,9 +450,6 @@ const styles = StyleSheet.create({
   pageHeaderEyebrow: { fontSize: 11, fontWeight: '800', letterSpacing: 0.5, marginBottom: 2 },
   pageHeaderTitle: { fontSize: 20, fontWeight: '900' },
   pageHeaderLink: { fontSize: 12, fontWeight: '900' },
-  visionImageWrap: { height: 150, borderRadius: 18, borderWidth: 1, overflow: 'hidden', position: 'relative' },
-  visionImage: { width: '100%', height: '100%' },
-  visionImageEdit: { position: 'absolute', right: 10, bottom: 10, borderRadius: 999, borderWidth: 1, paddingHorizontal: 11, paddingVertical: 7 },
   topImageLink: { minHeight: 52, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderBottomWidth: 1, paddingVertical: 8 },
   topImageLinkCopy: { flex: 1, gap: 2 },
   topImageLinkTitle: { fontSize: 13, fontWeight: '900' },

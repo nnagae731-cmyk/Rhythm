@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import Svg, { Circle, Line, Path, Rect } from 'react-native-svg';
 import { ChicThemePalette, DesignMode } from '../theme';
 import { PremiumGuideFeatureId } from '../premiumGuide';
 import { PlanTier } from '../premiumAccess';
@@ -85,10 +86,18 @@ const PREMIUM_GUIDE_FEATURES: Array<{ id: PremiumGuideFeatureId; kind: PremiumPr
   { id: 'photo_design', kind: 'photo_design', title: '選べるデザイン', description: '花柄1〜3、ドット、チェックデザイン、写真背景はPremiumで利用できます。FreeでもTrialや広告で試せます。Design Customizeを¥500で買い切れば、Premiumなしでも広告なしでずっと利用できます。' },
 ];
 
-const PREMIUM_FEATURE_ICONS: Record<PremiumGuideFeatureId, string> = {
-  focus_custom_duration: '◷', records: '▤', reflection: '◌', calendar: '▦', route: '↗', travel_apps: '⌁',
-  nudge: '◒', time: '◴', behavior: '◍', month: '▦', history: '⌕', recovery: '↺', templates: '▧', wish: '♡',
-  affirmation: '✦', photo_design: '✧', floral: '✿', dot: '⁙', check: '▦',
+type PremiumFeatureIconName = 'timer' | 'journal' | 'calendarChart' | 'calendarSync' | 'pin' | 'bell' | 'chart' | 'calendarList' | 'search' | 'copy' | 'target' | 'quote' | 'refresh' | 'palette' | 'pattern';
+
+const PREMIUM_FEATURE_ICONS: Record<PremiumGuideFeatureId, PremiumFeatureIconName> = {
+  focus_custom_duration: 'timer', records: 'journal', reflection: 'calendarChart', calendar: 'calendarSync', route: 'pin', travel_apps: 'pin',
+  nudge: 'bell', time: 'chart', behavior: 'chart', month: 'calendarList', history: 'search', recovery: 'refresh', templates: 'copy', wish: 'target',
+  affirmation: 'quote', photo_design: 'palette', floral: 'pattern', dot: 'pattern', check: 'pattern',
+};
+
+const PREMIUM_FEATURE_NAV_LABELS: Record<PremiumGuideFeatureId, string> = {
+  focus_custom_duration: '集中時間', records: '今日の記録', reflection: '月の振り返り', calendar: 'カレンダー連携', route: '地図・共有', travel_apps: '移動アプリ',
+  nudge: '高度な通知', time: '行動分析', behavior: '振り返り', month: '月別履歴', history: '履歴検索', recovery: '立て直し', templates: 'タスクひな型', wish: 'Wish行動',
+  affirmation: 'アファメーション', photo_design: 'デザイン', floral: '花柄1〜3', dot: 'ドット', check: 'チェック',
 };
 
 const PREMIUM_FEATURE_DIFFS: Partial<Record<PremiumGuideFeatureId, { free: string; premium: string }>> = {
@@ -160,10 +169,33 @@ function PremiumPreviewViewport({ children, styles, surface, border }: { childre
   return <View style={[styles.premiumPreviewViewport, { backgroundColor: surface, borderColor: border }]} pointerEvents="none"><View style={styles.premiumPreviewViewportContent}>{children}</View></View>;
 }
 
-function PremiumFeatureEntryCard({ icon, title, active, chicPalette, onPress, styles, primaryText, accent, accentStrong, border }: { icon: string; title: string; active: boolean; chicPalette?: ChicThemePalette; onPress: () => void; styles: any; primaryText: string; accent: string; accentStrong: string; border: string }) {
-  return <Pressable onPress={onPress} style={[styles.premiumEntryCard, { width: 112, minHeight: 44, backgroundColor: 'transparent', borderWidth: 0, borderBottomWidth: active ? 2 : 1, borderBottomColor: active ? accent : border, borderRadius: 0, paddingHorizontal: 4, paddingVertical: 8 }]}>
-    <Text style={[styles.premiumFeatureIcon, { color: active ? accent : primaryText }, chicPalette && { color: active ? chicPalette.accent : chicPalette.textSecondary }]}>{icon}</Text>
-    <Text numberOfLines={2} style={[styles.premiumEntryTitle, { color: active ? accentStrong : primaryText, marginTop: 3 }, chicPalette && { color: active ? chicPalette.accentStrong : chicPalette.textPrimary }]}>{title}</Text>
+function PremiumFeatureIcon({ name, color }: { name: PremiumFeatureIconName; color: string }) {
+  const stroke = { stroke: color, strokeWidth: 2.2, strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const, fill: 'none' };
+  let content: React.ReactNode;
+  switch (name) {
+    case 'timer': content = <><Circle cx="12" cy="13" r="7" {...stroke} /><Line x1="12" y1="13" x2="12" y2="9" {...stroke} /><Line x1="12" y1="13" x2="15" y2="15" {...stroke} /><Line x1="9" y1="3" x2="15" y2="3" {...stroke} /><Line x1="12" y1="3" x2="12" y2="6" {...stroke} /></>; break;
+    case 'journal': content = <><Rect x="5" y="3" width="14" height="18" rx="2" {...stroke} /><Line x1="8" y1="8" x2="16" y2="8" {...stroke} /><Line x1="8" y1="12" x2="16" y2="12" {...stroke} /><Line x1="8" y1="16" x2="13" y2="16" {...stroke} /></>; break;
+    case 'calendarChart': content = <><Rect x="4" y="5" width="16" height="15" rx="2" {...stroke} /><Line x1="8" y1="3" x2="8" y2="7" {...stroke} /><Line x1="16" y1="3" x2="16" y2="7" {...stroke} /><Path d="M7 16l3-3 2 2 4-5" {...stroke} /></>; break;
+    case 'calendarSync': content = <><Rect x="4" y="5" width="16" height="15" rx="2" {...stroke} /><Line x1="8" y1="3" x2="8" y2="7" {...stroke} /><Line x1="16" y1="3" x2="16" y2="7" {...stroke} /><Path d="M8 13a4 4 0 016-2" {...stroke} /><Path d="M14 9v3h-3M16 15a4 4 0 01-6 2" {...stroke} /><Path d="M10 19v-3h3" {...stroke} /></>; break;
+    case 'pin': content = <><Path d="M19 10c0 5-7 10-7 10S5 15 5 10a7 7 0 1114 0z" {...stroke} /><Circle cx="12" cy="10" r="2.2" {...stroke} /></>; break;
+    case 'bell': content = <><Path d="M6 17h12l-1.5-2V10a4.5 4.5 0 00-9 0v5z" {...stroke} /><Path d="M10 20h4" {...stroke} /></>; break;
+    case 'chart': content = <><Line x1="5" y1="19" x2="5" y2="5" {...stroke} /><Line x1="5" y1="19" x2="20" y2="19" {...stroke} /><Path d="M8 15l3-4 3 2 4-6" {...stroke} /></>; break;
+    case 'calendarList': content = <><Rect x="4" y="5" width="16" height="15" rx="2" {...stroke} /><Line x1="8" y1="3" x2="8" y2="7" {...stroke} /><Line x1="16" y1="3" x2="16" y2="7" {...stroke} /><Line x1="8" y1="11" x2="17" y2="11" {...stroke} /><Line x1="8" y1="15" x2="17" y2="15" {...stroke} /></>; break;
+    case 'search': content = <><Circle cx="10.5" cy="10.5" r="5.5" {...stroke} /><Line x1="15" y1="15" x2="20" y2="20" {...stroke} /><Line x1="8" y1="10.5" x2="13" y2="10.5" {...stroke} /></>; break;
+    case 'copy': content = <><Rect x="8" y="7" width="11" height="13" rx="2" {...stroke} /><Path d="M16 7V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2h3" {...stroke} /></>; break;
+    case 'target': content = <><Circle cx="12" cy="12" r="8" {...stroke} /><Circle cx="12" cy="12" r="4" {...stroke} /><Circle cx="12" cy="12" r="1" fill={color} /><Path d="M17 7l3-3M17 4h3v3" {...stroke} /></>; break;
+    case 'quote': content = <><Path d="M6 10h4v5H6a3 3 0 010-5zm8 0h4v5h-4a3 3 0 010-5z" {...stroke} /><Line x1="8" y1="10" x2="9" y2="7" {...stroke} /><Line x1="16" y1="10" x2="17" y2="7" {...stroke} /></>; break;
+    case 'refresh': content = <><Path d="M20 11a8 8 0 00-14-4L4 9" {...stroke} /><Path d="M4 5v4h4M4 13a8 8 0 0014 4l2-2" {...stroke} /><Path d="M20 19v-4h-4" {...stroke} /></>; break;
+    case 'palette': content = <><Path d="M12 4a8 8 0 100 16h1.5a2 2 0 000-4H12a2 2 0 010-4h4a4 4 0 004-4 8 8 0 00-8-4z" {...stroke} /><Circle cx="7.5" cy="10" r="1" fill={color} /><Circle cx="10" cy="7.5" r="1" fill={color} /><Circle cx="14" cy="7.5" r="1" fill={color} /></>; break;
+    default: content = <><Rect x="5" y="5" width="14" height="14" rx="2" {...stroke} /><Circle cx="9" cy="9" r="1" fill={color} /><Circle cx="15" cy="15" r="1" fill={color} /></>;
+  }
+  return <Svg width={26} height={26} viewBox="0 0 24 24" accessibilityRole="image">{content}</Svg>;
+}
+
+function PremiumFeatureEntryCard({ icon, title, active, chicPalette, onPress, styles, primaryText, accent, accentStrong, border }: { icon: PremiumFeatureIconName; title: string; active: boolean; chicPalette?: ChicThemePalette; onPress: () => void; styles: any; primaryText: string; accent: string; accentStrong: string; border: string }) {
+  return <Pressable onPress={onPress} style={[styles.premiumEntryCard, { width: 112, minHeight: 70, backgroundColor: 'transparent', borderWidth: 0, borderBottomWidth: active ? 2 : 1, borderBottomColor: active ? accent : border, borderRadius: 0, paddingHorizontal: 4, paddingVertical: 8, alignItems: 'center' }]}>
+    <PremiumFeatureIcon name={icon} color={active ? accent : (chicPalette ? chicPalette.textSecondary : primaryText)} />
+    <Text numberOfLines={2} style={[styles.premiumEntryTitle, { color: active ? accentStrong : primaryText, marginTop: 5, textAlign: 'center' }, chicPalette && { color: active ? chicPalette.accentStrong : chicPalette.textPrimary }]}>{title}</Text>
   </Pressable>;
 }
 
@@ -176,12 +208,12 @@ function PremiumFeatureDiff({ kind, styles, primaryText, secondaryText, accent, 
   </View>;
 }
 
-function PremiumFeatureDetail({ icon, kind, title, description, designMode, chicPalette, styles, renderReadOnlyPreview, surface, surfaceSoft, border, primaryText, secondaryText, accentColor }: { icon: string; kind: PremiumPreviewKind; title: string; description: string; designMode: DesignMode; chicPalette?: ChicThemePalette; styles: any; renderReadOnlyPreview?: (kind: PremiumPreviewKind) => React.ReactNode; surface: string; surfaceSoft: string; border: string; primaryText: string; secondaryText: string; accentColor: string }) {
+function PremiumFeatureDetail({ icon, kind, title, description, designMode, chicPalette, styles, renderReadOnlyPreview, surface, surfaceSoft, border, primaryText, secondaryText, accentColor }: { icon: PremiumFeatureIconName; kind: PremiumPreviewKind; title: string; description: string; designMode: DesignMode; chicPalette?: ChicThemePalette; styles: any; renderReadOnlyPreview?: (kind: PremiumPreviewKind) => React.ReactNode; surface: string; surfaceSoft: string; border: string; primaryText: string; secondaryText: string; accentColor: string }) {
   const isMono = designMode !== 'chic';
   const previewStyles = designMode === 'dark' ? { ...styles, ...darkPreviewStyleOverrides } : styles;
   return <View style={styles.premiumFeatureBlock}>
     <PremiumPreviewViewport styles={styles} surface={surface} border={border}>{renderReadOnlyPreview?.(kind) ?? <LegacyPreviewFallback kind={kind} styles={previewStyles} />}</PremiumPreviewViewport>
-    <View style={[styles.premiumFeatureTextPlate, { paddingHorizontal: 0, paddingTop: 16 }]}><View style={styles.premiumDetailHeading}><Text style={[styles.premiumDetailIcon, { color: accentColor }]}>{icon}</Text><Text style={[styles.premiumFeatureTitle, { color: primaryText }]}>{title}</Text></View><Text style={[styles.premiumFeatureDescription, { color: secondaryText }]}>{description}</Text><PremiumFeatureDiff kind={kind} styles={styles} primaryText={primaryText} secondaryText={secondaryText} accent={accentColor} border={border} surfaceSoft={surfaceSoft} /></View>
+    <View style={[styles.premiumFeatureTextPlate, { paddingHorizontal: 0, paddingTop: 16 }]}><View style={styles.premiumDetailHeading}><PremiumFeatureIcon name={icon} color={accentColor} /><Text style={[styles.premiumFeatureTitle, { color: primaryText }]}>{title}</Text></View><Text style={[styles.premiumFeatureDescription, { color: secondaryText }]}>{description}</Text><PremiumFeatureDiff kind={kind} styles={styles} primaryText={primaryText} secondaryText={secondaryText} accent={accentColor} border={border} surfaceSoft={surfaceSoft} /></View>
   </View>;
 }
 
@@ -332,7 +364,7 @@ export function PremiumModal({ visible, initialFeatureId, designMode, chicPalett
           <Pressable style={styles.premiumTextLink} onPress={onClose}><Text style={[styles.premiumTextLinkText, { color: accentStrong }]}>閉じる</Text></Pressable>
         </ScrollView> : <ScrollView style={styles.premiumCarouselArea} contentContainerStyle={styles.premiumModalScroll} showsVerticalScrollIndicator={false} nestedScrollEnabled keyboardShouldPersistTaps="handled">
           <ScrollView ref={featurePickerRef} horizontal nestedScrollEnabled directionalLockEnabled showsHorizontalScrollIndicator={false} style={styles.premiumFeaturePicker} contentContainerStyle={styles.premiumFeaturePickerContent}>
-            {PREMIUM_GUIDE_FEATURES.map((feature) => <PremiumFeatureEntryCard key={feature.id} icon={PREMIUM_FEATURE_ICONS[feature.id]} title={feature.title} active={feature.id === selectedFeature.id} chicPalette={chicPalette} accent={accent} accentStrong={accentStrong} primaryText={primaryText} border={theme.colors.border} onPress={() => setSelectedFeatureId(feature.id)} styles={styles} />)}
+            {PREMIUM_GUIDE_FEATURES.map((feature) => <PremiumFeatureEntryCard key={feature.id} icon={PREMIUM_FEATURE_ICONS[feature.id]} title={PREMIUM_FEATURE_NAV_LABELS[feature.id]} active={feature.id === selectedFeature.id} chicPalette={chicPalette} accent={accent} accentStrong={accentStrong} primaryText={primaryText} border={theme.colors.border} onPress={() => setSelectedFeatureId(feature.id)} styles={styles} />)}
           </ScrollView>
           <View style={styles.premiumFeatureStage}>
             <PremiumFeatureDetail key={selectedFeature.id} icon={PREMIUM_FEATURE_ICONS[selectedFeature.id]} kind={selectedFeature.kind} title={selectedFeature.title} description={selectedFeature.description} designMode={designMode} chicPalette={chicPalette} styles={styles} renderReadOnlyPreview={renderReadOnlyPreview} surface={surface} surfaceSoft={surfaceSoft} border={theme.colors.border} primaryText={primaryText} secondaryText={secondaryText} accentColor={accent} />
