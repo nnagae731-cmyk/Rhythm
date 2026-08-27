@@ -65,7 +65,24 @@ function CountdownIcon({ name, color }: { name: CountdownIconName; color: string
 }
 
 function CountdownPin({ color, dark }: { color: string; dark: boolean }) {
-  return <View pointerEvents="none" style={{ position: 'absolute', top: -7, alignSelf: 'center', width: 16, height: 16, borderRadius: 8, backgroundColor: color, borderWidth: 2, borderColor: dark ? '#AEB8C9' : '#FFFFFF', shadowColor: '#000000', shadowOpacity: 0.18, shadowRadius: 3, shadowOffset: { width: 0, height: 2 }, elevation: 3 }} />;
+  return <View pointerEvents="none" style={{ position: 'absolute', top: -10, alignSelf: 'center', width: 20, height: 25, alignItems: 'center' }}>
+    <View style={{ position: 'absolute', bottom: 0, width: 3, height: 10, borderRadius: 2, backgroundColor: color, shadowColor: '#000000', shadowOpacity: 0.14, shadowRadius: 2, shadowOffset: { width: 0, height: 1 }, elevation: 2 }} />
+    <View style={{ position: 'absolute', top: 0, width: 18, height: 18, borderRadius: 9, backgroundColor: color, borderWidth: 2, borderColor: dark ? '#AEB8C9' : 'rgba(255,255,255,0.92)', shadowColor: '#000000', shadowOpacity: 0.2, shadowRadius: 3, shadowOffset: { width: 0, height: 2 }, elevation: 3 }}>
+      <View style={{ position: 'absolute', top: 3, left: 4, width: 5, height: 4, borderRadius: 3, backgroundColor: 'rgba(255,255,255,0.62)' }} />
+    </View>
+  </View>;
+}
+
+function CountdownCompactCard({ kind, title, detail, countdown, accent, text, muted, border, surface, onPress }: { kind: 'plan' | 'task'; title: string; detail: string; countdown: string; accent: string; text: string; muted: string; border: string; surface: string; onPress: () => void }) {
+  return <Pressable accessibilityRole="button" onPress={onPress} style={{ minHeight: 68, marginTop: 8, paddingHorizontal: 14, paddingVertical: 10, borderRadius: 14, borderWidth: 1, borderColor: border, backgroundColor: surface, flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+    <View style={{ width: 4, height: 34, borderRadius: 2, backgroundColor: accent }} />
+    <View style={{ flex: 1, minWidth: 0 }}>
+      <Text style={{ color: accent, fontSize: 10, fontWeight: '900' }}>{kind === 'plan' ? '予定' : 'やること'}</Text>
+      <Text numberOfLines={2} style={{ color: text, fontSize: 14, lineHeight: 19, fontWeight: '800', marginTop: 1 }}>{title}</Text>
+      <Text numberOfLines={1} style={{ color: muted, fontSize: 10, lineHeight: 15, marginTop: 2 }}>{detail}</Text>
+    </View>
+    <View style={{ alignItems: 'flex-end', maxWidth: 116 }}><Text numberOfLines={2} style={{ color: accent, fontSize: 11, lineHeight: 16, fontWeight: '900', textAlign: 'right' }}>{countdown}</Text><Text style={{ color: muted, fontSize: 22, lineHeight: 23, fontWeight: '300' }}>›</Text></View>
+  </Pressable>;
 }
 
 export const TaskCountdownCard = React.memo(function TaskCountdownCard({ task, now, designMode, chicPalette, styles, onEdit, onBucket }: TaskCountdownCardProps) {
@@ -77,10 +94,10 @@ export const TaskCountdownCard = React.memo(function TaskCountdownCard({ task, n
   const minutes = Math.max(0, Math.ceil((target.getTime() - now.getTime()) / 60000));
   const isOverdue = target.getTime() < now.getTime();
   const countdown = isOverdue ? '期限を過ぎています' : minutes < 60 ? `あと${minutes}分` : `あと${Math.floor(minutes / 60)}時間${minutes % 60 ? `${minutes % 60}分` : ''}`;
-  const accent = isChic ? chicPalette!.success : theme.colors.secondaryAccent;
+  const accent = isChic ? chicPalette!.accentStrong : theme.colors.secondaryAccent;
   const onAccent = isChic ? chicPalette!.onAccent : isDark ? theme.colors.screenBackground : theme.colors.surface;
   return <View style={[styles.departureCountdownCard, styles.planCountdownCardNew, { backgroundColor: isChic ? chicPalette!.cardSurface : theme.colors.surface, borderColor: isOverdue ? theme.colors.danger : theme.colors.border, borderLeftColor: isOverdue ? theme.colors.danger : accent }]}>
-    <CountdownPin color={isOverdue ? theme.colors.danger : isChic ? chicPalette!.accent : theme.colors.secondaryAccent} dark={isDark} />
+    <CountdownPin color={isOverdue ? theme.colors.danger : isChic ? chicPalette!.accentStrong : theme.colors.secondaryAccent} dark={isDark} />
     <View style={styles.planCardTopRow}><View style={{ flex: 1 }}><Text style={[styles.departureCountdownMeta, { color: isChic ? chicPalette!.textSecondary : theme.colors.secondaryText }]}>やること</Text><Text numberOfLines={2} style={[styles.departureCountdownTitle, { color: isChic ? chicPalette!.textPrimary : theme.colors.primaryText }]}>{task.title}</Text><Text style={[styles.departureCountdownDate, { color: isOverdue ? theme.colors.danger : accent }]}>今日 {task.deadlineTime}まで</Text></View><Text style={[styles.planTaskCountdownValue, { color: isOverdue ? theme.colors.danger : accent }]}>{countdown}</Text></View>
     <View style={[styles.planTaskNote, { backgroundColor: isChic ? chicPalette!.accentSoft : theme.colors.secondarySurface, borderColor: isOverdue ? theme.colors.danger : theme.colors.border }]}><Text style={[styles.planTaskNoteLabel, { color: isOverdue ? theme.colors.danger : accent }]}>進行中</Text><Text style={[styles.planTaskNoteText, { color: isChic ? chicPalette!.textPrimary : theme.colors.primaryText }]}>{isOverdue ? '期限を過ぎています' : `${countdown}で期限`}</Text></View>
     <View style={styles.planTaskActionRow}><Pressable style={[styles.planTaskActionPrimary, { backgroundColor: accent }]} onPress={() => onBucket?.(task.id, 'now')}><Text style={{ color: onAccent, fontSize: 12, fontWeight: '900' }}>今やる</Text></Pressable><Pressable style={[styles.planTaskActionSecondary, { borderColor: theme.colors.border, backgroundColor: theme.colors.secondarySurface }]} onPress={() => onBucket?.(task.id, 'later')}><Text style={{ color: isChic ? chicPalette!.textPrimary : theme.colors.primaryText, fontSize: 12, fontWeight: '900' }}>あとで</Text></Pressable><Pressable accessibilityLabel="タスクを編集" onPress={() => onEdit(task)} style={styles.planTaskEdit}><CountdownIcon name="edit" color={accent} /><Text style={{ color: accent, fontSize: 11, fontWeight: '900' }}>編集</Text></Pressable></View>
@@ -187,6 +204,7 @@ export function TimelineScreen({
   const [calendarExcludedCount, setCalendarExcludedCount] = useState(0);
   const [calendarFocusDate, setCalendarFocusDate] = useState<string>();
   const [recoveryPlan, setRecoveryPlan] = useState<DeparturePlan>();
+  const [selectedCountdownKey, setSelectedCountdownKey] = useState<string>();
   useEffect(() => setTimeTab(initialTab), [initialTab]);
   useEffect(() => {
     if (!recoveryTargetPlanId) return;
@@ -206,6 +224,19 @@ export function TimelineScreen({
   const countdownTasks = useMemo(() => tasks
     .filter((task: Task) => !task.done && task.deadlineDate === todayKey && Boolean(task.deadlineTime))
     .sort((a: Task, b: Task) => `${a.deadlineTime}`.localeCompare(`${b.deadlineTime}`)), [tasks, todayKey]);
+  const countdownItems = useMemo(() => {
+    const planItems = countdownPlans.map((plan: DeparturePlan) => ({ key: `plan:${plan.id}`, kind: 'plan' as const, id: plan.id ?? '', target: getPlanCountdownAt(plan).getTime() }));
+    const taskItems = countdownTasks.map((task: Task) => ({ key: `task:${task.id}`, kind: 'task' as const, id: task.id, target: new Date(`${task.deadlineDate}T${task.deadlineTime}:00`).getTime() }));
+    return [...planItems, ...taskItems].sort((a, b) => a.target - b.target);
+  }, [countdownPlans, countdownTasks, getPlanCountdownAt]);
+  useEffect(() => {
+    setSelectedCountdownKey((current) => current && countdownItems.some((item) => item.key === current) ? current : countdownItems[0]?.key);
+  }, [countdownItems]);
+  const selectedCountdown = countdownItems.find((item) => item.key === selectedCountdownKey) ?? countdownItems[0];
+  const renderPlanCountdown = (item: DeparturePlan) => {
+    const key = `${item.id}:${planDateKey(item)}`;
+    return <DepartureCountdownCard key={item.id} plan={item} now={now} planTier={planTier} designMode={designMode} chicPalette={chicPalette} status={item.id && planDateKey(item) === todayKey ? departurePreparationStatuses[item.id] : undefined} prepared={preparedByPlanDay.has(key)} departed={departedByPlanDay.has(key)} checkIn={checkInsByPlanDay.get(key)} completionIcon={completionIcon} styles={styles} helpers={{ getThemeTokens, planDateKey, formatLiveTime, getDepartureMoments, countdownToDate, getMapSearchTarget, openMapSearch, getPlanCountdownAt }} onPrepare={onPreparationStarted} onDepart={onDeparted} onStill={onStill} onRecover={(target) => { if (target.id) onRecoveryOpened?.(target.id); setRecoveryPlan(target); }} onShare={onSharePlan} onPremium={() => onPremium('route')} onEdit={openPlanEditor} onDelete={onDelete} travelApps={travelApps} onOpenTravelAppSettings={onOpenTravelAppSettings} />;
+  };
   const { checkInsByPlanDay, preparedByPlanDay, departedByPlanDay } = useMemo(() => {
     const checkIns = new Map<string, DepartureCheckIn>();
     const prepared = new Set<string>();
@@ -344,11 +375,27 @@ export function TimelineScreen({
       <Modal visible={calendarSelectorOpen} transparent animationType="slide" onRequestClose={() => setCalendarSelectorOpen(false)}><Pressable style={styles.modalBackdrop} onPress={() => setCalendarSelectorOpen(false)}><Pressable style={[styles.modalSheet, { backgroundColor: theme.colors.screenBackground, maxHeight: '72%' }]} onPress={(event) => event.stopPropagation()}><View style={styles.modalHandle} /><View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}><Text style={[styles.modalTitle, isDark && styles.modalTitleDark]}>取り込むカレンダー</Text><Pressable onPress={() => setCalendarSelectorOpen(false)}><Text style={[styles.calendarImportArrow, { color: theme.colors.primaryAccent }]}>閉じる</Text></Pressable></View><Text style={[styles.calendarImportCopy, isDark && styles.darkMutedText]}>通常のカレンダーは初期選択、購読カレンダーは必要な場合だけ選択できます。</Text><ScrollView style={{ marginTop: 10 }}>{displayedCalendarOptions.filter((item) => !isBirthdayCalendar(item)).map((calendar) => { const selected = displayedCalendarImportIds?.includes(calendar.id) ?? false; const subscribed = isSubscribedCalendar(calendar); return <Pressable key={calendar.id} style={{ paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: isDark ? '#303B50' : '#E5E0E5', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }} onPress={previewMode ? undefined : () => void toggleCalendarSelection(calendar)}><View style={{ flex: 1, paddingRight: 12 }}><Text style={[styles.calendarEventTitle, isDark && styles.darkBodyText]}>{calendar.title}</Text><Text style={[styles.calendarEventDate, isDark && styles.darkMutedText]}>{subscribed ? '購読カレンダー' : '通常カレンダー'}</Text></View><Text style={{ color: selected ? theme.colors.primaryAccent : (isDark ? '#8F9BB0' : '#9AA3B3'), fontSize: 20 }}>{selected ? '✓' : '○'}</Text></Pressable>; })}</ScrollView></Pressable></Pressable></Modal>
       {displayedCalendarLoaded && displayedCalendarEvents.length === 0 && <View style={[styles.calendarEventPicker, designMode === 'chic' && chicPalette && { backgroundColor: chicPalette.cardSurface, borderColor: chicPalette.border }]}><Text style={[styles.calendarEventPickerTitle, designMode === 'chic' && chicPalette && { color: chicPalette.textPrimary }]}>新しく取り込める予定はありません</Text><Text style={[styles.calendarEventDate, designMode === 'chic' && chicPalette && { color: chicPalette.textSecondary }]}>{calendarExcludedCount > 0 ? '登録済みの予定は一覧から除外しています。' : '今日から30日以内のカレンダー予定がありません。'}</Text></View>}
       {displayedCalendarLoaded && displayedCalendarEvents.length > 0 && <View style={[styles.calendarEventPicker, designMode === 'chic' && chicPalette && { backgroundColor: chicPalette.cardSurface, borderColor: chicPalette.border }]}><Text style={[styles.calendarEventPickerTitle, designMode === 'chic' && chicPalette && { color: chicPalette.textPrimary }]}>取り込む予定を選択（{displayedCalendarEvents.length}件）</Text><Text style={[styles.calendarEventDate, designMode === 'chic' && chicPalette && { color: chicPalette.textSecondary }]}>登録済みの予定は表示されません。</Text>{displayedCalendarEvents.map((event) => { const eventStart = new Date(event.startDate); return <Pressable key={calendarEventOccurrenceKey(event)} style={[styles.calendarEventRow, designMode === 'chic' && chicPalette && { borderBottomColor: chicPalette.border }]} onPress={previewMode ? undefined : () => selectCalendarEvent(event)}><View style={{ flex: 1 }}><Text style={[styles.calendarEventTitle, designMode === 'chic' && chicPalette && { color: chicPalette.textPrimary }]}>{event.title || '名称なし'}</Text><Text style={[styles.calendarEventDate, designMode === 'chic' && chicPalette && { color: chicPalette.textSecondary }]}>{formatLiveDate(eventStart)} ・ {event.allDay ? '終日' : formatLiveTime(eventStart)}</Text></View><Text style={[styles.calendarImportArrow, designMode !== 'chic' && styles.calendarImportArrowMono, isDark && styles.calendarImportArrowDark, designMode === 'chic' && chicPalette && { color: chicPalette.accent }]}>＋</Text></Pressable>; })}</View>}
-      {!previewMode && <><View style={[styles.departureListHeader, isDark && styles.darkPanel]}><Text style={[styles.sectionTitle, isDark && styles.darkBodyText]}>カウントダウン</Text><Text style={[styles.sectionSub, isDark && styles.darkMutedText]}>{countdownPlans.length + countdownTasks.length}件</Text></View>
-      {countdownPlans.length === 0 && countdownTasks.length === 0 ? <View style={[styles.departureEmpty, isDark && styles.departureEmptyDark]}><Text style={[styles.emptyCopy, isDark && styles.darkMutedText]}>出発時刻や期限を登録した予定が、ここに表示されます。</Text></View> : countdownPlans.map((item: DeparturePlan) => {
-        const key = `${item.id}:${planDateKey(item)}`;
-        return <DepartureCountdownCard key={item.id} plan={item} now={now} planTier={planTier} designMode={designMode} chicPalette={chicPalette} status={item.id && planDateKey(item) === todayKey ? departurePreparationStatuses[item.id] : undefined} prepared={preparedByPlanDay.has(key)} departed={departedByPlanDay.has(key)} checkIn={checkInsByPlanDay.get(key)} completionIcon={completionIcon} styles={styles} helpers={{ getThemeTokens, planDateKey, formatLiveTime, getDepartureMoments, countdownToDate, getMapSearchTarget, openMapSearch, getPlanCountdownAt }} onPrepare={onPreparationStarted} onDepart={onDeparted} onStill={onStill} onRecover={(target) => { if (target.id) onRecoveryOpened?.(target.id); setRecoveryPlan(target); }} onShare={onSharePlan} onPremium={() => onPremium('route')} onEdit={openPlanEditor} onDelete={onDelete} travelApps={travelApps} onOpenTravelAppSettings={onOpenTravelAppSettings} />;
-      })}{countdownTasks.map((task: Task) => <TaskCountdownCard key={`task-countdown-${task.id}`} task={task} now={now} designMode={designMode} chicPalette={chicPalette} styles={styles} onEdit={onEditTask} onBucket={onTaskBucketChange} />)}</>}
+      {!previewMode && <><View style={[styles.departureListHeader, isDark && styles.darkPanel]}><Text style={[styles.sectionTitle, isDark && styles.darkBodyText]}>カウントダウン</Text><Text style={[styles.sectionSub, isDark && styles.darkMutedText]}>{countdownItems.length}件</Text></View>
+      {countdownItems.length === 0 ? <View style={[styles.departureEmpty, isDark && styles.departureEmptyDark]}><Text style={[styles.emptyCopy, isDark && styles.darkMutedText]}>出発時刻や期限を登録した予定が、ここに表示されます。</Text></View> : <>
+        {selectedCountdown?.kind === 'plan' ? renderPlanCountdown(countdownPlans.find((item: DeparturePlan) => `plan:${item.id}` === selectedCountdown.key)!) : selectedCountdown?.kind === 'task' ? <TaskCountdownCard task={countdownTasks.find((item: Task) => `task:${item.id}` === selectedCountdown.key)!} now={now} designMode={designMode} chicPalette={chicPalette} styles={styles} onEdit={onEditTask} onBucket={onTaskBucketChange} /> : null}
+        {countdownItems.filter((item) => item.key !== selectedCountdown?.key).map((item) => {
+          if (item.kind === 'plan') {
+            const planItem = countdownPlans.find((candidate: DeparturePlan) => `plan:${candidate.id}` === item.key);
+            if (!planItem) return null;
+            const accent = designMode === 'chic' && chicPalette ? chicPalette.accent : theme.colors.primaryAccent;
+            const surface = designMode === 'chic' && chicPalette ? chicPalette.cardSurface : theme.colors.surface;
+            return <CountdownCompactCard key={item.key} kind="plan" title={planItem.title} detail={`${planDateKey(planItem).replaceAll('-', '.')} ・ ${planItem.destination ?? '予定'}`} countdown={countdownToDate(getPlanCountdownAt(planItem), now)} accent={accent} text={designMode === 'chic' && chicPalette ? chicPalette.textPrimary : theme.colors.primaryText} muted={designMode === 'chic' && chicPalette ? chicPalette.textSecondary : theme.colors.secondaryText} border={designMode === 'chic' && chicPalette ? chicPalette.border : theme.colors.border} surface={surface} onPress={() => setSelectedCountdownKey(item.key)} />;
+          }
+          const taskItem = countdownTasks.find((candidate: Task) => `task:${candidate.id}` === item.key);
+          if (!taskItem || !taskItem.deadlineDate || !taskItem.deadlineTime) return null;
+          const target = new Date(`${taskItem.deadlineDate}T${taskItem.deadlineTime}:00`);
+          const minutes = Math.max(0, Math.ceil((target.getTime() - now.getTime()) / 60000));
+          const taskOverdue = target.getTime() < now.getTime();
+          const accent = taskOverdue ? theme.colors.danger : designMode === 'chic' && chicPalette ? chicPalette.accentStrong : theme.colors.secondaryAccent;
+          const surface = designMode === 'chic' && chicPalette ? chicPalette.cardSurface : theme.colors.surface;
+          return <CountdownCompactCard key={item.key} kind="task" title={taskItem.title} detail={`今日 ${taskItem.deadlineTime}まで`} countdown={taskOverdue ? '期限を過ぎています' : minutes < 60 ? `あと${minutes}分` : `あと${Math.floor(minutes / 60)}時間${minutes % 60 ? `${minutes % 60}分` : ''}`} accent={accent} text={designMode === 'chic' && chicPalette ? chicPalette.textPrimary : theme.colors.primaryText} muted={designMode === 'chic' && chicPalette ? chicPalette.textSecondary : theme.colors.secondaryText} border={designMode === 'chic' && chicPalette ? chicPalette.border : theme.colors.border} surface={surface} onPress={() => setSelectedCountdownKey(item.key)} />;
+        })}
+      </>}</>}
     </>}
 
     {planEditorOpen && <Modal visible animationType="slide" presentationStyle="fullScreen" onRequestClose={onClosePlanEditor}>
