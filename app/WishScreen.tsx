@@ -276,7 +276,7 @@ export function WishScreen({ designMode: rawDesignMode, chicPalette, monthLabel,
                 </Pressable>
               )
             ) : (
-              <View><Text style={[styles.visionEmptyText, { color: theme.colors.secondaryText }]}>今月の方向性を1つ決めて、毎日の行動につなげます。</Text><Text style={[styles.itemMeta, { color: theme.colors.secondaryText, marginTop: 8 }]}>広告を5回見ると、今月の目標を設定できます。 {monthlyGoalRewardProgress?.current ?? 0} / {monthlyGoalRewardProgress?.required ?? 5} 回視聴済み</Text><Pressable style={[styles.addRow, designMode === 'minimal' ? styles.addRowMinimal : styles.addRowChic, isDark && styles.addRowDark, designSubtle]} onPress={() => setRewardPrompt('monthlyGoal')}><Text style={[styles.addRowText, { color: darkAccent }]}>広告を見て取得</Text></Pressable></View>
+              <View><Text style={[styles.visionEmptyText, { color: theme.colors.secondaryText }]}>まだ設定されていません</Text><Text style={[styles.itemMeta, { color: theme.colors.secondaryText, marginTop: 8 }]}>Freeでは広告視聴で設定できます。あと{Math.max(0, (monthlyGoalRewardProgress?.required ?? 5) - (monthlyGoalRewardProgress?.current ?? 0))}回</Text><Pressable style={[styles.lightActionRow, { borderTopColor: rawDesignMode === 'chic' && palette ? palette.border : theme.colors.border }]} onPress={() => setRewardPrompt('monthlyGoal')}><Text style={[styles.lightAction, { color: rawDesignMode === 'chic' && palette ? palette.accent : darkAccent }]}>広告を見て設定 ›</Text></Pressable></View>
             )}
           </View>
 
@@ -287,9 +287,9 @@ export function WishScreen({ designMode: rawDesignMode, chicPalette, monthLabel,
                 {wishes.map((wish) => <Pressable key={wish.id} style={[styles.wishPage, { width: wishPageWidth }]} onPress={() => openWishEditor(wish)}><Text style={[styles.wishHeroTitle, { color: rawDesignMode === 'chic' && palette ? palette.textPrimary : theme.colors.primaryText }, wish.completed && styles.itemTitleDone]}>{wish.title}</Text><Text style={[styles.wishHeroMeta, { color: rawDesignMode === 'chic' && palette ? palette.textSecondary : theme.colors.secondaryText }]}>{wish.completed ? '叶いました' : 'ここから一歩ずつ'}</Text></Pressable>)}
               </ScrollView>
               <View style={styles.pageIndicators}>{wishes.map((wish, index) => <View key={wish.id} style={[styles.pageIndicator, { backgroundColor: index === selectedWishIndex ? (rawDesignMode === 'chic' && palette ? palette.accent : theme.colors.primaryAccent) : (rawDesignMode === 'chic' && palette ? palette.border : theme.colors.border) }]} />)}</View>
-            </> : <Text style={[styles.visionEmptyText, { color: theme.colors.secondaryText }]}>まだありません。今月の願いを1つ書いてみよう。</Text>}
-            {!canCreateWish && wishRewardProgress ? <Text style={[styles.itemMeta, { color: theme.colors.secondaryText, marginTop: 8 }]}>広告を2回見ると、叶えたいことを1件追加できます。 {wishRewardProgress.current} / {wishRewardProgress.required}</Text> : null}
-            <Pressable style={[styles.lightActionRow, { borderTopColor: rawDesignMode === 'chic' && palette ? palette.border : theme.colors.border }]} onPress={() => openWishEditor()}><Text style={[styles.lightAction, { color: rawDesignMode === 'chic' && palette ? palette.accent : theme.colors.primaryAccent }]}>叶えたいことを追加</Text><Text style={[styles.itemChevron, { color: rawDesignMode === 'chic' && palette ? palette.accent : theme.colors.secondaryText }]}>›</Text></Pressable>
+            </> : <Text style={[styles.visionEmptyText, { color: theme.colors.secondaryText }]}>まだありません</Text>}
+            {!canCreateWish && wishRewardProgress ? <Text style={[styles.itemMeta, { color: theme.colors.secondaryText, marginTop: 8 }]}>Freeでは広告視聴で追加できます。あと{Math.max(0, wishRewardProgress.required - wishRewardProgress.current)}回</Text> : null}
+            <Pressable style={[styles.lightActionRow, { borderTopColor: rawDesignMode === 'chic' && palette ? palette.border : theme.colors.border }]} onPress={() => openWishEditor()}><Text style={[styles.lightAction, { color: rawDesignMode === 'chic' && palette ? palette.accent : theme.colors.primaryAccent }]}>{canCreateWish ? '叶えたいことを追加' : '広告を見て追加 ›'}</Text>{canCreateWish ? <Text style={[styles.itemChevron, { color: rawDesignMode === 'chic' && palette ? palette.accent : theme.colors.secondaryText }]}>›</Text> : null}</Pressable>
           </View>
 
           <View style={[styles.visionSection, rawDesignMode === 'chic' && palette ? { borderBottomColor: palette.border } : { borderBottomColor: theme.colors.border }]}>
@@ -445,7 +445,7 @@ const styles = StyleSheet.create({
   screenMinimal: { backgroundColor: '#F4F4F2' },
   screenDark: { backgroundColor: '#0E1117' },
   screenChic: { backgroundColor: '#FFF9F6' },
-  scroll: { paddingHorizontal: 16, paddingTop: 12, paddingBottom: 120, gap: 12 },
+  scroll: { paddingHorizontal: 16, paddingTop: 12, paddingBottom: 144, gap: 12 },
   pageHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', minHeight: 34 },
   pageHeaderEyebrow: { fontSize: 11, fontWeight: '800', letterSpacing: 0.5, marginBottom: 2 },
   pageHeaderTitle: { fontSize: 20, fontWeight: '900' },
