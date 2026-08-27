@@ -86,12 +86,12 @@ const PREMIUM_GUIDE_FEATURES: Array<{ id: PremiumGuideFeatureId; kind: PremiumPr
   { id: 'photo_design', kind: 'photo_design', title: '選べるデザイン', description: '花柄1〜3、ドット、チェックデザイン、写真背景はPremiumで利用できます。FreeでもTrialや広告で試せます。Design Customizeを¥500で買い切れば、Premiumなしでも広告なしでずっと利用できます。' },
 ];
 
-type PremiumFeatureIconName = 'timer' | 'journal' | 'calendarChart' | 'calendarSync' | 'pin' | 'bell' | 'chart' | 'calendarList' | 'search' | 'copy' | 'target' | 'quote' | 'refresh' | 'palette' | 'pattern';
+type PremiumFeatureIconName = 'timer' | 'journal' | 'calendarChart' | 'calendarSync' | 'pin' | 'bell' | 'bellSparkle' | 'chart' | 'analyticsBars' | 'historyTrend' | 'calendarList' | 'search' | 'copy' | 'target' | 'pathCheck' | 'quote' | 'messageSparkle' | 'refresh' | 'palette' | 'swatches' | 'pattern';
 
 const PREMIUM_FEATURE_ICONS: Record<PremiumGuideFeatureId, PremiumFeatureIconName> = {
   focus_custom_duration: 'timer', records: 'journal', reflection: 'calendarChart', calendar: 'calendarSync', route: 'pin', travel_apps: 'pin',
-  nudge: 'bell', time: 'chart', behavior: 'chart', month: 'calendarList', history: 'search', recovery: 'refresh', templates: 'copy', wish: 'target',
-  affirmation: 'quote', photo_design: 'palette', floral: 'pattern', dot: 'pattern', check: 'pattern',
+  nudge: 'bellSparkle', time: 'analyticsBars', behavior: 'historyTrend', month: 'calendarList', history: 'search', recovery: 'refresh', templates: 'copy', wish: 'pathCheck',
+  affirmation: 'messageSparkle', photo_design: 'swatches', floral: 'pattern', dot: 'pattern', check: 'pattern',
 };
 
 const PREMIUM_FEATURE_NAV_LABELS: Record<PremiumGuideFeatureId, string> = {
@@ -179,14 +179,20 @@ function PremiumFeatureIcon({ name, color }: { name: PremiumFeatureIconName; col
     case 'calendarSync': content = <><Rect x="4" y="5" width="16" height="15" rx="2" {...stroke} /><Line x1="8" y1="3" x2="8" y2="7" {...stroke} /><Line x1="16" y1="3" x2="16" y2="7" {...stroke} /><Path d="M8 13a4 4 0 016-2" {...stroke} /><Path d="M14 9v3h-3M16 15a4 4 0 01-6 2" {...stroke} /><Path d="M10 19v-3h3" {...stroke} /></>; break;
     case 'pin': content = <><Path d="M19 10c0 5-7 10-7 10S5 15 5 10a7 7 0 1114 0z" {...stroke} /><Circle cx="12" cy="10" r="2.2" {...stroke} /></>; break;
     case 'bell': content = <><Path d="M6 17h12l-1.5-2V10a4.5 4.5 0 00-9 0v5z" {...stroke} /><Path d="M10 20h4" {...stroke} /></>; break;
+    case 'bellSparkle': content = <><Path d="M6 17h12l-1.5-2V10a4.5 4.5 0 00-9 0v5z" {...stroke} /><Path d="M10 20h4" {...stroke} /><Path d="M19 3v4M17 5h4" {...stroke} /><Path d="M21 8v2M20 9h2" {...stroke} /></>; break;
     case 'chart': content = <><Line x1="5" y1="19" x2="5" y2="5" {...stroke} /><Line x1="5" y1="19" x2="20" y2="19" {...stroke} /><Path d="M8 15l3-4 3 2 4-6" {...stroke} /></>; break;
+    case 'analyticsBars': content = <><Line x1="5" y1="19" x2="5" y2="5" {...stroke} /><Line x1="5" y1="19" x2="20" y2="19" {...stroke} /><Line x1="9" y1="19" x2="9" y2="13" {...stroke} /><Line x1="13" y1="19" x2="13" y2="10" {...stroke} /><Line x1="17" y1="19" x2="17" y2="7" {...stroke} /><Path d="M7 10l4-3 3 2 4-5" {...stroke} /></>; break;
+    case 'historyTrend': content = <><Path d="M7 7a8 8 0 11-1 10" {...stroke} /><Path d="M7 3v4H3" {...stroke} /><Line x1="10" y1="17" x2="10" y2="13" {...stroke} /><Line x1="14" y1="17" x2="14" y2="10" {...stroke} /><Line x1="18" y1="17" x2="18" y2="7" {...stroke} /></>; break;
     case 'calendarList': content = <><Rect x="4" y="5" width="16" height="15" rx="2" {...stroke} /><Line x1="8" y1="3" x2="8" y2="7" {...stroke} /><Line x1="16" y1="3" x2="16" y2="7" {...stroke} /><Line x1="8" y1="11" x2="17" y2="11" {...stroke} /><Line x1="8" y1="15" x2="17" y2="15" {...stroke} /></>; break;
     case 'search': content = <><Circle cx="10.5" cy="10.5" r="5.5" {...stroke} /><Line x1="15" y1="15" x2="20" y2="20" {...stroke} /><Line x1="8" y1="10.5" x2="13" y2="10.5" {...stroke} /></>; break;
     case 'copy': content = <><Rect x="8" y="7" width="11" height="13" rx="2" {...stroke} /><Path d="M16 7V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2h3" {...stroke} /></>; break;
     case 'target': content = <><Circle cx="12" cy="12" r="8" {...stroke} /><Circle cx="12" cy="12" r="4" {...stroke} /><Circle cx="12" cy="12" r="1" fill={color} /><Path d="M17 7l3-3M17 4h3v3" {...stroke} /></>; break;
+    case 'pathCheck': content = <><Path d="M5 5c4 0 4 6 8 6s4-6 6-6" {...stroke} /><Path d="M5 5v4M19 5v4" {...stroke} /><Path d="M7 17l3 3 7-7" {...stroke} /></>; break;
     case 'quote': content = <><Path d="M6 10h4v5H6a3 3 0 010-5zm8 0h4v5h-4a3 3 0 010-5z" {...stroke} /><Line x1="8" y1="10" x2="9" y2="7" {...stroke} /><Line x1="16" y1="10" x2="17" y2="7" {...stroke} /></>; break;
+    case 'messageSparkle': content = <><Path d="M5 6.5A3.5 3.5 0 018.5 3h7A3.5 3.5 0 0119 6.5v5a3.5 3.5 0 01-3.5 3.5H11l-4.5 4v-4.3A3.5 3.5 0 015 11.5z" {...stroke} /><Path d="M13 7v4M11 9h4" {...stroke} /><Path d="M19 3v3M17.5 4.5h3" {...stroke} /></>; break;
     case 'refresh': content = <><Path d="M20 11a8 8 0 00-14-4L4 9" {...stroke} /><Path d="M4 5v4h4M4 13a8 8 0 0014 4l2-2" {...stroke} /><Path d="M20 19v-4h-4" {...stroke} /></>; break;
     case 'palette': content = <><Path d="M12 4a8 8 0 100 16h1.5a2 2 0 000-4H12a2 2 0 010-4h4a4 4 0 004-4 8 8 0 00-8-4z" {...stroke} /><Circle cx="7.5" cy="10" r="1" fill={color} /><Circle cx="10" cy="7.5" r="1" fill={color} /><Circle cx="14" cy="7.5" r="1" fill={color} /></>; break;
+    case 'swatches': content = <><Rect x="4" y="4" width="11" height="11" rx="2" {...stroke} /><Rect x="9" y="9" width="11" height="11" rx="2" {...stroke} /><Line x1="7" y1="8" x2="11" y2="8" {...stroke} /><Line x1="12" y1="13" x2="16" y2="13" {...stroke} /></>; break;
     default: content = <><Rect x="5" y="5" width="14" height="14" rx="2" {...stroke} /><Circle cx="9" cy="9" r="1" fill={color} /><Circle cx="15" cy="15" r="1" fill={color} /></>;
   }
   return <Svg width={26} height={26} viewBox="0 0 24 24" accessibilityRole="image">{content}</Svg>;
