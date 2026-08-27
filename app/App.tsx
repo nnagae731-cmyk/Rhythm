@@ -2537,6 +2537,7 @@ export default function App() {
         chicPattern={effectiveChicPattern}
         chicPalette={chicPalette}
         planTier="premium"
+        completionIcon={completionIcon}
         focusCustomDurationMinutes={kind === 'focus_custom_duration' ? 47 : undefined}
         previewCustomDurationOpen={previewOverride?.previewCustomDurationOpen ?? (kind === 'focus_custom_duration')}
         previewMode={timelinePreviewMode}
@@ -2555,6 +2556,7 @@ export default function App() {
         onDelete={() => undefined}
         onEditTask={() => undefined}
         onDeleteTask={() => undefined}
+        onTaskBucketChange={() => undefined}
         onPremium={() => undefined}
         onRecovery={() => undefined}
         onRecoveryClosed={() => undefined}
@@ -3371,6 +3373,7 @@ export default function App() {
               chicPattern={effectiveChicPattern}
               chicPalette={chicPalette}
               planTier={planTier}
+              completionIcon={completionIcon}
               initialTab={timelineInitialTab}
               previewMode={firstRunDemoActive}
               previewCalendarEvents={firstRunDemoActive ? guideDemoCalendarEvents : undefined}
@@ -3396,6 +3399,12 @@ export default function App() {
               onDelete={firstRunDemoActive ? () => undefined : deleteDeparturePlan}
               onEditTask={(task: Task) => { if (!firstRunDemoActive) setEditingTask(task); }}
               onDeleteTask={firstRunDemoActive ? () => undefined : deleteTaskById}
+              onTaskBucketChange={(id: string, bucket: TaskBucket) => {
+                if (firstRunDemoActive) return;
+                const updated = tasksRef.current.map((item) => item.id === id ? { ...item, bucket } : item);
+                tasksRef.current = updated;
+                setTasks(updated);
+              }}
               onPremium={firstRunDemoActive ? () => undefined : openPremiumFeature}
               onRecovery={firstRunDemoActive ? () => undefined : applyRecovery}
               onRecoveryOpened={(planId: string) => setRecoveryTargetPlanId(planId)}
