@@ -1,6 +1,7 @@
 import * as Calendar from 'expo-calendar';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Modal, Pressable, SafeAreaView, ScrollView, Text, View } from 'react-native';
+import Svg, { Circle, Line, Path, Rect } from 'react-native-svg';
 import { ChicPattern, ChicThemePalette, DesignMode, getThemeTokens } from '../theme';
 import { CalendarMarks, DeparturePlan, DeparturePreparationStatus, Task, TimeTab } from '../types';
 import { DepartureCheckIn } from '../departureCheckIn';
@@ -49,6 +50,24 @@ type TaskCountdownCardProps = {
   onBucket?: (id: string, bucket: 'now' | 'later') => void;
 };
 
+type CountdownIconName = 'map' | 'share' | 'edit' | 'trash';
+
+function CountdownIcon({ name, color }: { name: CountdownIconName; color: string }) {
+  const stroke = { stroke: color, strokeWidth: 1.9, strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const, fill: 'none' };
+  const content = name === 'map'
+    ? <><Path d="M19 10c0 5-7 10-7 10S5 15 5 10a7 7 0 1114 0z" {...stroke} /><Circle cx="12" cy="10" r="2" {...stroke} /></>
+    : name === 'share'
+      ? <><Circle cx="18" cy="5" r="2.5" {...stroke} /><Circle cx="6" cy="12" r="2.5" {...stroke} /><Circle cx="18" cy="19" r="2.5" {...stroke} /><Line x1="8.2" y1="10.8" x2="15.8" y2="6.3" {...stroke} /><Line x1="8.2" y1="13.2" x2="15.8" y2="17.7" {...stroke} /></>
+      : name === 'edit'
+        ? <><Path d="M4 20h4L19 9l-4-4L4 16v4z" {...stroke} /><Line x1="13.5" y1="6.5" x2="17.5" y2="10.5" {...stroke} /></>
+        : <><Path d="M5 7h14M10 11v5M14 11v5M7 7l1 13h8l1-13M9 7l1-3h4l1 3" {...stroke} /></>;
+  return <Svg width={16} height={16} viewBox="0 0 24 24" accessibilityRole="image">{content}</Svg>;
+}
+
+function CountdownPin({ color, dark }: { color: string; dark: boolean }) {
+  return <View pointerEvents="none" style={{ position: 'absolute', top: -7, alignSelf: 'center', width: 16, height: 16, borderRadius: 8, backgroundColor: color, borderWidth: 2, borderColor: dark ? '#AEB8C9' : '#FFFFFF', shadowColor: '#000000', shadowOpacity: 0.18, shadowRadius: 3, shadowOffset: { width: 0, height: 2 }, elevation: 3 }} />;
+}
+
 export const TaskCountdownCard = React.memo(function TaskCountdownCard({ task, now, designMode, chicPalette, styles, onEdit, onBucket }: TaskCountdownCardProps) {
   const theme = getThemeTokens(designMode, chicPalette?.id ?? 'cool');
   const isChic = designMode === 'chic' && !!chicPalette;
@@ -58,11 +77,13 @@ export const TaskCountdownCard = React.memo(function TaskCountdownCard({ task, n
   const minutes = Math.max(0, Math.ceil((target.getTime() - now.getTime()) / 60000));
   const isOverdue = target.getTime() < now.getTime();
   const countdown = isOverdue ? '期限を過ぎています' : minutes < 60 ? `あと${minutes}分` : `あと${Math.floor(minutes / 60)}時間${minutes % 60 ? `${minutes % 60}分` : ''}`;
-  const accent = isChic ? chicPalette!.accent : theme.colors.primaryAccent;
+  const accent = isChic ? chicPalette!.success : theme.colors.secondaryAccent;
   const onAccent = isChic ? chicPalette!.onAccent : isDark ? theme.colors.screenBackground : theme.colors.surface;
   return <View style={[styles.departureCountdownCard, styles.planCountdownCardNew, { backgroundColor: isChic ? chicPalette!.cardSurface : theme.colors.surface, borderColor: isOverdue ? theme.colors.danger : theme.colors.border, borderLeftColor: isOverdue ? theme.colors.danger : accent }]}>
+    <CountdownPin color={isOverdue ? theme.colors.danger : isChic ? chicPalette!.accent : theme.colors.secondaryAccent} dark={isDark} />
     <View style={styles.planCardTopRow}><View style={{ flex: 1 }}><Text style={[styles.departureCountdownMeta, { color: isChic ? chicPalette!.textSecondary : theme.colors.secondaryText }]}>やること</Text><Text numberOfLines={2} style={[styles.departureCountdownTitle, { color: isChic ? chicPalette!.textPrimary : theme.colors.primaryText }]}>{task.title}</Text><Text style={[styles.departureCountdownDate, { color: isOverdue ? theme.colors.danger : accent }]}>今日 {task.deadlineTime}まで</Text></View><Text style={[styles.planTaskCountdownValue, { color: isOverdue ? theme.colors.danger : accent }]}>{countdown}</Text></View>
-    <View style={styles.planTaskActionRow}><Pressable style={[styles.planTaskActionPrimary, { backgroundColor: accent }]} onPress={() => onBucket?.(task.id, 'now')}><Text style={{ color: onAccent, fontSize: 12, fontWeight: '900' }}>今やる</Text></Pressable><Pressable style={[styles.planTaskActionSecondary, { borderColor: theme.colors.border, backgroundColor: theme.colors.secondarySurface }]} onPress={() => onBucket?.(task.id, 'later')}><Text style={{ color: isChic ? chicPalette!.textPrimary : theme.colors.primaryText, fontSize: 12, fontWeight: '900' }}>あとで</Text></Pressable><Pressable accessibilityLabel="タスクを編集" onPress={() => onEdit(task)} style={styles.planTaskEdit}><Text style={{ color: accent, fontSize: 11, fontWeight: '900' }}>編集 ›</Text></Pressable></View>
+    <View style={[styles.planTaskNote, { backgroundColor: isChic ? chicPalette!.accentSoft : theme.colors.secondarySurface, borderColor: isOverdue ? theme.colors.danger : theme.colors.border }]}><Text style={[styles.planTaskNoteLabel, { color: isOverdue ? theme.colors.danger : accent }]}>進行中</Text><Text style={[styles.planTaskNoteText, { color: isChic ? chicPalette!.textPrimary : theme.colors.primaryText }]}>{isOverdue ? '期限を過ぎています' : `${countdown}で期限`}</Text></View>
+    <View style={styles.planTaskActionRow}><Pressable style={[styles.planTaskActionPrimary, { backgroundColor: accent }]} onPress={() => onBucket?.(task.id, 'now')}><Text style={{ color: onAccent, fontSize: 12, fontWeight: '900' }}>今やる</Text></Pressable><Pressable style={[styles.planTaskActionSecondary, { borderColor: theme.colors.border, backgroundColor: theme.colors.secondarySurface }]} onPress={() => onBucket?.(task.id, 'later')}><Text style={{ color: isChic ? chicPalette!.textPrimary : theme.colors.primaryText, fontSize: 12, fontWeight: '900' }}>あとで</Text></Pressable><Pressable accessibilityLabel="タスクを編集" onPress={() => onEdit(task)} style={styles.planTaskEdit}><CountdownIcon name="edit" color={accent} /><Text style={{ color: accent, fontSize: 11, fontWeight: '900' }}>編集</Text></Pressable></View>
   </View>;
 });
 
@@ -71,8 +92,8 @@ export function PlanLocationShareActions({ plan, planTier, designMode, chicPalet
   const isDark = designMode === 'dark';
   const accent = theme.colors.primaryAccent;
   return <>
-    {plan.destination?.trim() ? <Pressable accessibilityRole="button" style={[styles.planUtilityButton, isDark && styles.planUtilityButtonDark]} onPress={onOpenMap}><Text style={[styles.planUtilityText, { color: accent }]}>地図</Text></Pressable> : null}
-    {planTier === 'premium' && <Pressable accessibilityRole="button" style={[styles.planUtilityButton, isDark && styles.planUtilityButtonDark]} onPress={onShare}><Text style={[styles.planUtilityText, { color: accent }]}>共有</Text></Pressable>}
+    {plan.destination?.trim() ? <Pressable accessibilityRole="button" style={[styles.planUtilityButton, isDark && styles.planUtilityButtonDark]} onPress={onOpenMap}><CountdownIcon name="map" color={accent} /><Text style={[styles.planUtilityText, { color: accent }]}>地図</Text></Pressable> : null}
+    {planTier === 'premium' && <Pressable accessibilityRole="button" style={[styles.planUtilityButton, isDark && styles.planUtilityButtonDark]} onPress={onShare}><CountdownIcon name="share" color={accent} /><Text style={[styles.planUtilityText, { color: accent }]}>共有</Text></Pressable>}
   </>;
 }
 
@@ -109,6 +130,7 @@ export const DepartureCountdownCard = React.memo(function DepartureCountdownCard
   const phaseNames = reverse && moments ? [{ label: '準備', time: moments.prepare, active: phase !== 'before' }, { label: '出発', time: moments.leave, active: phase === 'travel' || phase === 'late' }, { label: '到着', time: moments.arrival, active: phase === 'late' || Boolean(checkIn) }] : [];
   const phaseProgress = moments ? Math.min(1, Math.max(0, Math.floor((now.getTime() - moments.prepare.getTime()) / 900000) * 900000 / Math.max(1, moments.arrival.getTime() - moments.prepare.getTime()))) : 0;
   return <View style={[styles.departureCountdownCard, styles.planCountdownCardNew, isDark && styles.departureCountdownCardDark, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }, designMode === 'chic' && chicPalette && { backgroundColor: chicPalette.cardSurface, borderColor: chicPalette.border, shadowColor: chicPalette.accent }, passed && !checkIn && !reverse && styles.departurePassed, { borderLeftColor: phase === 'late' ? theme.colors.danger : accent }]}>
+    <CountdownPin color={phase === 'late' ? theme.colors.danger : designMode === 'chic' && chicPalette ? chicPalette.accent : theme.colors.primaryAccent} dark={isDark} />
     <View style={styles.planCardTopRow}>
       <View style={{ flex: 1 }}>
         <Text numberOfLines={2} ellipsizeMode="tail" style={[styles.departureCountdownTitle, textPrimary]}>{plan.title}</Text>
@@ -121,7 +143,7 @@ export const DepartureCountdownCard = React.memo(function DepartureCountdownCard
       <View><Text style={[styles.departureCountdownMeta, textSecondary]}>出発時刻</Text><Text style={[styles.planTimeSingleValue, textPrimary]}>{formatLiveTime(countdownAt)}</Text></View>
       <Text style={[styles.planCountdownValue, textPrimary]}>{phaseCopy}</Text>
     </View> : canUseReverse && moments ? <>
-      <View style={[styles.planPhaseSummary, { backgroundColor: theme.colors.secondarySurface, borderColor: theme.colors.border }]}><Text style={[styles.planPhaseLabel, { color: accent }]}>{phase === 'late' ? '遅延' : phase === 'travel' ? '移動中' : phase === 'prepare' ? '準備中' : '準備前'}</Text><Text style={[styles.planCountdownValue, textPrimary]}>{phaseCopy}</Text></View>
+      <View style={[styles.planPhaseSummary, { backgroundColor: designMode === 'chic' && chicPalette ? chicPalette.accentSoft : theme.colors.secondarySurface, borderColor: theme.colors.border }]}><Text style={[styles.planPhaseLabel, { color: phase === 'late' ? theme.colors.danger : accent }]}>{phase === 'late' ? '遅延' : phase === 'travel' ? '移動中' : phase === 'prepare' ? '準備中' : '準備前'}</Text><Text style={[styles.planCountdownValue, textPrimary]}>{phaseCopy}</Text></View>
       <View style={styles.planPhaseTimeline}><View style={[styles.planPhaseTrack, { backgroundColor: theme.colors.border }]}><View style={[styles.planPhaseFill, { width: `${phaseProgress * 100}%`, backgroundColor: accent }]} /></View>{phaseNames.map((item, index) => <View key={item.label} style={styles.planPhaseItem}><View style={styles.planPhaseNodeRow}><View style={[styles.planPhaseNode, { borderColor: item.active ? accent : theme.colors.border, backgroundColor: item.active ? accent : theme.colors.surface }]}>{item.active ? <Text style={{ color: onAccent, fontSize: 10, fontWeight: '900' }}>{(designMode === 'chic' || designMode === 'photo') ? completionIcon ?? '✓' : '✓'}</Text> : null}</View>{index < phaseNames.length - 1 ? <View style={[styles.planPhaseConnector, { backgroundColor: phase === 'late' || item.active ? accent : theme.colors.border }]} /> : null}</View><Text style={[styles.planPhaseTime, { color: item.active ? accent : theme.colors.secondaryText }]}>{formatLiveTime(item.time)}</Text><Text style={[styles.planPhaseName, { color: theme.colors.primaryText }]}>{item.label}</Text></View>)}</View>
     </> : null}
 
@@ -141,8 +163,8 @@ export const DepartureCountdownCard = React.memo(function DepartureCountdownCard
 
     <View style={[styles.planUtilityRow, { flexWrap: 'wrap' }]}>
       <PlanLocationShareActions plan={plan} planTier={planTier} designMode={designMode} chicPalette={chicPalette} styles={styles} onOpenMap={() => void openMap()} onShare={() => onShare(plan)} />
-      <Pressable accessibilityRole="button" style={[styles.planUtilityButton, isDark && styles.planUtilityButtonDark]} onPress={() => onEdit(plan)}><Text style={[styles.planUtilityText, { color: theme.colors.primaryAccent }]}>編集</Text></Pressable>
-      {plan.id && <Pressable accessibilityRole="button" style={[styles.planUtilityButton, isDark && styles.planUtilityButtonDark]} onPress={() => onDelete(plan.id!)}><Text style={[styles.planDeleteText, { color: theme.colors.danger }]}>削除</Text></Pressable>}
+      <Pressable accessibilityRole="button" style={[styles.planUtilityButton, isDark && styles.planUtilityButtonDark]} onPress={() => onEdit(plan)}><CountdownIcon name="edit" color={accent} /><Text style={[styles.planUtilityText, { color: accent }]}>編集</Text></Pressable>
+      {plan.id && <Pressable accessibilityRole="button" style={[styles.planUtilityButton, isDark && styles.planUtilityButtonDark]} onPress={() => onDelete(plan.id!)}><CountdownIcon name="trash" color={theme.colors.danger} /><Text style={[styles.planDeleteText, { color: theme.colors.danger }]}>削除</Text></Pressable>}
       {plan.destination?.trim() ? <TravelAppLaunchActions settings={travelApps} category="transit" destination={plan.destination} planTier={planTier} designMode={designMode} chicPalette={chicPalette} onPremium={onPremium} onOpenSettings={onOpenTravelAppSettings} /> : null}
       <TravelAppLaunchActions settings={travelApps} category="taxi" destination={plan.destination} planTier={planTier} designMode={designMode} chicPalette={chicPalette} onPremium={onPremium} onOpenSettings={onOpenTravelAppSettings} />
     </View>
