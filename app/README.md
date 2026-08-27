@@ -5,10 +5,10 @@ Expo + React Native + TypeScriptで作成した、忘れ防止・遅刻防止ア
 ## 起動
 
 ```sh
-npx expo start
+npx expo start --dev-client
 ```
 
-表示されたQRコードをExpo Goで読み取ると、iPhoneまたはAndroid実機で確認できます。
+Rhythm Development Buildをインストールした端末で起動し、表示された開発サーバーへ接続して確認します。
 
 ## 実装済み
 

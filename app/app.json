@@ -8,7 +8,10 @@
     "scheme": "rhythm",
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "app.rhythm.daily"
+      "bundleIdentifier": "app.rhythm.daily",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
       "package": "app.rhythm.daily",
@@ -16,15 +19,15 @@
         "android.permission.POST_NOTIFICATIONS",
         "android.permission.SCHEDULE_EXACT_ALARM",
         "android.permission.READ_CALENDAR",
-        "android.permission.WRITE_CALENDAR",
-        "android.permission.RECORD_AUDIO"
+        "android.permission.WRITE_CALENDAR"
       ]
     },
     "plugins": [
       [
         "expo-calendar",
         {
-          "calendarPermission": "カレンダーの予定をRhythmの出発プランへ変換するために使用します。"
+          "calendarPermission": "カレンダーの予定をRhythmの出発プランへ変換するために使用します。",
+          "remindersPermission": false
         }
       ],
       [
@@ -37,7 +40,15 @@
       [
         "expo-image-picker",
         {
-          "photosPermission": "好きな写真をRhythmの背景やトップ画像に設定するために使用します。"
+          "photosPermission": "好きな写真をRhythmの背景やトップ画像に設定するために使用します。",
+          "cameraPermission": false,
+          "microphonePermission": false
+        }
+      ],
+      [
+        "expo-av",
+        {
+          "microphonePermission": false
         }
       ],
       [
