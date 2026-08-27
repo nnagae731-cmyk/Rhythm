@@ -3352,7 +3352,7 @@ export default function App() {
               onRequestMonthlyGoalReward={firstRunDemoActive ? undefined : requestMonthlyGoalReward}
               topImageUri={firstRunDemoActive ? undefined : photoTopImageUri}
               onPickTopImage={firstRunDemoActive ? undefined : () => { void pickPhotoTheme('wish'); }}
-              onPremium={() => { if (!firstRunDemoActive) openPremiumFeature('wish'); }}
+              onPremium={(featureId = 'wish') => { if (!firstRunDemoActive) openPremiumFeature(featureId); }}
               onBack={() => setScreen('home')}
             />
           )}
