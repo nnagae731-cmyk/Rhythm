@@ -1,5 +1,6 @@
 import React from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
+import Svg, { Circle, Line, Path, Rect } from 'react-native-svg';
 import { ChicThemePalette, getThemeTokens } from '../theme';
 import { Screen, ThemeMode } from '../types';
 
@@ -14,13 +15,24 @@ export function BottomNav({ screen, designMode, chicPalette, onChange }: { scree
     { id: 'settings', icon: '⚙', label: '設定' },
   ];
 
+  const renderIcon = (item: { id: Screen; icon: string }, color: string) => {
+    if (item.id !== 'timeline' && item.id !== 'analysis') {
+      return <Text style={[styles.navIcon, { color }]}>{item.icon}</Text>;
+    }
+    const stroke = { stroke: color, strokeWidth: 1.9, strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const, fill: 'none' };
+    const content = item.id === 'timeline'
+      ? <><Rect x="4" y="5" width="16" height="15" rx="2" {...stroke} /><Line x1="8" y1="3" x2="8" y2="7" {...stroke} /><Line x1="16" y1="3" x2="16" y2="7" {...stroke} /><Line x1="4" y1="9" x2="20" y2="9" {...stroke} /><Circle cx="15.5" cy="15" r="2.5" {...stroke} /><Line x1="15.5" y1="15" x2="15.5" y2="13.5" {...stroke} /><Line x1="15.5" y1="15" x2="17" y2="15.8" {...stroke} /></>
+      : <><Line x1="4" y1="20" x2="20" y2="20" {...stroke} /><Line x1="5" y1="20" x2="5" y2="12" {...stroke} /><Line x1="10" y1="20" x2="10" y2="7" {...stroke} /><Line x1="15" y1="20" x2="15" y2="10" {...stroke} /><Line x1="20" y1="20" x2="20" y2="4" {...stroke} /><Path d="M5 9l5-4 5 2 5-4" {...stroke} /></>;
+    return <Svg width={22} height={22} viewBox="0 0 24 24" accessibilityRole="image">{content}</Svg>;
+  };
+
   return (
     <View style={[styles.bottomNav, designMode !== 'chic' && styles.bottomNavMinimal, designMode === 'dark' && styles.bottomNavDark, designMode === 'chic' && styles.bottomNavChic, designColors && { backgroundColor: designColors.cardSurface, borderColor: designColors.border, shadowColor: designColors.accent }]}>
       {items.map((item) => {
         const active = item.id === screen;
         return (
           <Pressable key={item.id} style={styles.navItem} onPress={() => onChange(item.id)}>
-            <Text style={[styles.navIcon, { color: active ? (designColors?.accent ?? theme.colors.primaryAccent) : (designColors?.textSecondary ?? theme.colors.secondaryText) }]}>{item.icon}</Text>
+            {renderIcon(item, active ? (designColors?.accent ?? theme.colors.primaryAccent) : (designColors?.textSecondary ?? theme.colors.secondaryText))}
             <Text style={[styles.navLabel, { color: active ? (designColors?.accent ?? theme.colors.primaryAccent) : (designColors?.textSecondary ?? theme.colors.secondaryText) }]}>{item.label}</Text>
           </Pressable>
         );
