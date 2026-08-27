@@ -7,10 +7,14 @@
     "userInterfaceStyle": "automatic",
     "scheme": "rhythm",
     "ios": {
-      "supportsTablet": true,
+      "supportsTablet": false,
       "bundleIdentifier": "app.rhythm.daily",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
+      },
+      "buildNumber": "1",
+      "entitlements": {
+        "com.apple.developer.usernotifications.time-sensitive": true
       }
     },
     "android": {
@@ -18,8 +22,7 @@
       "permissions": [
         "android.permission.POST_NOTIFICATIONS",
         "android.permission.SCHEDULE_EXACT_ALARM",
-        "android.permission.READ_CALENDAR",
-        "android.permission.WRITE_CALENDAR"
+        "android.permission.READ_CALENDAR"
       ]
     },
     "plugins": [
