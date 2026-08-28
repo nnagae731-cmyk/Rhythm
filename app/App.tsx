@@ -2610,7 +2610,10 @@ export default function App() {
       previewSearchQuery={kind === 'history' ? '洗濯' : undefined}
       previewJournal={kind === 'records'}
     />;
-    const readonly = (node: React.ReactNode, maxHeight = 430, minHeight = 0) => <View style={[styles.premiumPreview, { minHeight, maxHeight, overflow: 'hidden' }, uiDesignMode === 'dark' && { backgroundColor: '#181F2E', borderColor: '#40506A' }]}>{node}</View>;
+    // The enclosing PremiumPreviewViewport measures and scales this complete
+    // production surface. Do not clip the source canvas here; doing so would
+    // remove lower controls before the common fit-to-viewport pass can run.
+    const readonly = (node: React.ReactNode, _maxHeight = 430, minHeight = 0) => <View style={[styles.premiumPreview, { minHeight, overflow: 'visible' }, uiDesignMode === 'dark' && { backgroundColor: '#181F2E', borderColor: '#40506A' }]}>{node}</View>;
     // Settings-backed Premium features use the production settings surface as
     // their read-only preview.  The capture/preview callbacks are no-ops, so
     // this cannot persist settings, request permissions, or start ads.

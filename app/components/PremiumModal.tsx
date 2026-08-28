@@ -166,7 +166,38 @@ function LegacyPreviewFallback({ kind, styles }: { kind: PremiumPreviewKind; sty
 }
 
 function PremiumPreviewViewport({ children, styles, surface, border }: { children: React.ReactNode; styles: any; surface: string; border: string }) {
-  return <View style={[styles.premiumPreviewViewport, { backgroundColor: surface, borderColor: border }]} pointerEvents="none"><View style={styles.premiumPreviewViewportContent}>{children}</View></View>;
+  const [viewport, setViewport] = useState({ width: 0, height: 0 });
+  const [canvas, setCanvas] = useState({ width: 0, height: 0 });
+  const availableWidth = Math.max(0, viewport.width - 16);
+  const availableHeight = Math.max(0, viewport.height - 16);
+  const scale = canvas.width > 0 && canvas.height > 0 && availableWidth > 0 && availableHeight > 0
+    ? Math.min(1, availableWidth / canvas.width, availableHeight / canvas.height)
+    : 1;
+  const scaledWidth = canvas.width > 0 ? canvas.width * scale : undefined;
+  const scaledHeight = canvas.height > 0 ? canvas.height * scale : undefined;
+  return <View
+    style={[styles.premiumPreviewViewport, { backgroundColor: surface, borderColor: border }]}
+    pointerEvents="none"
+    onLayout={(event) => {
+      const { width, height } = event.nativeEvent.layout;
+      if (width !== viewport.width || height !== viewport.height) setViewport({ width, height });
+    }}
+  >
+    <View style={[styles.premiumPreviewViewportContent, { flex: 1, alignItems: 'center', justifyContent: 'center' }]}>
+      <View style={{ width: scaledWidth ?? '100%', height: scaledHeight ?? '100%', alignItems: 'center', justifyContent: 'center' }}>
+        <View
+          collapsable={false}
+          onLayout={(event) => {
+            const { width, height } = event.nativeEvent.layout;
+            if (width !== canvas.width || height !== canvas.height) setCanvas({ width, height });
+          }}
+          style={{ width: canvas.width || '100%', transform: [{ scale }] }}
+        >
+          {children}
+        </View>
+      </View>
+    </View>
+  </View>;
 }
 
 function PremiumFeatureIcon({ name, color }: { name: PremiumFeatureIconName; color: string }) {

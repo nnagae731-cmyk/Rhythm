@@ -1,10 +1,12 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, AppState, InteractionManager, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import { ChicThemePalette, DesignMode, getThemeTokens } from '../theme';
 import { VoiceIntent, VoiceParseResult, parseVoiceInput } from '../features/voiceParser';
 
 type SpeechRecognitionModule = {
   requestPermissionsAsync: () => Promise<{ granted: boolean }>;
+  getPermissionsAsync?: () => Promise<{ granted: boolean }>;
+  isRecognitionAvailable?: () => boolean;
   start: (options: { lang: string; interimResults: boolean; continuous: boolean; maxAlternatives: number }) => void;
   stop: () => void;
   addListener?: (eventName: string, listener: (event: SpeechEvent) => void) => { remove: () => void };
@@ -45,6 +47,23 @@ export function VoiceInputModal({ visible, designMode, chicPalette, dateKey, onC
   const [parsed, setParsed] = useState<VoiceParseResult>();
   const routedRef = useRef(false);
 
+  const waitForRecognitionReady = async () => {
+    if (AppState.currentState !== 'active') {
+      await new Promise<void>((resolve) => {
+        const subscription = AppState.addEventListener('change', (state) => {
+          if (state === 'active') {
+            subscription.remove();
+            resolve();
+          }
+        });
+      });
+    }
+    await new Promise<void>((resolve) => InteractionManager.runAfterInteractions(resolve));
+    // iOS can resolve the permission promise just before its dialog finishes
+    // dismissing. Give that transition one short frame before starting audio.
+    await new Promise<void>((resolve) => setTimeout(resolve, 120));
+  };
+
   useSpeechEvent('start', () => setStatus('listening'));
   useSpeechEvent('result', (event) => {
     const next = event.results?.[0]?.transcript ?? '';
@@ -57,10 +76,11 @@ export function VoiceInputModal({ visible, designMode, chicPalette, dateKey, onC
 
   const startRecognition = () => {
     if (!speechModule) { setStatus('error'); return; }
-    setTranscript('');
-    setParsed(undefined);
-    setStatus('idle');
     try {
+      if (speechModule.isRecognitionAvailable && !speechModule.isRecognitionAvailable()) { setStatus('error'); return; }
+      setTranscript('');
+      setParsed(undefined);
+      setStatus('idle');
       speechModule.start({ lang: 'ja-JP', interimResults: true, continuous: false, maxAlternatives: 1 });
     } catch {
       setStatus('error');
@@ -73,9 +93,12 @@ export function VoiceInputModal({ visible, designMode, chicPalette, dateKey, onC
     void (async () => {
       try {
         if (!speechModule) throw new Error('native-module-unavailable');
-        const permission = await speechModule.requestPermissionsAsync();
+        const currentPermission = speechModule.getPermissionsAsync ? await speechModule.getPermissionsAsync() : undefined;
+        const permission = currentPermission?.granted ? currentPermission : await speechModule.requestPermissionsAsync();
         if (!active) return;
         if (!permission.granted) { setStatus('error'); Alert.alert('音声入力を使えません', '音声入力を使うにはマイクと音声認識の許可が必要です。'); return; }
+        await waitForRecognitionReady();
+        if (!active) return;
         startRecognition();
       } catch { setStatus('error'); Alert.alert('音声入力を使えません', 'Development Buildで音声認識を利用できます。'); }
     })();
