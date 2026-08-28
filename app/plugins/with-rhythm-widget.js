@@ -1,4 +1,4 @@
-const { withDangerousMod, withEntitlementsPlist, withPodfile, withXcodeProject } = require('expo/config-plugins');
+const { IOSConfig, withDangerousMod, withEntitlementsPlist, withPodfile, withXcodeProject } = require('expo/config-plugins');
 const fs = require('fs');
 const path = require('path');
 
@@ -128,6 +128,29 @@ function copyWidgetTemplate(iosRoot) {
   TEMPLATE_FILES.forEach((file) => fs.copyFileSync(path.join(templateRoot, file), path.join(destinationRoot, file)));
 }
 
+function configureWidgetBuildConfigurations(project) {
+  const target = project.pbxTargetByName(TARGET_NAME);
+  if (!target?.buildConfigurationList) return;
+
+  const configurations = IOSConfig.XcodeUtils.getBuildConfigurationsForListId(
+    project,
+    target.buildConfigurationList,
+  );
+  configurations.forEach(([, configuration]) => {
+    const buildSettings = configuration.buildSettings ?? (configuration.buildSettings = {});
+    buildSettings.DEVELOPMENT_TEAM = 'KV26KLUSL6';
+    buildSettings.CODE_SIGN_STYLE = 'Automatic';
+    buildSettings.PRODUCT_BUNDLE_IDENTIFIER = BUNDLE_IDENTIFIER;
+    buildSettings.IPHONEOS_DEPLOYMENT_TARGET = '15.1';
+    buildSettings.APPLICATION_EXTENSION_API_ONLY = 'YES';
+    buildSettings.TARGETED_DEVICE_FAMILY = '1';
+    buildSettings.SWIFT_VERSION = '5.0';
+    console.log(
+      `[RhythmWidget Signing Debug] xcode target=${TARGET_NAME} configuration=${configuration.name} SWIFT_VERSION=${buildSettings.SWIFT_VERSION} DEVELOPMENT_TEAM=${buildSettings.DEVELOPMENT_TEAM} PRODUCT_BUNDLE_IDENTIFIER=${buildSettings.PRODUCT_BUNDLE_IDENTIFIER}`,
+    );
+  });
+}
+
 function addWidgetTarget(project) {
   const existingTarget = project.pbxTargetByName(TARGET_NAME);
   const target = existingTarget ?? project.addTarget(TARGET_NAME, 'app_extension', TARGET_NAME, BUNDLE_IDENTIFIER);
@@ -146,6 +169,10 @@ function addWidgetTarget(project) {
   project.updateBuildProperty('SWIFT_VERSION', '5.0', null, TARGET_NAME);
   project.updateBuildProperty('APPLICATION_EXTENSION_API_ONLY', 'YES', null, TARGET_NAME);
   project.updateBuildProperty('TARGETED_DEVICE_FAMILY', '1', null, TARGET_NAME);
+  // updateBuildProperty relies on target-name comment lookup. Apply the same
+  // values directly to this target's configuration list as a final, explicit
+  // safeguard for generated/custom app-extension targets.
+  configureWidgetBuildConfigurations(project);
 }
 
 module.exports = function withRhythmWidget(config) {
