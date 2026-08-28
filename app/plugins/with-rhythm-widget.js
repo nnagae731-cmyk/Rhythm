@@ -128,8 +128,22 @@ function copyWidgetTemplate(iosRoot) {
   TEMPLATE_FILES.forEach((file) => fs.copyFileSync(path.join(templateRoot, file), path.join(destinationRoot, file)));
 }
 
-function configureWidgetBuildConfigurations(project) {
-  const target = project.pbxTargetByName(TARGET_NAME);
+function unquoteXcodeValue(value) {
+  return String(value ?? '').replace(/^"|"$/g, '');
+}
+
+function findNativeTarget(project, targetName) {
+  const targets = project.pbxNativeTargetSection();
+  for (const key of Object.keys(targets)) {
+    if (key.endsWith('_comment')) continue;
+    const target = targets[key];
+    if (target?.isa !== 'PBXNativeTarget') continue;
+    if (unquoteXcodeValue(target.name) === targetName) return { uuid: key, ...target };
+  }
+  return null;
+}
+
+function configureWidgetBuildConfigurations(project, target) {
   if (!target?.buildConfigurationList) return;
 
   const configurations = IOSConfig.XcodeUtils.getBuildConfigurationsForListId(
@@ -138,6 +152,8 @@ function configureWidgetBuildConfigurations(project) {
   );
   configurations.forEach(([, configuration]) => {
     const buildSettings = configuration.buildSettings ?? (configuration.buildSettings = {});
+    buildSettings.INFOPLIST_FILE = `${TARGET_NAME}/${TARGET_NAME}-Info.plist`;
+    buildSettings.CODE_SIGN_ENTITLEMENTS = `${TARGET_NAME}/${TARGET_NAME}.entitlements`;
     buildSettings.DEVELOPMENT_TEAM = 'KV26KLUSL6';
     buildSettings.CODE_SIGN_STYLE = 'Automatic';
     buildSettings.PRODUCT_BUNDLE_IDENTIFIER = BUNDLE_IDENTIFIER;
@@ -152,27 +168,21 @@ function configureWidgetBuildConfigurations(project) {
 }
 
 function addWidgetTarget(project) {
-  const existingTarget = project.pbxTargetByName(TARGET_NAME);
-  const target = existingTarget ?? project.addTarget(TARGET_NAME, 'app_extension', TARGET_NAME, BUNDLE_IDENTIFIER);
+  const existingTarget = findNativeTarget(project, TARGET_NAME);
   if (!existingTarget) {
+    project.addTarget(TARGET_NAME, 'app_extension', TARGET_NAME, BUNDLE_IDENTIFIER);
     project.addPbxGroup(TEMPLATE_FILES, TARGET_NAME, TARGET_NAME);
+    const target = findNativeTarget(project, TARGET_NAME);
+    if (!target) throw new Error(`Unable to resolve generated ${TARGET_NAME} PBXNativeTarget`);
     project.addBuildPhase(['RhythmWidget.swift', 'RhythmWidgetBundle.swift'], 'PBXSourcesBuildPhase', 'Sources', target.uuid);
     project.addBuildPhase([], 'PBXFrameworksBuildPhase', 'Frameworks', target.uuid);
     project.addBuildPhase([], 'PBXResourcesBuildPhase', 'Resources', target.uuid);
   }
-  project.updateBuildProperty('INFOPLIST_FILE', `${TARGET_NAME}/RhythmWidget-Info.plist`, null, TARGET_NAME);
-  project.updateBuildProperty('CODE_SIGN_ENTITLEMENTS', `${TARGET_NAME}/RhythmWidget.entitlements`, null, TARGET_NAME);
-  project.updateBuildProperty('PRODUCT_BUNDLE_IDENTIFIER', BUNDLE_IDENTIFIER, null, TARGET_NAME);
-  project.updateBuildProperty('DEVELOPMENT_TEAM', 'KV26KLUSL6', null, TARGET_NAME);
-  project.updateBuildProperty('CODE_SIGN_STYLE', 'Automatic', null, TARGET_NAME);
-  project.updateBuildProperty('IPHONEOS_DEPLOYMENT_TARGET', '15.1', null, TARGET_NAME);
-  project.updateBuildProperty('SWIFT_VERSION', '5.0', null, TARGET_NAME);
-  project.updateBuildProperty('APPLICATION_EXTENSION_API_ONLY', 'YES', null, TARGET_NAME);
-  project.updateBuildProperty('TARGETED_DEVICE_FAMILY', '1', null, TARGET_NAME);
-  // updateBuildProperty relies on target-name comment lookup. Apply the same
-  // values directly to this target's configuration list as a final, explicit
-  // safeguard for generated/custom app-extension targets.
-  configureWidgetBuildConfigurations(project);
+  const target = findNativeTarget(project, TARGET_NAME);
+  if (!target) throw new Error(`Unable to resolve ${TARGET_NAME} PBXNativeTarget`);
+  // Apply values directly to the target's configuration list so the settings
+  // are attached to the exact PBXNativeTarget used by archive.
+  configureWidgetBuildConfigurations(project, target);
 }
 
 module.exports = function withRhythmWidget(config) {
