@@ -10,7 +10,9 @@
       "supportsTablet": false,
       "bundleIdentifier": "app.rhythm.daily",
       "infoPlist": {
-        "ITSAppUsesNonExemptEncryption": false
+        "ITSAppUsesNonExemptEncryption": false,
+        "NSCalendarsUsageDescription": "カレンダーの予定をRhythmの出発プランへ変換するために使用します。",
+        "NSRemindersUsageDescription": "リマインダーの情報をRhythmで利用するために使用します。"
       },
       "buildNumber": "1",
       "entitlements": {
@@ -33,7 +35,7 @@
         "expo-calendar",
         {
           "calendarPermission": "カレンダーの予定をRhythmの出発プランへ変換するために使用します。",
-          "remindersPermission": false
+          "remindersPermission": "リマインダーの情報をRhythmで利用するために使用します。"
         }
       ],
       [
