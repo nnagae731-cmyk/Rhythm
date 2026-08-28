@@ -3352,6 +3352,8 @@ export default function App() {
               onRequestWishReward={firstRunDemoActive ? undefined : requestWishReward}
               onWishCreated={firstRunDemoActive ? undefined : consumeWishReward}
               canCreateWishAction={hasPremiumAccess(planTier, 'wish_planning')}
+              topImageUri={firstRunDemoActive ? undefined : photoTopImageUri}
+              onPickTopImage={firstRunDemoActive ? undefined : () => { void pickPhotoTheme('wish'); }}
               onPremium={(featureId = 'wish') => { if (!firstRunDemoActive) openPremiumFeature(featureId); }}
             />
           )}

@@ -29,6 +29,8 @@ type WishScreenProps = {
   onSaveAffirmationCustomText: (text: AffirmationCustomText) => void;
   onDeleteAffirmationCustomText: (id: string) => void;
   canCreateWishAction?: boolean;
+  topImageUri?: string;
+  onPickTopImage?: () => void;
   onPremium?: (featureId?: PremiumGuideFeatureId) => void;
 };
 
@@ -71,7 +73,7 @@ function formatHistoryDate(value?: string) {
   return Number.isNaN(date.getTime()) ? '' : `${date.getMonth() + 1}/${date.getDate()} 完了`;
 }
 
-export function WishScreen({ designMode: rawDesignMode, chicPalette, monthLabel, state, wishMonths = {}, onSaveState, onCreateTaskFromAction, canCreateWish = true, wishRewardProgress, onRequestWishReward, onWishCreated, affirmations, affirmationCustomTexts, planTier, onSaveAffirmation, onDeleteAffirmation, onSaveAffirmationCustomText, onDeleteAffirmationCustomText, canCreateWishAction = true, onPremium }: WishScreenProps) {
+export function WishScreen({ designMode: rawDesignMode, chicPalette, monthLabel, state, wishMonths = {}, onSaveState, onCreateTaskFromAction, canCreateWish = true, wishRewardProgress, onRequestWishReward, onWishCreated, affirmations, affirmationCustomTexts, planTier, onSaveAffirmation, onDeleteAffirmation, onSaveAffirmationCustomText, onDeleteAffirmationCustomText, canCreateWishAction = true, topImageUri, onPickTopImage, onPremium }: WishScreenProps) {
   // Mono DarkはMono Lightと同じレイアウトを使い、色だけを反転する。
   const isDark = rawDesignMode === 'dark';
   const theme = getThemeTokens(rawDesignMode, chicPalette?.id ?? 'cool');
@@ -83,7 +85,10 @@ export function WishScreen({ designMode: rawDesignMode, chicPalette, monthLabel,
   const [heroMenuOpen, setHeroMenuOpen] = useState(false);
   const [selectedWishIndex, setSelectedWishIndex] = useState(0);
   const { width: windowWidth } = useWindowDimensions();
-  const wishPageWidth = Math.max(280, windowWidth - 32);
+  const wishPagerWidth = Math.max(280, windowWidth - 32);
+  const wishCardGap = 12;
+  const wishCardWidth = Math.max(240, Math.min(wishPagerWidth - 40, Math.round(wishPagerWidth * 0.89)));
+  const wishSnapInterval = wishCardWidth + wishCardGap;
 
   useEffect(() => {
     setSelectedWishIndex((current) => Math.min(current, Math.max(0, state.wishes.length - 1)));
@@ -246,15 +251,22 @@ export function WishScreen({ designMode: rawDesignMode, chicPalette, monthLabel,
               <Pressable onPress={() => { setHistoryMonthKey(undefined); setHistoryOpen(true); }} hitSlop={8}><Text style={[styles.pageHeaderLink, { color: textSecondary }]}>過去を見る ›</Text></Pressable>
             </View>
           </View>
+          {onPickTopImage ? <Pressable onPress={onPickTopImage} style={[styles.topImageSettingRow, { borderColor: border, backgroundColor: subtleSurface }]}>
+            <Text style={[styles.topImageSettingText, { color: textSecondary }]}>{topImageUri ? '画像を変更' : 'トップ画像を設定'}</Text>
+            <Text style={[styles.topImageSettingChevron, { color: accent }]}>›</Text>
+          </Pressable> : null}
           {wishes.length > 0 ? <>
             <ScrollView
               horizontal
-              pagingEnabled
               nestedScrollEnabled
               showsHorizontalScrollIndicator={false}
-              style={[styles.wishPager, { width: wishPageWidth }]}
+              decelerationRate="fast"
+              snapToAlignment="start"
+              snapToInterval={wishSnapInterval}
+              disableIntervalMomentum
+              style={[styles.wishPager, { width: wishPagerWidth }]}
               onMomentumScrollEnd={(event) => {
-                const width = Math.max(1, event.nativeEvent.layoutMeasurement.width);
+                const width = Math.max(1, wishSnapInterval);
                 setHeroMenuOpen(false);
                 setSelectedWishIndex(Math.round(event.nativeEvent.contentOffset.x / width));
               }}
@@ -263,7 +275,7 @@ export function WishScreen({ designMode: rawDesignMode, chicPalette, monthLabel,
                 const wishActions = actions.filter((action) => action.wishId === wish.id);
                 const wishProgress = calculateWishProgress({ ...state, wishes: [wish], actions: wishActions });
                 const isSelected = index === selectedWishIndex;
-                return <View key={wish.id} style={[styles.wishCardPage, { width: wishPageWidth }]}>
+                return <View key={wish.id} style={[styles.wishCardPage, { width: wishCardWidth, marginRight: index === wishes.length - 1 ? 0 : wishCardGap }]}>
                   <View style={[styles.wishCard, { backgroundColor: surface, borderColor: border }]}>
                     <View style={styles.wishCardHeader}>
                       <View style={styles.itemBody}>
@@ -588,7 +600,7 @@ const styles = StyleSheet.create({
   heroMenu: { borderWidth: 1, borderRadius: 14, padding: 4, gap: 2 },
   heroMenuItem: { paddingHorizontal: 12, paddingVertical: 10, fontSize: 12, fontWeight: '800' },
   wishCardPage: { paddingBottom: 2 },
-  wishCard: { minHeight: 290, borderWidth: 1, borderRadius: 22, padding: 16, gap: 14 },
+  wishCard: { borderWidth: 1, borderRadius: 22, padding: 16, gap: 14 },
   wishCardHeader: { flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
   wishCardEyebrow: { fontSize: 10, fontWeight: '800', letterSpacing: 0.4 },
   wishCardTitle: { fontSize: 23, lineHeight: 31, fontWeight: '900', marginTop: 5 },
@@ -598,6 +610,9 @@ const styles = StyleSheet.create({
   wishCardSection: { borderTopWidth: 1, paddingTop: 12, gap: 8 },
   wishCardSectionTitle: { fontSize: 13, fontWeight: '900' },
   wishCardProgress: { borderTopWidth: 1, paddingTop: 12, gap: 7 },
+  topImageSettingRow: { minHeight: 38, alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: 6, borderWidth: 1, borderRadius: 999, paddingHorizontal: 12, paddingVertical: 7 },
+  topImageSettingText: { fontSize: 11, fontWeight: '800' },
+  topImageSettingChevron: { fontSize: 17, lineHeight: 18, fontWeight: '400' },
   goalInline: { minHeight: 38, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
   goalInlineText: { flex: 1, fontSize: 12, lineHeight: 18, fontWeight: '700' },
   goalInlineAction: { fontSize: 11, fontWeight: '900' },
