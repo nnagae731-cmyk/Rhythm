@@ -72,7 +72,7 @@ const PREMIUM_GUIDE_FEATURES: Array<{ id: PremiumGuideFeatureId; kind: PremiumPr
   { id: 'records', kind: 'records', title: '今日の記録', description: '写真・ひとこと・メモを日付ごとに保存。カレンダーから記録済みの日を確認し、登録後の編集・削除もできます。' },
   { id: 'reflection', kind: 'reflection', title: '今月を振り返る', description: 'カレンダー上部のボタンから開く独立機能。今月の写真・言葉・ベストをテンプレートやレイアウトでまとめ、画像保存・共有できます。' },
   { id: 'calendar', kind: 'calendar', title: 'カレンダー連携', description: '予定の閲覧は無料。Freeは広告1回で1予定をRhythmへ取り込め、Premiumなら広告なしで取り込めます。' },
-  { id: 'route', kind: 'route', title: '地図・共有', description: '予定の場所を地図で確認し、予定内容をPremiumの共有機能で届けられます。' },
+  { id: 'route', kind: 'route', title: '出発カウントダウン・地図・共有', description: '出発までのカウントダウンと、予定の場所・共有をPremiumで利用できます。' },
   { id: 'travel_apps', kind: 'travel_apps', title: '移動アプリ連携', description: 'いつもの乗換・タクシーアプリを登録して、予定や遅れた時にRhythmからすぐ開けます。' },
   { id: 'nudge', kind: 'nudge', title: '高度な通知', description: '段階的な通知や反応に応じた再通知で、大切な予定を忘れにくくします。' },
   { id: 'time', kind: 'time', title: '行動分析', description: '通知・準備・出発・集中など、実際の行動記録から自分の傾向を振り返れます。' },
@@ -95,7 +95,7 @@ const PREMIUM_FEATURE_ICONS: Record<PremiumGuideFeatureId, PremiumFeatureIconNam
 };
 
 const PREMIUM_FEATURE_NAV_LABELS: Record<PremiumGuideFeatureId, string> = {
-  focus_custom_duration: '集中時間', records: '今日の記録', reflection: '月の振り返り', calendar: 'カレンダー連携', route: '地図・共有', travel_apps: '移動アプリ',
+  focus_custom_duration: '集中時間', records: '今日の記録', reflection: '月の振り返り', calendar: 'カレンダー連携', route: '出発・地図・共有', travel_apps: '移動アプリ',
   nudge: '高度な通知', time: '行動分析', behavior: '振り返り', month: '月別履歴', history: '履歴検索', recovery: '立て直し', templates: 'タスクひな型', wish: 'Wish行動',
   affirmation: 'アファメーション', photo_design: 'デザイン', floral: '花柄1〜3', dot: 'ドット', check: 'チェック',
 };
@@ -105,7 +105,7 @@ const PREMIUM_FEATURE_DIFFS: Partial<Record<PremiumGuideFeatureId, { free: strin
   records: { free: '利用できません', premium: '写真・ひとこと・メモを保存' },
   reflection: { free: '利用できません', premium: '今月の写真・言葉・ベストをまとめる' },
   calendar: { free: '広告1回で1予定を取り込み', premium: '広告なしで取り込み' },
-  route: { free: '地図は利用可・共有は制限', premium: '地図・共有を利用' },
+  route: { free: '利用できません', premium: '出発までのカウントダウン・地図・共有を利用' },
   travel_apps: { free: '利用できません', premium: '登録した移動アプリを起動' },
   nudge: { free: '基本の通知', premium: '段階的な通知・再通知' },
   time: { free: '基本の記録のみ', premium: '準備・出発・集中などを分析' },
@@ -125,7 +125,7 @@ const PREMIUM_COMPARISON_ROWS: Array<{ label: string; free: '○' | '△' | '×'
   { label: '今日の記録', free: '×', premium: '○' },
   { label: '今月を振り返る', free: '×', premium: '○' },
   { label: 'カレンダー取り込み', free: '△', premium: '○', note: 'Freeは広告1回で1予定' },
-  { label: '地図・共有', free: '△', premium: '○', note: '地図は無料、共有はPremium' },
+  { label: '出発カウントダウン・地図・共有', free: '×', premium: '○', note: 'Premiumで利用できます' },
   { label: '行動分析・詳細な履歴', free: '×', premium: '○' },
   { label: '叶えたいこと・行動', free: '△', premium: '○', note: '目標・Wish追加は広告、行動はPremium' },
   { label: '選べるデザイン・写真', free: '△', premium: '○', note: 'Trial・広告・買い切りで利用可' },
@@ -153,7 +153,7 @@ function LegacyPreviewFallback({ kind, styles }: { kind: PremiumPreviewKind; sty
   if (kind === 'floral') return <View style={styles.premiumPreview}><Text style={styles.previewImageLabel}>Premium限定デザイン</Text><View style={styles.previewRecoveryGrid}>{['花柄1', '花柄2', '花柄3'].map((label) => <View key={label} style={styles.previewRecoveryOption}><Text style={styles.previewRecoveryText}>{label}</Text></View>)}</View></View>;
   if (kind === 'dot' || kind === 'check') return <View style={styles.premiumPreview}><Text style={styles.previewImageLabel}>Premium限定デザイン</Text><View style={styles.previewTemplateSource}><Text style={styles.previewTemplateTitle}>{kind === 'dot' ? 'ドット' : 'チェックデザイン'}</Text><Text style={styles.previewTemplateMeta}>背景・カード・アクセントを統一</Text></View></View>;
   if (kind === 'history') return <View style={styles.premiumPreview}><Text style={styles.previewImageLabel}>詳細な履歴・検索</Text><View style={styles.previewScheduleRow}><Text style={styles.previewTime}>8/23</Text><Text style={styles.previewScheduleTitle}>完了したタスク</Text><Text style={styles.previewSource}>検索</Text></View><View style={styles.previewScheduleRow}><Text style={styles.previewTime}>8/22</Text><Text style={styles.previewScheduleTitle}>写真の記録</Text><Text style={styles.previewSource}>履歴</Text></View></View>;
-  if (kind === 'route') return <View style={styles.premiumPreview}><Text style={styles.previewImageLabel}>地図・共有</Text><View style={styles.previewRouteMap}><Text style={styles.previewRouteMapTitle}>目的地を地図で確認</Text><Text style={styles.previewRouteMapPin}>↗</Text><Text style={styles.previewRouteMapPlace}>予定の内容を共有できます</Text></View><Text style={styles.previewRouteCopy}>無料版でも地図を利用できます。共有はPremiumで利用できます。</Text></View>;
+  if (kind === 'route') return <View style={styles.premiumPreview}><Text style={styles.previewImageLabel}>出発カウントダウン・地図・共有</Text><View style={styles.previewRouteMap}><Text style={styles.previewRouteMapTitle}>目的地を地図で確認</Text><Text style={styles.previewRouteMapPin}>↗</Text><Text style={styles.previewRouteMapPlace}>予定の内容を共有できます</Text></View><Text style={styles.previewRouteCopy}>出発までのカウントダウン・地図・共有をPremiumで利用できます。</Text></View>;
   if (kind === 'nudge') return <View style={styles.premiumPreview}><Text style={styles.previewImageLabel}>通知の表示イメージ</Text>{[['09:00', '忘れてない？', '資料を送る'], ['09:05', 'そろそろ始められそう？', 'もう一度確認'], ['09:08', 'まだ終わってなければ', '今確認しよう']].map(([time, title, copy], index) => <View key={time} style={[styles.previewNotification, index > 0 && styles.previewNotificationLater]}><Text style={styles.previewNotificationTime}>{time}</Text><View style={{ flex: 1 }}><Text style={styles.previewNotificationTitle}>{title}</Text><Text style={styles.previewNotificationCopy}>{copy}</Text></View></View>)}</View>;
   if (kind === 'time') return <View style={styles.premiumPreview}><Text style={styles.previewImageLabel}>表示イメージ</Text><Text style={styles.previewMetricLabel}>準備開始</Text><View style={styles.previewTimeCompare}><View><Text style={styles.previewCompareLabel}>予定</Text><Text style={styles.previewCompareValue}>12:10</Text></View><Text style={styles.previewCompareArrow}>→</Text><View><Text style={styles.previewCompareLabel}>実際</Text><Text style={styles.previewCompareValue}>12:24</Text></View></View><Text style={styles.previewMetricBig}>平均14分遅め</Text><Text style={styles.previewRecordCount}>記録 8回</Text></View>;
   if (kind === 'behavior') return <View style={styles.premiumPreview}><Text style={styles.previewImageLabel}>表示イメージ</Text><Text style={styles.previewMetricLabel}>最近の行動</Text><View style={styles.previewInsightRow}><Text style={styles.previewInsightLabel}>動き始め</Text><Text style={styles.previewInsightValue}>通知から平均17分で反応</Text></View><View style={styles.previewInsightRow}><Text style={styles.previewInsightLabel}>集中</Text><Text style={styles.previewInsightValue}>15分が比較的続きやすい傾向</Text></View><View style={styles.previewInsightRow}><Text style={styles.previewInsightLabel}>延長</Text><Text style={styles.previewInsightValue}>8回中5回はその後完了</Text></View></View>;
