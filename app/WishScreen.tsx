@@ -143,12 +143,14 @@ export function WishScreen({ designMode: rawDesignMode, chicPalette, monthLabel,
         createdAt: editor.id ? state.wishes.find((item) => item.id === editor.id)?.createdAt ?? new Date().toISOString() : new Date().toISOString(),
         completedAt: editor.completed ? state.wishes.find((item) => item.id === editor.id)?.completedAt ?? new Date().toISOString() : undefined,
       };
-      commit((current) => ({
-        ...current,
-        wishes: current.wishes.some((item) => item.id === wish.id)
-          ? current.wishes.map((item) => (item.id === wish.id ? wish : item))
-          : [wish, ...current.wishes],
-      }));
+      commit((current) => {
+        const isNewWish = !current.wishes.some((item) => item.id === wish.id);
+        const wishes = isNewWish ? [wish, ...current.wishes] : current.wishes.map((item) => (item.id === wish.id ? wish : item));
+        // Keep the currently displayed top Wish stable when a new Wish is
+        // inserted. Older months without an id pin their existing first Wish.
+        const topWishId = current.topWishId ?? current.wishes[0]?.id ?? wish.id;
+        return { ...current, wishes, topWishId };
+      });
       if (!isEditing) onWishCreated?.();
     } else {
       if (!editor.wishId) {
@@ -203,11 +205,16 @@ export function WishScreen({ designMode: rawDesignMode, chicPalette, monthLabel,
   };
 
   const deleteWish = (id: string) => {
-    commit((current) => ({
-      ...current,
-      wishes: current.wishes.filter((wish) => wish.id !== id),
-      actions: current.actions.filter((action) => action.wishId !== id),
-    }));
+    commit((current) => {
+      const wishes = current.wishes.filter((wish) => wish.id !== id);
+      const currentTopStillExists = current.topWishId ? wishes.some((wish) => wish.id === current.topWishId) : false;
+      return {
+        ...current,
+        wishes,
+        topWishId: currentTopStillExists ? current.topWishId : wishes[0]?.id,
+        actions: current.actions.filter((action) => action.wishId !== id),
+      };
+    });
   };
 
   const deleteAction = (id: string) => {
@@ -217,6 +224,7 @@ export function WishScreen({ designMode: rawDesignMode, chicPalette, monthLabel,
   const wishes = state.wishes;
   const actions = state.actions;
   const selectedWish = wishes[selectedWishIndex];
+  const topDisplayedWish = (state.topWishId ? wishes.find((wish) => wish.id === state.topWishId) : undefined) ?? wishes[0];
   const selectedActions = selectedWish ? actions.filter((action) => action.wishId === selectedWish.id) : [];
   const historyMonths = useMemo(() => Object.entries(wishMonths)
     .filter(([monthKey, monthState]) => monthKey !== wishMonthKey() && (Boolean(monthState.monthlyGoal?.trim()) || (monthState.wishes ?? []).length > 0 || (monthState.actions ?? []).length > 0))
@@ -249,11 +257,10 @@ export function WishScreen({ designMode: rawDesignMode, chicPalette, monthLabel,
         <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
           <View style={[styles.topVisual, { backgroundColor: surface, borderColor: border }]}>
             {topImageUri ? <Image source={{ uri: topImageUri }} resizeMode="cover" style={styles.topVisualImage} /> : null}
-            <View pointerEvents="none" style={[styles.topVisualVeil, { backgroundColor: surface, opacity: topImageUri ? 0.2 : 1 }]} />
+            <View pointerEvents="none" style={[styles.topVisualVeil, { backgroundColor: topImageUri ? '#101318' : surface, opacity: topImageUri ? 0.32 : 1 }]} />
             <View style={styles.topVisualContent}>
-              <Text style={[styles.topVisualMonth, { color: textSecondary }]}>{monthLabel}</Text>
-              <Text numberOfLines={2} style={[styles.topVisualGoal, { color: textPrimary }]}>{selectedWish?.title || 'まだ叶えたいことはありません'}</Text>
-              {selectedWish ? <Text style={[styles.topVisualHint, { color: textSecondary }]}>{selectedWish.completed ? '叶いました' : 'ここから一歩ずつ'}</Text> : null}
+              <Text style={[styles.topVisualMonth, { color: topImageUri ? '#FFFFFF' : textSecondary }, topImageUri && styles.topVisualTextOnImage]}>{monthLabel}</Text>
+              {topDisplayedWish ? <Text numberOfLines={2} style={[styles.topVisualGoal, { color: topImageUri ? '#FFFFFF' : textPrimary }, topImageUri && styles.topVisualTextOnImage]}>{topDisplayedWish.title}</Text> : null}
             </View>
           </View>
           <View style={styles.pageHeader}>
@@ -301,6 +308,7 @@ export function WishScreen({ designMode: rawDesignMode, chicPalette, monthLabel,
                       </Pressable>
                     </View>
                     {heroMenuOpen && isSelected ? <View style={[styles.heroMenu, { backgroundColor: subtleSurface, borderColor: border }]}>
+                      {topDisplayedWish?.id === wish.id ? <Text style={[styles.heroMenuItem, { color: textSecondary }]}>✓ トップに表示中</Text> : <Pressable onPress={() => { commit((current) => ({ ...current, topWishId: wish.id })); setHeroMenuOpen(false); }}><Text style={[styles.heroMenuItem, { color: textPrimary }]}>トップに表示する</Text></Pressable>}
                       <Pressable onPress={() => { setHeroMenuOpen(false); openWishEditor(wish); }}><Text style={[styles.heroMenuItem, { color: textPrimary }]}>編集</Text></Pressable>
                       <Pressable onPress={() => { setHeroMenuOpen(false); Alert.alert('削除しますか？', undefined, [{ text: 'キャンセル', style: 'cancel' }, { text: '削除', style: 'destructive', onPress: () => deleteWish(wish.id) }]); }}><Text style={[styles.heroMenuItem, { color: theme.colors.danger }]}>削除</Text></Pressable>
                     </View> : null}
@@ -601,6 +609,7 @@ const styles = StyleSheet.create({
   topVisualMonth: { fontSize: 11, fontWeight: '800', letterSpacing: 0.5 },
   topVisualTitle: { fontSize: 20, fontWeight: '900' },
   topVisualGoal: { fontSize: 25, lineHeight: 33, fontWeight: '900', marginTop: 8 },
+  topVisualTextOnImage: { textShadowColor: 'rgba(0,0,0,0.55)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 3 },
   topVisualHint: { fontSize: 13, lineHeight: 20, fontWeight: '800', marginTop: 2 },
   topVisualEdit: { position: 'absolute', right: 16, bottom: 14 },
   topVisualEditText: { fontSize: 11, fontWeight: '900' },

@@ -144,6 +144,8 @@ export type MonthlyReflectionCard = {
 export type MonthlyWishState = {
   /** Optional monthly goal; omitted in older saved months for compatibility. */
   monthlyGoal?: string;
+  /** Wish shown in the shared top visual; omitted in older saved months. */
+  topWishId?: string;
   wishes: Wish[];
   actions: WishAction[];
   review: MonthlyReview;

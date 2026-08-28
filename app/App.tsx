@@ -643,6 +643,10 @@ export default function App() {
     : isMonoDesign ? resolvedMonoMode : designMode;
   const photoBackgroundUri = photoThemeEnabled && (hasDesignCustomizeAccess || photoDesignTemporaryAccess || rewardedAccess.photoCustomization.backgroundUnlocked) && photoTheme.placement !== 'top' ? photoTheme.imageUri : undefined;
   const photoTopImageUri = photoThemeEnabled && (hasDesignCustomizeAccess || photoDesignTemporaryAccess || rewardedAccess.photoCustomization.topExtraSlotsUnlocked > 0) ? photoTheme.topImageUris?.[screen] ?? photoTheme.topImageOriginalUris?.[screen] ?? (photoTheme.placement === 'top' ? photoTheme.imageUri : undefined) : undefined;
+  // Wish owns the shared top visual even when the app is using Mono or Design.
+  // Keep this display path independent from the Photo theme gate so a saved
+  // Wish image appears immediately after crop/save without switching themes.
+  const wishTopImageUri = photoTheme.topImageUris?.wish ?? photoTheme.topImageOriginalUris?.wish ?? (photoTheme.placement === 'top' ? photoTheme.imageUri : undefined);
   const focusBackgroundUri = photoThemeEnabled && (hasDesignCustomizeAccess || photoDesignTemporaryAccess || rewardedAccess.photoCustomization.focusUnlocked) ? photoTheme.focusBackgroundUri : undefined;
   // A temporary trial is an explicit, time-bounded override. Persisted free
   // users still fall back to plain when no trial is active.
@@ -1050,7 +1054,7 @@ export default function App() {
     void saveRewardedAccessState(next);
     applyPhotoDesign();
   }, [applyPhotoDesign, designPreviewPhotoUri, rewardedAccess]);
-  const pickPhotoTheme = React.useCallback(async (target: PhotoThemePhotoTarget) => {
+  const pickPhotoTheme = React.useCallback(async (target: PhotoThemePhotoTarget, options?: { bypassRewarded?: boolean }) => {
     if (planTier !== 'premium' && !designCustomizePurchased) {
       if (target === 'background' && !rewardedAccess.photoCustomization.backgroundUnlocked) {
         openRewardedPrompt('photoBackground', '背景に写真を使う', '広告を見ると、好きな写真をRhythmの背景に設定できます。', () => { void pickPhotoTheme(target); });
@@ -1062,10 +1066,17 @@ export default function App() {
       }
       if (target !== 'background' && target !== 'focus') {
         const currentUri = photoTheme.topImageUris?.[target] ?? photoTheme.topImageOriginalUris?.[target];
+        // The first Wish top image is a Rewarded-gated action for Free users.
+        // Existing images remain editable under the same access rules as the
+        // legacy top-image flow.
+        if (!options?.bypassRewarded && target === 'wish' && !currentUri && rewardedAccess.photoCustomization.topExtraSlotsUnlocked < 1) {
+          openRewardedPrompt('photoTop', 'トップ画像を設定', '広告を見ると、Wishのトップ画像を1枚設定できます。', () => { void pickPhotoTheme(target, { bypassRewarded: true }); });
+          return;
+        }
         const usedSlots = Object.values(photoTheme.topImageUris ?? {}).filter(Boolean).length;
         const allowedSlots = Math.min(5, 1 + rewardedAccess.photoCustomization.topExtraSlotsUnlocked);
-        if (!currentUri && usedSlots >= allowedSlots) {
-          openRewardedPrompt('photoTop', '写真枠を追加', '広告を見ると、画面ごとのトップ写真枠を1つ追加できます。', () => { void pickPhotoTheme(target); });
+        if (!options?.bypassRewarded && !currentUri && usedSlots >= allowedSlots) {
+          openRewardedPrompt('photoTop', '写真枠を追加', '広告を見ると、画面ごとのトップ写真枠を1つ追加できます。', () => { void pickPhotoTheme(target, { bypassRewarded: true }); });
           return;
         }
       }
@@ -3402,7 +3413,7 @@ export default function App() {
               onRequestWishReward={firstRunDemoActive ? undefined : requestWishReward}
               onWishCreated={firstRunDemoActive ? undefined : consumeWishReward}
               canCreateWishAction={hasPremiumAccess(planTier, 'wish_planning')}
-              topImageUri={firstRunDemoActive ? undefined : photoTopImageUri}
+              topImageUri={firstRunDemoActive ? undefined : wishTopImageUri}
               onPickTopImage={firstRunDemoActive ? undefined : () => { void pickPhotoTheme('wish'); }}
               onPremium={(featureId = 'wish') => { if (!firstRunDemoActive) openPremiumFeature(featureId); }}
             />
