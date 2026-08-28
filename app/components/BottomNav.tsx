@@ -50,5 +50,5 @@ const styles = StyleSheet.create({
   navItem: { flex: 1, alignItems: 'center', gap: 3 },
   navIcon: { color: '#A39DAA', fontSize: 20, fontWeight: '900' },
   navLabel: { color: '#A39DAA', fontSize: 10, fontWeight: '800' },
-  voiceButton: { position: 'absolute', left: '50%', top: -19, marginLeft: -25, width: 50, height: 50, borderRadius: 25, borderWidth: 1, alignItems: 'center', justifyContent: 'center', shadowColor: '#000000', shadowOpacity: 0.14, shadowRadius: 8, shadowOffset: { width: 0, height: 3 }, elevation: 5 },
+  voiceButton: { position: 'absolute', left: '50%', top: -27, marginLeft: -25, width: 50, height: 50, borderRadius: 25, borderWidth: 1, alignItems: 'center', justifyContent: 'center', shadowColor: '#000000', shadowOpacity: 0.14, shadowRadius: 8, shadowOffset: { width: 0, height: 3 }, elevation: 5 },
 });
