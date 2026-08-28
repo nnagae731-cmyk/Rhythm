@@ -2413,9 +2413,7 @@ export default function App() {
           onDeleteAffirmationCustomText={() => undefined}
           canCreateWish
           canCreateWishAction
-          monthlyGoalUnlocked
           onPremium={() => undefined}
-          onBack={() => undefined}
         />
       </View>
     );
@@ -3354,13 +3352,7 @@ export default function App() {
               onRequestWishReward={firstRunDemoActive ? undefined : requestWishReward}
               onWishCreated={firstRunDemoActive ? undefined : consumeWishReward}
               canCreateWishAction={hasPremiumAccess(planTier, 'wish_planning')}
-              monthlyGoalUnlocked={planTier === 'premium' || isWishMonthlyGoalUnlocked(rewardedAccess, now)}
-              monthlyGoalRewardProgress={getRewardedPromptProgress('wishMonthlyGoal')}
-              onRequestMonthlyGoalReward={firstRunDemoActive ? undefined : requestMonthlyGoalReward}
-              topImageUri={firstRunDemoActive ? undefined : photoTopImageUri}
-              onPickTopImage={firstRunDemoActive ? undefined : () => { void pickPhotoTheme('wish'); }}
               onPremium={(featureId = 'wish') => { if (!firstRunDemoActive) openPremiumFeature(featureId); }}
-              onBack={() => setScreen('home')}
             />
           )}
 

@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Alert, Image, Keyboard, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
+import { Alert, Keyboard, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
 import { ChicPattern, ChicThemePalette, DesignMode, getThemeTokens } from './theme';
 import { Affirmation, AffirmationCustomText, MonthlyWishState, Wish, WishAction, WishMonthMap } from './types';
 import { PlanTier } from './premiumAccess';
@@ -29,13 +29,7 @@ type WishScreenProps = {
   onSaveAffirmationCustomText: (text: AffirmationCustomText) => void;
   onDeleteAffirmationCustomText: (id: string) => void;
   canCreateWishAction?: boolean;
-  monthlyGoalUnlocked?: boolean;
-  monthlyGoalRewardProgress?: { current: number; required: number };
-  onRequestMonthlyGoalReward?: () => Promise<RewardedAccessResult> | RewardedAccessResult;
-  topImageUri?: string;
-  onPickTopImage?: () => void;
   onPremium?: (featureId?: PremiumGuideFeatureId) => void;
-  onBack: () => void;
 };
 
 type EditorMode = 'wish' | 'action';
@@ -77,36 +71,19 @@ function formatHistoryDate(value?: string) {
   return Number.isNaN(date.getTime()) ? '' : `${date.getMonth() + 1}/${date.getDate()} 完了`;
 }
 
-export function WishScreen({ designMode: rawDesignMode, chicPalette, monthLabel, state, wishMonths = {}, onSaveState, onCreateTaskFromAction, canCreateWish = true, wishRewardProgress, onRequestWishReward, onWishCreated, affirmations, affirmationCustomTexts, planTier, onSaveAffirmation, onDeleteAffirmation, onSaveAffirmationCustomText, onDeleteAffirmationCustomText, canCreateWishAction = true, monthlyGoalUnlocked = false, monthlyGoalRewardProgress, onRequestMonthlyGoalReward, topImageUri, onPickTopImage, onPremium, onBack }: WishScreenProps) {
+export function WishScreen({ designMode: rawDesignMode, chicPalette, monthLabel, state, wishMonths = {}, onSaveState, onCreateTaskFromAction, canCreateWish = true, wishRewardProgress, onRequestWishReward, onWishCreated, affirmations, affirmationCustomTexts, planTier, onSaveAffirmation, onDeleteAffirmation, onSaveAffirmationCustomText, onDeleteAffirmationCustomText, canCreateWishAction = true, onPremium }: WishScreenProps) {
   // Mono DarkはMono Lightと同じレイアウトを使い、色だけを反転する。
-  const designMode: 'minimal' | 'chic' = rawDesignMode === 'dark' || rawDesignMode === 'photo' ? 'minimal' : rawDesignMode;
   const isDark = rawDesignMode === 'dark';
   const theme = getThemeTokens(rawDesignMode, chicPalette?.id ?? 'cool');
   const palette = chicPalette;
-  const designSurface = rawDesignMode === 'chic' && palette ? { backgroundColor: palette.cardSurface, borderColor: palette.border } : undefined;
-  const designSubtle = rawDesignMode === 'chic' && palette ? { backgroundColor: palette.surfaceSubtle, borderColor: palette.border } : undefined;
-  const designAccent = rawDesignMode === 'chic' && palette ? { backgroundColor: palette.accent, borderColor: palette.accent } : undefined;
-  const designText = rawDesignMode === 'chic' && palette ? { color: palette.textPrimary } : undefined;
-  const primaryButtonTextColor = rawDesignMode === 'chic' && palette ? palette.onAccent : rawDesignMode === 'dark' ? theme.colors.screenBackground : '#FFFFFF';
-  const darkAccent = rawDesignMode === 'dark' ? '#8EA6FF' : theme.colors.primaryAccent;
-  const progress = useMemo(() => calculateWishProgress(state), [state]);
   const [editor, setEditor] = useState<EditorState>(emptyEditor);
-  const [rewardPrompt, setRewardPrompt] = useState<'wish' | 'monthlyGoal' | null>(null);
+  const [rewardPrompt, setRewardPrompt] = useState<'wish' | null>(null);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [historyMonthKey, setHistoryMonthKey] = useState<string>();
-  const [monthlyGoalDraft, setMonthlyGoalDraft] = useState(state.monthlyGoal ?? '');
-  // Keep the normal Wish view read-only. Editing is opened explicitly from
-  // the theme row so TextInput/save controls do not dominate the page.
-  const [monthlyGoalEditing, setMonthlyGoalEditing] = useState(false);
   const [heroMenuOpen, setHeroMenuOpen] = useState(false);
   const [selectedWishIndex, setSelectedWishIndex] = useState(0);
   const { width: windowWidth } = useWindowDimensions();
   const wishPageWidth = Math.max(280, windowWidth - 32);
-
-  useEffect(() => {
-    setMonthlyGoalDraft(state.monthlyGoal ?? '');
-    setMonthlyGoalEditing(false);
-  }, [state.monthlyGoal]);
 
   useEffect(() => {
     setSelectedWishIndex((current) => Math.min(current, Math.max(0, state.wishes.length - 1)));
@@ -131,7 +108,7 @@ export function WishScreen({ designMode: rawDesignMode, chicPalette, monthLabel,
     });
   };
 
-  const openActionEditor = (action?: WishAction) => {
+  const openActionEditor = (action?: WishAction, wishId = selectedWish?.id) => {
     // Actions are Premium-only. Keep the legacy Rewarded progress in storage
     // for compatibility, but never open the old action Rewarded flow.
     if (!canCreateWishAction) return;
@@ -140,7 +117,7 @@ export function WishScreen({ designMode: rawDesignMode, chicPalette, monthLabel,
       mode: 'action',
       id: action?.id,
       title: action?.title ?? '',
-      wishId: action?.wishId ?? state.wishes[0]?.id,
+      wishId: action?.wishId ?? wishId ?? state.wishes[0]?.id,
       completed: action?.completed ?? false,
     });
   };
@@ -233,7 +210,6 @@ export function WishScreen({ designMode: rawDesignMode, chicPalette, monthLabel,
   const actions = state.actions;
   const selectedWish = wishes[selectedWishIndex];
   const selectedActions = selectedWish ? actions.filter((action) => action.wishId === selectedWish.id) : [];
-  const selectedProgress = selectedWish ? calculateWishProgress({ ...state, wishes: [selectedWish], actions: selectedActions }) : progress;
   const historyMonths = useMemo(() => Object.entries(wishMonths)
     .filter(([monthKey, monthState]) => monthKey !== wishMonthKey() && (Boolean(monthState.monthlyGoal?.trim()) || (monthState.wishes ?? []).length > 0 || (monthState.actions ?? []).length > 0))
     .sort(([left], [right]) => right.localeCompare(left)), [wishMonths]);
@@ -258,6 +234,92 @@ export function WishScreen({ designMode: rawDesignMode, chicPalette, monthLabel,
     </Modal>
   </>;
 
+  const onAccent = rawDesignMode === 'chic' && palette ? palette.onAccent : isDark ? theme.colors.screenBackground : '#FFFFFF';
+  const renderWishBoardV2 = () => (
+    <View style={[styles.screen, { backgroundColor: rawDesignMode === 'chic' ? 'transparent' : theme.colors.screenBackground }]}>
+      <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
+          <View style={styles.pageHeader}>
+            <Text style={[styles.pageHeaderTitle, { color: textPrimary }]}>叶えたいこと</Text>
+            <View style={styles.pageHeaderActions}>
+              <Pressable onPress={() => openWishEditor()} hitSlop={8}><Text style={[styles.pageHeaderAdd, { color: accent }]}>＋追加</Text></Pressable>
+              <Pressable onPress={() => { setHistoryMonthKey(undefined); setHistoryOpen(true); }} hitSlop={8}><Text style={[styles.pageHeaderLink, { color: textSecondary }]}>過去を見る ›</Text></Pressable>
+            </View>
+          </View>
+          {wishes.length > 0 ? <>
+            <ScrollView
+              horizontal
+              pagingEnabled
+              nestedScrollEnabled
+              showsHorizontalScrollIndicator={false}
+              style={[styles.wishPager, { width: wishPageWidth }]}
+              onMomentumScrollEnd={(event) => {
+                const width = Math.max(1, event.nativeEvent.layoutMeasurement.width);
+                setHeroMenuOpen(false);
+                setSelectedWishIndex(Math.round(event.nativeEvent.contentOffset.x / width));
+              }}
+            >
+              {wishes.map((wish, index) => {
+                const wishActions = actions.filter((action) => action.wishId === wish.id);
+                const wishProgress = calculateWishProgress({ ...state, wishes: [wish], actions: wishActions });
+                const isSelected = index === selectedWishIndex;
+                return <View key={wish.id} style={[styles.wishCardPage, { width: wishPageWidth }]}>
+                  <View style={[styles.wishCard, { backgroundColor: surface, borderColor: border }]}>
+                    <View style={styles.wishCardHeader}>
+                      <View style={styles.itemBody}>
+                        <Text style={[styles.wishCardEyebrow, { color: textSecondary }]}>{monthLabel}</Text>
+                        <Text style={[styles.wishCardTitle, { color: textPrimary }, wish.completed && styles.itemTitleDone]}>{wish.title}</Text>
+                        <Text style={[styles.wishCardHint, { color: textSecondary }]}>{wish.completed ? '叶いました' : 'ここから一歩ずつ'}</Text>
+                        <Pressable onPress={() => toggleWish(wish.id)} hitSlop={8} style={styles.wishCompletionToggle}><Text style={[styles.wishCompletionText, { color: accent }]}>{wish.completed ? '✓ 完了を戻す' : '○ 叶えたらチェック'}</Text></Pressable>
+                      </View>
+                      <Pressable onPress={() => { setSelectedWishIndex(index); setHeroMenuOpen((value) => isSelected ? !value : true); }} style={styles.heroMenuButton} hitSlop={8}>
+                        <Text style={[styles.heroMenuText, { color: textPrimary }]}>•••</Text>
+                      </Pressable>
+                    </View>
+                    {heroMenuOpen && isSelected ? <View style={[styles.heroMenu, { backgroundColor: subtleSurface, borderColor: border }]}>
+                      <Pressable onPress={() => { setHeroMenuOpen(false); openWishEditor(wish); }}><Text style={[styles.heroMenuItem, { color: textPrimary }]}>編集</Text></Pressable>
+                      <Pressable onPress={() => { setHeroMenuOpen(false); Alert.alert('削除しますか？', undefined, [{ text: 'キャンセル', style: 'cancel' }, { text: '削除', style: 'destructive', onPress: () => deleteWish(wish.id) }]); }}><Text style={[styles.heroMenuItem, { color: theme.colors.danger }]}>削除</Text></Pressable>
+                    </View> : null}
+                    <View style={[styles.wishCardSection, { borderTopColor: border }]}>
+                      <Text style={[styles.wishCardSectionTitle, { color: textPrimary }]}>叶えるための一歩</Text>
+                      {canCreateWishAction ? <>
+                        {wishActions.length > 0 ? <View>{wishActions.map((action) => <Pressable key={action.id} style={[styles.actionRow, { borderBottomColor: border }]} onPress={() => openActionEditor(action, wish.id)}>
+                          <Pressable accessibilityRole="checkbox" accessibilityState={{ checked: action.completed }} onPress={(event) => { event.stopPropagation(); toggleAction(action.id); }} style={[styles.actionCheck, { borderColor: accent, backgroundColor: action.completed ? accent : 'transparent' }]}>
+                            <Text style={{ color: onAccent, fontWeight: '900' }}>{action.completed ? '✓' : ''}</Text>
+                          </Pressable>
+                          <Text style={[styles.actionTitle, { color: textPrimary }, action.completed && styles.itemTitleDone]}>{action.title}</Text>
+                          <Text style={[styles.itemChevron, { color: textSecondary }]}>›</Text>
+                        </Pressable>)}</View> : <Text style={[styles.visionEmptyText, { color: textSecondary }]}>今日できる一歩を決めてみよう。</Text>}
+                        <Pressable onPress={() => openActionEditor(undefined, wish.id)} style={styles.lightActionRow}><Text style={[styles.lightAction, { color: accent }]}>＋ 行動を追加</Text></Pressable>
+                      </> : <Pressable style={styles.quietFeatureRow} onPress={() => onPremium?.('wish')}><View style={styles.itemBody}><Text style={[styles.quietFeatureText, { color: textSecondary }]}>叶えたいことを、今日できる行動に分けられます。</Text></View><Text style={[styles.lightAction, { color: accent }]}>Premiumで利用 ›</Text></Pressable>}
+                    </View>
+                    {canCreateWishAction ? <View style={[styles.wishCardProgress, { borderTopColor: border }]}>
+                      <View style={styles.heroProgressHeader}><Text style={[styles.heroProgressLabel, { color: textSecondary }]}>今月の進み具合</Text><Text style={[styles.heroProgressValue, { color: accent }]}>{wishProgress.progress}%</Text></View>
+                      <View style={[styles.progressTrack, { backgroundColor: subtleSurface }]}><View style={[styles.progressFill, { width: `${wishProgress.progress}%`, backgroundColor: accent }]} /></View>
+                    </View> : null}
+                  </View>
+                </View>;
+              })}
+            </ScrollView>
+            <View style={styles.pageIndicators}>{wishes.map((wish, index) => <View key={wish.id} style={[styles.pageIndicator, { backgroundColor: index === selectedWishIndex ? accent : border }]} />)}</View>
+          </> : <View style={[styles.emptyWish, { backgroundColor: surface, borderColor: border }]}><Text style={[styles.emptyWishText, { color: textSecondary }]}>叶えたいことをひとつ残すと、ここから一歩を考えられます。</Text></View>}
+          <View style={[styles.visionSection, { borderBottomColor: border }]}>
+            <View style={styles.sectionHeaderInline}><View><Text style={[styles.visionSectionTitle, { color: textPrimary }]}>今月の言葉</Text><Text style={[styles.sectionSubtitle, { color: textSecondary }]}>自分に届ける言葉</Text></View></View>
+            {planTier === 'premium' ? <AffirmationSettingsCard affirmations={affirmations} customTexts={affirmationCustomTexts} designMode={rawDesignMode} chicPalette={palette} planTier={planTier} onPremium={onPremium ?? (() => undefined)} onSave={onSaveAffirmation} onDelete={onDeleteAffirmation} onSaveCustomText={onSaveAffirmationCustomText} onDeleteCustomText={onDeleteAffirmationCustomText} styles={styles} compact /> : <Pressable style={styles.quietFeatureRow} onPress={() => onPremium?.('affirmation')}><View style={styles.itemBody}><Text style={[styles.quietFeatureText, { color: textSecondary }]}>好きな言葉を、選んだ時間に届けられます。</Text></View><Text style={[styles.lightAction, { color: accent }]}>Premiumで設定 ›</Text></Pressable>}
+          </View>
+          <Pressable style={[styles.historyLinkRow, { borderBottomColor: border }]} onPress={() => { setHistoryMonthKey(undefined); setHistoryOpen(true); }}><View><Text style={[styles.historyLinkTitle, { color: textPrimary }]}>過去を見る</Text><Text style={[styles.historyLinkHint, { color: textSecondary }]}>これまでの願いと一歩を振り返る</Text></View><Text style={[styles.itemChevron, { color: textSecondary }]}>›</Text></Pressable>
+        </ScrollView>
+        <RewardedAccessModal visible={rewardPrompt !== null} title="叶えたいことを追加" description="広告を2回見ると、叶えたいことを1件追加できます。" current={wishRewardProgress?.current ?? 0} required={wishRewardProgress?.required ?? 2} designMode={rawDesignMode} chicPalette={palette} onClose={() => setRewardPrompt(null)} onPremium={onPremium} onReward={async () => { const result = await onRequestWishReward?.() ?? { success: false, message: '広告を利用できません。' }; if (result.completed) { setRewardPrompt(null); setEditor({ visible: true, mode: 'wish', id: undefined, title: '', wishId: undefined, completed: false }); } return result; }} />
+        {renderWishModals()}
+      </KeyboardAvoidingView>
+    </View>
+  );
+
+  return renderWishBoardV2();
+
+  /*
+  // Legacy Wish render tree retained temporarily only in source history.
+  // Wish 2.0 above is the single production render path.
   // Wish 2.0 board: the normal surface is intentionally read-only and quiet;
   // editing remains available through the existing sheets below.
   const renderWishBoard = () => (
@@ -488,6 +550,7 @@ export function WishScreen({ designMode: rawDesignMode, chicPalette, monthLabel,
 
     </View>
   );
+*/
 }
 
 function HistoryReadOnlyRow({ title, meta, completed, theme, palette }: { title: string; meta?: string; completed?: boolean; theme: ReturnType<typeof getThemeTokens>; palette?: ChicThemePalette }) {
@@ -502,6 +565,8 @@ const styles = StyleSheet.create({
   screen: { flex: 1 },
   scroll: { paddingHorizontal: 16, paddingTop: 12, paddingBottom: 144, gap: 12 },
   pageHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', minHeight: 34 },
+  pageHeaderActions: { flexDirection: 'row', alignItems: 'center', gap: 14 },
+  pageHeaderAdd: { fontSize: 14, fontWeight: '900' },
   pageHeaderEyebrow: { fontSize: 11, fontWeight: '800', letterSpacing: 0.5, marginBottom: 2 },
   pageHeaderTitle: { fontSize: 20, fontWeight: '900' },
   pageHeaderLink: { fontSize: 12, fontWeight: '900' },
@@ -522,6 +587,17 @@ const styles = StyleSheet.create({
   heroMenuText: { fontSize: 17, letterSpacing: 2, fontWeight: '900' },
   heroMenu: { borderWidth: 1, borderRadius: 14, padding: 4, gap: 2 },
   heroMenuItem: { paddingHorizontal: 12, paddingVertical: 10, fontSize: 12, fontWeight: '800' },
+  wishCardPage: { paddingBottom: 2 },
+  wishCard: { minHeight: 290, borderWidth: 1, borderRadius: 22, padding: 16, gap: 14 },
+  wishCardHeader: { flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
+  wishCardEyebrow: { fontSize: 10, fontWeight: '800', letterSpacing: 0.4 },
+  wishCardTitle: { fontSize: 23, lineHeight: 31, fontWeight: '900', marginTop: 5 },
+  wishCardHint: { fontSize: 11, lineHeight: 17, fontWeight: '700', marginTop: 5 },
+  wishCompletionToggle: { alignSelf: 'flex-start', marginTop: 8 },
+  wishCompletionText: { fontSize: 11, fontWeight: '900' },
+  wishCardSection: { borderTopWidth: 1, paddingTop: 12, gap: 8 },
+  wishCardSectionTitle: { fontSize: 13, fontWeight: '900' },
+  wishCardProgress: { borderTopWidth: 1, paddingTop: 12, gap: 7 },
   goalInline: { minHeight: 38, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
   goalInlineText: { flex: 1, fontSize: 12, lineHeight: 18, fontWeight: '700' },
   goalInlineAction: { fontSize: 11, fontWeight: '900' },
