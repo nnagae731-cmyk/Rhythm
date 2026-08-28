@@ -12,6 +12,10 @@ type SpeechRecognitionModule = {
   addListener?: (eventName: string, listener: (event: SpeechEvent) => void) => { remove: () => void };
 };
 type SpeechEvent = { results?: Array<{ transcript?: string }>; isFinal?: boolean; error?: string };
+const VOICE_DEBUG_PREFIX = '[Rhythm Voice Debug]';
+const logVoiceDebug = (message: string, details?: Record<string, unknown>) => {
+  console.info(VOICE_DEBUG_PREFIX, message, details ?? '');
+};
 
 // Expo Go does not include this native module. Keep the import lazy so the
 // rest of Rhythm remains usable there; a Development Build enables recognition.
@@ -45,12 +49,16 @@ export function VoiceInputModal({ visible, designMode, chicPalette, dateKey, onC
   const [status, setStatus] = useState<'idle' | 'listening' | 'processing' | 'recognized' | 'error'>('idle');
   const [transcript, setTranscript] = useState('');
   const [parsed, setParsed] = useState<VoiceParseResult>();
+  const [permissionReady, setPermissionReady] = useState(false);
+  const recognitionStartingRef = useRef(false);
   const routedRef = useRef(false);
 
   const waitForRecognitionReady = async () => {
+    logVoiceDebug('waiting for recognition readiness', { appState: AppState.currentState });
     if (AppState.currentState !== 'active') {
       await new Promise<void>((resolve) => {
         const subscription = AppState.addEventListener('change', (state) => {
+          logVoiceDebug('app state changed', { state });
           if (state === 'active') {
             subscription.remove();
             resolve();
@@ -64,7 +72,8 @@ export function VoiceInputModal({ visible, designMode, chicPalette, dateKey, onC
     await new Promise<void>((resolve) => setTimeout(resolve, 120));
   };
 
-  useSpeechEvent('start', () => setStatus('listening'));
+  useSpeechEvent('start', () => { logVoiceDebug('speech start event', { appState: AppState.currentState }); setStatus('listening'); });
+  useSpeechEvent('audiostart', () => logVoiceDebug('audio start event', { appState: AppState.currentState }));
   useSpeechEvent('result', (event) => {
     const next = event.results?.[0]?.transcript ?? '';
     if (!next) return;
@@ -72,35 +81,56 @@ export function VoiceInputModal({ visible, designMode, chicPalette, dateKey, onC
     if (event.isFinal) { setStatus('processing'); setParsed(parseVoiceInput(next, new Date(), dateKey)); }
   });
   useSpeechEvent('end', () => setStatus((current) => current === 'processing' || current === 'recognized' ? current : transcript ? 'processing' : 'idle'));
-  useSpeechEvent('error', (event) => { if (event.error !== 'aborted') setStatus('error'); });
+  useSpeechEvent('error', (event) => { logVoiceDebug('speech error event', { error: event.error, appState: AppState.currentState }); if (event.error !== 'aborted') setStatus('error'); });
 
   const startRecognition = () => {
     if (!speechModule) { setStatus('error'); return; }
-    try {
-      if (speechModule.isRecognitionAvailable && !speechModule.isRecognitionAvailable()) { setStatus('error'); return; }
-      setTranscript('');
-      setParsed(undefined);
-      setStatus('idle');
-      speechModule.start({ lang: 'ja-JP', interimResults: true, continuous: false, maxAlternatives: 1 });
-    } catch {
-      setStatus('error');
-    }
+    if (!permissionReady || recognitionStartingRef.current) return;
+    recognitionStartingRef.current = true;
+    setTranscript('');
+    setParsed(undefined);
+    setStatus('idle');
+    void (async () => {
+      try {
+        await waitForRecognitionReady();
+        if (AppState.currentState !== 'active') throw new Error('app-not-active');
+        const available = speechModule.isRecognitionAvailable ? speechModule.isRecognitionAvailable() : true;
+        logVoiceDebug('recognition availability checked', { available, appState: AppState.currentState });
+        if (!available) { setStatus('error'); return; }
+        logVoiceDebug('start recognition before native call', { appState: AppState.currentState });
+        speechModule.start({ lang: 'ja-JP', interimResults: true, continuous: false, maxAlternatives: 1 });
+        logVoiceDebug('start recognition returned', { appState: AppState.currentState });
+      } catch (error) {
+        logVoiceDebug('start recognition failed', { error: error instanceof Error ? error.message : String(error), appState: AppState.currentState });
+        setStatus('error');
+      } finally {
+        recognitionStartingRef.current = false;
+      }
+    })();
   };
 
   useEffect(() => {
-    if (!visible) { routedRef.current = false; setStatus('idle'); setTranscript(''); setParsed(undefined); return; }
+    if (!visible) { routedRef.current = false; setPermissionReady(false); setStatus('idle'); setTranscript(''); setParsed(undefined); return; }
     let active = true;
     void (async () => {
       try {
         if (!speechModule) throw new Error('native-module-unavailable');
+        logVoiceDebug('permission check started', { appState: AppState.currentState });
         const currentPermission = speechModule.getPermissionsAsync ? await speechModule.getPermissionsAsync() : undefined;
         const permission = currentPermission?.granted ? currentPermission : await speechModule.requestPermissionsAsync();
         if (!active) return;
-        if (!permission.granted) { setStatus('error'); Alert.alert('音声入力を使えません', '音声入力を使うにはマイクと音声認識の許可が必要です。'); return; }
-        await waitForRecognitionReady();
-        if (!active) return;
-        startRecognition();
-      } catch { setStatus('error'); Alert.alert('音声入力を使えません', 'Development Buildで音声認識を利用できます。'); }
+        logVoiceDebug('permission check completed', { granted: permission.granted, appState: AppState.currentState });
+        if (!permission.granted) { setPermissionReady(false); setStatus('error'); Alert.alert('音声入力を使えません', '音声入力を使うにはマイクと音声認識の許可が必要です。'); return; }
+        // Do not start while iOS is dismissing the permission dialog. The
+        // user starts recognition explicitly from the modal microphone button.
+        setPermissionReady(true);
+        setStatus('idle');
+        logVoiceDebug('permission ready; waiting for manual start', { appState: AppState.currentState });
+      } catch (error) {
+        logVoiceDebug('permission check failed', { error: error instanceof Error ? error.message : String(error), appState: AppState.currentState });
+        setStatus('error');
+        Alert.alert('音声入力を使えません', 'Development Buildで音声認識を利用できます。');
+      }
     })();
     return () => { active = false; try { speechModule?.stop(); } catch { /* Expo Go has no native module. */ } };
   }, [dateKey, visible]);

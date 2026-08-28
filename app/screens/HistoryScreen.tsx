@@ -466,6 +466,28 @@ export function HistoryScreen({ tasks, wishMonths, calendarMarks, onSetCalendarM
     <View style={styles.journalActions}><Pressable style={[styles.journalSaveButton, { backgroundColor: journalTheme.accent }]} onPress={() => setJournalEditing(true)}><Text style={[styles.journalSaveButtonText, { color: journalTheme.onAccent }]}>編集</Text></Pressable><Pressable style={[styles.journalDeleteButton, { borderColor: guideTheme.colors.danger }]} onPress={confirmDeleteJournal}><Text style={[styles.journalDeleteButtonText, { color: guideTheme.colors.danger }]}>削除</Text></Pressable></View>
   </View>;
 
+  if (previewMode && Boolean(previewSearchQuery) && premiumHistory) {
+    return <View pointerEvents="none" style={{ paddingBottom: 8 }}>
+      <View style={[styles.historySearchBox, { backgroundColor: historySurface, borderColor: historyBorder }, isDark && styles.darkPanel]}>
+        <Text style={[styles.taskSearchIcon, { color: historyAccent }, isDark && styles.darkAccentText]}>⌕</Text>
+        <TextInput editable={false} value={historySearch} placeholder="過去に完了したタスクを検索" placeholderTextColor={historyMuted} style={[styles.taskSearchInput, { color: historyText }, isDark && styles.darkBodyText]} />
+        <Text style={[styles.historySearchOpenText, { color: historyAccent }, isDark && styles.darkAccentText]}>検索</Text>
+      </View>
+      <View style={[styles.historySearchModal, { backgroundColor: historySurface, borderColor: historyBorder }, isDark && styles.darkSurface]}>
+        <View style={styles.historyMonthSwitcher}>
+          <Text style={[styles.historyMonthArrowText, { color: historyAccent }, isDark && styles.darkAccentText]}>‹</Text>
+          <Text style={[styles.calendarMonth, { color: historyText }, isDark && styles.darkBodyText]}>{year}年 {month + 1}月</Text>
+          <Text style={[styles.historyMonthArrowText, { color: historyAccent }, isDark && styles.darkAccentText]}>›</Text>
+        </View>
+        <Text style={[styles.historySearchModalMeta, { color: historyMuted }, isDark && styles.darkMutedText]}>月 / 日付で絞り込み　・　{selectedKey.replaceAll('-', '.')}</Text>
+        <Text style={[styles.historySearchModalTitle, { color: historyText }, isDark && styles.darkBodyText]}>最近の履歴</Text>
+        {selectedTasks.slice(0, 3).map((task) => <View key={task.id} style={[styles.historyTask, { backgroundColor: historySurface, borderColor: historyBorder }, isDark && styles.darkHistoryTask]}>
+          <View style={[styles.historyIcon, { backgroundColor: historyAccentSoft, borderColor: historyBorder }, isDark && styles.darkHistoryIcon]}><Text style={[styles.historyIconText, { color: historyAccentStrong }, isDark && styles.darkAccentText]}>{completionIcon}</Text></View>
+          <View style={{ flex: 1 }}><Text style={[styles.taskTitle, { color: historyText }, isDark && styles.darkBodyText]}>{task.title}</Text><Text style={[styles.taskMeta, { color: historyMuted }, isDark && styles.darkMutedText]}>{task.category}・{task.completedAt ? dateKey(task.completedAt).replaceAll('-', '.') : ''}</Text></View>
+        </View>)}
+      </View>
+    </View>;
+  }
   if (previewJournal && premiumHistory) {
     return <View pointerEvents="none">{journalEditorContent}</View>;
   }

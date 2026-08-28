@@ -75,7 +75,6 @@ const PREMIUM_GUIDE_FEATURES: Array<{ id: PremiumGuideFeatureId; kind: PremiumPr
   { id: 'route', kind: 'route', title: '出発カウントダウン・地図・共有', description: '出発までのカウントダウンと、予定の場所・共有をPremiumで利用できます。' },
   { id: 'travel_apps', kind: 'travel_apps', title: '移動アプリ連携', description: 'いつもの乗換・タクシーアプリを登録して、予定や遅れた時にRhythmからすぐ開けます。' },
   { id: 'nudge', kind: 'nudge', title: '高度な通知', description: '段階的な通知や反応に応じた再通知で、大切な予定を忘れにくくします。' },
-  { id: 'time', kind: 'time', title: '行動分析', description: '通知・準備・出発・集中などの記録から、自分の行動パターンや傾向を分析できます。' },
   { id: 'behavior', kind: 'behavior', title: '振り返り', description: '最近の記録から、できたことや立て直した場面を振り返れます。' },
   { id: 'month', kind: 'month', title: '月表示と詳細履歴', description: '7日を超えた予定や過去の完了・集中・出発記録を、月単位で確認できます。' },
   { id: 'history', kind: 'history', title: '詳細な履歴・検索', description: '過去の完了タスクや記録を、検索とカレンダーから詳しく確認できます。' },
@@ -108,7 +107,6 @@ const PREMIUM_FEATURE_DIFFS: Partial<Record<PremiumGuideFeatureId, { free: strin
   route: { free: '利用できません', premium: '出発までのカウントダウン・地図・共有を利用' },
   travel_apps: { free: '利用できません', premium: '登録した移動アプリを起動' },
   nudge: { free: '基本の通知', premium: '段階的な通知・再通知' },
-  time: { free: '基本の記録のみ', premium: '準備・出発・集中などを分析' },
   behavior: { free: '利用できません', premium: '最近の行動を振り返る' },
   month: { free: '今日から7日間', premium: '月単位の予定・履歴を確認' },
   history: { free: '基本の履歴のみ', premium: '履歴を検索・詳しく確認' },
@@ -126,7 +124,7 @@ const PREMIUM_COMPARISON_ROWS: Array<{ label: string; free: '○' | '△' | '×'
   { label: '今月を振り返る', free: '×', premium: '○' },
   { label: 'カレンダー取り込み', free: '△', premium: '○', note: 'Freeは広告1回で1予定' },
   { label: '出発カウントダウン・地図・共有', free: '×', premium: '○', note: 'Premiumで利用できます' },
-  { label: '行動分析・詳細な履歴', free: '×', premium: '○' },
+  { label: '詳細な履歴・検索', free: '×', premium: '○' },
   { label: '叶えたいこと', free: '△', premium: '○', note: '叶えたいことは広告、行動はPremium限定' },
   { label: '選べるデザイン・写真', free: '△', premium: '○', note: 'Trial・広告・買い切りで利用可' },
   { label: 'アファメーション', free: '×', premium: '○' },
@@ -368,8 +366,8 @@ export function PremiumModal({ visible, initialFeatureId, designMode, chicPalett
         {purchaseOpen ? <ScrollView style={styles.premiumCarouselArea} contentContainerStyle={styles.premiumModalScroll} showsVerticalScrollIndicator={false} nestedScrollEnabled keyboardShouldPersistTaps="handled">
           <View style={[styles.premiumPurchasePanel, { backgroundColor: surface, borderColor: accent }]}>
             <Text style={[styles.premiumPurchaseTitle, { color: primaryText }]}>Premiumを始める</Text>
-            <Text style={[styles.premiumPurchaseCopy, { color: secondaryText }]}>記録・振り返り・デザイン・分析を、Rhythmの使い方に合わせて広げます。</Text>
-            <View style={[styles.premiumPurchaseBenefits, { borderTopColor: theme.colors.border, borderBottomColor: theme.colors.border }]}><Text style={[styles.premiumPurchaseBenefit, { color: primaryText }]}>今日の記録と今月の振り返り</Text><Text style={[styles.premiumPurchaseBenefit, { color: primaryText }]}>行動分析・詳細な履歴・検索</Text><Text style={[styles.premiumPurchaseBenefit, { color: primaryText }]}>選べるデザイン・写真・アファメーション</Text></View>
+            <Text style={[styles.premiumPurchaseCopy, { color: secondaryText }]}>記録・振り返り・デザインを、Rhythmの使い方に合わせて広げます。</Text>
+            <View style={[styles.premiumPurchaseBenefits, { borderTopColor: theme.colors.border, borderBottomColor: theme.colors.border }]}><Text style={[styles.premiumPurchaseBenefit, { color: primaryText }]}>今日の記録と今月の振り返り</Text><Text style={[styles.premiumPurchaseBenefit, { color: primaryText }]}>詳細な履歴・検索</Text><Text style={[styles.premiumPurchaseBenefit, { color: primaryText }]}>選べるデザイン・写真・アファメーション</Text></View>
             <Text style={[styles.premiumPlanHeading, { color: primaryText }]}>プランを選択</Text>
             {(['annual', 'monthly'] as const).map((plan) => {
               const product = products?.[plan];
