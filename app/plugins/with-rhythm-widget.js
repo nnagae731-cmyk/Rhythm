@@ -20,11 +20,20 @@ function configureResourceBundleSigning(podfile) {
   const resourceBundleSigning = `
   ${RESOURCE_BUNDLE_SIGNING_MARKER}
   installer.pods_project.targets.each do |target|
-    next unless target.respond_to?(:product_type) && target.product_type == 'com.apple.product-type.bundle'
+    target_product_type = target.respond_to?(:product_type) ? target.product_type.to_s : ''
+    target_product_name = target.respond_to?(:product_name) ? target.product_name.to_s : ''
+    target_symbol_type = target.respond_to?(:symbol_type) ? target.symbol_type.to_s : ''
+    is_resource_bundle = target_product_type == 'com.apple.product-type.bundle' ||
+      target_product_name.end_with?('.bundle') ||
+      target.name.to_s.end_with?('.bundle') ||
+      target_symbol_type == 'bundle'
+    next unless is_resource_bundle
 
     target.build_configurations.each do |build_config|
       build_config.build_settings['DEVELOPMENT_TEAM'] = 'KV26KLUSL6'
       build_config.build_settings['CODE_SIGNING_ALLOWED'] = 'NO'
+      build_config.build_settings['CODE_SIGNING_REQUIRED'] = 'NO'
+      build_config.build_settings['EXPANDED_CODE_SIGN_IDENTITY'] = ''
     end
   end
 `;
@@ -33,6 +42,14 @@ function configureResourceBundleSigning(podfile) {
     return podfile.replace(postInstall, `${postInstall}${resourceBundleSigning}`);
   }
   return `${podfile.trimEnd()}\n\npost_install do |installer|${resourceBundleSigning}end\n`;
+}
+
+function patchGeneratedPodfile(iosRoot) {
+  const podfilePath = path.join(iosRoot, 'Podfile');
+  if (!fs.existsSync(podfilePath)) return;
+  const podfile = fs.readFileSync(podfilePath, 'utf8');
+  const patched = configureResourceBundleSigning(podfile);
+  if (patched !== podfile) fs.writeFileSync(podfilePath, patched);
 }
 
 function copyWidgetTemplate(iosRoot) {
@@ -67,6 +84,10 @@ module.exports = function withRhythmWidget(config) {
   });
   config = withDangerousMod(config, ['ios', async (nextConfig) => {
     copyWidgetTemplate(nextConfig.modRequest.platformProjectRoot);
+    // Run after the generated Podfile has been finalized. This keeps the
+    // resource-bundle signing workaround effective even when another Expo
+    // mod writes the Podfile after withPodfile callbacks are evaluated.
+    patchGeneratedPodfile(nextConfig.modRequest.platformProjectRoot);
     return nextConfig;
   }]);
   config = withPodfile(config, (nextConfig) => {
