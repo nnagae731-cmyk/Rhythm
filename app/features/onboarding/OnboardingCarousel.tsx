@@ -114,6 +114,7 @@ export function OnboardingCarousel({
               accessibilityRole="button"
               accessibilityLabel="使い方をスキップ"
               hitSlop={10}
+              style={styles.skipButton}
               onPress={onDismiss}
             >
               <Text style={styles.skip}>
@@ -260,6 +261,13 @@ const styles = StyleSheet.create({
     color: theme.colors.secondaryText,
     fontSize: 14,
     fontWeight: '700',
+  },
+
+  skipButton: {
+    minWidth: 44,
+    minHeight: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 
   skipSpacer: {

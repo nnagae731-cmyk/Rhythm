@@ -3,7 +3,7 @@ import { Alert, Modal, Pressable, ScrollView, Share, Text, TextInput, View } fro
 import { DesignMode, getThemeTokens } from '../theme';
 import { createRecoveryRecord, getRecoveryOptions, RecoveryOption, RecoveryRecord } from '../recovery';
 import { DeparturePlan } from '../types';
-import { PlanTier } from '../premiumAccess';
+import { hasPremiumAccess, PlanTier } from '../premiumAccess';
 import { ChicThemePalette } from '../theme';
 import { TravelAppLaunchActions } from './TravelAppLaunchActions';
 import { TravelAppSettings } from '../features/travel/travelApps';
@@ -33,7 +33,9 @@ export function RecoveryModal({ visible, plan, now, designMode, onClose, onApply
   const [contactDraft, setContactDraft] = React.useState('');
   if (!plan) return null;
   const theme = getThemeTokens(designMode, chicPalette?.id ?? 'cool');
-  const options = getRecoveryOptions(plan, now);
+  // Keep the legacy reschedule action in the data model for saved-record
+  // compatibility, but do not expose it in the current Recovery UI.
+  const options = getRecoveryOptions(plan, now).filter((option) => option.action !== 'reschedule');
   const estimatedArrival = options[0]?.estimatedArrival ?? plan.arrival;
   const applyOption = async (option: RecoveryOption, customMessage?: string) => {
     const record = createRecoveryRecord(plan, option);
@@ -63,7 +65,7 @@ export function RecoveryModal({ visible, plan, now, designMode, onClose, onApply
             </View>
             <Text style={[styles.recoveryPrompt, { color: theme.colors.primaryText }]}>次の行動を選んでください</Text>
             {options.map((option) => {
-              const locked = option.action === 'delay_arrival' || option.action === 'reschedule';
+              const locked = option.action === 'delay_arrival' && !hasPremiumAccess(planTier, 'late_recovery');
               return (
                 <Pressable key={option.action} disabled={readOnly} style={[styles.recoveryOption, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }, readOnly && { opacity: 0.96 }]} onPress={() => {
                   if (locked) {

@@ -254,11 +254,11 @@ const styles = StyleSheet.create({
   },
 
   closeButton: {
-    width: 30,
-    height: 30,
+    width: 44,
+    height: 44,
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: 15,
+    borderRadius: 22,
   },
 
   closeButtonPressed: {
@@ -305,7 +305,7 @@ const styles = StyleSheet.create({
   },
 
   nextButton: {
-    minHeight: 40,
+    minHeight: 44,
     marginTop: 8,
     paddingHorizontal: 14,
     alignItems: 'center',
@@ -321,9 +321,13 @@ const styles = StyleSheet.create({
 
   exitTourButton: {
     alignSelf: 'center',
+    minHeight: 44,
+    minWidth: 44,
     paddingHorizontal: 10,
-    paddingVertical: 8,
+    paddingVertical: 10,
     marginTop: 2,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 
   exitTourText: {
