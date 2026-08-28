@@ -5,7 +5,10 @@ import WidgetKit
 private let appGroup = "group.app.rhythm.daily"
 private let snapshotKey = "rhythmWidgetSnapshot"
 
-private struct WidgetSnapshot: Codable {
+// These models are shared by the TimelineProvider and the widget view. Keep
+// them at the file's default (internal) visibility so protocol requirements
+// can expose RhythmWidgetEntry without leaking a private type.
+struct WidgetSnapshot: Codable {
   struct Task: Codable { let id: String; let title: String }
   struct Plan: Codable {
     let id: String?
@@ -20,7 +23,7 @@ private struct WidgetSnapshot: Codable {
   let nextPlan: Plan?
 }
 
-private struct RhythmWidgetEntry: TimelineEntry {
+struct RhythmWidgetEntry: TimelineEntry {
   let date: Date
   let snapshot: WidgetSnapshot?
 }
