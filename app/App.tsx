@@ -43,6 +43,7 @@ import { Affirmation, AffirmationCustomText, CalendarMarks, Category, DepartureP
 import { initialPlan } from './storage/rhythmState';
 import { DEFAULT_TRAVEL_APP_SETTINGS, normalizeTravelAppSettings, TravelAppSettings } from './features/travel/travelApps';
 import { loadRhythmState, saveRhythmState } from './storage/rhythmStorage';
+import { buildRhythmWidgetSnapshot, saveRhythmWidgetSnapshot } from './features/widget/rhythmWidgetSnapshot';
 import { categories, priorities, completionIcons, categoryColors as baseCategoryColors, designModes, getLateRiskMessage, getNextBestAction, getUrgencyStatus, urgencyLevel } from './features/tasks/taskUtils';
 import { createSharedEventPacket, createSharedEventToken, encodeSharedEventLink, normalizeSharedEvent, parseSharedEventLink, upsertSharedEvent } from './features/shared/sharedUtils';
 import { getMonthlyWishState, normalizeWishMonthsForSave, wishMonthKey } from './features/wish/wishUtils';
@@ -1186,6 +1187,25 @@ export default function App() {
     openSharedEventToken(parsed.shareToken);
   }, [openSharedEventToken, syncSharedEventPacket]);
 
+  const handleRhythmNavigationLink = React.useCallback((url: string) => {
+    try {
+      const parsed = new URL(url);
+      if (parsed.protocol !== 'rhythm:') return false;
+      if (parsed.hostname === 'todo') {
+        setScreen('home');
+        return true;
+      }
+      if (parsed.hostname === 'schedule') {
+        setTimelineInitialTab('departure');
+        setScreen('timeline');
+        return true;
+      }
+    } catch {
+      // A malformed external URL should not block the existing share handler.
+    }
+    return false;
+  }, []);
+
   const shareDeparturePlan = React.useCallback((targetPlan: DeparturePlan) => {
     if (!hasPremiumAccess(planTierRef.current, 'late_recovery')) {
       openPremiumFeature('route');
@@ -1845,13 +1865,15 @@ export default function App() {
   }, [departurePlans, hydrated, planTier]);
 
   useEffect(() => {
-    const openFromUrl = (url: string) => handleSharedEventLink(url);
+    const openFromUrl = (url: string) => {
+      if (!handleRhythmNavigationLink(url)) handleSharedEventLink(url);
+    };
     Linking.getInitialURL().then((url) => {
       if (url) openFromUrl(url);
     }).catch(() => undefined);
     const subscription = Linking.addEventListener('url', ({ url }) => openFromUrl(url));
     return () => subscription.remove();
-  }, [handleSharedEventLink]);
+  }, [handleRhythmNavigationLink, handleSharedEventLink]);
 
   const nextDeparturePlan = useMemo(() => [...departurePlans]
     .filter((item) => {
@@ -1861,6 +1883,34 @@ export default function App() {
       return canShowCountdown && getPlanCountdownAt(item).getTime() > now.getTime();
     })
     .sort((a, b) => getPlanCountdownAt(a).getTime() - getPlanCountdownAt(b).getTime())[0], [departurePlans, now, planTier]);
+
+  const syncRhythmWidgetSnapshot = React.useCallback(() => {
+    // The first-run tour is deliberately read-only; its temporary data must
+    // never escape to the user's home-screen widget.
+    if (!hydrated || onboarding.state.firstRunStage === 'demo') return;
+    const snapshot = buildRhythmWidgetSnapshot({
+      tasks,
+      departurePlans,
+      departureCheckIns,
+      canShowArrivalReverseCountdown: hasPremiumAccess(planTier, 'late_recovery'),
+    });
+    void saveRhythmWidgetSnapshot(snapshot).catch((error) => {
+      // Expo Go has no WidgetKit module. Native failures should not affect app state.
+      console.warn('Rhythm widget snapshot save failed.', error);
+    });
+  }, [departureCheckIns, departurePlans, hydrated, onboarding.state.firstRunStage, planTier, tasks]);
+
+  useEffect(() => {
+    syncRhythmWidgetSnapshot();
+  }, [syncRhythmWidgetSnapshot]);
+
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', (nextState) => {
+      if (nextState === 'active') syncRhythmWidgetSnapshot();
+    });
+    return () => subscription.remove();
+  }, [syncRhythmWidgetSnapshot]);
+
   const displayPlan = nextDeparturePlan ?? plan;
   const canDisplayReverseTimeline = Boolean(nextDeparturePlan
     && isArrivalReversePlan(displayPlan)

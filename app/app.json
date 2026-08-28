@@ -14,7 +14,10 @@
       },
       "buildNumber": "1",
       "entitlements": {
-        "com.apple.developer.usernotifications.time-sensitive": true
+        "com.apple.developer.usernotifications.time-sensitive": true,
+        "com.apple.security.application-groups": [
+          "group.app.rhythm.daily"
+        ]
       }
     },
     "android": {
@@ -60,7 +63,8 @@
           "iosAppId": "ca-app-pub-3940256099942544~1458002511",
           "androidAppId": "ca-app-pub-3940256099942544~3347511713"
         }
-      ]
+      ],
+      "./plugins/with-rhythm-widget"
     ],
     "extra": {
       "eas": {
