@@ -361,6 +361,7 @@ export function TimelineScreen({
       onClose={() => undefined}
       onApply={() => undefined}
       inlinePreview
+      readOnly
     />;
   }
 

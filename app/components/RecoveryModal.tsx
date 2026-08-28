@@ -54,7 +54,7 @@ export function RecoveryModal({ visible, plan, now, designMode, onClose, onApply
     Alert.alert('リカバリープランを反映しました', option.description);
   };
 
-  const content = <ScrollView showsVerticalScrollIndicator={false}>
+  const recoveryBody = <>
             <View style={styles.modalHandle} />
             <View style={[styles.recoveryHeader, { backgroundColor: theme.colors.softAccent, borderColor: theme.colors.border, borderWidth: 1 }]}>
               <Text style={[styles.recoveryEyebrow, { color: theme.colors.primaryAccent }]}>ここから立て直す</Text>
@@ -98,7 +98,10 @@ export function RecoveryModal({ visible, plan, now, designMode, onClose, onApply
             <Text style={[styles.recoveryNote, { color: theme.colors.secondaryText }]}>位置情報や経路検索はまだ使わず、登録済みの移動時間から計算しています。</Text>
             {!readOnly && plan.destination?.trim() ? <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginTop: 8 }}><TravelAppLaunchActions settings={travelApps} category="transit" destination={plan.destination} planTier={planTier} designMode={designMode} chicPalette={chicPalette} onPremium={(featureId) => onPremium(featureId)} onOpenSettings={onOpenTravelAppSettings} /><TravelAppLaunchActions settings={travelApps} category="taxi" destination={plan.destination} planTier={planTier} designMode={designMode} chicPalette={chicPalette} onPremium={(featureId) => onPremium(featureId)} onOpenSettings={onOpenTravelAppSettings} /></View> : null}
             <Pressable onPress={onClose}><Text style={[styles.cancelText, { color: theme.colors.secondaryText }]}>閉じる</Text></Pressable>
-  </ScrollView>;
+  </>;
+  const content = inlinePreview
+    ? <View>{recoveryBody}</View>
+    : <ScrollView showsVerticalScrollIndicator={false}>{recoveryBody}</ScrollView>;
   if (inlinePreview) return <View style={[styles.modalSheet, { backgroundColor: theme.colors.screenBackground, borderRadius: theme.radius.modal, position: 'relative', width: '100%', maxHeight: undefined, overflow: 'visible', zIndex: 20 }]} pointerEvents="none">{content}</View>;
   return <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}><Pressable style={styles.modalBackdrop} onPress={onClose}><Pressable style={[styles.modalSheet, { backgroundColor: theme.colors.screenBackground, borderRadius: theme.radius.modal, position: 'relative' }]} onPress={(event) => event.stopPropagation()}>{content}{guideOverlay ? <View pointerEvents="box-none" style={{ position: 'absolute', left: 12, right: 12, bottom: 12 }}>{guideOverlay}</View> : null}</Pressable></Pressable></Modal>;
 }
