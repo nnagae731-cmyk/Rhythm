@@ -1,4 +1,4 @@
-const { withDangerousMod, withEntitlementsPlist, withXcodeProject } = require('expo/config-plugins');
+const { withDangerousMod, withEntitlementsPlist, withPodfile, withXcodeProject } = require('expo/config-plugins');
 const fs = require('fs');
 const path = require('path');
 
@@ -11,6 +11,29 @@ const TEMPLATE_FILES = [
   'RhythmWidget-Info.plist',
   'RhythmWidget.entitlements',
 ];
+
+const RESOURCE_BUNDLE_SIGNING_MARKER = '# @rhythm-widget-resource-bundle-signing';
+
+function configureResourceBundleSigning(podfile) {
+  if (podfile.includes(RESOURCE_BUNDLE_SIGNING_MARKER)) return podfile;
+
+  const resourceBundleSigning = `
+  ${RESOURCE_BUNDLE_SIGNING_MARKER}
+  installer.pods_project.targets.each do |target|
+    next unless target.respond_to?(:product_type) && target.product_type == 'com.apple.product-type.bundle'
+
+    target.build_configurations.each do |build_config|
+      build_config.build_settings['DEVELOPMENT_TEAM'] = 'KV26KLUSL6'
+      build_config.build_settings['CODE_SIGNING_ALLOWED'] = 'NO'
+    end
+  end
+`;
+  const postInstall = 'post_install do |installer|';
+  if (podfile.includes(postInstall)) {
+    return podfile.replace(postInstall, `${postInstall}${resourceBundleSigning}`);
+  }
+  return `${podfile.trimEnd()}\n\npost_install do |installer|${resourceBundleSigning}end\n`;
+}
 
 function copyWidgetTemplate(iosRoot) {
   const templateRoot = path.join(__dirname, '..', 'widget');
@@ -46,6 +69,10 @@ module.exports = function withRhythmWidget(config) {
     copyWidgetTemplate(nextConfig.modRequest.platformProjectRoot);
     return nextConfig;
   }]);
+  config = withPodfile(config, (nextConfig) => {
+    nextConfig.modResults.contents = configureResourceBundleSigning(nextConfig.modResults.contents);
+    return nextConfig;
+  });
   config = withXcodeProject(config, (nextConfig) => {
     addWidgetTarget(nextConfig.modResults);
     return nextConfig;
