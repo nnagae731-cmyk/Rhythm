@@ -58,6 +58,13 @@
         }
       ],
       [
+        "expo-speech-recognition",
+        {
+          "microphonePermission": "Rhythmが音声入力に使うマイクへのアクセスを許可します。",
+          "speechRecognitionPermission": "Rhythmが音声を文字に変換するための許可を使用します。"
+        }
+      ],
+      [
         "react-native-google-mobile-ads",
         {
           "iosAppId": "ca-app-pub-3940256099942544~1458002511",

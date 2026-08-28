@@ -8,7 +8,7 @@ import { PremiumGuideFeatureId } from '../premiumGuide';
 import { PremiumTaskTemplate } from '../taskTemplates';
 import { categories, priorities, repeatOptions } from '../features/tasks/taskUtils';
 import { parseSmartTaskInput, SmartTaskParseResult } from '../features/tasks/smartTaskInput';
-export function TaskModal({ visible, task, templates, savedTemplates, designMode, chicPalette, planTier, onPremium, onClose, onOpenBulkAdd, onSave, readOnlyPreview = false, previewSection, guideOverlay, styles, helpers, components }: { visible: boolean; task?: Task; templates: string[]; savedTemplates: PremiumTaskTemplate[]; designMode: DesignMode; chicPalette?: ChicThemePalette; planTier: PlanTier; onPremium: (featureId?: PremiumGuideFeatureId) => void; onClose: () => void; onOpenBulkAdd?: () => void; onSave: (title: string, category: Category, priority: Priority, remindDate?: string, remindAt?: string, deadlineDate?: string, deadlineTime?: string, deadlineNotifyBefore?: number, navigationEnabled?: boolean, preparationMinutes?: number, travelMinutes?: number, bufferMinutes?: number, repeatRule?: RepeatRule, nudgeMode?: NudgeMode, scheduledDate?: string, scheduledTime?: string, endAt?: string, isRoutine?: boolean, subtasks?: Subtask[]) => void; readOnlyPreview?: boolean; previewSection?: 'savedTemplates'; guideOverlay?: React.ReactNode; styles: any; helpers: any; components: any }) {
+export function TaskModal({ visible, task, templates, savedTemplates, designMode, chicPalette, planTier, onPremium, onClose, onOpenBulkAdd, onOpenVoice, onSave, initialDraft, readOnlyPreview = false, previewSection, guideOverlay, styles, helpers, components }: { task?: Task; visible: boolean; templates: string[]; savedTemplates: PremiumTaskTemplate[]; designMode: DesignMode; chicPalette?: ChicThemePalette; planTier: PlanTier; onPremium: (featureId?: PremiumGuideFeatureId) => void; onClose: () => void; onOpenBulkAdd?: () => void; onOpenVoice?: () => void; onSave: (title: string, category: Category, priority: Priority, remindDate?: string, remindAt?: string, deadlineDate?: string, deadlineTime?: string, deadlineNotifyBefore?: number, navigationEnabled?: boolean, preparationMinutes?: number, travelMinutes?: number, bufferMinutes?: number, repeatRule?: RepeatRule, nudgeMode?: NudgeMode, scheduledDate?: string, scheduledTime?: string, endAt?: string, isRoutine?: boolean, subtasks?: Subtask[]) => void; initialDraft?: { title?: string; scheduledDate?: string; scheduledTime?: string; repeatRule?: RepeatRule; priority?: Priority; isRoutine?: boolean }; readOnlyPreview?: boolean; previewSection?: 'savedTemplates'; guideOverlay?: React.ReactNode; styles: any; helpers: any; components: any }) {
   const { getThemeTokens, todayInputValue, hasPremiumAccess, dateForReminder, dateKey, formatLiveTime, summarizePremiumTaskTemplate } = helpers;
   const { CompactNumberSetting } = components;
   const theme = getThemeTokens(designMode, chicPalette?.id ?? 'cool');
@@ -61,12 +61,12 @@ export function TaskModal({ visible, task, templates, savedTemplates, designMode
     if (!visible) return;
     saveGuardRef.current = false;
     setDetailsOpen(Boolean(task));
-    setTitle(task?.title ?? '');
+    setTitle(initialDraft?.title ?? task?.title ?? '');
     setRemind(Boolean(task?.remindAt));
     setTime(task?.remindAt ?? '09:00');
     setRemindDate(task?.remindDate ?? todayInputValue());
     setCategory(task?.category ?? 'その他');
-    setPriority(task?.priority ?? '中');
+    setPriority(initialDraft?.priority ?? task?.priority ?? '中');
     setHasDeadline(Boolean(task?.deadlineDate));
     setDeadlineDate(task?.deadlineDate ?? todayInputValue());
     setDeadlineTime(task?.deadlineTime ?? '23:59');
@@ -78,12 +78,12 @@ export function TaskModal({ visible, task, templates, savedTemplates, designMode
     setPreparationMinutes(task?.preparationMinutes ?? 30);
     setTravelMinutes(task?.travelMinutes ?? 30);
     setBufferMinutes(task?.bufferMinutes ?? 10);
-    setRepeatRule(task?.repeatRule ?? 'none');
+    setRepeatRule(initialDraft?.repeatRule ?? task?.repeatRule ?? 'none');
     setNudgeMode(task?.nudgeMode ?? 'once');
-    setScheduledDate(task?.scheduledDate ?? todayInputValue());
-    setScheduledTime(task?.scheduledTime ?? '');
+    setScheduledDate(initialDraft?.scheduledDate ?? task?.scheduledDate ?? todayInputValue());
+    setScheduledTime(initialDraft?.scheduledTime ?? task?.scheduledTime ?? '');
     setScheduledEndTime(task?.endAt ?? '');
-    setIsRoutine(task?.isRoutine ?? false);
+    setIsRoutine(initialDraft?.isRoutine ?? task?.isRoutine ?? false);
     setSubtasks((task?.subtasks ?? []).map((item, index) => ({ ...item, order: item.order ?? index })));
     setNewSubtask('');
     setSmartResult({ title: task?.title ?? '', matched: [] });
@@ -93,7 +93,7 @@ export function TaskModal({ visible, task, templates, savedTemplates, designMode
     setTemplatePickerOpen(false);
     const focusTimer = setTimeout(() => { if (!readOnlyPreview) titleInputRef.current?.focus(); }, 120);
     return () => clearTimeout(focusTimer);
-  }, [readOnlyPreview, visible, task]);
+  }, [initialDraft, readOnlyPreview, visible, task]);
 
   useEffect(() => {
     if (!visible) return;
@@ -226,9 +226,9 @@ export function TaskModal({ visible, task, templates, savedTemplates, designMode
           <Text style={[styles.fieldLabel, designMode === 'dark' && styles.fieldLabelDark]}>やること・忘れたくないこと</Text>
           <View style={styles.voiceAddInputRow}>
             <TextInput ref={titleInputRef} value={title} onChangeText={updateTitle} placeholder="例：資料をバッグに入れる" placeholderTextColor={theme.colors.secondaryText} style={[styles.modalInput, { flex: 1, minWidth: 0 }, designMode === 'dark' && styles.darkInput]} selectionColor={isChic && chicPalette ? chicPalette.accent : theme.colors.primaryAccent} returnKeyType="done" onSubmitEditing={save} />
-            <Pressable accessibilityRole="button" accessibilityLabel="音声入力" style={[styles.voiceAddMicButton, isDark && styles.voiceAddMicButtonDark]} onPress={() => titleInputRef.current?.focus()}><Text style={styles.voiceAddMicText}>🎙</Text></Pressable>
+            <Pressable accessibilityRole="button" accessibilityLabel="音声入力" style={[styles.voiceAddMicButton, isDark && styles.voiceAddMicButtonDark]} onPress={onOpenVoice ?? (() => titleInputRef.current?.focus())}><Text style={styles.voiceAddMicText}>⌕</Text></Pressable>
           </View>
-          <Pressable accessibilityRole="button" onPress={() => titleInputRef.current?.focus()}><Text style={[styles.voiceAddHint, isDark && styles.darkMutedText]}>🎙 音声で入力する　日時・通知・繰り返しを解析します</Text></Pressable>
+          <Pressable accessibilityRole="button" onPress={onOpenVoice ?? (() => titleInputRef.current?.focus())}><Text style={[styles.voiceAddHint, isDark && styles.darkMutedText]}>音声で入力する　日時・通知・繰り返しを解析します</Text></Pressable>
           {!task && onOpenBulkAdd && <Pressable accessibilityRole="button" onPress={() => { closeForm(); onOpenBulkAdd(); }} style={{ minHeight: 42, borderBottomWidth: 1, borderBottomColor: taskBorder, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}><Text style={{ color: theme.colors.primaryText, fontSize: 13, fontWeight: '800' }}>複数まとめて追加</Text><Text style={{ color: taskAccent, fontSize: 18 }}>›</Text></Pressable>}
           {!task && templates.length > 0 && <Pressable accessibilityRole="button" onPress={() => setTemplatePickerOpen((value) => !value)} style={{ minHeight: 44, borderBottomWidth: 1, borderBottomColor: taskBorder, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}><Text style={{ color: theme.colors.primaryText, fontSize: 13, fontWeight: '800' }}>ひな型から選ぶ</Text><Text style={{ color: taskAccent, fontSize: 18 }}>{templatePickerOpen ? '⌃' : '›'}</Text></Pressable>}
           {!task && templatePickerOpen && <View style={{ paddingVertical: 8 }}>{templates.map((item) => <Pressable key={item} onPress={() => { setTitle(item); setTemplatePickerOpen(false); }} style={{ minHeight: 42, paddingHorizontal: 8, justifyContent: 'center', borderBottomWidth: 1, borderBottomColor: taskBorder }}><Text style={{ color: theme.colors.primaryText, fontSize: 13 }}>{item}</Text></Pressable>)}</View>}

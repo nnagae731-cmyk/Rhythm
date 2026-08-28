@@ -4,7 +4,7 @@ import Svg, { Circle, Line, Path, Rect } from 'react-native-svg';
 import { ChicThemePalette, getThemeTokens } from '../theme';
 import { Screen, ThemeMode } from '../types';
 
-export function BottomNav({ screen, designMode, chicPalette, onChange }: { screen: Screen; designMode: ThemeMode; chicPalette?: ChicThemePalette; onChange: (screen: Screen) => void }) {
+export function BottomNav({ screen, designMode, chicPalette, onChange, onVoice }: { screen: Screen; designMode: ThemeMode; chicPalette?: ChicThemePalette; onChange: (screen: Screen) => void; onVoice?: () => void }) {
   const theme = getThemeTokens(designMode);
   const designColors = designMode === 'chic' ? chicPalette : undefined;
   const items: { id: Screen; icon: string; label: string }[] = [
@@ -37,16 +37,18 @@ export function BottomNav({ screen, designMode, chicPalette, onChange }: { scree
           </Pressable>
         );
       })}
+      {onVoice ? <Pressable accessibilityRole="button" accessibilityLabel="共通音声入力" onPress={onVoice} style={[styles.voiceButton, { backgroundColor: designColors?.cardSurface ?? theme.colors.surface, borderColor: designColors?.border ?? theme.colors.border }]}><Svg width={24} height={24} viewBox="0 0 24 24"><Rect x="9" y="3" width="6" height="11" rx="3" stroke={designColors?.accent ?? theme.colors.primaryAccent} strokeWidth="1.8" fill="none" /><Path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21M9 21h6" stroke={designColors?.accent ?? theme.colors.primaryAccent} strokeWidth="1.8" strokeLinecap="round" fill="none" /></Svg></Pressable> : null}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  bottomNav: { position: 'absolute', left: 18, right: 18, bottom: 14, height: 74, backgroundColor: '#FFFFFF', borderRadius: 25, flexDirection: 'row', alignItems: 'center', shadowColor: '#372F4A', shadowOpacity: 0.14, shadowRadius: 18, shadowOffset: { width: 0, height: 8 }, elevation: 8 },
+  bottomNav: { position: 'absolute', left: 18, right: 18, bottom: 14, height: 74, backgroundColor: '#FFFFFF', borderRadius: 25, flexDirection: 'row', alignItems: 'center', shadowColor: '#372F4A', shadowOpacity: 0.14, shadowRadius: 18, shadowOffset: { width: 0, height: 8 }, elevation: 8, overflow: 'visible' },
   bottomNavMinimal: { left: 12, right: 12, bottom: 12, borderRadius: 18, height: 70, borderWidth: 1, borderColor: '#DCE2EC', shadowColor: '#1B2B4A', shadowOpacity: 0.08, shadowRadius: 12, shadowOffset: { width: 0, height: 4 }, elevation: 3 },
   bottomNavChic: { backgroundColor: '#FFF7FA', borderWidth: 2, borderColor: '#FFFFFF', shadowColor: '#D96C9B', shadowOpacity: 0.16 },
   bottomNavDark: { backgroundColor: '#181F2E', borderColor: '#303B50', shadowColor: '#000000', shadowOpacity: 0.3 },
   navItem: { flex: 1, alignItems: 'center', gap: 3 },
   navIcon: { color: '#A39DAA', fontSize: 20, fontWeight: '900' },
   navLabel: { color: '#A39DAA', fontSize: 10, fontWeight: '800' },
+  voiceButton: { position: 'absolute', left: '50%', top: -19, marginLeft: -25, width: 50, height: 50, borderRadius: 25, borderWidth: 1, alignItems: 'center', justifyContent: 'center', shadowColor: '#000000', shadowOpacity: 0.14, shadowRadius: 8, shadowOffset: { width: 0, height: 3 }, elevation: 5 },
 });

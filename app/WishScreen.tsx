@@ -31,6 +31,7 @@ type WishScreenProps = {
   canCreateWishAction?: boolean;
   topImageUri?: string;
   onPickTopImage?: () => void;
+  initialEditor?: { mode: EditorMode; title: string; wishId?: string };
   onPremium?: (featureId?: PremiumGuideFeatureId) => void;
 };
 
@@ -73,7 +74,7 @@ function formatHistoryDate(value?: string) {
   return Number.isNaN(date.getTime()) ? '' : `${date.getMonth() + 1}/${date.getDate()} 完了`;
 }
 
-export function WishScreen({ designMode: rawDesignMode, chicPalette, monthLabel, state, wishMonths = {}, onSaveState, onCreateTaskFromAction, canCreateWish = true, wishRewardProgress, onRequestWishReward, onWishCreated, affirmations, affirmationCustomTexts, planTier, onSaveAffirmation, onDeleteAffirmation, onSaveAffirmationCustomText, onDeleteAffirmationCustomText, canCreateWishAction = true, topImageUri, onPickTopImage, onPremium }: WishScreenProps) {
+export function WishScreen({ designMode: rawDesignMode, chicPalette, monthLabel, state, wishMonths = {}, onSaveState, onCreateTaskFromAction, canCreateWish = true, wishRewardProgress, onRequestWishReward, onWishCreated, affirmations, affirmationCustomTexts, planTier, onSaveAffirmation, onDeleteAffirmation, onSaveAffirmationCustomText, onDeleteAffirmationCustomText, canCreateWishAction = true, topImageUri, onPickTopImage, initialEditor, onPremium }: WishScreenProps) {
   // Mono DarkはMono Lightと同じレイアウトを使い、色だけを反転する。
   const isDark = rawDesignMode === 'dark';
   const theme = getThemeTokens(rawDesignMode, chicPalette?.id ?? 'cool');
@@ -96,6 +97,11 @@ export function WishScreen({ designMode: rawDesignMode, chicPalette, monthLabel,
   useEffect(() => {
     setSelectedWishIndex((current) => Math.min(current, Math.max(0, state.wishes.length - 1)));
   }, [state.wishes.length]);
+
+  useEffect(() => {
+    if (!initialEditor) return;
+    setEditor({ visible: true, mode: initialEditor.mode, title: initialEditor.title, wishId: initialEditor.wishId, completed: false });
+  }, [initialEditor]);
 
   const commit = (updater: (current: MonthlyWishState) => MonthlyWishState) => {
     onSaveState(updater);
@@ -302,13 +308,21 @@ export function WishScreen({ designMode: rawDesignMode, chicPalette, monthLabel,
                         <Text style={[styles.wishCardTitle, { color: textPrimary }, wish.completed && styles.itemTitleDone]}>{wish.title}</Text>
                         <Text style={[styles.wishCardHint, { color: textSecondary }]}>{wish.completed ? '叶いました' : 'ここから一歩ずつ'}</Text>
                         <Pressable onPress={() => toggleWish(wish.id)} hitSlop={8} style={styles.wishCompletionToggle}><Text style={[styles.wishCompletionText, { color: accent }]}>{wish.completed ? '✓ 完了を戻す' : '○ 叶えたらチェック'}</Text></Pressable>
+                        <Pressable
+                          accessibilityRole="checkbox"
+                          accessibilityState={{ checked: topDisplayedWish?.id === wish.id }}
+                          onPress={(event) => { event.stopPropagation(); commit((current) => ({ ...current, topWishId: wish.id })); }}
+                          hitSlop={6}
+                          style={styles.topWishToggle}
+                        >
+                          <Text style={[styles.topWishToggleText, { color: topDisplayedWish?.id === wish.id ? accent : textSecondary }]}>{topDisplayedWish?.id === wish.id ? '✓ トップ' : '□ トップ'}</Text>
+                        </Pressable>
                       </View>
                       <Pressable onPress={() => { setSelectedWishIndex(index); setHeroMenuOpen((value) => isSelected ? !value : true); }} style={styles.heroMenuButton} hitSlop={8}>
                         <Text style={[styles.heroMenuText, { color: textPrimary }]}>•••</Text>
                       </Pressable>
                     </View>
                     {heroMenuOpen && isSelected ? <View style={[styles.heroMenu, { backgroundColor: subtleSurface, borderColor: border }]}>
-                      {topDisplayedWish?.id === wish.id ? <Text style={[styles.heroMenuItem, { color: textSecondary }]}>✓ トップに表示中</Text> : <Pressable onPress={() => { commit((current) => ({ ...current, topWishId: wish.id })); setHeroMenuOpen(false); }}><Text style={[styles.heroMenuItem, { color: textPrimary }]}>トップに表示する</Text></Pressable>}
                       <Pressable onPress={() => { setHeroMenuOpen(false); openWishEditor(wish); }}><Text style={[styles.heroMenuItem, { color: textPrimary }]}>編集</Text></Pressable>
                       <Pressable onPress={() => { setHeroMenuOpen(false); Alert.alert('削除しますか？', undefined, [{ text: 'キャンセル', style: 'cancel' }, { text: '削除', style: 'destructive', onPress: () => deleteWish(wish.id) }]); }}><Text style={[styles.heroMenuItem, { color: theme.colors.danger }]}>削除</Text></Pressable>
                     </View> : null}
@@ -631,6 +645,8 @@ const styles = StyleSheet.create({
   wishCardHint: { fontSize: 11, lineHeight: 17, fontWeight: '700', marginTop: 5 },
   wishCompletionToggle: { alignSelf: 'flex-start', marginTop: 8 },
   wishCompletionText: { fontSize: 11, fontWeight: '900' },
+  topWishToggle: { alignSelf: 'flex-start', marginTop: 5, minHeight: 28, justifyContent: 'center' },
+  topWishToggleText: { fontSize: 11, fontWeight: '900' },
   wishCardSection: { borderTopWidth: 1, paddingTop: 12, gap: 8 },
   wishCardSectionTitle: { fontSize: 13, fontWeight: '900' },
   wishCardProgress: { borderTopWidth: 1, paddingTop: 12, gap: 7 },

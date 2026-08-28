@@ -51,6 +51,8 @@ import { cancelPendingTaskNotifications } from './features/tasks/taskNotificatio
 import { cancelPendingDepartureNotifications } from './features/departure/departureNotifications';
 import { getDeparturePlanMode, getPlanScheduledTime, isArrivalReversePlan, isDepartureReminderPlan, normalizeDeparturePlanForSave } from './features/departure/departurePlanMode';
 import { WishScreen } from './WishScreen';
+import { VoiceInputModal } from './components/VoiceInputModal';
+import { VoiceParseResult } from './features/voiceParser';
 import { buildRoutineInterruptionSummary, getRoutineHistories } from './features/analytics/routineInterruptionAnalysis';
 import type { RoutineArchive } from './types';
 import { SharedEventScreen } from './SharedEventScreen';
@@ -608,6 +610,9 @@ export default function App() {
   const theme = useMemo(() => getThemeTokens(isMonoDesign ? resolvedMonoMode : designMode, appDesignPaletteId), [designMode, isMonoDesign, resolvedMonoMode, appDesignPaletteId]);
   const [addOpen, setAddOpen] = useState(false);
   const [bulkAddOpen, setBulkAddOpen] = useState(false);
+  const [voiceOpen, setVoiceOpen] = useState(false);
+  const [voiceTaskDraft, setVoiceTaskDraft] = useState<VoiceParseResult>();
+  const [voiceWishDraft, setVoiceWishDraft] = useState<{ mode: 'wish' | 'action'; title: string; wishId?: string }>();
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedTaskIds, setSelectedTaskIds] = useState<string[]>([]);
@@ -1209,6 +1214,10 @@ export default function App() {
       if (parsed.hostname === 'schedule') {
         setTimelineInitialTab('departure');
         setScreen('timeline');
+        return true;
+      }
+      if (parsed.hostname === 'voice') {
+        setVoiceOpen(true);
         return true;
       }
     } catch {
@@ -2001,6 +2010,7 @@ export default function App() {
     tasksRef.current = nextTasks;
     setTasks(nextTasks);
     setAddOpen(false);
+    setVoiceTaskDraft(undefined);
     void onboarding.complete('todo');
     if (isRoutine) void onboarding.complete('routine');
     if (remindAt || (deadlineDate && deadlineTime && deadlineNotifyBefore !== undefined)) void scheduleAllTaskNotifications(task);
@@ -2254,6 +2264,46 @@ export default function App() {
     setPlan({ ...target, ...normalizeDeparturePlanForSave(target) });
     setPlanEditorOpen(true);
   }, []);
+
+  const handleVoiceRoute = (result: VoiceParseResult) => {
+    setVoiceOpen(false);
+    setVoiceTaskDraft(undefined);
+    setVoiceWishDraft(undefined);
+    if (result.intent === 'todo' || result.intent === 'routine') {
+      setVoiceTaskDraft(result);
+      setScreen('home');
+      setAddOpen(true);
+      return;
+    }
+    if (result.intent === 'schedule') {
+      setPlan({
+        ...createEmptyPlanDraft(),
+        title: result.title,
+        destination: result.destination,
+        date: result.scheduledDate ?? todayInputValue(),
+        arrival: result.scheduledTime ?? '09:00',
+        planMode: 'calendar_only',
+        countdownEnabled: false,
+      });
+      setTimelineInitialTab('calendar');
+      setScreen('timeline');
+      setPlanEditorOpen(true);
+      return;
+    }
+    if (result.intent === 'wish' || result.intent === 'wishAction') {
+      if (result.intent === 'wishAction' && planTier !== 'premium') {
+        openPremiumFeature('wish');
+        return;
+      }
+      const relatedWish = currentWishState.wishes.find((wish) => Boolean(result.relatedWishTitle) && (wish.title.includes(result.relatedWishTitle!) || result.relatedWishTitle!.includes(wish.title)));
+      setVoiceWishDraft({ mode: result.intent === 'wishAction' ? 'action' : 'wish', title: result.title, wishId: relatedWish?.id });
+      setScreen('wish');
+    }
+  };
+
+  useEffect(() => {
+    if (screen !== 'wish') setVoiceWishDraft(undefined);
+  }, [screen]);
 
   const saveDeparturePlan = async (): Promise<boolean> => {
     // 編集対象が実際に存在する時だけ更新する。削除済み予定のIDがフォームに残っても、
@@ -3415,6 +3465,7 @@ export default function App() {
               canCreateWishAction={hasPremiumAccess(planTier, 'wish_planning')}
               topImageUri={firstRunDemoActive ? undefined : wishTopImageUri}
               onPickTopImage={firstRunDemoActive ? undefined : () => { void pickPhotoTheme('wish'); }}
+              initialEditor={firstRunDemoActive ? undefined : voiceWishDraft}
               onPremium={(featureId = 'wish') => { if (!firstRunDemoActive) openPremiumFeature(featureId); }}
             />
           )}
@@ -3698,7 +3749,7 @@ export default function App() {
 
         {productionGuideOverlay}
 
-        <BottomNav screen={screen} designMode={uiDesignMode} chicPalette={chicPalette} onChange={navigateWithinApp} />
+        <BottomNav screen={screen} designMode={uiDesignMode} chicPalette={chicPalette} onChange={navigateWithinApp} onVoice={() => setVoiceOpen(true)} />
       </View>
 
       <Modal visible={openTodayReview && planTier === 'premium'} transparent animationType="slide" onRequestClose={() => setOpenTodayReview(false)}>
@@ -3767,7 +3818,7 @@ export default function App() {
         onShareCurrentEvent={shareCurrentSharedEvent}
       />
 
-      {addOpen && <TaskModal visible templates={taskTemplates} savedTemplates={savedTaskTemplates} designMode={uiDesignMode} chicPalette={chicPalette} planTier={planTier} onPremium={firstRunDemoActive ? () => undefined : openPremiumFeature} onClose={() => setAddOpen(false)} onOpenBulkAdd={() => { setAddOpen(false); setBulkAddOpen(true); }} onSave={firstRunDemoActive ? () => undefined : addTask} readOnlyPreview={firstRunDemoActive} guideOverlay={productionGuideFeature === 'taskDetails' ? productionGuideCard : undefined} styles={styles} helpers={{ getThemeTokens: getThemedThemeTokens, todayInputValue, hasPremiumAccess, dateForReminder, dateKey, formatLiveTime, colors: themedColors, summarizePremiumTaskTemplate }} components={{ CompactNumberSetting }} />}
+      {addOpen && <TaskModal visible templates={taskTemplates} savedTemplates={savedTaskTemplates} designMode={uiDesignMode} chicPalette={chicPalette} planTier={planTier} onPremium={firstRunDemoActive ? () => undefined : openPremiumFeature} onClose={() => { setAddOpen(false); setVoiceTaskDraft(undefined); }} onOpenVoice={() => setVoiceOpen(true)} onOpenBulkAdd={() => { setAddOpen(false); setBulkAddOpen(true); }} onSave={firstRunDemoActive ? () => undefined : addTask} initialDraft={firstRunDemoActive ? undefined : voiceTaskDraft} readOnlyPreview={firstRunDemoActive} guideOverlay={productionGuideFeature === 'taskDetails' ? productionGuideCard : undefined} styles={styles} helpers={{ getThemeTokens: getThemedThemeTokens, todayInputValue, hasPremiumAccess, dateForReminder, dateKey, formatLiveTime, colors: themedColors, summarizePremiumTaskTemplate }} components={{ CompactNumberSetting }} />}
       <BulkTaskModal visible={bulkAddOpen} designMode={uiDesignMode} chicPalette={chicPalette} styles={styles} today={todayInputValue()} onClose={() => setBulkAddOpen(false)} onSave={firstRunDemoActive ? () => undefined : addBulkTasks} />
       {editingTask !== null && <TaskModal
         visible
@@ -3779,6 +3830,7 @@ export default function App() {
         planTier={planTier}
         onPremium={firstRunDemoActive ? () => undefined : openPremiumFeature}
         onClose={() => setEditingTask(null)}
+        onOpenVoice={() => setVoiceOpen(true)}
         onSave={firstRunDemoActive ? () => undefined : updateTask}
         readOnlyPreview={firstRunDemoActive}
         guideOverlay={productionGuideFeature === 'taskDetails' ? productionGuideCard : undefined}
@@ -3787,6 +3839,7 @@ export default function App() {
         components={{ CompactNumberSetting }}
       />}
       <PremiumModal visible={premiumOpen} initialFeatureId={premiumTargetFeature} designMode={uiDesignMode} chicPalette={chicPalette} planTier={planTier} isDevelopment={__DEV__} onMockPlanTier={handleMockPlanTier} onClose={() => setPremiumOpen(false)} styles={styles} helpers={{ getThemeTokens: getThemedThemeTokens }} renderReadOnlyPreview={renderPremiumReadOnlyPreview} />
+      <VoiceInputModal visible={voiceOpen} designMode={uiDesignMode} chicPalette={chicPalette} dateKey={dateKey} onClose={() => setVoiceOpen(false)} onRoute={handleVoiceRoute} />
       <DesignCustomizeModal visible={designCustomizeOpen} designMode={uiDesignMode} chicPalette={chicPalette} purchased={designCustomizePurchased} isDevelopment={__DEV__} onPurchase={purchaseDesignCustomize} onRestore={restoreDesignCustomizePurchase} onPremium={() => { setDesignCustomizeOpen(false); openPremiumFeature('photo_design'); }} onClose={() => setDesignCustomizeOpen(false)} />
       {__DEV__ && <OnboardingCaptureStudio visible={captureStudioOpen} onClose={() => setCaptureStudioOpen(false)} renderStep={renderOnboardingCaptureStep} renderGuideStep={renderGuideCaptureStep} renderPremiumStep={renderPremiumReadOnlyPreview} colors={{ background: theme.colors.screenBackground, surface: theme.colors.surface, border: theme.colors.border, text: theme.colors.primaryText, muted: theme.colors.secondaryText, accent: theme.colors.primaryAccent, onAccent: uiDesignMode === 'chic' && chicPalette ? chicPalette.onAccent : uiDesignMode === 'dark' ? theme.colors.screenBackground : '#FFFFFF' }} />}
       <DesignPreviewModal visible={Boolean(designPreviewPattern)} initialPattern={designPreviewPattern} initialMode={designPreviewMode} chicCheckColor={chicCheckColor} planTier={planTier} photoUri={designPreviewPhotoUri} onPickPhoto={() => void pickPhotoForDesignPreview()} onClose={() => { setDesignPreviewPattern(undefined); setDesignPreviewPhotoUri(undefined); setDesignPreviewMode('chic'); }} onTrial={(mode, pattern) => {
