@@ -19,6 +19,8 @@ function configureResourceBundleSigning(podfile) {
 
   const resourceBundleSigning = `
   ${RESOURCE_BUNDLE_SIGNING_MARKER}
+  puts '[RhythmWidget Signing Debug] scanning Pods project targets for resource bundles'
+  resource_bundle_target_count = 0
   installer.pods_project.targets.each do |target|
     target_product_type = target.respond_to?(:product_type) ? target.product_type.to_s : ''
     target_product_name = target.respond_to?(:product_name) ? target.product_name.to_s : ''
@@ -28,14 +30,17 @@ function configureResourceBundleSigning(podfile) {
       target.name.to_s.end_with?('.bundle') ||
       target_symbol_type == 'bundle'
     next unless is_resource_bundle
+    resource_bundle_target_count += 1
 
     target.build_configurations.each do |build_config|
       build_config.build_settings['DEVELOPMENT_TEAM'] = 'KV26KLUSL6'
       build_config.build_settings['CODE_SIGNING_ALLOWED'] = 'NO'
       build_config.build_settings['CODE_SIGNING_REQUIRED'] = 'NO'
       build_config.build_settings['EXPANDED_CODE_SIGN_IDENTITY'] = ''
+      puts "[RhythmWidget Signing Debug] applied target=#{target.name} configuration=#{build_config.name} product_type=#{target_product_type} product_name=#{target_product_name} DEVELOPMENT_TEAM=#{build_config.build_settings['DEVELOPMENT_TEAM']} CODE_SIGNING_ALLOWED=#{build_config.build_settings['CODE_SIGNING_ALLOWED']} CODE_SIGNING_REQUIRED=#{build_config.build_settings['CODE_SIGNING_REQUIRED']}"
     end
   end
+  puts "[RhythmWidget Signing Debug] resource_bundle_target_count=#{resource_bundle_target_count}"
 `;
   const postInstall = 'post_install do |installer|';
   if (podfile.includes(postInstall)) {
