@@ -5,7 +5,17 @@
   "build": {
     "development": {
       "developmentClient": true,
-      "distribution": "internal"
+      "distribution": "internal",
+      "env": {
+        "RHYTHM_ENABLE_WIDGET": "false"
+      }
+    },
+    "development-widget": {
+      "developmentClient": true,
+      "distribution": "internal",
+      "env": {
+        "RHYTHM_ENABLE_WIDGET": "true"
+      }
     },
     "preview": {
       "distribution": "internal"
