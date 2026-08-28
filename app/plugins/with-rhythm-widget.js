@@ -167,19 +167,125 @@ function configureWidgetBuildConfigurations(project, target) {
   });
 }
 
+function findWidgetSourceGroup(project) {
+  const groups = project.getPBXObject('PBXGroup') ?? {};
+  return Object.keys(groups)
+    .filter((key) => !key.endsWith('_comment'))
+    .map((uuid) => ({ uuid, group: groups[uuid] }))
+    .find(({ group }) => (
+      group?.isa === 'PBXGroup'
+      && unquoteXcodeValue(group.name) === TARGET_NAME
+      && unquoteXcodeValue(group.path) === TARGET_NAME
+    ));
+}
+
+function ensureWidgetSourceGroup(project) {
+  const existing = findWidgetSourceGroup(project);
+  const groupEntry = existing ?? (() => {
+    const created = project.addPbxGroup(TEMPLATE_FILES, TARGET_NAME, TARGET_NAME);
+    return { uuid: created.uuid, group: created.pbxGroup };
+  })();
+
+  // addPbxGroup creates an orphan PBXGroup. Attach it to the project's main
+  // group so its <group>-relative file references resolve under ios/RhythmWidget.
+  const mainGroupUuid = project.getFirstProject()?.firstProject?.mainGroup;
+  const groups = project.getPBXObject('PBXGroup') ?? {};
+  const mainGroup = mainGroupUuid ? groups[mainGroupUuid] : null;
+  if (mainGroup && Array.isArray(mainGroup.children) && !mainGroup.children.some((child) => child.value === groupEntry.uuid)) {
+    project.addToPbxGroup(groupEntry.uuid, mainGroupUuid);
+  }
+
+  return groupEntry;
+}
+
+function ensureWidgetSourceFiles(project, target) {
+  const sourceNames = ['RhythmWidget.swift', 'RhythmWidgetBundle.swift'];
+  const { uuid: groupUuid, group } = ensureWidgetSourceGroup(project);
+  const fileReferences = project.getPBXObject('PBXFileReference') ?? {};
+  const buildFiles = project.pbxBuildFileSection();
+
+  const sourceRefs = sourceNames.map((fileName) => {
+    let child = (group.children ?? []).find((candidate) => unquoteXcodeValue(candidate.comment) === fileName);
+    if (!child) {
+      const refUuid = project.generateUuid();
+      fileReferences[refUuid] = {
+        isa: 'PBXFileReference',
+        name: `"${fileName}"`,
+        path: `"${fileName}"`,
+        sourceTree: '"<group>"',
+        fileEncoding: 4,
+        lastKnownFileType: 'sourcecode.swift',
+        includeInIndex: 0,
+      };
+      fileReferences[`${refUuid}_comment`] = fileName;
+      child = { value: refUuid, comment: fileName };
+      group.children = [...(group.children ?? []), child];
+    }
+    const ref = fileReferences[child.value];
+    if (ref) {
+      // Keep the path relative to the RhythmWidget PBXGroup. This is what
+      // makes Xcode resolve ios/RhythmWidget/<source>.swift.
+      ref.path = `"${fileName}"`;
+      ref.name = `"${fileName}"`;
+      ref.sourceTree = '"<group>"';
+    }
+    return { fileName, refUuid: child.value };
+  });
+
+  const phases = project.getPBXObject('PBXSourcesBuildPhase') ?? {};
+  const targetPhases = target.buildPhases ?? [];
+  let sourcePhase = targetPhases
+    .map((entry) => phases[entry.value])
+    .find((phase) => phase?.isa === 'PBXSourcesBuildPhase');
+  if (!sourcePhase) {
+    const created = project.addBuildPhase([], 'PBXSourcesBuildPhase', 'Sources', target.uuid);
+    sourcePhase = phases[created.uuid] ?? created.buildPhase;
+  }
+  sourcePhase.files = Array.isArray(sourcePhase.files) ? sourcePhase.files : [];
+
+  const sourceRefIds = new Set(sourceRefs.map((source) => source.refUuid));
+  // Remove stale source entries for these two files (including the old
+  // ios/RhythmWidget.swift references) before adding the group-owned refs.
+  sourcePhase.files = sourcePhase.files.filter((entry) => {
+    const buildFile = buildFiles[entry.value];
+    return !buildFile || !sourceNames.includes(unquoteXcodeValue(buildFile.fileRef_comment)) || sourceRefIds.has(buildFile.fileRef);
+  });
+
+  for (const { fileName, refUuid } of sourceRefs) {
+    let buildFileUuid = Object.keys(buildFiles).find((key) => (
+      !key.endsWith('_comment') && buildFiles[key]?.isa === 'PBXBuildFile' && buildFiles[key].fileRef === refUuid
+    ));
+    if (!buildFileUuid) {
+      buildFileUuid = project.generateUuid();
+      buildFiles[buildFileUuid] = {
+        isa: 'PBXBuildFile',
+        fileRef: refUuid,
+        fileRef_comment: fileName,
+      };
+      buildFiles[`${buildFileUuid}_comment`] = `"${fileName}" in Sources`;
+    }
+    if (!sourcePhase.files.some((entry) => entry.value === buildFileUuid)) {
+      sourcePhase.files.push({ value: buildFileUuid, comment: `"${fileName}" in Sources` });
+    }
+  }
+
+  console.log(
+    `[RhythmWidget Source Debug] target=${TARGET_NAME} group=${groupUuid} files=${sourceRefs.map(({ fileName }) => `RhythmWidget/${fileName}`).join(',')}`,
+  );
+}
+
 function addWidgetTarget(project) {
   const existingTarget = findNativeTarget(project, TARGET_NAME);
   if (!existingTarget) {
     project.addTarget(TARGET_NAME, 'app_extension', TARGET_NAME, BUNDLE_IDENTIFIER);
-    project.addPbxGroup(TEMPLATE_FILES, TARGET_NAME, TARGET_NAME);
     const target = findNativeTarget(project, TARGET_NAME);
     if (!target) throw new Error(`Unable to resolve generated ${TARGET_NAME} PBXNativeTarget`);
-    project.addBuildPhase(['RhythmWidget.swift', 'RhythmWidgetBundle.swift'], 'PBXSourcesBuildPhase', 'Sources', target.uuid);
     project.addBuildPhase([], 'PBXFrameworksBuildPhase', 'Frameworks', target.uuid);
     project.addBuildPhase([], 'PBXResourcesBuildPhase', 'Resources', target.uuid);
   }
   const target = findNativeTarget(project, TARGET_NAME);
   if (!target) throw new Error(`Unable to resolve ${TARGET_NAME} PBXNativeTarget`);
+  ensureWidgetSourceFiles(project, target);
   // Apply values directly to the target's configuration list so the settings
   // are attached to the exact PBXNativeTarget used by archive.
   configureWidgetBuildConfigurations(project, target);
