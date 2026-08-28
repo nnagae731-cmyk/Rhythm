@@ -75,13 +75,13 @@ const PREMIUM_GUIDE_FEATURES: Array<{ id: PremiumGuideFeatureId; kind: PremiumPr
   { id: 'route', kind: 'route', title: '出発カウントダウン・地図・共有', description: '出発までのカウントダウンと、予定の場所・共有をPremiumで利用できます。' },
   { id: 'travel_apps', kind: 'travel_apps', title: '移動アプリ連携', description: 'いつもの乗換・タクシーアプリを登録して、予定や遅れた時にRhythmからすぐ開けます。' },
   { id: 'nudge', kind: 'nudge', title: '高度な通知', description: '段階的な通知や反応に応じた再通知で、大切な予定を忘れにくくします。' },
-  { id: 'time', kind: 'time', title: '行動分析', description: '通知・準備・出発・集中など、実際の行動記録から自分の傾向を振り返れます。' },
-  { id: 'behavior', kind: 'behavior', title: '行動の振り返り', description: '最近の反応や集中の記録を、責めない言葉で確認できます。' },
+  { id: 'time', kind: 'time', title: '行動分析', description: '通知・準備・出発・集中などの記録から、自分の行動パターンや傾向を分析できます。' },
+  { id: 'behavior', kind: 'behavior', title: '振り返り', description: '最近の記録から、できたことや立て直した場面を振り返れます。' },
   { id: 'month', kind: 'month', title: '月表示と詳細履歴', description: '7日を超えた予定や過去の完了・集中・出発記録を、月単位で確認できます。' },
   { id: 'history', kind: 'history', title: '詳細な履歴・検索', description: '過去の完了タスクや記録を、検索とカレンダーから詳しく確認できます。' },
   { id: 'recovery', kind: 'recovery', title: '遅れた時の立て直し', description: '今からできる行動を選んで、崩れた予定を立て直せます。' },
   { id: 'templates', kind: 'templates', title: 'タスクひな型', description: '一度作ったタスクのカテゴリ・優先度・通知設定をひな型として保存し、次回の登録を簡単にします。' },
-  { id: 'wish', kind: 'wish', title: '叶えるための行動', description: '叶えたいことはFreeでも記録できます。Premiumなら「叶えるための行動」に分けて管理し、今月の進捗まで確認できます。' },
+  { id: 'wish', kind: 'wish', title: '叶えたいこと', description: '叶えたいことを残して、今日できる行動に分けながら進み具合を確認できます。' },
   { id: 'affirmation', kind: 'affirmation', title: '好きな言葉を、選んだ時間に届ける', description: '自分で書いたアファメーションを毎日指定時刻に通知。忙しい日も、自分の軸へ静かに戻れます。' },
   { id: 'photo_design', kind: 'photo_design', title: '選べるデザイン', description: '花柄1〜3、ドット、チェックデザイン、写真背景はPremiumで利用できます。FreeでもTrialや広告で試せます。Design Customizeを¥500で買い切れば、Premiumなしでも広告なしでずっと利用できます。' },
 ];
@@ -96,7 +96,7 @@ const PREMIUM_FEATURE_ICONS: Record<PremiumGuideFeatureId, PremiumFeatureIconNam
 
 const PREMIUM_FEATURE_NAV_LABELS: Record<PremiumGuideFeatureId, string> = {
   focus_custom_duration: '集中時間', records: '今日の記録', reflection: '月の振り返り', calendar: 'カレンダー連携', route: '出発・地図・共有', travel_apps: '移動アプリ',
-  nudge: '高度な通知', time: '行動分析', behavior: '振り返り', month: '月別履歴', history: '履歴検索', recovery: '立て直し', templates: 'タスクひな型', wish: 'Wish行動',
+  nudge: '高度な通知', time: '行動分析', behavior: '振り返り', month: '月別履歴', history: '履歴検索', recovery: '立て直し', templates: 'タスクひな型', wish: '叶えたいこと',
   affirmation: 'アファメーション', photo_design: 'デザイン', floral: '花柄1〜3', dot: 'ドット', check: 'チェック',
 };
 
@@ -114,7 +114,7 @@ const PREMIUM_FEATURE_DIFFS: Partial<Record<PremiumGuideFeatureId, { free: strin
   history: { free: '基本の履歴のみ', premium: '履歴を検索・詳しく確認' },
   recovery: { free: '利用できません', premium: '遅れた予定を立て直す' },
   templates: { free: '通常のひな型を利用', premium: '設定ごと保存して再利用' },
-  wish: { free: '目標・叶えたいことを広告で追加', premium: '行動に分けて進捗まで確認' },
+  wish: { free: '叶えたいことを広告で記録', premium: '行動に分けて進捗まで管理' },
   affirmation: { free: '利用できません', premium: '好きな言葉を指定時刻に通知' },
   photo_design: { free: 'Trial・広告・買い切りで一部利用', premium: '対象デザイン・写真を制限なく利用' },
 };
@@ -127,7 +127,7 @@ const PREMIUM_COMPARISON_ROWS: Array<{ label: string; free: '○' | '△' | '×'
   { label: 'カレンダー取り込み', free: '△', premium: '○', note: 'Freeは広告1回で1予定' },
   { label: '出発カウントダウン・地図・共有', free: '×', premium: '○', note: 'Premiumで利用できます' },
   { label: '行動分析・詳細な履歴', free: '×', premium: '○' },
-  { label: '叶えたいこと・行動', free: '△', premium: '○', note: '目標・Wish追加は広告、行動はPremium' },
+  { label: '叶えたいこと', free: '△', premium: '○', note: '叶えたいことは広告、行動はPremium限定' },
   { label: '選べるデザイン・写真', free: '△', premium: '○', note: 'Trial・広告・買い切りで利用可' },
   { label: 'アファメーション', free: '×', premium: '○' },
 ];
