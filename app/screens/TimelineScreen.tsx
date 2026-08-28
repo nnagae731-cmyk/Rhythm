@@ -127,10 +127,11 @@ export const DepartureCountdownCard = React.memo(function DepartureCountdownCard
   const countdownAt = getPlanCountdownAt(plan);
   const passed = countdownAt.getTime() <= now.getTime();
   const mapOpeningRef = useRef(false);
+  const resolvedDestination = getMapSearchTarget(plan);
   const openMap = async () => {
     if (mapOpeningRef.current) return;
     mapOpeningRef.current = true;
-    try { await openMapSearch(getMapSearchTarget(plan)); } finally { setTimeout(() => { mapOpeningRef.current = false; }, 700); }
+    try { await openMapSearch(resolvedDestination); } finally { setTimeout(() => { mapOpeningRef.current = false; }, 700); }
   };
   const secondaryActionStyle = [styles.planActionSecondary, { backgroundColor: theme.colors.secondarySurface, borderColor: theme.colors.border }];
   // Keep every countdown label on the active palette. The base StyleSheet
@@ -185,8 +186,8 @@ export const DepartureCountdownCard = React.memo(function DepartureCountdownCard
       <PlanLocationShareActions plan={plan} planTier={planTier} designMode={designMode} chicPalette={chicPalette} styles={styles} onOpenMap={() => void openMap()} onShare={() => onShare(plan)} />
       <Pressable accessibilityRole="button" style={[styles.planUtilityButton, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border, borderWidth: 1 }]} onPress={() => onEdit(plan)}><CountdownIcon name="edit" color={accent} /><Text style={[styles.planUtilityText, { color: accent }]}>編集</Text></Pressable>
       {plan.id && <Pressable accessibilityRole="button" style={[styles.planUtilityButton, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border, borderWidth: 1 }]} onPress={() => onDelete(plan.id!)}><CountdownIcon name="trash" color={theme.colors.danger} /><Text style={[styles.planDeleteText, { color: theme.colors.danger }]}>削除</Text></Pressable>}
-      {plan.destination?.trim() ? <TravelAppLaunchActions settings={travelApps} category="transit" destination={plan.destination} planTier={planTier} designMode={designMode} chicPalette={chicPalette} onPremium={onPremium} onOpenSettings={onOpenTravelAppSettings} /> : null}
-      <TravelAppLaunchActions settings={travelApps} category="taxi" destination={plan.destination} planTier={planTier} designMode={designMode} chicPalette={chicPalette} onPremium={onPremium} onOpenSettings={onOpenTravelAppSettings} />
+      {plan.destination?.trim() ? <TravelAppLaunchActions settings={travelApps} category="transit" destination={resolvedDestination} planTier={planTier} designMode={designMode} chicPalette={chicPalette} onPremium={onPremium} onOpenSettings={onOpenTravelAppSettings} /> : null}
+      <TravelAppLaunchActions settings={travelApps} category="taxi" destination={resolvedDestination} planTier={planTier} designMode={designMode} chicPalette={chicPalette} onPremium={onPremium} onOpenSettings={onOpenTravelAppSettings} />
     </View>
   </View>;
 });

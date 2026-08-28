@@ -78,6 +78,7 @@ export function DeparturePlanForm({
   const isReverse = isArrivalReversePlan(plan);
   const canUseReverse = isReverse && planTier === 'premium';
   const isDirectDeparture = isDepartureReminderPlan(plan);
+  const resolvedDestination = getMapSearchTarget(plan);
   const onAccent = isDesign && chicPalette ? chicPalette.onAccent : isDark ? theme.colors.screenBackground : '#FFFFFF';
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showTimePicker, setShowTimePicker] = useState(false);
@@ -332,7 +333,7 @@ export function DeparturePlanForm({
         <Text style={[styles.mapButtonText, { color: theme.colors.primaryAccent }]}>地図で確認</Text>
         <Text style={[styles.mapChevron, { color: theme.colors.primaryAccent }]}>〉</Text>
       </Pressable>
-      {plan.destination?.trim() ? <TravelAppLaunchActions settings={travelApps} category="transit" destination={plan.destination} planTier={planTier} designMode={designMode} chicPalette={chicPalette} onPremium={onPremium} onOpenSettings={onOpenTravelAppSettings} /> : null}
+      {plan.destination?.trim() ? <TravelAppLaunchActions settings={travelApps} category="transit" destination={resolvedDestination} planTier={planTier} designMode={designMode} chicPalette={chicPalette} onPremium={onPremium} onOpenSettings={onOpenTravelAppSettings} /> : null}
       <Text style={[styles.destinationNote, secondaryText]}>地図アプリで目的地を確認できます</Text>
     </View>
 
