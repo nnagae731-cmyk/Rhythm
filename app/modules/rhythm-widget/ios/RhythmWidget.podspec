@@ -8,6 +8,8 @@ Pod::Spec.new do |s|
   s.platforms = { :ios => '15.1' }
   s.source = { :git => 'https://github.com/nnagae731-cmyk/Rhythm.git', :tag => s.version.to_s }
   s.static_framework = true
-  s.source_files = 'ios/**/*.{h,m,mm,swift}'
+  # This podspec lives in the module's ios directory, so source paths are
+  # relative to this directory (not the package root).
+  s.source_files = '**/*.{h,m,mm,swift}'
   s.dependency 'ExpoModulesCore'
 end
