@@ -130,9 +130,9 @@ export function parseSmartTaskInput(input: string, now = new Date(), dateKey: (d
     }
   }
 
-  const repeat = original.match(/(毎日|平日|毎週|毎月)(?:の)?(日|月|火|水|木|金|土)?曜日?/u);
+  const repeat = original.match(/(毎日|毎朝|毎晩|平日|毎週|毎月)(?:の)?(?:(日|月|火|水|木|金|土)曜日?)?/u);
   if (repeat) {
-    repeatRule = repeat[1] === '毎日' ? 'daily' : repeat[1] === '平日' ? 'weekdays' : repeat[1] === '毎月' ? 'monthly' : 'weekly';
+    repeatRule = ['毎日', '毎朝', '毎晩'].includes(repeat[1]!) ? 'daily' : repeat[1] === '平日' ? 'weekdays' : repeat[1] === '毎月' ? 'monthly' : 'weekly';
     consume(repeat[0]);
   }
 
