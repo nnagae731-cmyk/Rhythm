@@ -252,7 +252,6 @@ function PremiumFeatureDiff({ kind, styles, primaryText, secondaryText, accent, 
 }
 
 function PremiumFeatureDetail({ icon, kind, title, description, designMode, chicPalette, styles, renderReadOnlyPreview, surface, surfaceSoft, border, primaryText, secondaryText, accentColor }: { icon: PremiumFeatureIconName; kind: PremiumPreviewKind; title: string; description: string; designMode: DesignMode; chicPalette?: ChicThemePalette; styles: any; renderReadOnlyPreview?: (kind: PremiumPreviewKind) => React.ReactNode; surface: string; surfaceSoft: string; border: string; primaryText: string; secondaryText: string; accentColor: string }) {
-  const isMono = designMode !== 'chic';
   const previewStyles = designMode === 'dark' ? { ...styles, ...darkPreviewStyleOverrides } : styles;
   return <View style={styles.premiumFeatureBlock}>
     <PremiumPreviewViewport key={`${kind}-${designMode}`} styles={styles} surface={surface} border={border}>{renderReadOnlyPreview?.(kind) ?? <LegacyPreviewFallback kind={kind} styles={previewStyles} />}</PremiumPreviewViewport>
@@ -409,8 +408,8 @@ export function PremiumModal({ visible, initialFeatureId, designMode, chicPalett
           <ScrollView ref={featurePickerRef} horizontal nestedScrollEnabled directionalLockEnabled showsHorizontalScrollIndicator={false} style={styles.premiumFeaturePicker} contentContainerStyle={styles.premiumFeaturePickerContent}>
             {PREMIUM_GUIDE_FEATURES.map((feature) => <PremiumFeatureEntryCard key={feature.id} icon={PREMIUM_FEATURE_ICONS[feature.id]} title={PREMIUM_FEATURE_NAV_LABELS[feature.id]} active={feature.id === selectedFeature.id} chicPalette={chicPalette} accent={accent} accentStrong={accentStrong} primaryText={primaryText} border={theme.colors.border} onPress={() => setSelectedFeatureId(feature.id)} styles={styles} />)}
           </ScrollView>
-          <View style={styles.premiumFeatureStage}>
-            <PremiumFeatureDetail key={selectedFeature.id} icon={PREMIUM_FEATURE_ICONS[selectedFeature.id]} kind={selectedFeature.kind} title={selectedFeature.title} description={selectedFeature.description} designMode={designMode} chicPalette={chicPalette} styles={styles} renderReadOnlyPreview={renderReadOnlyPreview} surface={surface} surfaceSoft={surfaceSoft} border={theme.colors.border} primaryText={primaryText} secondaryText={secondaryText} accentColor={accent} />
+          <View key={`premium-feature-stage-${selectedFeature.id}-${designMode}`} style={styles.premiumFeatureStage}>
+            <PremiumFeatureDetail icon={PREMIUM_FEATURE_ICONS[selectedFeature.id]} kind={selectedFeature.kind} title={selectedFeature.title} description={selectedFeature.description} designMode={designMode} chicPalette={chicPalette} styles={styles} renderReadOnlyPreview={renderReadOnlyPreview} surface={surface} surfaceSoft={surfaceSoft} border={theme.colors.border} primaryText={primaryText} secondaryText={secondaryText} accentColor={accent} />
           </View>
           {planTier !== 'premium' && <Pressable accessibilityRole="button" style={[styles.premiumBottomCta, { backgroundColor: accent }]} onPress={() => setPurchaseOpen(true)}><Text style={[styles.premiumBottomCtaText, { color: accentText }]}>Premiumを始める</Text></Pressable>}
           <Pressable style={styles.premiumTextLink} onPress={onClose}><Text style={[styles.premiumTextLinkText, { color: accentStrong }]}>Rhythmに戻る</Text></Pressable>

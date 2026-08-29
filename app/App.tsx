@@ -2590,6 +2590,25 @@ export default function App() {
 
   const renderPremiumReadOnlyPreview = (kind: PremiumGuideFeatureId, wishPremium = true, previewOverride?: { initialTab?: TimeTab; previewMode?: boolean; previewCustomDurationOpen?: boolean; maxHeight?: number; analysisInitialTab?: 'records' | 'insights' | 'routine'; analysisPreviewKind?: 'time' | 'behavior' }): React.ReactNode => {
     const previewDate = dateKey(now);
+    // Production preview components still consume the shared legacy styles.
+    // Give their dark Premium render tree the Mono Dark tokens too; otherwise
+    // warm defaults from appStyles leak through the custom renderer.
+    const premiumPreviewStyles: any = uiDesignMode !== 'dark' ? styles : (() => {
+      const next: Record<string, any> = { ...styles };
+      const muted = /(meta|copy|label|sub|hint|caption|arrow|description|empty|ready|source|note|more|secondary|latest)/;
+      const accent = /(accent|premium|choose|save|active|link|action|rate|progress)/;
+      const danger = /(danger|delete|overdue|warning)/;
+      Object.keys(styles).forEach((key) => {
+        const lower = key.toLowerCase();
+        if (lower.startsWith('dark') || lower.includes('buttontext') || lower.includes('ctatext') || lower.includes('checkmark') || lower.includes('guidecard')) return;
+        const value = danger.test(lower) ? theme.colors.danger : accent.test(lower) ? theme.colors.primaryAccent : muted.test(lower) ? theme.colors.secondaryText : /text|title|name|time|value|count|body|task|heading|brand/.test(lower) ? theme.colors.primaryText : undefined;
+        if (value) next[key] = [(styles as Record<string, any>)[key], { color: value }];
+      });
+      next.premiumPreview = [(styles as Record<string, any>).premiumPreview, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }];
+      next.premiumPreviewViewport = [(styles as Record<string, any>).premiumPreviewViewport, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }];
+      next.premiumPreviewViewportContent = [(styles as Record<string, any>).premiumPreviewViewportContent, { backgroundColor: theme.colors.surface }];
+      return next;
+    })();
     const previewTasks: Task[] = [
       { id: 'premium-preview-task-1', title: '資料をまとめる', done: false, category: '仕事', priority: '中', scheduledDate: previewDate, scheduledTime: '09:00', bucket: 'now' },
       { id: 'premium-preview-task-4', title: '買い物', done: false, category: '家事', priority: '低', scheduledDate: previewDate, scheduledTime: '11:30', bucket: 'later' },
@@ -2661,7 +2680,7 @@ export default function App() {
       onSaveMonthlyReflectionCard={() => undefined}
       onUpdateReview={() => undefined}
       onDeleteReview={() => undefined}
-      styles={styles}
+      styles={premiumPreviewStyles}
       helpers={{ dateKey, formatLiveTime, getThemeTokens: getThemedThemeTokens }}
       components={{ AchievementVessel, CalendarMarkPicker }}
       previewMode={kind === 'records' || kind === 'history'}
@@ -2684,7 +2703,7 @@ export default function App() {
     if (kind === 'nudge') return readonly(<NotificationManagerCard designMode={uiDesignMode} readOnly />, 560, 0);
     if (kind === 'travel_apps') return readonly(<TravelAppsSettingsCard settings={travelApps} onChange={() => undefined} planTier="premium" designMode={uiDesignMode} chicPalette={chicPalette} onPremium={() => undefined} readOnlyPreview />, 560);
     if (kind === 'route') {
-      return readonly(<View pointerEvents="none"><DepartureCountdownCard plan={previewPlans[0]!} now={now} planTier="premium" designMode={uiDesignMode} chicPalette={chicPalette} prepared={false} departed={false} styles={styles} helpers={{ getThemeTokens: getThemedThemeTokens, planDateKey, formatLiveTime, getDepartureMoments, countdownToDate, getMapSearchTarget, openMapSearch: async () => undefined, getPlanCountdownAt }} onPrepare={() => undefined} onDepart={() => undefined} onStill={() => undefined} onRecover={() => undefined} onShare={() => undefined} onPremium={() => undefined} onEdit={() => undefined} onDelete={() => undefined} travelApps={travelApps} onOpenTravelAppSettings={() => undefined} /></View>, 760, 0);
+      return readonly(<View pointerEvents="none"><DepartureCountdownCard plan={previewPlans[0]!} now={now} planTier="premium" designMode={uiDesignMode} chicPalette={chicPalette} prepared={false} departed={false} styles={premiumPreviewStyles} helpers={{ getThemeTokens: getThemedThemeTokens, planDateKey, formatLiveTime, getDepartureMoments, countdownToDate, getMapSearchTarget, openMapSearch: async () => undefined, getPlanCountdownAt }} onPrepare={() => undefined} onDepart={() => undefined} onStill={() => undefined} onRecover={() => undefined} onShare={() => undefined} onPremium={() => undefined} onEdit={() => undefined} onDelete={() => undefined} travelApps={travelApps} onOpenTravelAppSettings={() => undefined} /></View>, 760, 0);
     }
     if (kind === 'calendar' || kind === 'month' || kind === 'recovery' || kind === 'focus_custom_duration') {
       // The calendar preview is the import flow itself.  Keep the monthly
@@ -2746,7 +2765,7 @@ export default function App() {
         calendarMarks={{}}
         onSetCalendarMark={() => undefined}
         hapticsEnabled={false}
-        styles={styles}
+        styles={premiumPreviewStyles}
         helpers={{ getThemeTokens: getThemedThemeTokens, dateKey, planDateKey, hasPremiumAccess, formatLiveDate, formatLiveTime, getDepartureMoments, normalizePlanDate, countdownToDate, dateForReminder, getMapSearchTarget, openMapSearch: () => undefined, getPlanCountdownAt, colors: themedColors }}
         components={{ TimeTabButton, FocusMode, TaskScheduleCalendar, DailyScheduleTimeline, RecoveryModal }}
       />, timelineMaxHeight);
@@ -2809,7 +2828,7 @@ export default function App() {
         onPremium={() => undefined}
         onClose={() => undefined}
         onSave={() => undefined}
-        styles={styles}
+        styles={premiumPreviewStyles}
         helpers={{ getThemeTokens: getThemedThemeTokens, todayInputValue, hasPremiumAccess, dateForReminder, dateKey, formatLiveTime, colors: themedColors, summarizePremiumTaskTemplate }}
         components={{ CompactNumberSetting }}
        />, 760, 0);
@@ -2826,7 +2845,7 @@ export default function App() {
         onDelete={() => undefined}
         onSaveCustomText={() => undefined}
         onDeleteCustomText={() => undefined}
-        styles={styles}
+        styles={premiumPreviewStyles}
         previewMode
       />, 560);
     }
