@@ -16,7 +16,7 @@
         "NSMicrophoneUsageDescription": "音声入力で話した内容を文字に変換するためにマイクを使用します。",
         "NSSpeechRecognitionUsageDescription": "音声入力で話した内容を文字に変換するために音声認識を使用します。"
       },
-      "buildNumber": "1",
+      "buildNumber": "2",
       "entitlements": {
         "com.apple.developer.usernotifications.time-sensitive": true,
         "com.apple.security.application-groups": [
