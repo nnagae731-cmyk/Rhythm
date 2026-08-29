@@ -35,7 +35,6 @@ module.exports = function withRhythmWidgetToggle(config) {
     const contents = fs.readFileSync(podfilePath, 'utf8');
     const configured = configurePodfile(contents, enabled);
     if (configured !== contents) fs.writeFileSync(podfilePath, configured);
-    console.log(`[RhythmWidget Toggle] enabled=${enabled} autolinking=${enabled ? 'included' : `excluded:${MODULE_NAME}`}`);
     return nextConfig;
   }]);
 };

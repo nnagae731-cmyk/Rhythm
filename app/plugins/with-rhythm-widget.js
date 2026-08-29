@@ -61,7 +61,6 @@ function configureResourceBundleSigning(podfile) {
 
   const resourceBundleSigning = `
   ${RESOURCE_BUNDLE_SIGNING_MARKER}
-  puts '[RhythmWidget Signing Debug] scanning CocoaPods resource bundle targets'
   resource_bundle_targets = []
 
   # CocoaPods exposes generated resource bundles through installation results.
@@ -101,10 +100,8 @@ function configureResourceBundleSigning(podfile) {
       build_config.build_settings['CODE_SIGNING_ALLOWED'] = 'NO'
       build_config.build_settings['CODE_SIGNING_REQUIRED'] = 'NO'
       build_config.build_settings['EXPANDED_CODE_SIGN_IDENTITY'] = ''
-      puts "[RhythmWidget Signing Debug] applied source=#{source} target=#{target.name} configuration=#{build_config.name} product_type=#{target_product_type} product_name=#{target_product_name} DEVELOPMENT_TEAM=#{build_config.build_settings['DEVELOPMENT_TEAM']} CODE_SIGNING_ALLOWED=#{build_config.build_settings['CODE_SIGNING_ALLOWED']} CODE_SIGNING_REQUIRED=#{build_config.build_settings['CODE_SIGNING_REQUIRED']}"
     end
   end
-  puts "[RhythmWidget Signing Debug] resource_bundle_target_count=#{seen_resource_bundle_targets.length}"
 `;
   const postInstall = 'post_install do |installer|';
   if (podfile.includes(postInstall)) {
@@ -161,9 +158,6 @@ function configureWidgetBuildConfigurations(project, target) {
     buildSettings.APPLICATION_EXTENSION_API_ONLY = 'YES';
     buildSettings.TARGETED_DEVICE_FAMILY = '1';
     buildSettings.SWIFT_VERSION = '5.0';
-    console.log(
-      `[RhythmWidget Signing Debug] xcode target=${TARGET_NAME} configuration=${configuration.name} SWIFT_VERSION=${buildSettings.SWIFT_VERSION} DEVELOPMENT_TEAM=${buildSettings.DEVELOPMENT_TEAM} PRODUCT_BUNDLE_IDENTIFIER=${buildSettings.PRODUCT_BUNDLE_IDENTIFIER}`,
-    );
   });
 }
 
@@ -200,7 +194,7 @@ function ensureWidgetSourceGroup(project) {
 
 function ensureWidgetSourceFiles(project, target) {
   const sourceNames = ['RhythmWidget.swift', 'RhythmWidgetBundle.swift'];
-  const { uuid: groupUuid, group } = ensureWidgetSourceGroup(project);
+  const { group } = ensureWidgetSourceGroup(project);
   const fileReferences = project.getPBXObject('PBXFileReference') ?? {};
   const buildFiles = project.pbxBuildFileSection();
 
@@ -269,9 +263,6 @@ function ensureWidgetSourceFiles(project, target) {
     }
   }
 
-  console.log(
-    `[RhythmWidget Source Debug] target=${TARGET_NAME} group=${groupUuid} files=${sourceRefs.map(({ fileName }) => `RhythmWidget/${fileName}`).join(',')}`,
-  );
 }
 
 function addWidgetTarget(project) {

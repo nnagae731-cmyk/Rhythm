@@ -3249,7 +3249,6 @@ export default function App() {
       });
     });
     const fallback = setTimeout(() => {
-      if (__DEV__) console.warn('[GUIDE] transition fallback', nextFeature);
       setCurrentGuideFeature(nextFeature);
       releaseGuideTransition();
     }, 1200);

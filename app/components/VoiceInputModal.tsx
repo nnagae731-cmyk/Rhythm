@@ -1,6 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, Animated, AppState, Easing, InteractionManager, Modal, Platform, Pressable, StyleSheet, Text, View, Vibration } from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Audio } from 'expo-av';
 import { ChicThemePalette, DesignMode, getThemeTokens } from '../theme';
 import { VoiceIntent, VoiceParseResult, parseVoiceInput } from '../features/voiceParser';
@@ -17,79 +16,6 @@ type SpeechRecognitionModule = {
 };
 type SpeechPermission = { granted: boolean; status?: string; canAskAgain?: boolean };
 type SpeechEvent = { results?: Array<{ transcript?: string }>; isFinal?: boolean; error?: string };
-const VOICE_DEBUG_PREFIX = '[Rhythm Voice Debug]';
-const VOICE_DEBUG_CHECKPOINT_KEY = 'rhythm.voiceDebug.lastCheckpoint';
-type VoiceDebugCheckpointName =
-  | 'voice modal opened'
-  | 'microphone permission check started'
-  | 'before getMicrophonePermissionsAsync()'
-  | 'after getMicrophonePermissionsAsync()'
-  | 'before requestMicrophonePermissionsAsync()'
-  | 'after requestMicrophonePermissionsAsync()'
-  | 'before Audio.getPermissionsAsync()'
-  | 'after Audio.getPermissionsAsync()'
-  | 'before microphone permission request'
-  | 'after microphone permission request'
-  | 'microphone permission granted'
-  | 'recognition availability checked'
-  | 'startRecognition function entered'
-  | 'before native start()'
-  | 'start() returned'
-  | 'speech start event'
-  | 'audiostart event'
-  | 'result event';
-type VoiceDebugCheckpoint = {
-  checkpoint: VoiceDebugCheckpointName;
-  timestamp: string;
-  appState: string;
-  platform: string;
-  permissionState: string;
-  recognitionAvailable: boolean | null;
-  requiresOnDeviceRecognition: boolean;
-  granted?: boolean;
-  status?: string;
-  canAskAgain?: boolean;
-};
-let voiceCheckpointWriteChain = Promise.resolve();
-const logVoiceDebug = (message: string, details?: Record<string, unknown>) => {
-  console.info(VOICE_DEBUG_PREFIX, message, details ?? '');
-};
-
-const saveVoiceCheckpoint = (checkpoint: VoiceDebugCheckpointName, details: Partial<Omit<VoiceDebugCheckpoint, 'checkpoint' | 'timestamp' | 'appState' | 'platform'>> = {}) => {
-  const value: VoiceDebugCheckpoint = {
-    checkpoint,
-    timestamp: new Date().toISOString(),
-    appState: AppState.currentState,
-    platform: Platform.OS,
-    permissionState: details.permissionState ?? 'unknown',
-    recognitionAvailable: details.recognitionAvailable ?? null,
-    requiresOnDeviceRecognition: details.requiresOnDeviceRecognition ?? Platform.OS === 'ios',
-  };
-  logVoiceDebug(checkpoint, value);
-  voiceCheckpointWriteChain = voiceCheckpointWriteChain
-    .then(() => AsyncStorage.setItem(VOICE_DEBUG_CHECKPOINT_KEY, JSON.stringify(value)))
-    .catch((error) => {
-      logVoiceDebug('checkpoint persistence failed', { error: error instanceof Error ? error.message : String(error) });
-    });
-};
-
-const logPreviousVoiceCheckpoint = async () => {
-  try {
-    const raw = await AsyncStorage.getItem(VOICE_DEBUG_CHECKPOINT_KEY);
-    if (!raw) {
-      logVoiceDebug('previous crash checkpoint', { checkpoint: null });
-      return;
-    }
-    try {
-      logVoiceDebug('previous crash checkpoint', JSON.parse(raw) as Record<string, unknown>);
-    } catch {
-      logVoiceDebug('previous crash checkpoint', { checkpoint: raw });
-    }
-  } catch (error) {
-    logVoiceDebug('previous crash checkpoint read failed', { error: error instanceof Error ? error.message : String(error) });
-  }
-};
-
 // Expo Go does not include this native module. Keep the import lazy so the
 // rest of Rhythm remains usable there; a Development Build enables recognition.
 let speechModule: SpeechRecognitionModule | undefined;
@@ -129,11 +55,9 @@ export function VoiceInputModal({ visible, designMode, chicPalette, dateKey, onC
   const usageConsumedRef = useRef(false);
 
   const waitForRecognitionReady = async () => {
-    logVoiceDebug('waiting for recognition readiness', { appState: AppState.currentState });
     if (AppState.currentState !== 'active') {
       await new Promise<void>((resolve) => {
         const subscription = AppState.addEventListener('change', (state) => {
-          logVoiceDebug('app state changed', { state });
           if (state === 'active') {
             subscription.remove();
             resolve();
@@ -147,17 +71,15 @@ export function VoiceInputModal({ visible, designMode, chicPalette, dateKey, onC
     await new Promise<void>((resolve) => setTimeout(resolve, 120));
   };
 
-  useSpeechEvent('start', () => { saveVoiceCheckpoint('speech start event', { permissionState: permissionReady ? 'granted' : 'unknown' }); if (hapticsEnabled) Vibration.vibrate(12); setStatus('listening'); });
-  useSpeechEvent('audiostart', () => { logVoiceDebug('audio start event', { appState: AppState.currentState }); saveVoiceCheckpoint('audiostart event', { permissionState: permissionReady ? 'granted' : 'unknown' }); });
+  useSpeechEvent('start', () => { if (hapticsEnabled) Vibration.vibrate(12); setStatus('listening'); });
   useSpeechEvent('result', (event) => {
-    saveVoiceCheckpoint('result event', { permissionState: permissionReady ? 'granted' : 'unknown' });
     const next = event.results?.[0]?.transcript ?? '';
     if (!next) return;
     setTranscript(next);
     if (event.isFinal) { setStatus('processing'); setParsed(parseVoiceInput(next, new Date(), dateKey)); }
   });
   useSpeechEvent('end', () => { if (hapticsEnabled) Vibration.vibrate(10); setStatus((current) => current === 'processing' || current === 'recognized' ? current : transcript ? 'processing' : 'idle'); });
-  useSpeechEvent('error', (event) => { logVoiceDebug('speech error event', { error: event.error, appState: AppState.currentState }); if (event.error !== 'aborted') setStatus('error'); });
+  useSpeechEvent('error', (event) => { if (event.error !== 'aborted') setStatus('error'); });
 
   useEffect(() => {
     if (status !== 'listening') {
@@ -174,7 +96,6 @@ export function VoiceInputModal({ visible, designMode, chicPalette, dateKey, onC
   }, [pulse, status]);
 
   const startRecognition = () => {
-    saveVoiceCheckpoint('startRecognition function entered', { permissionState: permissionReady ? 'granted' : 'unknown' });
     if (!speechModule) { setStatus('error'); return; }
     if (!permissionReady || recognitionStartingRef.current) return;
     recognitionStartingRef.current = true;
@@ -186,17 +107,10 @@ export function VoiceInputModal({ visible, designMode, chicPalette, dateKey, onC
         await waitForRecognitionReady();
         if (AppState.currentState !== 'active') throw new Error('app-not-active');
         const available = speechModule.isRecognitionAvailable ? speechModule.isRecognitionAvailable() : true;
-        logVoiceDebug('recognition availability checked', { available, appState: AppState.currentState });
-        saveVoiceCheckpoint('recognition availability checked', { recognitionAvailable: available, permissionState: permissionReady ? 'granted' : 'unknown' });
         if (!available) { setStatus('error'); return; }
         const requiresOnDeviceRecognition = Platform.OS === 'ios';
-        logVoiceDebug('start recognition before native call', { appState: AppState.currentState, requiresOnDeviceRecognition });
-        saveVoiceCheckpoint('before native start()', { permissionState: permissionReady ? 'granted' : 'unknown', recognitionAvailable: available, requiresOnDeviceRecognition });
         speechModule.start({ lang: 'ja-JP', interimResults: true, continuous: false, maxAlternatives: 1, requiresOnDeviceRecognition });
-        logVoiceDebug('start recognition returned', { appState: AppState.currentState });
-        saveVoiceCheckpoint('start() returned', { permissionState: permissionReady ? 'granted' : 'unknown', recognitionAvailable: available, requiresOnDeviceRecognition });
-      } catch (error) {
-        logVoiceDebug('start recognition failed', { error: error instanceof Error ? error.message : String(error), appState: AppState.currentState });
+      } catch {
         setStatus('error');
       } finally {
         recognitionStartingRef.current = false;
@@ -218,45 +132,14 @@ export function VoiceInputModal({ visible, designMode, chicPalette, dateKey, onC
     let active = true;
     void (async () => {
       try {
-        await logPreviousVoiceCheckpoint();
-        saveVoiceCheckpoint('voice modal opened', { permissionState: 'unknown' });
         if (!speechModule) throw new Error('native-module-unavailable');
-        logVoiceDebug('permission check started', { appState: AppState.currentState });
-        saveVoiceCheckpoint('microphone permission check started', { permissionState: 'checking' });
         let permission: SpeechPermission;
         if (Platform.OS === 'ios') {
-          logVoiceDebug('mode: expo-av microphone-only', { appState: AppState.currentState });
-          saveVoiceCheckpoint('before Audio.getPermissionsAsync()', { permissionState: 'checking' });
           const currentMicrophonePermission = await Audio.getPermissionsAsync();
-          logVoiceDebug('microphone permission checked', {
-            granted: currentMicrophonePermission.granted,
-            status: currentMicrophonePermission.status,
-            canAskAgain: currentMicrophonePermission.canAskAgain,
-            appState: AppState.currentState,
-          });
-          saveVoiceCheckpoint('after Audio.getPermissionsAsync()', {
-            permissionState: currentMicrophonePermission.granted ? 'granted' : 'denied',
-            granted: currentMicrophonePermission.granted,
-            status: currentMicrophonePermission.status,
-            canAskAgain: currentMicrophonePermission.canAskAgain,
-          });
           if (currentMicrophonePermission.granted) {
             permission = currentMicrophonePermission;
           } else {
-            saveVoiceCheckpoint('before microphone permission request', { permissionState: 'requesting' });
             const requestedMicrophonePermission = await Audio.requestPermissionsAsync();
-            logVoiceDebug('microphone permission requested', {
-              granted: requestedMicrophonePermission.granted,
-              status: requestedMicrophonePermission.status,
-              canAskAgain: requestedMicrophonePermission.canAskAgain,
-              appState: AppState.currentState,
-            });
-            saveVoiceCheckpoint('after microphone permission request', {
-              permissionState: requestedMicrophonePermission.granted ? 'granted' : 'denied',
-              granted: requestedMicrophonePermission.granted,
-              status: requestedMicrophonePermission.status,
-              canAskAgain: requestedMicrophonePermission.canAskAgain,
-            });
             permission = requestedMicrophonePermission;
           }
         } else {
@@ -264,16 +147,12 @@ export function VoiceInputModal({ visible, designMode, chicPalette, dateKey, onC
           permission = currentPermission?.granted ? currentPermission : await speechModule.requestPermissionsAsync();
         }
         if (!active) return;
-        saveVoiceCheckpoint('microphone permission granted', { permissionState: permission.granted ? 'granted' : 'denied' });
-        logVoiceDebug('permission check completed', { granted: permission.granted, appState: AppState.currentState });
         if (!permission.granted) { setPermissionReady(false); setStatus('error'); Alert.alert('音声入力を使えません', '音声入力を使うにはマイクと音声認識の許可が必要です。'); return; }
         // Do not start while iOS is dismissing the permission dialog. The
         // user starts recognition explicitly from the modal microphone button.
         setPermissionReady(true);
         setStatus('idle');
-        logVoiceDebug('permission ready', { appState: AppState.currentState, mode: Platform.OS === 'ios' ? 'microphone-only' : 'combined' });
-      } catch (error) {
-        logVoiceDebug('permission check failed', { error: error instanceof Error ? error.message : String(error), appState: AppState.currentState });
+      } catch {
         setStatus('error');
         Alert.alert('音声入力を使えません', 'Development Buildで音声認識を利用できます。');
       }
