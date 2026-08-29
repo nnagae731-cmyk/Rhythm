@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, AppState, InteractionManager, Modal, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Audio } from 'expo-av';
 import { ChicThemePalette, DesignMode, getThemeTokens } from '../theme';
 import { VoiceIntent, VoiceParseResult, parseVoiceInput } from '../features/voiceParser';
 
@@ -25,6 +26,10 @@ type VoiceDebugCheckpointName =
   | 'after getMicrophonePermissionsAsync()'
   | 'before requestMicrophonePermissionsAsync()'
   | 'after requestMicrophonePermissionsAsync()'
+  | 'before Audio.getPermissionsAsync()'
+  | 'after Audio.getPermissionsAsync()'
+  | 'before microphone permission request'
+  | 'after microphone permission request'
   | 'microphone permission granted'
   | 'recognition availability checked'
   | 'startRecognition function entered'
@@ -195,11 +200,16 @@ export function VoiceInputModal({ visible, designMode, chicPalette, dateKey, onC
         saveVoiceCheckpoint('microphone permission check started', { permissionState: 'checking' });
         let permission: SpeechPermission;
         if (Platform.OS === 'ios') {
-          logVoiceDebug('mode: microphone-only', { appState: AppState.currentState });
-          if (!speechModule.getMicrophonePermissionsAsync || !speechModule.requestMicrophonePermissionsAsync) throw new Error('microphone-permission-api-unavailable');
-          saveVoiceCheckpoint('before getMicrophonePermissionsAsync()', { permissionState: 'checking' });
-          const currentMicrophonePermission = await speechModule.getMicrophonePermissionsAsync();
-          saveVoiceCheckpoint('after getMicrophonePermissionsAsync()', {
+          logVoiceDebug('mode: expo-av microphone-only', { appState: AppState.currentState });
+          saveVoiceCheckpoint('before Audio.getPermissionsAsync()', { permissionState: 'checking' });
+          const currentMicrophonePermission = await Audio.getPermissionsAsync();
+          logVoiceDebug('microphone permission checked', {
+            granted: currentMicrophonePermission.granted,
+            status: currentMicrophonePermission.status,
+            canAskAgain: currentMicrophonePermission.canAskAgain,
+            appState: AppState.currentState,
+          });
+          saveVoiceCheckpoint('after Audio.getPermissionsAsync()', {
             permissionState: currentMicrophonePermission.granted ? 'granted' : 'denied',
             granted: currentMicrophonePermission.granted,
             status: currentMicrophonePermission.status,
@@ -208,9 +218,15 @@ export function VoiceInputModal({ visible, designMode, chicPalette, dateKey, onC
           if (currentMicrophonePermission.granted) {
             permission = currentMicrophonePermission;
           } else {
-            saveVoiceCheckpoint('before requestMicrophonePermissionsAsync()', { permissionState: 'requesting' });
-            const requestedMicrophonePermission = await speechModule.requestMicrophonePermissionsAsync();
-            saveVoiceCheckpoint('after requestMicrophonePermissionsAsync()', {
+            saveVoiceCheckpoint('before microphone permission request', { permissionState: 'requesting' });
+            const requestedMicrophonePermission = await Audio.requestPermissionsAsync();
+            logVoiceDebug('microphone permission requested', {
+              granted: requestedMicrophonePermission.granted,
+              status: requestedMicrophonePermission.status,
+              canAskAgain: requestedMicrophonePermission.canAskAgain,
+              appState: AppState.currentState,
+            });
+            saveVoiceCheckpoint('after microphone permission request', {
               permissionState: requestedMicrophonePermission.granted ? 'granted' : 'denied',
               granted: requestedMicrophonePermission.granted,
               status: requestedMicrophonePermission.status,
