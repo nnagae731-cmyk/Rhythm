@@ -2616,6 +2616,10 @@ export default function App() {
       next.calendarEventTitle = [(styles as Record<string, any>).calendarEventTitle, { color: lightCardText.primaryText }];
       next.calendarEventDate = [(styles as Record<string, any>).calendarEventDate, { color: lightCardText.secondaryText }];
       next.calendarImportArrow = [(styles as Record<string, any>).calendarImportArrow, { color: theme.colors.primaryAccent }];
+      // DepartureCountdownCard's main CTA uses a style name that also matches
+      // the generic text remap above. Keep its label dark on the Mono Dark
+      // accent surface, just like the production card's onAccent token.
+      next.planActionMainText = [(styles as Record<string, any>).planActionMainText, { color: theme.colors.screenBackground }];
       return next;
     })();
     const previewTasks: Task[] = [
