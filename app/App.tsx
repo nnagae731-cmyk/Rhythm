@@ -511,6 +511,7 @@ export default function App() {
   const [openTodayReview, setOpenTodayReview] = useState(false);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [focusTimerActive, setFocusTimerActive] = useState(false);
+  const [voiceFocusRequest, setVoiceFocusRequest] = useState<{ durationMinutes: number; id: number }>();
   const [rewardedAccess, setRewardedAccess] = useState<RewardedAccessState>(DEFAULT_REWARDED_ACCESS_STATE);
   const [rewardedPrompt, setRewardedPrompt] = useState<{ featureId: RewardedFeatureId; title: string; description: string } | null>(null);
   const rewardedPromptCompletionRef = React.useRef<(() => void) | undefined>(undefined);
@@ -1967,16 +1968,16 @@ export default function App() {
     .filter((task) => !task.done && !isTaskSkippedOnDate(task, todayTaskDate) && task.navigationEnabled && task.deadlineDate)
     .sort((a, b) => urgencyLevel(getUrgencyStatus(b, now)) - urgencyLevel(getUrgencyStatus(a, now)))[0];
 
-  const addTask = (title: string, category: Category, priority: Priority, remindDate?: string, remindAt?: string, deadlineDate?: string, deadlineTime?: string, deadlineNotifyBefore?: number, navigationEnabled?: boolean, preparationMinutes?: number, travelMinutes?: number, bufferMinutes?: number, repeatRule: RepeatRule = 'none', nudgeMode: NudgeMode = 'once', scheduledDate?: string, scheduledTime?: string, endAt?: string, isRoutine = false, subtasks: Subtask[] = [], listItems: TaskListItem[] = []) => {
+  const addTask = (title: string, category: Category, priority: Priority, remindDate?: string, remindAt?: string, deadlineDate?: string, deadlineTime?: string, deadlineNotifyBefore?: number, navigationEnabled?: boolean, preparationMinutes?: number, travelMinutes?: number, bufferMinutes?: number, repeatRule: RepeatRule = 'none', nudgeMode: NudgeMode = 'once', scheduledDate?: string, scheduledTime?: string, endAt?: string, isRoutine = false, subtasks: Subtask[] = [], listItems: TaskListItem[] = []): Task | undefined => {
     if (scheduledTime && endAt && endAt <= scheduledTime) {
       Alert.alert('終了時間を確認してください', '終了時間は開始時間より後にしてください。');
-      return;
+      return undefined;
     }
     const routineLimit = hasPremiumAccess(planTier, 'full_history') ? 100 : 5;
     const activeRoutineIds = new Set(tasksRef.current.filter((item) => item.isRoutine).map((item) => item.routineId ?? item.id));
     if (isRoutine && activeRoutineIds.size >= routineLimit) {
       Alert.alert('ルーティン登録数の上限', `現在のプランでは${routineLimit}件まで登録できます。`);
-      return;
+      return undefined;
     }
     const taskId = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
     const task: Task = {
@@ -2014,6 +2015,7 @@ export default function App() {
     void onboarding.complete('todo');
     if (isRoutine) void onboarding.complete('routine');
     if (remindAt || (deadlineDate && deadlineTime && deadlineNotifyBefore !== undefined)) void scheduleAllTaskNotifications(task);
+    return task;
   };
 
   const updateTask = (title: string, category: Category, priority: Priority, remindDate?: string, remindAt?: string, deadlineDate?: string, deadlineTime?: string, deadlineNotifyBefore?: number, navigationEnabled?: boolean, preparationMinutes?: number, travelMinutes?: number, bufferMinutes?: number, repeatRule: RepeatRule = 'none', nudgeMode: NudgeMode = 'once', scheduledDate?: string, scheduledTime?: string, endAt?: string, isRoutine = false, subtasks: Subtask[] = [], listItems?: TaskListItem[]) => {
@@ -2269,6 +2271,27 @@ export default function App() {
     setVoiceOpen(false);
     setVoiceTaskDraft(undefined);
     setVoiceWishDraft(undefined);
+    if (result.intent === 'focus') {
+      setTimelineInitialTab('focus');
+      if (!result.focusDurationMinutes || !result.executeFocus) {
+        setScreen('timeline');
+        return;
+      }
+      if (planTier !== 'premium') {
+        openPremiumFeature('focus_custom_duration');
+        return;
+      }
+      setVoiceFocusRequest({ durationMinutes: result.focusDurationMinutes, id: Date.now() });
+      setScreen('timeline');
+      return;
+    }
+    if (result.intent === 'routine' && result.executeRoutine) {
+      const routine = addTask(result.title, categories[0]!, priorities[1]!, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, result.repeatRule ?? 'daily', 'once', result.scheduledDate ?? dateKey(), undefined, undefined, true);
+      const today = dateKey();
+      if (routine && (!routine.scheduledDate || normalizeTaskDateKey(routine.scheduledDate)! <= today)) completeTaskIds([routine.id]);
+      setScreen('home');
+      return;
+    }
     if (result.intent === 'todo' || result.intent === 'routine') {
       setVoiceTaskDraft(result);
       setScreen('home');
@@ -3535,6 +3558,7 @@ export default function App() {
               onRecoveryClosed={() => setRecoveryTargetPlanId(undefined)}
               onFocusCompleted={firstRunDemoActive ? () => undefined : completeFocusSession}
               onFocusStarted={() => {
+                setVoiceFocusRequest(undefined);
                 if (firstRunDemoActive) {
                   if (productionGuideFeature === 'focus') void advanceGuide('focus');
                   return;
@@ -3545,6 +3569,7 @@ export default function App() {
               onFocusRunningChange={setFocusTimerActive}
               focusCustomDurationMinutes={focusCustomDurationMinutes}
               onFocusCustomDurationChange={firstRunDemoActive ? () => undefined : setFocusCustomDurationMinutes}
+              focusVoiceRequest={voiceFocusRequest}
               focusTimerActive={focusTimerActive}
               onFocusNavigationBlocked={() => setFocusNavigationNotice(true)}
               onBehaviorEvent={firstRunDemoActive ? () => undefined : recordBehaviorEvent}
@@ -3851,7 +3876,7 @@ export default function App() {
         components={{ CompactNumberSetting }}
       />}
       <PremiumModal visible={premiumOpen} initialFeatureId={premiumTargetFeature} designMode={uiDesignMode} chicPalette={chicPalette} planTier={planTier} isDevelopment={__DEV__} onMockPlanTier={handleMockPlanTier} onClose={() => setPremiumOpen(false)} styles={styles} helpers={{ getThemeTokens: getThemedThemeTokens }} renderReadOnlyPreview={renderPremiumReadOnlyPreview} />
-      <VoiceInputModal visible={voiceOpen} designMode={uiDesignMode} chicPalette={chicPalette} dateKey={dateKey} onClose={() => setVoiceOpen(false)} onRoute={handleVoiceRoute} />
+      <VoiceInputModal visible={voiceOpen} designMode={uiDesignMode} chicPalette={chicPalette} dateKey={dateKey} onClose={() => setVoiceOpen(false)} onRoute={handleVoiceRoute} hapticsEnabled={hapticsEnabled} />
       <DesignCustomizeModal visible={designCustomizeOpen} designMode={uiDesignMode} chicPalette={chicPalette} purchased={designCustomizePurchased} isDevelopment={__DEV__} onPurchase={purchaseDesignCustomize} onRestore={restoreDesignCustomizePurchase} onPremium={() => { setDesignCustomizeOpen(false); openPremiumFeature('photo_design'); }} onClose={() => setDesignCustomizeOpen(false)} />
       {__DEV__ && <OnboardingCaptureStudio visible={captureStudioOpen} onClose={() => setCaptureStudioOpen(false)} renderStep={renderOnboardingCaptureStep} renderGuideStep={renderGuideCaptureStep} renderPremiumStep={renderPremiumReadOnlyPreview} colors={{ background: theme.colors.screenBackground, surface: theme.colors.surface, border: theme.colors.border, text: theme.colors.primaryText, muted: theme.colors.secondaryText, accent: theme.colors.primaryAccent, onAccent: uiDesignMode === 'chic' && chicPalette ? chicPalette.onAccent : uiDesignMode === 'dark' ? theme.colors.screenBackground : '#FFFFFF' }} />}
       <DesignPreviewModal visible={Boolean(designPreviewPattern)} initialPattern={designPreviewPattern} initialMode={designPreviewMode} chicCheckColor={chicCheckColor} planTier={planTier} photoUri={designPreviewPhotoUri} onPickPhoto={() => void pickPhotoForDesignPreview()} onClose={() => { setDesignPreviewPattern(undefined); setDesignPreviewPhotoUri(undefined); setDesignPreviewMode('chic'); }} onTrial={(mode, pattern) => {
@@ -4079,7 +4104,7 @@ function TimeTabButton({ tab, active, designMode, chicPattern, chicPalette, them
      return <Pressable style={[styles.timeTab, styles.timeTabMinimal, isDark && styles.darkSurface, active && styles.timeTabActive, active && { backgroundColor: isDark ? '#26365F' : themeAccent, borderColor: isDark ? '#6F8DFF' : themeAccent }]} onPress={onPress}><Text numberOfLines={1} style={[styles.timeTabText, { color: isDark ? '#F4F7FC' : secondaryText }, active && styles.timeTabTextActive, active && styles.timeTabTextActiveMinimal]}>{label}</Text></Pressable>;
 }
 
-function FocusMode({ tasks, designMode, chicPalette, backgroundImageUri, planTier, onPremium, customDurationMinutes, onCustomDurationChange, onFocusCompleted, onFocusStarted, onFocusNotificationPermission, onFocusRunningChange, onBehaviorEvent, hapticsEnabled = true, previewCustomDurationOpen = false, previewMode = false }: { tasks: Task[]; designMode: DesignMode; chicPalette?: ChicThemePalette; backgroundImageUri?: string; planTier: PlanTier; onPremium?: (featureId?: PremiumGuideFeatureId) => void; customDurationMinutes?: number; onCustomDurationChange?: (minutes: number) => void; onFocusCompleted: (session: FocusSession) => void; onFocusStarted?: () => void; onFocusNotificationPermission?: () => Promise<boolean>; onFocusRunningChange?: (running: boolean) => void; onBehaviorEvent: (event: BehaviorEvent) => void; hapticsEnabled?: boolean; previewCustomDurationOpen?: boolean; previewMode?: boolean }) {
+function FocusMode({ tasks, designMode, chicPalette, backgroundImageUri, planTier, onPremium, customDurationMinutes, onCustomDurationChange, voiceStartRequest, onFocusCompleted, onFocusStarted, onFocusNotificationPermission, onFocusRunningChange, onBehaviorEvent, hapticsEnabled = true, previewCustomDurationOpen = false, previewMode = false }: { tasks: Task[]; designMode: DesignMode; chicPalette?: ChicThemePalette; backgroundImageUri?: string; planTier: PlanTier; onPremium?: (featureId?: PremiumGuideFeatureId) => void; customDurationMinutes?: number; onCustomDurationChange?: (minutes: number) => void; voiceStartRequest?: { durationMinutes: number; id: number }; onFocusCompleted: (session: FocusSession) => void; onFocusStarted?: () => void; onFocusNotificationPermission?: () => Promise<boolean>; onFocusRunningChange?: (running: boolean) => void; onBehaviorEvent: (event: BehaviorEvent) => void; hapticsEnabled?: boolean; previewCustomDurationOpen?: boolean; previewMode?: boolean }) {
   const availableTasks = React.useMemo(() => {
     const today = dateKey();
     const seenTitles = new Set<string>();
@@ -4215,7 +4240,7 @@ function FocusMode({ tasks, designMode, chicPalette, backgroundImageUri, planTie
     sessionRef.current = undefined;
     endAtRef.current = undefined;
   };
-  const toggleTimer = async () => {
+  const toggleTimer = async (requestedDurationMinutes?: number) => {
     // First-run GUIDE uses the real Focus screen as a read-only demo.  The
     // CTA should advance the tour without starting a timer, writing a focus
     // session, scheduling a notification, or activating the navigation guard.
@@ -4239,7 +4264,8 @@ function FocusMode({ tasks, designMode, chicPalette, backgroundImageUri, planTie
     const notificationPermissionGranted = onFocusNotificationPermission
       ? await onFocusNotificationPermission()
       : true;
-    const nextSeconds = pausedSecondsRef.current > 0 ? pausedSecondsRef.current : secondsLeft === 0 ? duration * 60 : secondsLeft;
+    if (requestedDurationMinutes && requestedDurationMinutes !== duration) chooseDuration(requestedDurationMinutes);
+    const nextSeconds = requestedDurationMinutes ? requestedDurationMinutes * 60 : pausedSecondsRef.current > 0 ? pausedSecondsRef.current : secondsLeft === 0 ? duration * 60 : secondsLeft;
     if (!sessionRef.current) {
       const startedAt = new Date();
       const id = createFocusSessionId(startedAt, Math.random().toString(36).slice(2, 10));
@@ -4261,6 +4287,10 @@ function FocusMode({ tasks, designMode, chicPalette, backgroundImageUri, planTie
       });
     }
   };
+  useEffect(() => {
+    if (!voiceStartRequest || previewMode || planTier !== 'premium' || running) return;
+    void toggleTimer(voiceStartRequest.durationMinutes);
+  }, [voiceStartRequest?.id]);
   const minutes = Math.floor(secondsLeft / 60);
   const seconds = secondsLeft % 60;
   const progress = 1 - secondsLeft / (duration * 60);
@@ -4289,7 +4319,7 @@ function FocusMode({ tasks, designMode, chicPalette, backgroundImageUri, planTie
       <View style={[styles.focusProgressTrack, !isMinimal && styles.focusProgressTrackLight, isChic && chicPalette && { backgroundColor: chicPalette.accentSoft }]}><View style={[styles.focusProgressFill, isMinimal && styles.focusProgressFillMinimal, isDark && styles.focusProgressFillDark, isChic && styles.focusProgressFillChic, isChic && chicPalette && { backgroundColor: chicPalette.accent }, { width: `${Math.max(2, progress * 100)}%` }]} /></View>
       <View style={styles.focusActions}>
         <Pressable style={[styles.focusResetButton, !isMinimal && styles.focusResetButtonLight, isChic && chicPalette && { borderColor: chicPalette.border, backgroundColor: chicPalette.cardSurface }]} onPress={reset}><Text style={[styles.focusResetText, isMinimal && styles.focusResetTextMinimal, !isMinimal && styles.focusResetTextLight, isChic && chicPalette && { color: chicPalette.textSecondary }]}>リセット</Text></Pressable>
-        <Pressable style={[styles.focusStartButton, isMinimal && styles.focusStartButtonMinimal, isDark && styles.focusStartButtonDark, isChic && styles.focusStartButtonChic, isChic && chicPalette && { backgroundColor: chicPalette.accent }]} onPress={toggleTimer}><Text style={[styles.focusStartText, { color: isChic && chicPalette ? chicPalette.onAccent : isDark ? getThemeTokens('dark').colors.screenBackground : '#FFFFFF' }]}>{running ? '一時停止' : secondsLeft === 0 ? 'もう一度' : 'スタート'}</Text></Pressable>
+        <Pressable style={[styles.focusStartButton, isMinimal && styles.focusStartButtonMinimal, isDark && styles.focusStartButtonDark, isChic && styles.focusStartButtonChic, isChic && chicPalette && { backgroundColor: chicPalette.accent }]} onPress={() => void toggleTimer()}><Text style={[styles.focusStartText, { color: isChic && chicPalette ? chicPalette.onAccent : isDark ? getThemeTokens('dark').colors.screenBackground : '#FFFFFF' }]}>{running ? '一時停止' : secondsLeft === 0 ? 'もう一度' : 'スタート'}</Text></Pressable>
       </View>
     </View>
     <Text style={[styles.focusSectionTitle, isMinimal && styles.focusSectionTitleMinimal, isDark && styles.focusSectionTitleDark, isChic && chicPalette && { color: chicPalette.textPrimary }]}>集中時間</Text>

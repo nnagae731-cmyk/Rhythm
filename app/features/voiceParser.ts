@@ -1,7 +1,7 @@
 import { parseSmartTaskInput } from './tasks/smartTaskInput';
 import { RepeatRule } from '../types';
 
-export type VoiceIntent = 'todo' | 'schedule' | 'routine' | 'wish' | 'wishAction' | 'ambiguous';
+export type VoiceIntent = 'todo' | 'schedule' | 'routine' | 'focus' | 'wish' | 'wishAction' | 'ambiguous';
 
 export type VoiceParseResult = {
   intent: VoiceIntent;
@@ -11,6 +11,12 @@ export type VoiceParseResult = {
   destination?: string;
   priority?: '高' | '中' | '低';
   repeatRule?: RepeatRule;
+  /** True only when the utterance explicitly asks to make the item a routine. */
+  executeRoutine?: boolean;
+  /** Duration extracted from a focus command, in minutes. */
+  focusDurationMinutes?: number;
+  /** True only when the utterance explicitly asks to start focus. */
+  executeFocus?: boolean;
   relatedWishTitle?: string;
   transcript: string;
 };
@@ -20,8 +26,19 @@ function cleanTitle(value: string) {
 }
 
 function parseDestination(value: string) {
-  const match = value.match(/(?:で|にて|@)\s*([^、,。]+?)(?:(?:で|に)\s*(?:待ち合わせ|集合|行く|向かう)|$)/u);
+  // Prefer the segment following a spoken time. This avoids treating the
+  // particle in "14時に" as the beginning of a destination.
+  const afterTime = value.match(/(?:\d{1,2}時(?:\d{1,2}分)?|\d{1,2}:\d{2})\s*に\s*([^、。]+?)(?=で(?:待ち合わせ|集合|ご飯|食事)|に(?:行く|向かう)|(?:で)?会う|$)/u);
+  if (afterTime?.[1]?.trim()) return afterTime[1].trim();
+  const match = value.match(/(?:で|にて|@)\s*([^、,。]+?)(?=(?:で|に)\s*(?:待ち合わせ|集合|行く|向かう)|$)/u);
   return match?.[1]?.trim() || undefined;
+}
+
+function stripRoutineInstruction(value: string) {
+  return value
+    .replace(/^(?:これ|それ)(?:を)?\s*ルーティン(?:に)?(?:して|する|登録して|化して)\s*[、,]?\s*/u, '')
+    .replace(/(?:の)?(?:を)?\s*ルーティン(?:に)?(?:して|する|登録して|化して)\s*[。！？]?$/u, '')
+    .trim();
 }
 
 /** Local deterministic parser used only to prepare existing form values. */
@@ -29,6 +46,13 @@ export function parseVoiceInput(input: string, now = new Date(), dateKey?: (date
   const transcript = input.trim();
   const task = parseSmartTaskInput(transcript, now, dateKey);
   const hasRoutine = /毎日|毎朝|毎晩|毎週|平日|毎月/u.test(transcript);
+  const executeRoutine = /(?:ルーティン|routine)(?:に)?(?:して|する|登録して|化して)/iu.test(transcript);
+  const focusDurationMatch = transcript.match(/(\d{1,3})\s*(?:分|ふん)(?:間)?/u) ?? transcript.match(/(\d{1,2})\s*時間(?:間)?/u);
+  const focusDurationMinutes = focusDurationMatch
+    ? Number(focusDurationMatch[1]) * (focusDurationMatch[0].includes('時間') ? 60 : 1)
+    : undefined;
+  const hasFocus = /集中/u.test(transcript);
+  const executeFocus = Boolean(focusDurationMinutes && focusDurationMinutes > 0 && hasFocus && /始めて|開始|スタート|セットして|集中する(?:よ|ね|。)?$/u.test(transcript));
   const hasWishAction = /(?:ために|為に|のため)/u.test(transcript) && !/予定|予約|時に|時の/u.test(transcript);
   const hasWish = /たい(?:です|な|。)?$|たいこと|叶えたい|目標|夢/u.test(transcript);
   const hasSchedule = Boolean(task.scheduledTime) && !hasRoutine;
@@ -36,16 +60,19 @@ export function parseVoiceInput(input: string, now = new Date(), dateKey?: (date
   let title = cleanTitle(task.title);
   let relatedWishTitle: string | undefined;
 
-  if (hasWishAction) {
+  if (executeRoutine) {
+    const routineSource = stripRoutineInstruction(transcript);
+    title = cleanTitle(parseSmartTaskInput(routineSource, now, dateKey).title);
+  } else if (hasWishAction) {
     relatedWishTitle = cleanTitle(transcript.match(/^(.*?)(?:ために|為に|のため)/u)?.[1] ?? '');
     title = cleanTitle(transcript.replace(/^(.*?)(?:ために|為に|のため)(?:、|\s*)/u, '') || title);
   } else if (hasWish) {
     title = cleanTitle(transcript.replace(/^(?:9月|\d+月|今年中|今月中|いつか)?(?:までに|までには)?/u, '').replace(/(?:したい|させたい|行きたい|叶えたい)(?:です|な)?[。！？]?$/u, ''));
   } else if (hasSchedule && destination) {
-    title = cleanTitle(title.replace(destination, '').replace(/(?:で)?(?:待ち合わせ|集合|行く|向かう)/u, ''));
+    title = cleanTitle(title.replace(destination, '').replace(/^[でに]\s*/u, ''));
   }
 
   const priority = /優先度?\s*(?:が)?\s*高|急ぎ|最優先/u.test(transcript) ? '高' : /優先度?\s*(?:が)?\s*低/u.test(transcript) ? '低' : undefined;
-  const intent: VoiceIntent = hasWishAction ? 'wishAction' : hasWish ? 'wish' : hasRoutine ? 'routine' : hasSchedule ? 'schedule' : title ? 'todo' : 'ambiguous';
-  return { intent, title: title || transcript, scheduledDate: task.scheduledDate, scheduledTime: task.scheduledTime, destination, priority, repeatRule: task.repeatRule, relatedWishTitle, transcript };
+  const intent: VoiceIntent = executeFocus || hasFocus ? 'focus' : hasWishAction ? 'wishAction' : hasWish ? 'wish' : executeRoutine || hasRoutine ? 'routine' : hasSchedule ? 'schedule' : title ? 'todo' : 'ambiguous';
+  return { intent, title: title || transcript, scheduledDate: task.scheduledDate, scheduledTime: task.scheduledTime, destination, priority, repeatRule: task.repeatRule, executeRoutine, focusDurationMinutes, executeFocus, relatedWishTitle, transcript };
 }
