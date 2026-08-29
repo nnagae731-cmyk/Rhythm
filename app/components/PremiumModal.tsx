@@ -175,11 +175,13 @@ function PremiumPreviewViewport({ children, styles, surface, border }: { childre
   const [canvas, setCanvas] = useState({ width: 0, height: 0 });
   const availableWidth = Math.max(0, viewport.width - 16);
   const availableHeight = Math.max(0, viewport.height - 16);
-  const scale = canvas.width > 0 && canvas.height > 0 && availableWidth > 0 && availableHeight > 0
-    ? Math.min(1, availableWidth / canvas.width, availableHeight / canvas.height)
-    : 1;
-  const scaledWidth = canvas.width > 0 ? canvas.width * scale : undefined;
-  const scaledHeight = canvas.height > 0 ? canvas.height * scale : undefined;
+  const scaleReady = canvas.width > 0 && canvas.height > 0 && availableWidth > 0 && availableHeight > 0;
+  // Do not expose an unmeasured canvas at scale 1. The feature stage is
+  // remounted per feature, so each new preview stays hidden until its own
+  // dimensions have been measured and a stable fit scale is available.
+  const scale = scaleReady ? Math.min(1, availableWidth / canvas.width, availableHeight / canvas.height) : 0;
+  const scaledWidth = scaleReady ? canvas.width * scale : undefined;
+  const scaledHeight = scaleReady ? canvas.height * scale : undefined;
   return <View
     style={[styles.premiumPreviewViewport, { backgroundColor: surface, borderColor: border }]}
     pointerEvents="none"
@@ -196,7 +198,7 @@ function PremiumPreviewViewport({ children, styles, surface, border }: { childre
             const { width, height } = event.nativeEvent.layout;
             if (width !== canvas.width || height !== canvas.height) setCanvas({ width, height });
           }}
-          style={{ width: canvas.width || '100%', transform: [{ scale }] }}
+          style={{ width: canvas.width || '100%', opacity: scaleReady ? 1 : 0, transform: [{ scale }] }}
         >
           {children}
         </View>
