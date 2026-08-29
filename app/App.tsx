@@ -1542,7 +1542,8 @@ export default function App() {
   }, []);
   const skipTaskById = React.useCallback((taskId: string) => {
     const target = tasksRef.current.find((task) => task.id === taskId);
-    if (!target || !target.isRoutine || planTier === 'premium') {
+    if (!target || !target.isRoutine) return;
+    if (planTier === 'premium') {
       applySkipTaskById(taskId);
       return;
     }
@@ -3472,6 +3473,8 @@ export default function App() {
                 deleteTaskById(id);
               }}
               onSkip={(id) => {
+                const target = (firstRunDemoActive ? activeGuideDemoTasks : tasksRef.current).find((task) => task.id === id);
+                if (!target?.isRoutine) return;
                 if (firstRunDemoActive) {
                   updateGuideDemoTasks((current) => current.map((task) => task.id === id ? { ...task, done: false, status: 'skipped', skippedAt: new Date().toISOString() } : task));
                   return;
