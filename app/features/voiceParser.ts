@@ -13,8 +13,6 @@ export type VoiceParseResult = {
   repeatRule?: RepeatRule;
   /** True only when the utterance explicitly asks to register the item as a routine. */
   explicitRoutineRegistration?: boolean;
-  /** True only when the utterance explicitly asks to complete an existing routine today. */
-  explicitRoutineCompletion?: boolean;
   /** Duration extracted from a focus command, in minutes. */
   focusDurationMinutes?: number;
   /** True only when the utterance explicitly asks to start focus. */
@@ -84,25 +82,10 @@ export function detectExplicitRoutineRegistration(input: string) {
   return routineWords.test(input) && /(?:に)?(?:登録|追加|設定|習慣化|ルーティン化|化)?(?:して|する)/iu.test(input);
 }
 
-export function detectExplicitRoutineCompletion(input: string) {
-  const completion = /(?:やった|完了(?:にして|した)?|済み(?:にして|にする)?|チェック(?:して|する)?|終わった|終えた)/u.test(input);
-  if (!completion) return false;
-  return routineWords.test(input) || /今日|きょう/u.test(input) || /寝る前|朝起きたら/u.test(input);
-}
-
 function stripRoutineInstruction(value: string) {
   return value
     .replace(/^(?:これ|それ)(?:を)?\s*(?:ルーティン|ルーチン|ルーティーン|routine|習慣)(?:に)?(?:登録|追加|設定|習慣化|ルーティン化|化)?(?:して|する)\s*[、,]?\s*/iu, '')
     .replace(/(?:の)?(?:を)?\s*(?:ルーティン|ルーチン|ルーティーン|routine|習慣)(?:に)?(?:登録|追加|設定|習慣化|ルーティン化|化)?(?:して|する)\s*[。！？]?$/iu, '')
-    .trim();
-}
-
-function stripRoutineCompletionInstruction(value: string) {
-  return value
-    .replace(/(?:の)?(?:を)?\s*(?:ルーティン|ルーチン|ルーティーン|routine|習慣)(?:を)?\s*(?:今日|きょう)?\s*(?:完了(?:にして|した)?|済み(?:にして|にする)?|チェック(?:して|する)?|終わった|終えた)\s*[。！？]?$/iu, '')
-    .replace(/(?:の)?(?:を)?\s*(?:今日|きょう)?\s*(?:やった|完了(?:にして|した)?|済み(?:にして|にする)?|チェック(?:して|する)?|終わった|終えた)\s*[。！？]?$/u, '')
-    .replace(/(?:今日|きょう)\s*(?:の)?\s*(?:ルーティン|ルーチン|ルーティーン|routine|習慣)\s*(?:を)?\s*$/iu, '')
-    .replace(/^(?:今日|きょう)\s*の\s*/u, '')
     .trim();
 }
 
@@ -120,8 +103,7 @@ export function parseVoiceInput(input: string, now = new Date(), dateKey?: (date
   const transcript = input.trim();
   const task = parseSmartTaskInput(transcript, now, dateKey);
   const explicitRoutineRegistration = detectExplicitRoutineRegistration(transcript);
-  const explicitRoutineCompletion = detectExplicitRoutineCompletion(transcript) && !explicitRoutineRegistration;
-  const hasRoutine = detectRoutineCandidate(transcript) || explicitRoutineRegistration || explicitRoutineCompletion;
+  const hasRoutine = detectRoutineCandidate(transcript) || explicitRoutineRegistration;
   const focusDurationMinutes = parseFocusDuration(transcript);
   const hasFocus = /集中/u.test(transcript);
   const executeFocus = Boolean(focusDurationMinutes && hasFocus && /始めて|開始(?:して)?|起動(?:して)?|スタート(?:して)?|セットして|集中(?:する|して)(?:よ|ね|。)?$/u.test(transcript));
@@ -136,9 +118,6 @@ export function parseVoiceInput(input: string, now = new Date(), dateKey?: (date
     const routineSource = stripRoutineInstruction(transcript);
     const parsedRoutineTitle = routineSource || transcript.match(/^(これ|それ)/u)?.[1] || '';
     title = cleanTitle(stripRoutineRecurrence(parseSmartTaskInput(parsedRoutineTitle, now, dateKey).title));
-  } else if (explicitRoutineCompletion) {
-    const routineSource = stripRoutineCompletionInstruction(transcript);
-    title = cleanTitle(parseSmartTaskInput(routineSource, now, dateKey).title);
   } else if (hasWishAction) {
     relatedWishTitle = cleanTitle(transcript.match(/^(.*?)(?:ために|為に|のため)/u)?.[1] ?? '');
     title = cleanTitle(transcript.replace(/^(.*?)(?:ために|為に|のため)(?:、|\s*)/u, '') || title);
@@ -148,9 +127,9 @@ export function parseVoiceInput(input: string, now = new Date(), dateKey?: (date
     title = cleanTitle(title.replace(destination, '').replace(/^(?:[でに]\s*)+/u, ''));
   }
 
-  if (hasRoutine && !explicitRoutineCompletion) title = cleanTitle(stripRoutineRecurrence(title));
+  if (hasRoutine) title = cleanTitle(stripRoutineRecurrence(title));
 
   const priority = /優先度?\s*(?:が)?\s*高|急ぎ|最優先/u.test(transcript) ? '高' : /優先度?\s*(?:が)?\s*低/u.test(transcript) ? '低' : undefined;
   const intent: VoiceIntent = executeFocus || hasFocus ? 'focus' : hasWishAction ? 'wishAction' : hasWish ? 'wish' : hasRoutine ? 'routine' : hasSchedule ? 'schedule' : title ? 'todo' : 'ambiguous';
-  return { intent, title: title || (explicitRoutineCompletion ? '' : transcript), scheduledDate: task.scheduledDate, scheduledTime: task.scheduledTime, destination, priority, repeatRule: detectRoutineRepeatRule(transcript, task.repeatRule), explicitRoutineRegistration, explicitRoutineCompletion, focusDurationMinutes, executeFocus, relatedWishTitle, transcript };
+  return { intent, title: title || transcript, scheduledDate: task.scheduledDate, scheduledTime: task.scheduledTime, destination, priority, repeatRule: detectRoutineRepeatRule(transcript, task.repeatRule), explicitRoutineRegistration, focusDurationMinutes, executeFocus, relatedWishTitle, transcript };
 }

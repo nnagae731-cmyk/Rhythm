@@ -226,22 +226,6 @@ function normalizeTaskDateKey(value: string | undefined) {
   return `${match[1]}-${String(Number(match[2])).padStart(2, '0')}-${String(Number(match[3])).padStart(2, '0')}`;
 }
 
-function normalizeRoutineTitle(value: string | undefined) {
-  return (value ?? '').trim().replace(/[、。！？!?]+$/u, '').replace(/\s+/gu, ' ').toLocaleLowerCase();
-}
-
-function findVoiceRoutineCandidates(tasks: Task[], title: string) {
-  const requested = normalizeRoutineTitle(title);
-  if (!requested) return [];
-  const active = tasks.filter((task) => task.isRoutine && !task.done && !task.routineEndedAt);
-  const exact = active.filter((task) => normalizeRoutineTitle(task.title) === requested);
-  if (exact.length > 0) return exact;
-  return active.filter((task) => {
-    const current = normalizeRoutineTitle(task.title);
-    return current.includes(requested) || requested.includes(current);
-  });
-}
-
 function getTaskStatus(task: Task): 'active' | 'completed' | 'skipped' {
   return task.status ?? (task.done ? 'completed' : 'active');
 }
@@ -2331,33 +2315,6 @@ export default function App() {
       setVoiceFocusRequest({ durationMinutes: result.focusDurationMinutes, id: Date.now() });
       setScreen('timeline');
       return true;
-    }
-    if (result.intent === 'routine' && result.explicitRoutineCompletion) {
-      const today = dateKey();
-      const candidates = result.title
-        ? findVoiceRoutineCandidates(tasksRef.current, result.title)
-        : tasksRef.current.filter((task) => task.isRoutine && !task.done && !task.routineEndedAt);
-      const target = candidates.length === 1 ? candidates[0] : undefined;
-      const targetDate = target?.scheduledDate ? normalizeTaskDateKey(target.scheduledDate) : undefined;
-      if (!target) {
-        Alert.alert('完了するルーティンを確認してください', candidates.length > 1 ? '同じ名前のルーティンが複数あります。Routine画面から選択してください。' : '一致する未完了のルーティンがありません。Routine画面から確認してください。');
-        setAnalysisInitialTab('routine');
-        setScreen('analysis');
-        return false;
-      }
-      if (targetDate && targetDate !== today) {
-        Alert.alert('今日は対象日ではありません', 'Routine画面から対象日を確認してください。');
-        setAnalysisInitialTab('routine');
-        setScreen('analysis');
-        return false;
-      }
-      // Use the same completion path as the manual Routine check so the
-      // repeating task, routine history, behavior events, and notifications
-      // stay in sync.
-      const completed = completeTaskIds([target.id]);
-      setAnalysisInitialTab('routine');
-      setScreen('analysis');
-      return completed;
     }
     if (result.intent === 'routine' && result.explicitRoutineRegistration) {
       if (!result.title.trim()) {
