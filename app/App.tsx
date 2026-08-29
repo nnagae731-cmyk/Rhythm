@@ -4040,6 +4040,8 @@ export default function App() {
       }
   }
   finalActionLabel="Rhythmを体験する"
+  designMode={uiDesignMode}
+  chicPalette={chicPalette}
   onFinalAction={() => {
     if (onboarding.isCompleted('intro')) {
       onboarding.closeIntro();

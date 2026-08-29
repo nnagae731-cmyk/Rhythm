@@ -10,6 +10,7 @@ import {
   View,
 } from 'react-native';
 import { getThemeTokens } from '../../theme';
+import type { ChicThemePalette, DesignMode } from '../../theme';
 import {
   INTRO_CARDS,
   IntroCard,
@@ -25,6 +26,8 @@ type Props = {
   renderStep?: (id: IntroCard['id']) => React.ReactNode;
   showSkip?: boolean;
   finalActionLabel?: string;
+  designMode?: DesignMode;
+  chicPalette?: ChicThemePalette;
 };
 
 const theme = getThemeTokens(ONBOARDING_DESIGN_MODE);
@@ -52,7 +55,7 @@ function IntroPreview({
  * Fits a production screen preview into the intro card without changing the
  * production screen's layout or clipping its content before it is measured.
  */
-function OnboardingPreviewViewport({ children }: { children: React.ReactNode }) {
+function OnboardingPreviewViewport({ children, colors }: { children: React.ReactNode; colors: { surface: string; border: string } }) {
   const [viewport, setViewport] = useState({ width: 0, height: 0 });
   const [canvas, setCanvas] = useState({ width: 0, height: 0 });
   const availableWidth = Math.max(0, viewport.width - 16);
@@ -65,7 +68,7 @@ function OnboardingPreviewViewport({ children }: { children: React.ReactNode }) 
 
   return (
     <View
-      style={styles.productionPreviewViewport}
+      style={[styles.productionPreviewViewport, { backgroundColor: colors.surface, borderColor: colors.border }]}
       pointerEvents="none"
       onLayout={(event) => {
         const { width, height } = event.nativeEvent.layout;
@@ -97,8 +100,13 @@ export function OnboardingCarousel({
   renderStep,
   showSkip = true,
   finalActionLabel = 'デザインを選ぶ',
+  designMode = ONBOARDING_DESIGN_MODE,
+  chicPalette,
 }: Props) {
   const { width } = useWindowDimensions();
+  const appearance = designMode === 'chic' && chicPalette
+    ? { screenBackground: chicPalette.background, surface: chicPalette.cardSurface, secondarySurface: chicPalette.cardTint, primaryText: chicPalette.textPrimary, secondaryText: chicPalette.textSecondary, primaryAccent: chicPalette.accent, border: chicPalette.border, onAccent: chicPalette.onAccent }
+    : { ...getThemeTokens(designMode).colors, onAccent: designMode === 'dark' ? getThemeTokens(designMode).colors.screenBackground : '#FFFFFF' };
 
   const listRef =
     useRef<FlatList<IntroCard>>(null);
@@ -147,9 +155,9 @@ export function OnboardingCarousel({
       presentationStyle="fullScreen"
       onRequestClose={onDismiss}
     >
-      <SafeAreaView style={styles.screen}>
+      <SafeAreaView style={[styles.screen, { backgroundColor: appearance.screenBackground }]}>
         <View style={styles.top}>
-          <Text style={styles.brand}>
+          <Text style={[styles.brand, { color: appearance.primaryText }]}>
             Rhythm
           </Text>
 
@@ -158,10 +166,10 @@ export function OnboardingCarousel({
               accessibilityRole="button"
               accessibilityLabel="使い方をスキップ"
               hitSlop={10}
-              style={styles.skipButton}
+              style={[styles.skipButton, { backgroundColor: appearance.secondarySurface }]}
               onPress={onDismiss}
             >
-              <Text style={styles.skip}>
+              <Text style={[styles.skip, { color: appearance.secondaryText }]}>
                 スキップ
               </Text>
             </Pressable>
@@ -206,14 +214,14 @@ export function OnboardingCarousel({
                 { width },
               ]}
             >
-              <View style={styles.card}>
-                {renderStep ? <View style={styles.productionPreview}><OnboardingPreviewViewport>{renderStep(item.id)}</OnboardingPreviewViewport></View> : <IntroPreview card={item} />}
+              <View style={[styles.card, { backgroundColor: appearance.surface, borderColor: appearance.border }]}>
+                {renderStep ? <View style={styles.productionPreview}><OnboardingPreviewViewport colors={{ surface: appearance.surface, border: appearance.border }}>{renderStep(item.id)}</OnboardingPreviewViewport></View> : <IntroPreview card={item} />}
 
-                <Text style={styles.title}>
+                <Text style={[styles.title, { color: appearance.primaryText }]}>
                   {item.title}
                 </Text>
 
-                <Text style={styles.description}>
+                <Text style={[styles.description, { color: appearance.secondaryText }]}>
                   {item.description}
                 </Text>
 
@@ -244,8 +252,8 @@ export function OnboardingCarousel({
                   key={card.id}
                   style={[
                     styles.dot,
-                    dotIndex === index &&
-                      styles.dotActive,
+                    { backgroundColor: appearance.border },
+                    dotIndex === index && { width: 20, backgroundColor: appearance.primaryAccent },
                   ]}
                 />
               ),
@@ -261,12 +269,13 @@ export function OnboardingCarousel({
             }
             style={({ pressed }) => [
               styles.nextButton,
+              { backgroundColor: appearance.primaryAccent },
               pressed &&
                 styles.nextButtonPressed,
             ]}
             onPress={goNext}
           >
-            <Text style={styles.nextButtonText}>
+            <Text style={[styles.nextButtonText, { color: appearance.onAccent }]}>
               {isLast
                 ? finalActionLabel
                 : '次へ'}

@@ -61,9 +61,11 @@ const darkPreviewStyleOverrides: Record<string, any> = {
   previewTemplateSaved: { backgroundColor: '#20293A' },
   previewTemplateChoose: { color: '#8EA6FF' },
   previewTemplateReady: { color: '#B4C0D4' },
+  previewRouteMapPin: { color: '#F4F7FC' },
+  previewRecoveryGrid: { backgroundColor: '#181F2E' },
+  previewRecoveryOption: { backgroundColor: '#20293A' },
   previewDanger: { backgroundColor: '#4A2835' },
   previewDangerText: { color: '#FF8F9C' },
-  previewRecoveryOption: { backgroundColor: '#20293A' },
   previewRecoveryText: { color: '#B4C0D4' },
 };
 
@@ -186,7 +188,7 @@ function PremiumPreviewViewport({ children, styles, surface, border }: { childre
       if (width !== viewport.width || height !== viewport.height) setViewport({ width, height });
     }}
   >
-    <View style={[styles.premiumPreviewViewportContent, { flex: 1, alignItems: 'center', justifyContent: 'center' }]}>
+    <View style={[styles.premiumPreviewViewportContent, { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: surface }]}>
       <View style={{ width: scaledWidth ?? '100%', height: scaledHeight ?? '100%', alignItems: 'center', justifyContent: 'center' }}>
         <View
           collapsable={false}
@@ -253,7 +255,7 @@ function PremiumFeatureDetail({ icon, kind, title, description, designMode, chic
   const isMono = designMode !== 'chic';
   const previewStyles = designMode === 'dark' ? { ...styles, ...darkPreviewStyleOverrides } : styles;
   return <View style={styles.premiumFeatureBlock}>
-    <PremiumPreviewViewport styles={styles} surface={surface} border={border}>{renderReadOnlyPreview?.(kind) ?? <LegacyPreviewFallback kind={kind} styles={previewStyles} />}</PremiumPreviewViewport>
+    <PremiumPreviewViewport key={`${kind}-${designMode}`} styles={styles} surface={surface} border={border}>{renderReadOnlyPreview?.(kind) ?? <LegacyPreviewFallback kind={kind} styles={previewStyles} />}</PremiumPreviewViewport>
     <View style={[styles.premiumFeatureTextPlate, { paddingHorizontal: 0, paddingTop: 16 }]}><View style={styles.premiumDetailHeading}><PremiumFeatureIcon name={icon} color={accentColor} /><Text style={[styles.premiumFeatureTitle, { color: primaryText }]}>{title}</Text></View><Text style={[styles.premiumFeatureDescription, { color: secondaryText }]}>{description}</Text><PremiumFeatureDiff kind={kind} styles={styles} primaryText={primaryText} secondaryText={secondaryText} accent={accentColor} border={border} surfaceSoft={surfaceSoft} /></View>
   </View>;
 }
