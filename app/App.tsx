@@ -53,6 +53,7 @@ import { getDeparturePlanMode, getPlanScheduledTime, isArrivalReversePlan, isDep
 import { WishScreen } from './WishScreen';
 import { VoiceInputModal } from './components/VoiceInputModal';
 import { VoiceParseResult } from './features/voiceParser';
+import { consumeVoiceUsage, FREE_VOICE_DAILY_LIMIT, normalizeVoiceUsage, remainingVoiceUses, VoiceUsage } from './features/voice/voiceUsage';
 import { buildRoutineInterruptionSummary, getRoutineHistories } from './features/analytics/routineInterruptionAnalysis';
 import type { RoutineArchive } from './types';
 import { SharedEventScreen } from './SharedEventScreen';
@@ -612,6 +613,8 @@ export default function App() {
   const [addOpen, setAddOpen] = useState(false);
   const [bulkAddOpen, setBulkAddOpen] = useState(false);
   const [voiceOpen, setVoiceOpen] = useState(false);
+  const [voiceUsage, setVoiceUsage] = useState<VoiceUsage>(() => ({ date: dateKey(), count: 0 }));
+  const openVoiceInputRef = React.useRef<() => void>(() => undefined);
   const [voiceTaskDraft, setVoiceTaskDraft] = useState<VoiceParseResult>();
   const [voiceWishDraft, setVoiceWishDraft] = useState<{ mode: 'wish' | 'action'; title: string; wishId?: string }>();
   const [editingTask, setEditingTask] = useState<Task | null>(null);
@@ -834,6 +837,32 @@ export default function App() {
     setPremiumTargetFeature(featureId);
     setPremiumOpen(true);
   }, []);
+  const openVoiceInput = React.useCallback(() => {
+    // The demo and previews never consume a user's allowance.
+    if (planTier === 'premium' || onboarding.state.firstRunStage === 'demo') {
+      setVoiceOpen(true);
+      return;
+    }
+    const current = normalizeVoiceUsage(voiceUsage, dateKey());
+    if (current.count >= FREE_VOICE_DAILY_LIMIT) {
+      Alert.alert(
+        '今日の無料音声入力を使い切りました',
+        'Freeでは音声入力を1日5回まで使えます。Premiumなら回数を気にせず使えます。',
+        [
+          { text: 'また明日', style: 'cancel' },
+          { text: 'Premiumを見る', onPress: () => openPremiumFeature('voice') },
+        ],
+      );
+      return;
+    }
+    setVoiceUsage(current);
+    setVoiceOpen(true);
+  }, [onboarding.state.firstRunStage, openPremiumFeature, planTier, voiceUsage]);
+  openVoiceInputRef.current = openVoiceInput;
+  const consumeVoiceInput = React.useCallback(() => {
+    if (planTier === 'premium' || onboarding.state.firstRunStage === 'demo') return;
+    setVoiceUsage((current) => consumeVoiceUsage(current, dateKey()));
+  }, [onboarding.state.firstRunStage, planTier]);
   // Development plan switches are session-only test controls. Close the
   // Premium sheet before changing the plan so its transparent Modal/backdrop
   // cannot remain mounted over the production app after the override rerender.
@@ -1218,7 +1247,7 @@ export default function App() {
         return true;
       }
       if (parsed.hostname === 'voice') {
-        setVoiceOpen(true);
+        openVoiceInputRef.current();
         return true;
       }
     } catch {
@@ -1603,6 +1632,7 @@ export default function App() {
         setChicPattern(saved.chicPattern ? normalizeChicPattern(saved.chicPattern) : 'plain');
         setChicCheckColor(normalizeChicCheckColor(saved.chicCheckColor));
         setAffirmations(saved.affirmations ?? []);
+        setVoiceUsage(normalizeVoiceUsage(saved.voiceUsage, dateKey()));
         setAffirmationCustomTexts(saved.affirmationCustomTexts ?? []);
         setPhotoTheme({
           placement: saved.photoTheme?.placement === 'top' ? 'top' : 'background',
@@ -1800,7 +1830,7 @@ export default function App() {
 
   useEffect(() => {
     if (!hydrated) return;
-    const state: PersistedState = { tasks, plan, departurePlans, widgetSize, showCompleted, completionIcon, designMode, monoAppearance, hapticsEnabled, reviewPromptedAt, taskTemplates, savedTaskTemplates, chicPattern, chicCheckColor, recoveryHistory, focusSessions, focusCustomDurationMinutes, departureCheckIns, behaviorEvents, wishMonths: normalizeWishMonthsForSave(wishMonths), calendarMarks, calendarImportCalendarIds, calendarImportKnownCalendarIds, sharedEvents, sharedParticipantIdsByToken, sharedParticipantPrefsByToken, departurePreparationStatuses, affirmations, affirmationCustomTexts, photoTheme, travelApps, designCustomizePurchased, routineArchives: pruneRoutineArchives(routineArchives) };
+    const state: PersistedState = { tasks, plan, departurePlans, widgetSize, showCompleted, completionIcon, designMode, monoAppearance, hapticsEnabled, reviewPromptedAt, taskTemplates, savedTaskTemplates, chicPattern, chicCheckColor, recoveryHistory, focusSessions, focusCustomDurationMinutes, departureCheckIns, behaviorEvents, wishMonths: normalizeWishMonthsForSave(wishMonths), calendarMarks, calendarImportCalendarIds, calendarImportKnownCalendarIds, sharedEvents, sharedParticipantIdsByToken, sharedParticipantPrefsByToken, departurePreparationStatuses, affirmations, affirmationCustomTexts, photoTheme, travelApps, designCustomizePurchased, routineArchives: pruneRoutineArchives(routineArchives), voiceUsage: normalizeVoiceUsage(voiceUsage, dateKey()) };
     latestPersistedStateRef.current = state;
     if (persistenceDisabledRef.current) return;
     if (persistenceTimerRef.current) clearTimeout(persistenceTimerRef.current);
@@ -1816,7 +1846,7 @@ export default function App() {
     return () => {
       if (persistenceTimerRef.current) clearTimeout(persistenceTimerRef.current);
     };
-  }, [tasks, plan, departurePlans, widgetSize, showCompleted, completionIcon, designMode, monoAppearance, hapticsEnabled, reviewPromptedAt, taskTemplates, savedTaskTemplates, chicPattern, chicCheckColor, recoveryHistory, focusSessions, focusCustomDurationMinutes, departureCheckIns, behaviorEvents, wishMonths, calendarMarks, calendarImportCalendarIds, calendarImportKnownCalendarIds, sharedEvents, sharedParticipantIdsByToken, sharedParticipantPrefsByToken, departurePreparationStatuses, affirmations, affirmationCustomTexts, photoTheme, travelApps, designCustomizePurchased, routineArchives, hydrated]);
+  }, [tasks, plan, departurePlans, widgetSize, showCompleted, completionIcon, designMode, monoAppearance, hapticsEnabled, reviewPromptedAt, taskTemplates, savedTaskTemplates, chicPattern, chicCheckColor, recoveryHistory, focusSessions, focusCustomDurationMinutes, departureCheckIns, behaviorEvents, wishMonths, calendarMarks, calendarImportCalendarIds, calendarImportKnownCalendarIds, sharedEvents, sharedParticipantIdsByToken, sharedParticipantPrefsByToken, departurePreparationStatuses, affirmations, affirmationCustomTexts, photoTheme, travelApps, designCustomizePurchased, routineArchives, voiceUsage, hydrated]);
 
   useEffect(() => {
     if (!hydrated) return;
@@ -2288,7 +2318,12 @@ export default function App() {
     if (result.intent === 'routine' && result.executeRoutine) {
       const routine = addTask(result.title, categories[0]!, priorities[1]!, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, result.repeatRule ?? 'daily', 'once', result.scheduledDate ?? dateKey(), undefined, undefined, true);
       const today = dateKey();
-      if (routine && (!routine.scheduledDate || normalizeTaskDateKey(routine.scheduledDate)! <= today)) completeTaskIds([routine.id]);
+      if (routine && (!routine.scheduledDate || normalizeTaskDateKey(routine.scheduledDate)! <= today)) {
+        // Reuse the same completion path as a manual Routine check. addTask
+        // updates tasksRef synchronously, so the freshly-created routine is
+        // eligible here and its daily history/event are recorded immediately.
+        completeTaskIds([routine.id]);
+      }
       setScreen('home');
       return;
     }
@@ -2643,6 +2678,9 @@ export default function App() {
     if (kind === 'photo_design') {
       return readonly(<View pointerEvents="none">{renderAppearanceSettingsPreview()}</View>);
     }
+    if (kind === 'voice') {
+      return readonly(<View pointerEvents="none" style={{ padding: 18, alignItems: 'center' }}><Text style={{ color: themedColors.muted, fontSize: 12, fontWeight: '800' }}>共通音声入力</Text><View style={{ marginTop: 12, width: 70, height: 70, borderRadius: 35, backgroundColor: themedColors.violet, alignItems: 'center', justifyContent: 'center' }}><Text style={{ color: uiDesignMode === 'dark' ? theme.colors.screenBackground : '#FFFFFF', fontSize: 28 }}>⌕</Text></View><Text style={{ color: themedColors.ink, fontSize: 14, fontWeight: '900', marginTop: 10 }}>明日の18時に美容院</Text><Text style={{ color: themedColors.muted, fontSize: 11, marginTop: 4 }}>予定として整理 → 確認して保存</Text></View>, 430);
+    }
     if (kind === 'nudge') return readonly(<NotificationManagerCard designMode={uiDesignMode} readOnly />, 560, 0);
     if (kind === 'travel_apps') return readonly(<TravelAppsSettingsCard settings={travelApps} onChange={() => undefined} planTier="premium" designMode={uiDesignMode} chicPalette={chicPalette} onPremium={() => undefined} readOnlyPreview />, 560);
     if (kind === 'route') {
@@ -2864,6 +2902,10 @@ export default function App() {
       const quickTodoTasks = captureTasks.slice(0, 2).map((task) => ({ ...task, bucket: 'later' as const }));
       return <View pointerEvents="none" style={{ width: '100%', paddingVertical: 8 }}>{renderHomePreview(quickTodoTasks, 'list')}</View>;
     }
+    if (id === 'voice') {
+      const voiceTheme = getThemeTokens(uiDesignMode, chicPalette.id).colors;
+      return <View pointerEvents="none" style={{ width: '100%', padding: 14, borderRadius: 16, backgroundColor: voiceTheme.surface, borderWidth: 1, borderColor: voiceTheme.border }}><Text style={{ color: voiceTheme.secondaryText, fontSize: 11, fontWeight: '800' }}>右上のマイク</Text><View style={{ marginTop: 12, alignItems: 'center' }}><View style={{ width: 64, height: 64, borderRadius: 32, backgroundColor: voiceTheme.primaryAccent, alignItems: 'center', justifyContent: 'center' }}><Text style={{ color: uiDesignMode === 'dark' ? voiceTheme.screenBackground : '#FFFFFF', fontSize: 26 }}>⌕</Text></View><Text style={{ color: voiceTheme.primaryText, fontSize: 13, fontWeight: '900', marginTop: 8 }}>話しかけてください</Text></View><View style={{ marginTop: 14, padding: 11, borderRadius: 11, borderWidth: 1, borderColor: voiceTheme.border }}><Text style={{ color: voiceTheme.primaryText, fontSize: 13, fontWeight: '800' }}>明日の18時に美容院</Text><Text style={{ color: voiceTheme.secondaryText, fontSize: 10, marginTop: 4 }}>予定として整理します</Text></View></View>;
+    }
     if (id === 'today') {
       return renderHomePreview(captureTasks);
     }
@@ -2944,6 +2986,7 @@ export default function App() {
     else if (id === 'routine') production = renderPremiumReadOnlyPreview('behavior', true, { analysisInitialTab: 'routine' });
     else if (id === 'history') production = renderPremiumReadOnlyPreview('history');
     else if (id === 'photoLog') production = renderPremiumReadOnlyPreview('records');
+    else if (id === 'voice') production = renderOnboardingCaptureStep('voice');
     else if (id === 'affirmation') production = renderPremiumReadOnlyPreview('affirmation');
     else if (id === 'wish') production = renderWishCapturePreview(false);
     else production = renderPremiumReadOnlyPreview('recovery');
@@ -3097,6 +3140,10 @@ export default function App() {
     if (feature === 'photoLog') {
       setScreen('home');
       setOpenTodayReview(true);
+      return;
+    }
+    if (feature === 'voice') {
+      setScreen('home');
       return;
     }
     if (feature === 'recovery') {
@@ -3265,7 +3312,7 @@ export default function App() {
   }, [onboarding, planTier, releaseGuideTransition]);
   const guideTargetLabels: Partial<Record<Exclude<OnboardingFeatureId, 'intro'>, string>> = {
     todo: '＋追加', taskDetails: '詳しく設定', taskBuckets: '一覧', todoComplete: '完了チェック', completedTasks: '達成グラフ',
-    schedule: 'スケジュール', planRegistration: '予定を登録', focus: '集中', calendarImport: 'カレンダー', analysis: '分析', routine: 'ルーティン', history: '履歴',
+    schedule: 'スケジュール', planRegistration: '予定を登録', focus: '集中', calendarImport: 'カレンダー', analysis: '分析', routine: 'ルーティン', history: '履歴', voice: '右上のマイク',
     wish: '叶えたいこと', affirmation: 'アファメーション', photoLog: '今日の記録', recovery: '立て直し',
   };
   const productionGuideCard = productionGuideFeature && !guideTransitioning ? <OnboardingHint key={productionGuideFeature} inline featureId={productionGuideFeature} designMode={uiDesignMode} chicPalette={chicPalette} targetLabel={guideTargetLabels[productionGuideFeature]} onAction={productionGuideAction} onDismiss={() => completeTourGuide(productionGuideFeature)} onNext={() => completeTourGuide(productionGuideFeature)} onExitTour={exitGuideTour} /> : null;
@@ -3298,7 +3345,7 @@ export default function App() {
         <CThemeRibbonPreload />
         {uiDesignMode === 'chic' && !photoThemeEnabled && <View pointerEvents="none" style={StyleSheet.absoluteFillObject}><ChicPatternDecor pattern={effectiveChicPattern} accent={chicPalette.accent} warm={chicPalette.accentSoft} checkColor={chicCheckColor} /></View>}
         {backgroundVeilVisible && <View pointerEvents="none" style={[StyleSheet.absoluteFillObject, { backgroundColor: backgroundVeilColor, opacity: backgroundVeilOpacity }]} />}
-        {photoTopImageUri && screen !== 'wish' ? <><Header designMode={uiDesignMode} now={now} compact chicPalette={chicPalette} onVoice={() => setVoiceOpen(true)} /><View style={styles.photoThemeTopImage}><Image source={{ uri: photoTopImageUri }} resizeMode="contain" style={styles.photoThemeTopImageContent} /></View></> : <Header designMode={uiDesignMode} now={now} chicPalette={chicPalette} onVoice={() => setVoiceOpen(true)} />}
+        {photoTopImageUri && screen !== 'wish' ? <><Header designMode={uiDesignMode} now={now} compact chicPalette={chicPalette} onVoice={openVoiceInput} onPremium={planTier === 'premium' ? undefined : () => openPremiumFeature('voice')} /><View style={styles.photoThemeTopImage}><Image source={{ uri: photoTopImageUri }} resizeMode="contain" style={styles.photoThemeTopImageContent} /></View></> : <Header designMode={uiDesignMode} now={now} chicPalette={chicPalette} onVoice={openVoiceInput} onPremium={planTier === 'premium' ? undefined : () => openPremiumFeature('voice')} />}
         {completionAffirmation && <Animated.View pointerEvents="none" style={{ position: 'absolute', top: 72, left: 20, right: 20, zIndex: 30, opacity: completionAffirmationOpacity, alignItems: 'center' }}><View style={{ maxWidth: 340, paddingHorizontal: 18, paddingVertical: 12, borderRadius: 18, backgroundColor: uiDesignMode === 'dark' ? '#20293A' : uiDesignMode === 'chic' ? chicPalette.cardSurface : '#FFFFFF', borderWidth: 1, borderColor: uiDesignMode === 'dark' ? '#40506A' : uiDesignMode === 'chic' ? chicPalette.border : '#E5E0E5', shadowColor: '#000', shadowOpacity: 0.12, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 4 }}><Text style={{ textAlign: 'center', color: uiDesignMode === 'dark' ? '#F4F7FC' : uiDesignMode === 'chic' ? chicPalette.textPrimary : '#282538', fontSize: 14, fontWeight: '600' }}>{completionAffirmation}</Text></View></Animated.View>}
 
         <ScrollView contentContainerStyle={[styles.content, screen === 'timeline' && styles.contentTimeline]} keyboardShouldPersistTaps="handled">
@@ -3855,7 +3902,7 @@ export default function App() {
         onShareCurrentEvent={shareCurrentSharedEvent}
       />
 
-      {addOpen && <TaskModal visible templates={taskTemplates} savedTemplates={savedTaskTemplates} designMode={uiDesignMode} chicPalette={chicPalette} planTier={planTier} onPremium={firstRunDemoActive ? () => undefined : openPremiumFeature} onClose={() => { setAddOpen(false); setVoiceTaskDraft(undefined); }} onOpenVoice={() => setVoiceOpen(true)} onOpenBulkAdd={() => { setAddOpen(false); setBulkAddOpen(true); }} onSave={firstRunDemoActive ? () => undefined : addTask} initialDraft={firstRunDemoActive ? undefined : voiceTaskDraft} readOnlyPreview={firstRunDemoActive} guideOverlay={productionGuideFeature === 'taskDetails' ? productionGuideCard : undefined} styles={styles} helpers={{ getThemeTokens: getThemedThemeTokens, todayInputValue, hasPremiumAccess, dateForReminder, dateKey, formatLiveTime, colors: themedColors, summarizePremiumTaskTemplate }} components={{ CompactNumberSetting }} />}
+      {addOpen && <TaskModal visible templates={taskTemplates} savedTemplates={savedTaskTemplates} designMode={uiDesignMode} chicPalette={chicPalette} planTier={planTier} onPremium={firstRunDemoActive ? () => undefined : openPremiumFeature} onClose={() => { setAddOpen(false); setVoiceTaskDraft(undefined); }} onOpenVoice={openVoiceInput} onOpenBulkAdd={() => { setAddOpen(false); setBulkAddOpen(true); }} onSave={firstRunDemoActive ? () => undefined : addTask} initialDraft={firstRunDemoActive ? undefined : voiceTaskDraft} readOnlyPreview={firstRunDemoActive} guideOverlay={productionGuideFeature === 'taskDetails' ? productionGuideCard : undefined} styles={styles} helpers={{ getThemeTokens: getThemedThemeTokens, todayInputValue, hasPremiumAccess, dateForReminder, dateKey, formatLiveTime, colors: themedColors, summarizePremiumTaskTemplate }} components={{ CompactNumberSetting }} />}
       <BulkTaskModal visible={bulkAddOpen} designMode={uiDesignMode} chicPalette={chicPalette} styles={styles} today={todayInputValue()} onClose={() => setBulkAddOpen(false)} onSave={firstRunDemoActive ? () => undefined : addBulkTasks} />
       {editingTask !== null && <TaskModal
         visible
@@ -3867,7 +3914,7 @@ export default function App() {
         planTier={planTier}
         onPremium={firstRunDemoActive ? () => undefined : openPremiumFeature}
         onClose={() => setEditingTask(null)}
-        onOpenVoice={() => setVoiceOpen(true)}
+        onOpenVoice={openVoiceInput}
         onSave={firstRunDemoActive ? () => undefined : updateTask}
         readOnlyPreview={firstRunDemoActive}
         guideOverlay={productionGuideFeature === 'taskDetails' ? productionGuideCard : undefined}
@@ -3876,7 +3923,7 @@ export default function App() {
         components={{ CompactNumberSetting }}
       />}
       <PremiumModal visible={premiumOpen} initialFeatureId={premiumTargetFeature} designMode={uiDesignMode} chicPalette={chicPalette} planTier={planTier} isDevelopment={__DEV__} onMockPlanTier={handleMockPlanTier} onClose={() => setPremiumOpen(false)} styles={styles} helpers={{ getThemeTokens: getThemedThemeTokens }} renderReadOnlyPreview={renderPremiumReadOnlyPreview} />
-      <VoiceInputModal visible={voiceOpen} designMode={uiDesignMode} chicPalette={chicPalette} dateKey={dateKey} onClose={() => setVoiceOpen(false)} onRoute={handleVoiceRoute} hapticsEnabled={hapticsEnabled} />
+      <VoiceInputModal visible={voiceOpen} designMode={uiDesignMode} chicPalette={chicPalette} dateKey={dateKey} onClose={() => setVoiceOpen(false)} onRoute={handleVoiceRoute} hapticsEnabled={hapticsEnabled} isPremium={planTier === 'premium'} remainingUses={remainingVoiceUses(voiceUsage, dateKey())} onRecognitionAccepted={consumeVoiceInput} />
       <DesignCustomizeModal visible={designCustomizeOpen} designMode={uiDesignMode} chicPalette={chicPalette} purchased={designCustomizePurchased} isDevelopment={__DEV__} onPurchase={purchaseDesignCustomize} onRestore={restoreDesignCustomizePurchase} onPremium={() => { setDesignCustomizeOpen(false); openPremiumFeature('photo_design'); }} onClose={() => setDesignCustomizeOpen(false)} />
       {__DEV__ && <OnboardingCaptureStudio visible={captureStudioOpen} onClose={() => setCaptureStudioOpen(false)} renderStep={renderOnboardingCaptureStep} renderGuideStep={renderGuideCaptureStep} renderPremiumStep={renderPremiumReadOnlyPreview} colors={{ background: theme.colors.screenBackground, surface: theme.colors.surface, border: theme.colors.border, text: theme.colors.primaryText, muted: theme.colors.secondaryText, accent: theme.colors.primaryAccent, onAccent: uiDesignMode === 'chic' && chicPalette ? chicPalette.onAccent : uiDesignMode === 'dark' ? theme.colors.screenBackground : '#FFFFFF' }} />}
       <DesignPreviewModal visible={Boolean(designPreviewPattern)} initialPattern={designPreviewPattern} initialMode={designPreviewMode} chicCheckColor={chicCheckColor} planTier={planTier} photoUri={designPreviewPhotoUri} onPickPhoto={() => void pickPhotoForDesignPreview()} onClose={() => { setDesignPreviewPattern(undefined); setDesignPreviewPhotoUri(undefined); setDesignPreviewMode('chic'); }} onTrial={(mode, pattern) => {

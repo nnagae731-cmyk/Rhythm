@@ -36,8 +36,9 @@ function IntroPreview({
 }) {
   return (
     <View style={styles.preview}>
-      <Text style={styles.previewHeader}>{card.id === 'quickTodo' ? 'やること追加' : card.id === 'today' ? '今日' : card.id === 'schedule' ? '予定' : card.id === 'focus' ? '集中' : card.id === 'recovery' ? '立て直し' : '記録'}</Text>
+      <Text style={styles.previewHeader}>{card.id === 'quickTodo' ? 'やること追加' : card.id === 'voice' ? '音声入力' : card.id === 'today' ? '今日' : card.id === 'schedule' ? '予定' : card.id === 'focus' ? '集中' : card.id === 'recovery' ? '立て直し' : '記録'}</Text>
       {card.id === 'quickTodo' && <><View style={styles.previewInput}><Text style={styles.previewInputText}>明日15時に美容院</Text><Text style={styles.previewInputHint}>日時を読み取りました</Text></View><View style={styles.previewButton}><Text style={styles.previewButtonText}>追加する</Text></View></>}
+      {card.id === 'voice' && <><View style={styles.previewVoice}><Text style={styles.previewVoiceMic}>◉</Text><Text style={styles.previewVoiceStatus}>話しかけてください</Text></View><View style={styles.previewInput}><Text style={styles.previewInputText}>明日の18時に美容院</Text><Text style={styles.previewInputHint}>予定として整理します</Text></View></>}
       {card.id === 'today' && <><View style={styles.previewHero}><Text style={styles.previewLabel}>今はこれ</Text><Text style={styles.previewTask}>資料をまとめる</Text><Text style={styles.previewMeta}>完了 2　残り 1</Text></View><View style={styles.previewTabs}><Text style={styles.previewTabActive}>今やる 1</Text><Text style={styles.previewTab}>あとで 2</Text><Text style={styles.previewTab}>待ち 0</Text></View></>}
       {card.id === 'schedule' && <View style={styles.previewTimeline}>{[['09:00', '朝会'], ['14:00', '資料提出'], ['18:30', '帰宅']].map(([time, title]) => <View key={time} style={styles.previewTimelineRow}><Text style={styles.previewTime}>{time}</Text><View style={styles.previewTimelineCard}><Text style={styles.previewTimelineTitle}>{title}</Text><Text style={styles.previewTimelineMeta}>予定表の予定</Text></View></View>)}</View>}
       {card.id === 'focus' && <><View style={styles.previewFocus}><Text style={styles.previewFocusTime}>25:00</Text><Text style={styles.previewFocusTask}>資料をまとめる</Text><View style={styles.previewButton}><Text style={styles.previewButtonText}>スタート</Text></View></View></>}
@@ -377,6 +378,9 @@ const styles = StyleSheet.create({
   previewInput: { minHeight: 52, borderRadius: 12, borderWidth: 1, borderColor: theme.colors.border, backgroundColor: theme.colors.surface, paddingHorizontal: 12, paddingVertical: 9 },
   previewInputText: { color: theme.colors.primaryText, fontSize: 13, fontWeight: '800' },
   previewInputHint: { color: theme.colors.secondaryText, fontSize: 10, marginTop: 4 },
+  previewVoice: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8, padding: 10, borderRadius: 12, backgroundColor: theme.colors.softAccent },
+  previewVoiceMic: { width: 28, height: 28, borderRadius: 14, textAlign: 'center', lineHeight: 28, color: theme.colors.primaryAccent, fontSize: 16, fontWeight: '900' },
+  previewVoiceStatus: { color: theme.colors.primaryText, fontSize: 11, fontWeight: '800' },
   previewButton: { minHeight: 34, marginTop: 10, borderRadius: 10, backgroundColor: theme.colors.primaryAccent, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 12 },
   previewButtonText: { color: '#FFFFFF', fontSize: 11, fontWeight: '900' },
   previewHero: { borderRadius: 14, backgroundColor: theme.colors.surface, borderWidth: 1, borderColor: theme.colors.border, padding: 12 },

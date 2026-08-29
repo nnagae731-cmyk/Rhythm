@@ -106,10 +106,10 @@ function useSpeechEvent(eventName: string, listener: (event: SpeechEvent) => voi
   }, [eventName, listener]);
 }
 
-type Props = { visible: boolean; designMode: DesignMode; chicPalette?: ChicThemePalette; dateKey: (date: Date) => string; onClose: () => void; onRoute: (result: VoiceParseResult) => void; hapticsEnabled?: boolean };
+type Props = { visible: boolean; designMode: DesignMode; chicPalette?: ChicThemePalette; dateKey: (date: Date) => string; onClose: () => void; onRoute: (result: VoiceParseResult) => void; hapticsEnabled?: boolean; isPremium?: boolean; remainingUses?: number; onRecognitionAccepted?: () => void };
 const INTENT_LABELS: Array<[VoiceIntent, string]> = [['todo', 'ToDo'], ['schedule', '予定'], ['routine', 'Routine'], ['focus', '集中'], ['wish', 'Wish'], ['wishAction', 'Wish Action']];
 
-export function VoiceInputModal({ visible, designMode, chicPalette, dateKey, onClose, onRoute, hapticsEnabled = true }: Props) {
+export function VoiceInputModal({ visible, designMode, chicPalette, dateKey, onClose, onRoute, hapticsEnabled = true, isPremium = false, remainingUses, onRecognitionAccepted }: Props) {
   const theme = getThemeTokens(designMode, chicPalette?.id ?? 'cool');
   const isChic = designMode === 'chic' && !!chicPalette;
   const surface = isChic ? chicPalette!.cardSurface : theme.colors.surface;
@@ -126,6 +126,7 @@ export function VoiceInputModal({ visible, designMode, chicPalette, dateKey, onC
   const pulse = useRef(new Animated.Value(0)).current;
   const recognitionStartingRef = useRef(false);
   const routedRef = useRef(false);
+  const usageConsumedRef = useRef(false);
 
   const waitForRecognitionReady = async () => {
     logVoiceDebug('waiting for recognition readiness', { appState: AppState.currentState });
@@ -204,7 +205,7 @@ export function VoiceInputModal({ visible, designMode, chicPalette, dateKey, onC
   };
 
   useEffect(() => {
-    if (!visible) { routedRef.current = false; setPermissionReady(false); setStatus('idle'); setTranscript(''); setParsed(undefined); return; }
+    if (!visible) { routedRef.current = false; usageConsumedRef.current = false; setPermissionReady(false); setStatus('idle'); setTranscript(''); setParsed(undefined); return; }
     let active = true;
     void (async () => {
       try {
@@ -273,9 +274,13 @@ export function VoiceInputModal({ visible, designMode, chicPalette, dateKey, onC
 
   useEffect(() => {
     if (!parsed || status !== 'processing') return;
+    if (!usageConsumedRef.current) {
+      usageConsumedRef.current = true;
+      onRecognitionAccepted?.();
+    }
     setStatus('recognized');
     if (parsed.intent !== 'ambiguous' && !routedRef.current) { routedRef.current = true; onRoute(parsed); }
-  }, [onRoute, parsed, status]);
+  }, [onRecognitionAccepted, onRoute, parsed, status]);
 
   const chooseIntent = (intent: VoiceIntent) => { if (!parsed || intent === 'ambiguous') return; routedRef.current = true; onRoute({ ...parsed, intent }); };
   const stop = () => { try { speechModule?.stop(); } catch { /* no-op */ } if (transcript && !parsed) { setParsed(parseVoiceInput(transcript, new Date(), dateKey)); setStatus('processing'); } };
@@ -284,6 +289,7 @@ export function VoiceInputModal({ visible, designMode, chicPalette, dateKey, onC
   return <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}><Pressable style={styles.backdrop} onPress={onClose}><Pressable style={[styles.sheet, { backgroundColor: background, borderColor: border }]} onPress={(event) => event.stopPropagation()}>
     <View style={styles.header}><Text style={[styles.title, { color: text }]}>何を登録する？</Text><Pressable onPress={onClose}><Text style={[styles.close, { color: muted }]}>閉じる</Text></Pressable></View>
     <Text style={[styles.status, { color: muted }]}>{statusLabel}</Text>
+    <Text accessibilityLiveRegion="polite" style={[styles.usage, { color: muted }]}>{isPremium ? 'Premium・音声入力 無制限' : `Free・今日あと${Math.max(0, remainingUses ?? 0)}回`}</Text>
     <View style={styles.micWrap}><Animated.View pointerEvents="none" style={[styles.micPulse, { borderColor: accent, opacity: pulse.interpolate({ inputRange: [0, 1], outputRange: [0, 0.28] }), transform: [{ scale: pulse.interpolate({ inputRange: [0, 1], outputRange: [1, 1.3] }) }] }]} /><Animated.View style={{ transform: [{ scale: pulse.interpolate({ inputRange: [0, 1], outputRange: [1, 1.06] }) }] }}><Pressable accessibilityRole="button" accessibilityLabel={status === 'listening' ? '音声入力を停止' : '音声入力を開始'} onPress={status === 'listening' ? stop : startRecognition} style={[styles.mic, { backgroundColor: accent }]}>{status === 'processing' ? <ActivityIndicator color={onAccent} /> : <Text style={[styles.micGlyph, { color: onAccent }]}>⌕</Text>}</Pressable></Animated.View></View>
     {transcript ? <Text style={[styles.transcript, { color: text }]}>{transcript}</Text> : <Text style={[styles.example, { color: muted }]}>「明日の18時に美容院」{`\n`}「今日中に資料まとめる」</Text>}
     {parsed?.intent === 'ambiguous' ? <View style={styles.choiceWrap}><Text style={[styles.choiceTitle, { color: muted }]}>どこに登録する？</Text><View style={styles.choiceRow}>{INTENT_LABELS.map(([intent, label]) => <Pressable key={intent} onPress={() => chooseIntent(intent)} style={[styles.choice, { backgroundColor: surface, borderColor: border }]}><Text style={[styles.choiceText, { color: text }]}>{label}</Text></Pressable>)}</View></View> : null}
@@ -293,5 +299,5 @@ export function VoiceInputModal({ visible, designMode, chicPalette, dateKey, onC
 
 const styles = StyleSheet.create({
   backdrop: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.35)', padding: 14 },
-  sheet: { borderWidth: 1, borderRadius: 24, padding: 20, paddingBottom: 26 }, header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }, title: { fontSize: 19, fontWeight: '900' }, close: { fontSize: 12, fontWeight: '800' }, status: { textAlign: 'center', fontSize: 13, fontWeight: '800', marginTop: 16 }, micWrap: { alignSelf: 'center', width: 92, height: 92, alignItems: 'center', justifyContent: 'center', marginTop: 8 }, micPulse: { position: 'absolute', width: 82, height: 82, borderRadius: 41, borderWidth: 2 }, mic: { width: 68, height: 68, borderRadius: 34, alignItems: 'center', justifyContent: 'center' }, micGlyph: { fontSize: 33, fontWeight: '900', transform: [{ rotate: '-20deg' }] }, transcript: { textAlign: 'center', fontSize: 15, lineHeight: 22, fontWeight: '800', marginTop: 18 }, example: { textAlign: 'center', fontSize: 12, lineHeight: 19, marginTop: 18 }, choiceWrap: { marginTop: 18 }, choiceTitle: { fontSize: 12, fontWeight: '800', marginBottom: 8 }, choiceRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 }, choice: { minHeight: 38, paddingHorizontal: 12, borderRadius: 14, borderWidth: 1, alignItems: 'center', justifyContent: 'center' }, choiceText: { fontSize: 12, fontWeight: '800' }, cancel: { minHeight: 42, alignItems: 'center', justifyContent: 'center', marginTop: 8 }, cancelText: { fontSize: 13, fontWeight: '800' },
+  sheet: { borderWidth: 1, borderRadius: 24, padding: 20, paddingBottom: 26 }, header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }, title: { fontSize: 19, fontWeight: '900' }, close: { fontSize: 12, fontWeight: '800' }, status: { textAlign: 'center', fontSize: 13, fontWeight: '800', marginTop: 16 }, usage: { textAlign: 'center', fontSize: 11, fontWeight: '700', marginTop: 5 }, micWrap: { alignSelf: 'center', width: 92, height: 92, alignItems: 'center', justifyContent: 'center', marginTop: 8 }, micPulse: { position: 'absolute', width: 82, height: 82, borderRadius: 41, borderWidth: 2 }, mic: { width: 68, height: 68, borderRadius: 34, alignItems: 'center', justifyContent: 'center' }, micGlyph: { fontSize: 33, fontWeight: '900', transform: [{ rotate: '-20deg' }] }, transcript: { textAlign: 'center', fontSize: 15, lineHeight: 22, fontWeight: '800', marginTop: 18 }, example: { textAlign: 'center', fontSize: 12, lineHeight: 19, marginTop: 18 }, choiceWrap: { marginTop: 18 }, choiceTitle: { fontSize: 12, fontWeight: '800', marginBottom: 8 }, choiceRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 }, choice: { minHeight: 38, paddingHorizontal: 12, borderRadius: 14, borderWidth: 1, alignItems: 'center', justifyContent: 'center' }, choiceText: { fontSize: 12, fontWeight: '800' }, cancel: { minHeight: 42, alignItems: 'center', justifyContent: 'center', marginTop: 8 }, cancelText: { fontSize: 13, fontWeight: '800' },
 });

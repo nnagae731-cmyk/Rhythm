@@ -305,7 +305,7 @@ export function SettingsScreen({
       </SettingsDisclosure>
        <View style={styles.settingsDisclosure}>
          <Pressable style={[styles.settingsDisclosureHeader, isDark && styles.darkSurface]} onPress={() => onPremium()} accessibilityRole="button">
-           <View style={{ flex: 1 }}><Text style={[styles.settingsDisclosureTitle, { color: baseTheme.primaryText }]}>Premium</Text><Text style={[styles.settingsDisclosureSubtitle, { color: baseTheme.secondaryText }]}>記録・分析・デザインなどを広げます</Text></View>
+           <View style={{ flex: 1 }}><Text style={[styles.settingsDisclosureTitle, { color: baseTheme.primaryText }]}>{planTier === 'premium' ? 'Premium利用中' : 'Rhythm Premium'}</Text><Text style={[styles.settingsDisclosureSubtitle, { color: baseTheme.secondaryText }]}>{planTier === 'premium' ? 'Premiumの機能を利用中です' : 'もっとRhythmを便利に使う'}</Text></View>
            <Text style={[styles.settingsDisclosureChevron, { color: baseTheme.primaryAccent }]}>›</Text>
          </Pressable>
        </View>

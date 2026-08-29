@@ -9,6 +9,7 @@ export const WISH_FREE_ACCESS_COPY =
 export type OnboardingFeatureId =
   | 'intro'
   | 'todo'
+  | 'voice'
   | 'todoComplete'
   | 'completedTasks'
   | 'taskBuckets'
@@ -33,6 +34,7 @@ export type OnboardingFeatureId =
  */
 export const FREE_GUIDE_TOUR = [
   'todo',
+  'voice',
   'taskDetails',
   'taskBuckets',
   'todoComplete',
@@ -56,6 +58,7 @@ export const PREMIUM_GUIDE_TOUR = [
 
 export type IntroCardId =
   | 'quickTodo'
+  | 'voice'
   | 'today'
   | 'schedule'
   | 'focus'
@@ -93,6 +96,12 @@ export const INTRO_CARDS: IntroCard[] = [
     id: 'schedule',
     title: '予定には、間に合うように',
     description: '準備や移動も含めて動くタイミングを確認できます。',
+  },
+
+  {
+    id: 'voice',
+    title: '話すだけで、Rhythmに入る',
+    description: '右上のマイクから話すと、ToDoや予定をフォームへ整理できます。',
   },
 
   {
@@ -152,6 +161,12 @@ export const ONBOARDING_STEPS: Record<
     description:
       '通知・期限・繰り返し・ルーティン・サブタスクなどを設定できます。',
     actionLabel: '詳しく設定を見る',
+  },
+
+  voice: {
+    id: 'voice',
+    title: '話すだけで、Rhythmに入る',
+    description: '右上のマイクから話すと、ToDoや予定をフォームへ整理できます。',
   },
 
   schedule: {

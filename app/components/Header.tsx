@@ -22,12 +22,20 @@ function VoiceMicButton({ onPress, accent, surface, border }: { onPress: () => v
   );
 }
 
-export function Header({ designMode, now, compact = false, chicPalette, onVoice }: { designMode: ThemeMode; now: Date; compact?: boolean; chicPalette?: ChicThemePalette; onVoice?: () => void }) {
+function PremiumEntryButton({ onPress, accent, surface, border }: { onPress: () => void; accent: string; surface: string; border: string }) {
+  return <Pressable accessibilityRole="button" accessibilityLabel="Rhythm Premium" hitSlop={8} onPress={onPress} style={({ pressed }) => [styles.premiumEntry, { backgroundColor: surface, borderColor: border, opacity: pressed ? 0.72 : 1 }]}>
+    <Svg width={18} height={18} viewBox="0 0 24 24" accessibilityRole="image"><Path d="M12 3l2.4 6.1L20.5 12l-6.1 2.4L12 20.5l-2.4-6.1L3.5 12l6.1-2.9L12 3z" stroke={accent} strokeWidth="1.8" fill="none" strokeLinejoin="round" /></Svg>
+    <Text style={[styles.premiumEntryLabel, { color: accent }]}>Premium</Text>
+  </Pressable>;
+}
+
+export function Header({ designMode, now, compact = false, chicPalette, onVoice, onPremium }: { designMode: ThemeMode; now: Date; compact?: boolean; chicPalette?: ChicThemePalette; onVoice?: () => void; onPremium?: () => void }) {
   const theme = getThemeTokens(designMode, chicPalette?.id ?? 'cool');
   const colors = designMode === 'chic' && chicPalette
     ? { surface: chicPalette.cardSurface, border: chicPalette.border, accent: chicPalette.accent }
     : { surface: theme.colors.surface, border: theme.colors.border, accent: theme.colors.primaryAccent };
   const voiceButton = onVoice ? <VoiceMicButton onPress={onVoice} {...colors} /> : null;
+  const actions = <View style={styles.headerActions}>{onPremium ? <PremiumEntryButton onPress={onPremium} {...colors} /> : null}{voiceButton}</View>;
 
   if (compact) return (
     <View style={styles.photoHeader}>
@@ -35,7 +43,7 @@ export function Header({ designMode, now, compact = false, chicPalette, onVoice 
         <Text style={[styles.photoBrand, chicPalette && { color: chicPalette.textPrimary }]}>{'Rhythm'}</Text>
         <Text style={[styles.photoDate, chicPalette && { color: chicPalette.textSecondary }]}>{formatLiveDate(now)} ・ {formatLiveTime(now)}</Text>
       </View>
-      {voiceButton}
+      {actions}
     </View>
   );
   return (
@@ -44,7 +52,7 @@ export function Header({ designMode, now, compact = false, chicPalette, onVoice 
         <Text style={[styles.dateLabel, designMode === 'dark' && styles.dateLabelDark, designMode === 'chic' && chicPalette && { color: chicPalette.textSecondary }]}>{formatLiveDate(now)} · {formatLiveTime(now)}</Text>
         <Text style={[styles.brand, designMode !== 'chic' && styles.brandMinimal, designMode === 'dark' && styles.brandDark, designMode === 'chic' && chicPalette && { color: chicPalette.textPrimary }]}>Rhythm</Text>
       </View>
-      {voiceButton}
+      {actions}
     </View>
   );
 }
@@ -63,4 +71,7 @@ const styles = StyleSheet.create({
   photoBrand: { color: '#5B4352', fontSize: 18, fontWeight: '900', letterSpacing: -0.6 },
   photoDate: { color: '#756875', fontSize: 9, fontWeight: '800', letterSpacing: 0.35 },
   voiceButton: { width: 48, height: 48, borderRadius: 24, borderWidth: 1, alignItems: 'center', justifyContent: 'center', marginLeft: 12, zIndex: 2, shadowColor: '#000000', shadowOpacity: 0.1, shadowRadius: 6, shadowOffset: { width: 0, height: 2 }, elevation: 3 },
+  headerActions: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  premiumEntry: { minWidth: 44, height: 44, paddingHorizontal: 8, borderRadius: 22, borderWidth: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4, zIndex: 2 },
+  premiumEntryLabel: { fontSize: 10, fontWeight: '900' },
 });

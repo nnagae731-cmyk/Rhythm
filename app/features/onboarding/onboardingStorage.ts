@@ -20,6 +20,7 @@ export const DEFAULT_ONBOARDING_STATE: OnboardingState = {
 const ONBOARDING_FEATURE_IDS: readonly OnboardingFeatureId[] = [
   'intro',
   'todo',
+  'voice',
   'todoComplete',
   'completedTasks',
   'taskBuckets',

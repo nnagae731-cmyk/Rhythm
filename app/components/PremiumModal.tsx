@@ -68,6 +68,7 @@ const darkPreviewStyleOverrides: Record<string, any> = {
 };
 
 const PREMIUM_GUIDE_FEATURES: Array<{ id: PremiumGuideFeatureId; kind: PremiumPreviewKind; title: string; description: string }> = [
+  { id: 'voice', kind: 'voice', title: '音声入力', description: '話した内容から、ToDo・予定・ルーティン・叶えたいことをすぐに整理できます。Freeは1日5回、Premiumは無制限です。' },
   { id: 'focus_custom_duration', kind: 'focus_custom_duration', title: '集中時間を自由に設定', description: '決まった時間だけでなく、その日に合わせて好きな集中時間を設定できます。' },
   { id: 'records', kind: 'records', title: '今日の記録', description: '写真・ひとこと・メモを日付ごとに保存。カレンダーから記録済みの日を確認し、登録後の編集・削除もできます。' },
   { id: 'reflection', kind: 'reflection', title: '今月を振り返る', description: 'カレンダー上部のボタンから開く独立機能。今月の写真・言葉・ベストをテンプレートやレイアウトでまとめ、画像保存・共有できます。' },
@@ -85,21 +86,24 @@ const PREMIUM_GUIDE_FEATURES: Array<{ id: PremiumGuideFeatureId; kind: PremiumPr
   { id: 'photo_design', kind: 'photo_design', title: '選べるデザイン', description: '花柄1〜3、ドット、チェックデザイン、写真背景はPremiumで利用できます。FreeでもTrialや広告で試せます。Design Customizeを¥500で買い切れば、Premiumなしでも広告なしでずっと利用できます。' },
 ];
 
-type PremiumFeatureIconName = 'timer' | 'journal' | 'calendarChart' | 'calendarSync' | 'pin' | 'bell' | 'bellSparkle' | 'chart' | 'analyticsBars' | 'historyTrend' | 'calendarList' | 'search' | 'copy' | 'target' | 'pathCheck' | 'quote' | 'messageSparkle' | 'refresh' | 'palette' | 'swatches' | 'pattern';
+type PremiumFeatureIconName = 'timer' | 'journal' | 'calendarChart' | 'calendarSync' | 'pin' | 'bell' | 'bellSparkle' | 'chart' | 'analyticsBars' | 'historyTrend' | 'calendarList' | 'search' | 'copy' | 'target' | 'pathCheck' | 'quote' | 'messageSparkle' | 'refresh' | 'palette' | 'swatches' | 'pattern' | 'mic';
 
 const PREMIUM_FEATURE_ICONS: Record<PremiumGuideFeatureId, PremiumFeatureIconName> = {
+  voice: 'mic',
   focus_custom_duration: 'timer', records: 'journal', reflection: 'calendarChart', calendar: 'calendarSync', route: 'pin', travel_apps: 'pin',
   nudge: 'bellSparkle', time: 'analyticsBars', behavior: 'historyTrend', month: 'calendarList', history: 'search', recovery: 'refresh', templates: 'copy', wish: 'pathCheck',
   affirmation: 'messageSparkle', photo_design: 'swatches', floral: 'pattern', dot: 'pattern', check: 'pattern',
 };
 
 const PREMIUM_FEATURE_NAV_LABELS: Record<PremiumGuideFeatureId, string> = {
+  voice: '音声入力',
   focus_custom_duration: '集中時間', records: '今日の記録', reflection: '月の振り返り', calendar: 'カレンダー連携', route: '出発・地図・共有', travel_apps: '移動アプリ',
   nudge: '高度な通知', time: '行動分析', behavior: '振り返り', month: '月別履歴', history: '履歴検索', recovery: '立て直し', templates: 'タスクひな型', wish: '叶えたいこと',
   affirmation: 'アファメーション', photo_design: 'デザイン', floral: '花柄1〜3', dot: 'ドット', check: 'チェック',
 };
 
 const PREMIUM_FEATURE_DIFFS: Partial<Record<PremiumGuideFeatureId, { free: string; premium: string }>> = {
+  voice: { free: '1日5回まで', premium: '無制限' },
   focus_custom_duration: { free: '固定の集中時間を利用', premium: '好きな集中時間を設定' },
   records: { free: '利用できません', premium: '写真・ひとこと・メモを保存' },
   reflection: { free: '利用できません', premium: '今月の写真・言葉・ベストをまとめる' },
@@ -120,6 +124,7 @@ const PREMIUM_FEATURE_DIFFS: Partial<Record<PremiumGuideFeatureId, { free: strin
 const PREMIUM_COMPARISON_ROWS: Array<{ label: string; free: '○' | '△' | '×'; premium: '○' | '△' | '×'; note?: string }> = [
   { label: '基本のToDo・予定管理', free: '○', premium: '○' },
   { label: '基本の集中タイム', free: '○', premium: '○' },
+  { label: '音声入力', free: '△', premium: '○', note: 'Freeは1日5回' },
   { label: '今日の記録', free: '×', premium: '○' },
   { label: '今月を振り返る', free: '×', premium: '○' },
   { label: 'カレンダー取り込み', free: '△', premium: '○', note: 'Freeは広告1回で1予定' },
@@ -202,6 +207,7 @@ function PremiumFeatureIcon({ name, color }: { name: PremiumFeatureIconName; col
   const stroke = { stroke: color, strokeWidth: 2.2, strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const, fill: 'none' };
   let content: React.ReactNode;
   switch (name) {
+    case 'mic': content = <><Rect x="9" y="3" width="6" height="11" rx="3" {...stroke} /><Path d="M5.5 11a6.5 6.5 0 0013 0M12 17.5V21M9 21h6" {...stroke} /></>; break;
     case 'timer': content = <><Circle cx="12" cy="13" r="7" {...stroke} /><Line x1="12" y1="13" x2="12" y2="9" {...stroke} /><Line x1="12" y1="13" x2="15" y2="15" {...stroke} /><Line x1="9" y1="3" x2="15" y2="3" {...stroke} /><Line x1="12" y1="3" x2="12" y2="6" {...stroke} /></>; break;
     case 'journal': content = <><Rect x="5" y="3" width="14" height="18" rx="2" {...stroke} /><Line x1="8" y1="8" x2="16" y2="8" {...stroke} /><Line x1="8" y1="12" x2="16" y2="12" {...stroke} /><Line x1="8" y1="16" x2="13" y2="16" {...stroke} /></>; break;
     case 'calendarChart': content = <><Rect x="4" y="5" width="16" height="15" rx="2" {...stroke} /><Line x1="8" y1="3" x2="8" y2="7" {...stroke} /><Line x1="16" y1="3" x2="16" y2="7" {...stroke} /><Path d="M7 16l3-3 2 2 4-5" {...stroke} /></>; break;
