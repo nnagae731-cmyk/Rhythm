@@ -4,7 +4,7 @@ import Svg, { Circle, Line, Path, Rect } from 'react-native-svg';
 import { ChicThemePalette, getThemeTokens } from '../theme';
 import { Screen, ThemeMode } from '../types';
 
-export function BottomNav({ screen, designMode, chicPalette, onChange, onVoice }: { screen: Screen; designMode: ThemeMode; chicPalette?: ChicThemePalette; onChange: (screen: Screen) => void; onVoice?: () => void }) {
+export function BottomNav({ screen, designMode, chicPalette, onChange }: { screen: Screen; designMode: ThemeMode; chicPalette?: ChicThemePalette; onChange: (screen: Screen) => void }) {
   const theme = getThemeTokens(designMode);
   const designColors = designMode === 'chic' ? chicPalette : undefined;
   const items: { id: Screen; icon: string; label: string }[] = [
@@ -37,7 +37,6 @@ export function BottomNav({ screen, designMode, chicPalette, onChange, onVoice }
           </Pressable>
         );
       })}
-      {onVoice ? <Pressable accessibilityRole="button" accessibilityLabel="共通音声入力" onPress={onVoice} style={[styles.voiceButton, { backgroundColor: designColors?.cardSurface ?? theme.colors.surface, borderColor: designColors?.border ?? theme.colors.border }]}><Svg width={24} height={24} viewBox="0 0 24 24"><Rect x="9" y="3" width="6" height="11" rx="3" stroke={designColors?.accent ?? theme.colors.primaryAccent} strokeWidth="1.8" fill="none" /><Path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21M9 21h6" stroke={designColors?.accent ?? theme.colors.primaryAccent} strokeWidth="1.8" strokeLinecap="round" fill="none" /></Svg></Pressable> : null}
     </View>
   );
 }
@@ -50,5 +49,4 @@ const styles = StyleSheet.create({
   navItem: { flex: 1, alignItems: 'center', gap: 3 },
   navIcon: { color: '#A39DAA', fontSize: 20, fontWeight: '900' },
   navLabel: { color: '#A39DAA', fontSize: 10, fontWeight: '800' },
-  voiceButton: { position: 'absolute', left: '50%', top: -27, marginLeft: -25, width: 50, height: 50, borderRadius: 25, borderWidth: 1, alignItems: 'center', justifyContent: 'center', shadowColor: '#000000', shadowOpacity: 0.14, shadowRadius: 8, shadowOffset: { width: 0, height: 3 }, elevation: 5 },
 });
