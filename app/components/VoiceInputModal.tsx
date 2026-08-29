@@ -5,21 +5,26 @@ import { ChicThemePalette, DesignMode, getThemeTokens } from '../theme';
 import { VoiceIntent, VoiceParseResult, parseVoiceInput } from '../features/voiceParser';
 
 type SpeechRecognitionModule = {
-  requestPermissionsAsync: () => Promise<{ granted: boolean }>;
-  getPermissionsAsync?: () => Promise<{ granted: boolean }>;
-  requestMicrophonePermissionsAsync?: () => Promise<{ granted: boolean }>;
-  getMicrophonePermissionsAsync?: () => Promise<{ granted: boolean }>;
+  requestPermissionsAsync: () => Promise<SpeechPermission>;
+  getPermissionsAsync?: () => Promise<SpeechPermission>;
+  requestMicrophonePermissionsAsync?: () => Promise<SpeechPermission>;
+  getMicrophonePermissionsAsync?: () => Promise<SpeechPermission>;
   isRecognitionAvailable?: () => boolean;
   start: (options: { lang: string; interimResults: boolean; continuous: boolean; maxAlternatives: number; requiresOnDeviceRecognition?: boolean }) => void;
   stop: () => void;
   addListener?: (eventName: string, listener: (event: SpeechEvent) => void) => { remove: () => void };
 };
+type SpeechPermission = { granted: boolean; status?: string; canAskAgain?: boolean };
 type SpeechEvent = { results?: Array<{ transcript?: string }>; isFinal?: boolean; error?: string };
 const VOICE_DEBUG_PREFIX = '[Rhythm Voice Debug]';
 const VOICE_DEBUG_CHECKPOINT_KEY = 'rhythm.voiceDebug.lastCheckpoint';
 type VoiceDebugCheckpointName =
   | 'voice modal opened'
   | 'microphone permission check started'
+  | 'before getMicrophonePermissionsAsync()'
+  | 'after getMicrophonePermissionsAsync()'
+  | 'before requestMicrophonePermissionsAsync()'
+  | 'after requestMicrophonePermissionsAsync()'
   | 'microphone permission granted'
   | 'recognition availability checked'
   | 'startRecognition function entered'
@@ -36,6 +41,9 @@ type VoiceDebugCheckpoint = {
   permissionState: string;
   recognitionAvailable: boolean | null;
   requiresOnDeviceRecognition: boolean;
+  granted?: boolean;
+  status?: string;
+  canAskAgain?: boolean;
 };
 let voiceCheckpointWriteChain = Promise.resolve();
 const logVoiceDebug = (message: string, details?: Record<string, unknown>) => {
@@ -185,12 +193,31 @@ export function VoiceInputModal({ visible, designMode, chicPalette, dateKey, onC
         if (!speechModule) throw new Error('native-module-unavailable');
         logVoiceDebug('permission check started', { appState: AppState.currentState });
         saveVoiceCheckpoint('microphone permission check started', { permissionState: 'checking' });
-        let permission: { granted: boolean };
+        let permission: SpeechPermission;
         if (Platform.OS === 'ios') {
           logVoiceDebug('mode: microphone-only', { appState: AppState.currentState });
           if (!speechModule.getMicrophonePermissionsAsync || !speechModule.requestMicrophonePermissionsAsync) throw new Error('microphone-permission-api-unavailable');
+          saveVoiceCheckpoint('before getMicrophonePermissionsAsync()', { permissionState: 'checking' });
           const currentMicrophonePermission = await speechModule.getMicrophonePermissionsAsync();
-          permission = currentMicrophonePermission.granted ? currentMicrophonePermission : await speechModule.requestMicrophonePermissionsAsync();
+          saveVoiceCheckpoint('after getMicrophonePermissionsAsync()', {
+            permissionState: currentMicrophonePermission.granted ? 'granted' : 'denied',
+            granted: currentMicrophonePermission.granted,
+            status: currentMicrophonePermission.status,
+            canAskAgain: currentMicrophonePermission.canAskAgain,
+          });
+          if (currentMicrophonePermission.granted) {
+            permission = currentMicrophonePermission;
+          } else {
+            saveVoiceCheckpoint('before requestMicrophonePermissionsAsync()', { permissionState: 'requesting' });
+            const requestedMicrophonePermission = await speechModule.requestMicrophonePermissionsAsync();
+            saveVoiceCheckpoint('after requestMicrophonePermissionsAsync()', {
+              permissionState: requestedMicrophonePermission.granted ? 'granted' : 'denied',
+              granted: requestedMicrophonePermission.granted,
+              status: requestedMicrophonePermission.status,
+              canAskAgain: requestedMicrophonePermission.canAskAgain,
+            });
+            permission = requestedMicrophonePermission;
+          }
         } else {
           const currentPermission = speechModule.getPermissionsAsync ? await speechModule.getPermissionsAsync() : undefined;
           permission = currentPermission?.granted ? currentPermission : await speechModule.requestPermissionsAsync();
