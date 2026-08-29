@@ -1,13 +1,15 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, AppState, InteractionManager, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, AppState, InteractionManager, Modal, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { ChicThemePalette, DesignMode, getThemeTokens } from '../theme';
 import { VoiceIntent, VoiceParseResult, parseVoiceInput } from '../features/voiceParser';
 
 type SpeechRecognitionModule = {
   requestPermissionsAsync: () => Promise<{ granted: boolean }>;
   getPermissionsAsync?: () => Promise<{ granted: boolean }>;
+  requestMicrophonePermissionsAsync?: () => Promise<{ granted: boolean }>;
+  getMicrophonePermissionsAsync?: () => Promise<{ granted: boolean }>;
   isRecognitionAvailable?: () => boolean;
-  start: (options: { lang: string; interimResults: boolean; continuous: boolean; maxAlternatives: number }) => void;
+  start: (options: { lang: string; interimResults: boolean; continuous: boolean; maxAlternatives: number; requiresOnDeviceRecognition?: boolean }) => void;
   stop: () => void;
   addListener?: (eventName: string, listener: (event: SpeechEvent) => void) => { remove: () => void };
 };
@@ -97,8 +99,9 @@ export function VoiceInputModal({ visible, designMode, chicPalette, dateKey, onC
         const available = speechModule.isRecognitionAvailable ? speechModule.isRecognitionAvailable() : true;
         logVoiceDebug('recognition availability checked', { available, appState: AppState.currentState });
         if (!available) { setStatus('error'); return; }
-        logVoiceDebug('start recognition before native call', { appState: AppState.currentState });
-        speechModule.start({ lang: 'ja-JP', interimResults: true, continuous: false, maxAlternatives: 1 });
+        const requiresOnDeviceRecognition = Platform.OS === 'ios';
+        logVoiceDebug('start recognition before native call', { appState: AppState.currentState, requiresOnDeviceRecognition });
+        speechModule.start({ lang: 'ja-JP', interimResults: true, continuous: false, maxAlternatives: 1, requiresOnDeviceRecognition });
         logVoiceDebug('start recognition returned', { appState: AppState.currentState });
       } catch (error) {
         logVoiceDebug('start recognition failed', { error: error instanceof Error ? error.message : String(error), appState: AppState.currentState });
@@ -116,8 +119,16 @@ export function VoiceInputModal({ visible, designMode, chicPalette, dateKey, onC
       try {
         if (!speechModule) throw new Error('native-module-unavailable');
         logVoiceDebug('permission check started', { appState: AppState.currentState });
-        const currentPermission = speechModule.getPermissionsAsync ? await speechModule.getPermissionsAsync() : undefined;
-        const permission = currentPermission?.granted ? currentPermission : await speechModule.requestPermissionsAsync();
+        let permission: { granted: boolean };
+        if (Platform.OS === 'ios') {
+          logVoiceDebug('mode: microphone-only', { appState: AppState.currentState });
+          if (!speechModule.getMicrophonePermissionsAsync || !speechModule.requestMicrophonePermissionsAsync) throw new Error('microphone-permission-api-unavailable');
+          const currentMicrophonePermission = await speechModule.getMicrophonePermissionsAsync();
+          permission = currentMicrophonePermission.granted ? currentMicrophonePermission : await speechModule.requestMicrophonePermissionsAsync();
+        } else {
+          const currentPermission = speechModule.getPermissionsAsync ? await speechModule.getPermissionsAsync() : undefined;
+          permission = currentPermission?.granted ? currentPermission : await speechModule.requestPermissionsAsync();
+        }
         if (!active) return;
         logVoiceDebug('permission check completed', { granted: permission.granted, appState: AppState.currentState });
         if (!permission.granted) { setPermissionReady(false); setStatus('error'); Alert.alert('音声入力を使えません', '音声入力を使うにはマイクと音声認識の許可が必要です。'); return; }
@@ -125,7 +136,7 @@ export function VoiceInputModal({ visible, designMode, chicPalette, dateKey, onC
         // user starts recognition explicitly from the modal microphone button.
         setPermissionReady(true);
         setStatus('idle');
-        logVoiceDebug('permission ready; waiting for manual start', { appState: AppState.currentState });
+        logVoiceDebug('permission ready', { appState: AppState.currentState, mode: Platform.OS === 'ios' ? 'microphone-only' : 'combined' });
       } catch (error) {
         logVoiceDebug('permission check failed', { error: error instanceof Error ? error.message : String(error), appState: AppState.currentState });
         setStatus('error');
