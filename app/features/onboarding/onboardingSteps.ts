@@ -224,7 +224,7 @@ export const ONBOARDING_STEPS: Record<
     id: 'affirmation',
     title: '好きな言葉を、好きな時間に',
     description:
-      `テンプレートや自分の言葉を選び、指定した時刻に通知できます。最大5件。${PREMIUM_SUBSCRIPTION_LABEL}の機能です。`,
+      `テンプレートや自分の言葉を選び、指定した時刻に通知できます。最大20件。${PREMIUM_SUBSCRIPTION_LABEL}の機能です。`,
     actionLabel: 'アファメーションを見る',
   },
 

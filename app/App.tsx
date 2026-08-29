@@ -25,7 +25,7 @@ import { HistoryScreen, MonthlyReflectionCardView, ReflectionCardModel } from '.
 import { TaskModal } from './components/TaskModal';
 import { BulkTaskModal } from './components/BulkTaskModal';
 import { DeparturePlanForm } from './components/DeparturePlanForm';
-import { AffirmationSettingsCard } from './components/AffirmationSettingsCard';
+import { AffirmationSettingsCard, MAX_AFFIRMATIONS } from './components/AffirmationSettingsCard';
 import { PremiumModal } from './components/PremiumModal';
 import { RewardedAccessModal, RewardedAccessResult } from './components/RewardedAccessModal';
 import { BottomNav } from './components/BottomNav';
@@ -985,8 +985,8 @@ export default function App() {
       return;
     }
     const existing = affirmations.find((item) => item.id === draft.id);
-    if (!existing && affirmations.length >= 5) {
-      Alert.alert('アファメーションは最大5件までです', '不要な通知を削除してから追加してください。');
+    if (!existing && affirmations.length >= MAX_AFFIRMATIONS) {
+      Alert.alert(`アファメーションは最大${MAX_AFFIRMATIONS}件までです`, '不要な通知を削除してから追加してください。');
       return;
     }
     const duplicateTime = affirmations.find((item) => item.id !== draft.id && item.time === draft.time);
@@ -2781,32 +2781,26 @@ export default function App() {
 
   const renderOnboardingCaptureStep = (id: IntroCardId | 'customize'): React.ReactNode => {
     const previewDate = dateKey(now);
-    const completedCaptureTasks: Task[] = [
-      { id: 'capture-completed-1', title: '資料をまとめる', done: true, status: 'completed', category: '仕事', priority: '中', scheduledDate: previewDate, completedAt: new Date().toISOString(), bucket: 'now' },
-      { id: 'capture-completed-2', title: 'メールを返信する', done: true, status: 'completed', category: '仕事', priority: '低', scheduledDate: previewDate, completedAt: new Date().toISOString(), bucket: 'later' },
-      { id: 'capture-completed-3', title: '洗濯をする', done: true, status: 'completed', category: '家事', priority: '中', scheduledDate: previewDate, completedAt: new Date().toISOString(), bucket: 'later' },
-    ];
-    if (id === 'schedule') return renderPremiumReadOnlyPreview('calendar', true, { initialTab: 'deadline', previewMode: false });
-    if (id === 'focus') return renderPremiumReadOnlyPreview('calendar', true, { initialTab: 'focus', previewMode: false, previewCustomDurationOpen: false });
-    if (id === 'recovery') return <View style={{ width: '100%', justifyContent: 'center', paddingVertical: 12, backgroundColor: getThemeTokens(uiDesignMode, chicPalette.id).colors.screenBackground }}>{renderPremiumReadOnlyPreview('recovery')}</View>;
-    if (id === 'records') return <View pointerEvents="none" style={{ width: '100%', justifyContent: 'center', paddingVertical: 8 }}><TodayWinStrip tasks={completedCaptureTasks} designMode={uiDesignMode} chicPattern={effectiveChicPattern} chicPalette={chicPalette} onRestore={() => undefined} /><View style={[styles.premiumPreview, { marginTop: 10, padding: 14, minHeight: 0, backgroundColor: getThemeTokens(uiDesignMode, chicPalette.id).colors.surface, borderColor: getThemeTokens(uiDesignMode, chicPalette.id).colors.border }]}><Text style={{ color: getThemeTokens(uiDesignMode, chicPalette.id).colors.primaryText, fontSize: 15, fontWeight: '900' }}>今日できたこと</Text>{completedCaptureTasks.map((task) => <View key={task.id} style={{ marginTop: 9, paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: getThemeTokens(uiDesignMode, chicPalette.id).colors.border }}><Text style={{ color: getThemeTokens(uiDesignMode, chicPalette.id).colors.primaryText, fontSize: 13, fontWeight: '800' }}>✓ {task.title}</Text><Text style={{ color: getThemeTokens(uiDesignMode, chicPalette.id).colors.secondaryText, fontSize: 11, marginTop: 2 }}>{task.category} ・ 完了</Text></View>)}</View></View>;
-    if (id === 'quickTodo') return <View pointerEvents="none" style={{ width: '100%' }}><TaskModal visible templates={['資料をまとめる', 'スーパーに寄る']} savedTemplates={[]} designMode={uiDesignMode} chicPalette={chicPalette} planTier="premium" onPremium={() => undefined} onClose={() => undefined} onSave={() => undefined} styles={styles} helpers={{ getThemeTokens: getThemedThemeTokens, todayInputValue, hasPremiumAccess, dateForReminder, dateKey, formatLiveTime, colors: themedColors, summarizePremiumTaskTemplate }} components={{ CompactNumberSetting }} readOnlyPreview /></View>;
     const captureTasks: Task[] = [
       { id: 'capture-task-1', title: '資料をまとめる', done: false, category: '仕事', priority: '中', scheduledDate: previewDate, scheduledTime: '09:00', bucket: 'now' },
       { id: 'capture-task-2', title: 'スーパーに寄る', done: false, category: '家事', priority: '低', scheduledDate: previewDate, bucket: 'later' },
       { id: 'capture-task-3', title: '美容室を予約する', done: true, status: 'completed', category: '予定', priority: '高', scheduledDate: previewDate, completedAt: new Date().toISOString(), bucket: 'waiting' },
     ];
-    if (id === 'today') {
-      const homeTasks = captureTasks;
-      return <HomeScreen
-      tasks={homeTasks}
-      allTasks={homeTasks}
+    const completedCaptureTasks: Task[] = [
+      { id: 'capture-completed-1', title: '資料をまとめる', done: true, status: 'completed', category: '仕事', priority: '中', scheduledDate: previewDate, completedAt: new Date().toISOString(), bucket: 'now' },
+      { id: 'capture-completed-2', title: 'メールを返信する', done: true, status: 'completed', category: '仕事', priority: '低', scheduledDate: previewDate, completedAt: new Date().toISOString(), bucket: 'later' },
+      { id: 'capture-completed-3', title: '洗濯をする', done: true, status: 'completed', category: '家事', priority: '中', scheduledDate: previewDate, completedAt: new Date().toISOString(), bucket: 'later' },
+    ];
+    const renderHomePreview = (tasks: Task[], initialTab: 'now' | 'list' = 'now') => <HomeScreen
+      tasks={tasks}
+      allTasks={tasks}
       now={now}
       designMode={uiDesignMode}
       chicPalette={chicPalette}
       completionIcon="✓"
       selectionMode={false}
       selectedTaskIds={[]}
+      initialTab={initialTab}
       onAdd={() => undefined}
       onOpenFocus={() => undefined}
       onOpenSchedule={() => undefined}
@@ -2834,6 +2828,21 @@ export default function App() {
       showTaskDetailsOnboarding={false}
       helpers={{ deadlineLabel, getUrgencyStatus, getLateRiskMessage, dateForReminder, dateKey, formatLiveTime, isCheckChicPattern, todayInputValue, getThemeTokens: getThemedThemeTokens }}
     />;
+    const schedulePreviewPlans: DeparturePlan[] = [
+      { id: 'capture-schedule-1', title: '資料をまとめる', destination: 'オフィス', date: previewDate, arrival: '10:00', planMode: 'calendar_only', travelMinutes: 0, preparationMinutes: 0, bufferMinutes: 0 },
+      { id: 'capture-schedule-2', title: '買い物', destination: 'スーパー', date: previewDate, arrival: '12:00', planMode: 'calendar_only', travelMinutes: 0, preparationMinutes: 0, bufferMinutes: 0 },
+      { id: 'capture-schedule-3', title: '病院', destination: '病院', date: previewDate, arrival: '14:00', planMode: 'calendar_only', travelMinutes: 0, preparationMinutes: 0, bufferMinutes: 0 },
+    ];
+    if (id === 'schedule') return <View pointerEvents="none" style={{ width: '100%', padding: 12 }}><DailyScheduleTimeline date={previewDate} tasks={[]} plans={schedulePreviewPlans} externalEvents={[]} now={now} designMode={uiDesignMode} chicPalette={chicPalette} planTier="premium" onEditTask={() => undefined} onEditPlan={() => undefined} visibleStartHour={9} visibleEndHour={14} /></View>;
+    if (id === 'focus') return renderPremiumReadOnlyPreview('calendar', true, { initialTab: 'focus', previewMode: false, previewCustomDurationOpen: false });
+    if (id === 'recovery') return <View style={{ width: '100%', justifyContent: 'center', paddingVertical: 12, backgroundColor: getThemeTokens(uiDesignMode, chicPalette.id).colors.screenBackground }}>{renderPremiumReadOnlyPreview('recovery')}</View>;
+    if (id === 'records') return <View pointerEvents="none" style={{ width: '100%', justifyContent: 'center', paddingVertical: 8 }}><TodayWinStrip tasks={completedCaptureTasks.slice(0, 2)} designMode={uiDesignMode} chicPattern={effectiveChicPattern} chicPalette={chicPalette} onRestore={() => undefined} /><View style={[styles.premiumPreview, { marginTop: 10, padding: 14, minHeight: 0, backgroundColor: getThemeTokens(uiDesignMode, chicPalette.id).colors.surface, borderColor: getThemeTokens(uiDesignMode, chicPalette.id).colors.border }]}><Text style={{ color: getThemeTokens(uiDesignMode, chicPalette.id).colors.primaryText, fontSize: 15, fontWeight: '900' }}>今日できたこと</Text>{completedCaptureTasks.slice(0, 2).map((task) => <View key={task.id} style={{ marginTop: 9, paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: getThemeTokens(uiDesignMode, chicPalette.id).colors.border }}><Text style={{ color: getThemeTokens(uiDesignMode, chicPalette.id).colors.primaryText, fontSize: 13, fontWeight: '800' }}>✓ {task.title}</Text><Text style={{ color: getThemeTokens(uiDesignMode, chicPalette.id).colors.secondaryText, fontSize: 11, marginTop: 2 }}>{task.category} ・ 完了</Text></View>)}</View></View>;
+    if (id === 'quickTodo') {
+      const quickTodoTasks = captureTasks.slice(0, 2).map((task) => ({ ...task, bucket: 'later' as const }));
+      return <View pointerEvents="none" style={{ width: '100%', paddingVertical: 8 }}>{renderHomePreview(quickTodoTasks, 'list')}</View>;
+    }
+    if (id === 'today') {
+      return renderHomePreview(captureTasks);
     }
     if (id === 'customize') return <SettingsScreen
       tasks={captureTasks}
@@ -4293,7 +4302,7 @@ function FocusMode({ tasks, designMode, chicPalette, backgroundImageUri, planTie
   </>;
 }
 
-function DailyScheduleTimeline({ date, tasks, plans, externalEvents, now, designMode, chicPalette, planTier, onEditTask, onEditPlan }: { date: string; tasks: Task[]; plans: DeparturePlan[]; externalEvents: Calendar.Event[]; now: Date; designMode: DesignMode; chicPalette?: ChicThemePalette; planTier: PlanTier; onEditTask: (task: Task) => void; onEditPlan: (plan: DeparturePlan) => void }) {
+function DailyScheduleTimeline({ date, tasks, plans, externalEvents, now, designMode, chicPalette, planTier, onEditTask, onEditPlan, visibleStartHour, visibleEndHour }: { date: string; tasks: Task[]; plans: DeparturePlan[]; externalEvents: Calendar.Event[]; now: Date; designMode: DesignMode; chicPalette?: ChicThemePalette; planTier: PlanTier; onEditTask: (task: Task) => void; onEditPlan: (plan: DeparturePlan) => void; visibleStartHour?: number; visibleEndHour?: number }) {
   const theme = getThemeTokens(designMode, chicPalette?.id ?? 'cool');
   const isDark = designMode === 'dark';
   const categoryColors = Object.fromEntries(categories.map((category) => [category, designMode === 'chic' && chicPalette ? chicPalette.accentStrong : theme.colors.primaryAccent])) as Record<Category, string>;
@@ -4334,8 +4343,8 @@ function DailyScheduleTimeline({ date, tasks, plans, externalEvents, now, design
     const endMinutes = item.endTime ? Math.max(startMinutes, parseClock(item.endTime)) : startMinutes;
     return [Math.floor(startMinutes / 60), Math.ceil(endMinutes / 60)];
   });
-  const firstHour = Math.min(7, ...axisHours);
-  const lastHour = Math.max(22, ...axisHours);
+  const firstHour = Math.min(visibleStartHour ?? 7, ...axisHours);
+  const lastHour = Math.max(visibleEndHour ?? 22, ...axisHours);
   const timelineHours = Array.from({ length: lastHour - firstHour + 1 }, (_, index) => firstHour + index);
   const hourHeight = 64;
   const axisStartMinutes = firstHour * 60;
