@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { LayoutChangeEvent, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import Svg, { Circle, Line, Path, Rect } from 'react-native-svg';
 import { ChicThemePalette, DesignMode } from '../theme';
 import { PremiumGuideFeatureId } from '../premiumGuide';
@@ -235,10 +235,10 @@ function PremiumFeatureIcon({ name, color }: { name: PremiumFeatureIconName; col
   return <Svg width={26} height={26} viewBox="0 0 24 24" accessibilityRole="image">{content}</Svg>;
 }
 
-function PremiumFeatureEntryCard({ icon, title, active, chicPalette, onPress, styles, primaryText, accent, accentStrong, border }: { icon: PremiumFeatureIconName; title: string; active: boolean; chicPalette?: ChicThemePalette; onPress: () => void; styles: any; primaryText: string; accent: string; accentStrong: string; border: string }) {
-  return <Pressable onPress={onPress} style={[styles.premiumEntryCard, { width: 112, minHeight: 70, backgroundColor: 'transparent', borderWidth: 0, borderBottomWidth: active ? 2 : 1, borderBottomColor: active ? accent : border, borderRadius: 0, paddingHorizontal: 4, paddingVertical: 8, alignItems: 'center' }]}>
-    <PremiumFeatureIcon name={icon} color={active ? accent : (chicPalette ? chicPalette.textSecondary : primaryText)} />
-    <Text numberOfLines={2} style={[styles.premiumEntryTitle, { color: active ? accentStrong : primaryText, marginTop: 5, textAlign: 'center' }, chicPalette && { color: active ? chicPalette.accentStrong : chicPalette.textPrimary }]}>{title}</Text>
+function PremiumFeatureEntryCard({ icon, title, active, onPress, onLayout, styles, secondaryText, accent, accentStrong, border }: { icon: PremiumFeatureIconName; title: string; active: boolean; onPress: () => void; onLayout?: (event: LayoutChangeEvent) => void; styles: any; secondaryText: string; accent: string; accentStrong: string; border: string }) {
+  return <Pressable onLayout={onLayout} onPress={onPress} style={[styles.premiumEntryCard, { width: 112, minHeight: 70, backgroundColor: 'transparent', borderWidth: 0, borderBottomWidth: active ? 2 : 1, borderBottomColor: active ? accent : border, borderRadius: 0, paddingHorizontal: 4, paddingVertical: 8, alignItems: 'center' }]}>
+    <PremiumFeatureIcon name={icon} color={active ? accent : secondaryText} />
+    <Text numberOfLines={2} style={[styles.premiumEntryTitle, { color: active ? accentStrong : secondaryText, marginTop: 5, textAlign: 'center' }]}>{title}</Text>
   </Pressable>;
 }
 
@@ -321,7 +321,7 @@ export function PremiumModal({ visible, initialFeatureId, designMode, chicPalett
   const [selectedFeatureId, setSelectedFeatureId] = useState<PremiumGuideFeatureId>(initialFeatureId);
   const featurePickerRef = useRef<ScrollView>(null);
   const selectedFeature = PREMIUM_GUIDE_FEATURES.find((feature) => feature.id === selectedFeatureId) ?? PREMIUM_GUIDE_FEATURES[initialIndex] ?? PREMIUM_GUIDE_FEATURES[0]!;
-  const selectedIndex = Math.max(0, PREMIUM_GUIDE_FEATURES.findIndex((feature) => feature.id === selectedFeature.id));
+  const featureTabOffsets = useRef<Record<string, number>>({});
   const [purchaseOpen, setPurchaseOpen] = useState(false);
   const [comparisonOpen, setComparisonOpen] = useState(false);
   const [purchaseStatus, setPurchaseStatus] = useState<'idle' | 'processing' | 'success' | 'unavailable'>('idle');
@@ -350,8 +350,10 @@ export function PremiumModal({ visible, initialFeatureId, designMode, chicPalett
     }
   }, [visible]);
   useEffect(() => {
-    if (visible) featurePickerRef.current?.scrollTo({ x: Math.max(0, selectedIndex * 122 - 70), animated: false });
-  }, [selectedIndex, visible]);
+    if (!visible) return;
+    const offset = featureTabOffsets.current[selectedFeature.id];
+    if (typeof offset === 'number') featurePickerRef.current?.scrollTo({ x: Math.max(0, offset - 16), animated: false });
+  }, [selectedFeature.id, visible]);
   // Do not keep the feature previews mounted while the modal is closed. This
   // avoids rendering all preview cards during app startup and while navigating
   // unrelated screens, while preserving the existing modal state on reopen.
@@ -406,7 +408,10 @@ export function PremiumModal({ visible, initialFeatureId, designMode, chicPalett
           <Pressable style={styles.premiumTextLink} onPress={onClose}><Text style={[styles.premiumTextLinkText, { color: accentStrong }]}>閉じる</Text></Pressable>
         </ScrollView> : <ScrollView style={styles.premiumCarouselArea} contentContainerStyle={styles.premiumModalScroll} showsVerticalScrollIndicator={false} nestedScrollEnabled keyboardShouldPersistTaps="handled">
           <ScrollView ref={featurePickerRef} horizontal nestedScrollEnabled directionalLockEnabled showsHorizontalScrollIndicator={false} style={styles.premiumFeaturePicker} contentContainerStyle={styles.premiumFeaturePickerContent}>
-            {PREMIUM_GUIDE_FEATURES.map((feature) => <PremiumFeatureEntryCard key={feature.id} icon={PREMIUM_FEATURE_ICONS[feature.id]} title={PREMIUM_FEATURE_NAV_LABELS[feature.id]} active={feature.id === selectedFeature.id} chicPalette={chicPalette} accent={accent} accentStrong={accentStrong} primaryText={primaryText} border={theme.colors.border} onPress={() => setSelectedFeatureId(feature.id)} styles={styles} />)}
+            {PREMIUM_GUIDE_FEATURES.map((feature) => <PremiumFeatureEntryCard key={feature.id} icon={PREMIUM_FEATURE_ICONS[feature.id]} title={PREMIUM_FEATURE_NAV_LABELS[feature.id]} active={feature.id === selectedFeature.id} accent={accent} accentStrong={accentStrong} secondaryText={secondaryText} border={theme.colors.border} onPress={() => setSelectedFeatureId(feature.id)} onLayout={(event) => {
+              featureTabOffsets.current[feature.id] = event.nativeEvent.layout.x;
+              if (visible && feature.id === selectedFeature.id) featurePickerRef.current?.scrollTo({ x: Math.max(0, event.nativeEvent.layout.x - 16), animated: false });
+            }} styles={styles} />)}
           </ScrollView>
           <View key={`premium-feature-stage-${selectedFeature.id}-${designMode}`} style={styles.premiumFeatureStage}>
             <PremiumFeatureDetail icon={PREMIUM_FEATURE_ICONS[selectedFeature.id]} kind={selectedFeature.kind} title={selectedFeature.title} description={selectedFeature.description} designMode={designMode} chicPalette={chicPalette} styles={styles} renderReadOnlyPreview={renderReadOnlyPreview} surface={surface} surfaceSoft={surfaceSoft} border={theme.colors.border} primaryText={primaryText} secondaryText={secondaryText} accentColor={accent} />

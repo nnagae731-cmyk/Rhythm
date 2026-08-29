@@ -2608,6 +2608,14 @@ export default function App() {
       next.premiumPreview = [(styles as Record<string, any>).premiumPreview, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }];
       next.premiumPreviewViewport = [(styles as Record<string, any>).premiumPreviewViewport, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }];
       next.premiumPreviewViewportContent = [(styles as Record<string, any>).premiumPreviewViewportContent, { backgroundColor: theme.colors.surface }];
+      // The calendar event picker keeps a light card surface in the production
+      // preview. Override the generic dark remap for that card only so its
+      // title/date remain readable without changing dark surfaces elsewhere.
+      const lightCardText = getThemeTokens('minimal', chicPalette.id).colors;
+      next.calendarEventPickerTitle = [(styles as Record<string, any>).calendarEventPickerTitle, { color: lightCardText.primaryText }];
+      next.calendarEventTitle = [(styles as Record<string, any>).calendarEventTitle, { color: lightCardText.primaryText }];
+      next.calendarEventDate = [(styles as Record<string, any>).calendarEventDate, { color: lightCardText.secondaryText }];
+      next.calendarImportArrow = [(styles as Record<string, any>).calendarImportArrow, { color: theme.colors.primaryAccent }];
       return next;
     })();
     const previewTasks: Task[] = [
@@ -4922,6 +4930,11 @@ function NotificationManagerCard({ designMode, readOnly = false }: { designMode?
 
 function TodayWinStrip({ tasks, designMode, chicPattern, chicPalette, onRestore, onOpenCompleted, onOpenFocus, onToggleTask, onOpenTaskActions, selectionMode = false, selectedTaskIds = [] }: { tasks: Task[]; designMode: ThemeMode; chicPattern: ChicPattern; chicPalette: ChicThemePalette; onRestore: (id: string) => void; onOpenCompleted?: () => void; onOpenFocus?: () => void; onToggleTask?: (id: string) => void; onOpenTaskActions?: (task: Task) => void; selectionMode?: boolean; selectedTaskIds?: string[] }) {
   const theme = getThemeTokens(designMode, chicPalette.id);
+  // Completed-task cards use a light surface even when the surrounding sheet
+  // is Mono Dark. Keep the card copy on the matching dark-on-light palette.
+  const completedCardText = designMode === 'dark'
+    ? getThemeTokens('minimal', chicPalette.id).colors
+    : theme.colors;
   const now = new Date();
   const todayKey = dateKey(now);
   const scheduledToday = tasks.filter((task) => !task.scheduledDate || normalizeTaskDateKey(task.scheduledDate)! <= todayKey).filter((task) => !isTaskSkippedOnDate(task, todayKey));
@@ -4965,8 +4978,8 @@ function TodayWinStrip({ tasks, designMode, chicPattern, chicPalette, onRestore,
             <View key={task.id} style={[styles.completedDetailRow, designMode === 'minimal' && styles.completedDetailRowMinimal]}>
               <Text style={[styles.completedDetailIcon, { color: theme.colors.primaryAccent }]}>{designMode !== 'chic' ? '✓' : '✿'}</Text>
               <View style={{ flex: 1 }}>
-                <Text style={[styles.taskTitle, { color: theme.colors.primaryText }]}>{task.title}</Text>
-                <Text style={[styles.taskMeta, { color: theme.colors.secondaryText }]}>{task.category}</Text>
+                <Text style={[styles.taskTitle, { color: completedCardText.primaryText }]}>{task.title}</Text>
+                <Text style={[styles.taskMeta, { color: completedCardText.secondaryText }]}>{task.category}</Text>
               </View>
               <Pressable style={[styles.restoreButton, { backgroundColor: theme.colors.softAccent }]} onPress={() => onRestore(task.id)}>
                 <Text style={[styles.restoreButtonText, { color: theme.colors.primaryAccent }]}>元に戻す</Text>
