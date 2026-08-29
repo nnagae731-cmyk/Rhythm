@@ -2333,7 +2333,9 @@ export default function App() {
     }
     if (result.intent === 'routine' && result.explicitRoutineCompletion) {
       const today = dateKey();
-      const candidates = findVoiceRoutineCandidates(tasksRef.current, result.title);
+      const candidates = result.title
+        ? findVoiceRoutineCandidates(tasksRef.current, result.title)
+        : tasksRef.current.filter((task) => task.isRoutine && !task.done && !task.routineEndedAt);
       const target = candidates.length === 1 ? candidates[0] : undefined;
       const targetDate = target?.scheduledDate ? normalizeTaskDateKey(target.scheduledDate) : undefined;
       if (!target) {
