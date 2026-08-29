@@ -3,6 +3,7 @@ import {
   FlatList,
   Modal,
   Pressable,
+  SafeAreaView,
   StyleSheet,
   Text,
   useWindowDimensions,
@@ -42,6 +43,48 @@ function IntroPreview({
       {card.id === 'focus' && <><View style={styles.previewFocus}><Text style={styles.previewFocusTime}>25:00</Text><Text style={styles.previewFocusTask}>資料をまとめる</Text><View style={styles.previewButton}><Text style={styles.previewButtonText}>スタート</Text></View></View></>}
       {card.id === 'recovery' && <View style={styles.previewRecovery}><Text style={styles.previewLabel}>予定が崩れても</Text><Text style={styles.previewRecoveryTitle}>ここから立て直す</Text><Text style={styles.previewRecoveryText}>今の状況から、次にできることを選べます。</Text><View style={styles.previewRecoveryActions}><Text style={styles.previewRecoveryAction}>今から出発</Text><Text style={styles.previewRecoveryAction}>予定を変更</Text><Text style={styles.previewRecoveryAction}>連絡する</Text></View></View>}
       {card.id === 'records' && <><View style={styles.previewCalendar}><Text style={styles.previewCalendarTitle}>2026年 8月</Text><View style={styles.previewCalendarRow}>{['18', '19', '20', '21', '22', '23'].map((day) => <Text key={day} style={day === '23' ? styles.previewCalendarDayActive : styles.previewCalendarDay}>{day}</Text>)}</View></View><View style={styles.previewRecord}><Text style={styles.previewRecordTitle}>今日できたこと</Text><Text style={styles.previewRecordText}>写真・ひとこと・メモ</Text></View></>}
+    </View>
+  );
+}
+
+/**
+ * Fits a production screen preview into the intro card without changing the
+ * production screen's layout or clipping its content before it is measured.
+ */
+function OnboardingPreviewViewport({ children }: { children: React.ReactNode }) {
+  const [viewport, setViewport] = useState({ width: 0, height: 0 });
+  const [canvas, setCanvas] = useState({ width: 0, height: 0 });
+  const availableWidth = Math.max(0, viewport.width - 16);
+  const availableHeight = Math.max(0, viewport.height - 16);
+  const scale = canvas.width > 0 && canvas.height > 0 && availableWidth > 0 && availableHeight > 0
+    ? Math.min(1, availableWidth / canvas.width, availableHeight / canvas.height)
+    : 1;
+  const scaledWidth = canvas.width > 0 ? canvas.width * scale : undefined;
+  const scaledHeight = canvas.height > 0 ? canvas.height * scale : undefined;
+
+  return (
+    <View
+      style={styles.productionPreviewViewport}
+      pointerEvents="none"
+      onLayout={(event) => {
+        const { width, height } = event.nativeEvent.layout;
+        if (width !== viewport.width || height !== viewport.height) setViewport({ width, height });
+      }}
+    >
+      <View style={styles.productionPreviewViewportContent}>
+        <View style={{ width: scaledWidth ?? '100%', height: scaledHeight ?? '100%', alignItems: 'center', justifyContent: 'center' }}>
+          <View
+            collapsable={false}
+            onLayout={(event) => {
+              const { width, height } = event.nativeEvent.layout;
+              if (width !== canvas.width || height !== canvas.height) setCanvas({ width, height });
+            }}
+            style={{ width: canvas.width || '100%', transform: [{ scale }] }}
+          >
+            {children}
+          </View>
+        </View>
+      </View>
     </View>
   );
 }
@@ -103,7 +146,7 @@ export function OnboardingCarousel({
       presentationStyle="fullScreen"
       onRequestClose={onDismiss}
     >
-      <View style={styles.screen}>
+      <SafeAreaView style={styles.screen}>
         <View style={styles.top}>
           <Text style={styles.brand}>
             Rhythm
@@ -163,7 +206,7 @@ export function OnboardingCarousel({
               ]}
             >
               <View style={styles.card}>
-                {renderStep ? <View style={styles.productionPreview}>{renderStep(item.id)}</View> : <IntroPreview card={item} />}
+                {renderStep ? <View style={styles.productionPreview}><OnboardingPreviewViewport>{renderStep(item.id)}</OnboardingPreviewViewport></View> : <IntroPreview card={item} />}
 
                 <Text style={styles.title}>
                   {item.title}
@@ -229,7 +272,7 @@ export function OnboardingCarousel({
             </Text>
           </Pressable>
         </View>
-      </View>
+      </SafeAreaView>
     </Modal>
   );
 }
@@ -239,12 +282,11 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor:
       theme.colors.screenBackground,
-    paddingTop: 22,
   },
 
   top: {
     minHeight: 54,
-    paddingHorizontal: 22,
+    paddingHorizontal: 18,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
@@ -264,10 +306,14 @@ const styles = StyleSheet.create({
   },
 
   skipButton: {
-    minWidth: 44,
-    minHeight: 44,
+    width: 68,
+    height: 46,
+    borderRadius: 12,
+    backgroundColor: theme.colors.secondarySurface,
     alignItems: 'center',
     justifyContent: 'center',
+    zIndex: 30,
+    elevation: 10,
   },
 
   skipSpacer: {
@@ -305,10 +351,26 @@ const styles = StyleSheet.create({
   },
 
   productionPreview: {
-    minHeight: 250,
-    maxHeight: 340,
-    overflow: 'hidden',
+    width: '100%',
+    marginBottom: 12,
+  },
+
+  productionPreviewViewport: {
+    width: '100%',
+    height: 320,
+    minHeight: 240,
     borderRadius: 14,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    backgroundColor: theme.colors.surface,
+    overflow: 'hidden',
+  },
+
+  productionPreviewViewportContent: {
+    flex: 1,
+    width: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 
   previewHeader: { color: theme.colors.primaryText, fontSize: 13, fontWeight: '900', marginBottom: 10 },

@@ -181,6 +181,7 @@ export function OnboardingHint({
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="GUIDEを終了"
+          hitSlop={10}
           onPress={() => { setOpen(false); onExitTour(); }}
           style={styles.exitTourButton}
         >
@@ -254,11 +255,13 @@ const styles = StyleSheet.create({
   },
 
   closeButton: {
-    width: 44,
-    height: 44,
+    width: 64,
+    height: 46,
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: 22,
+    borderRadius: 23,
+    zIndex: 30,
+    elevation: 10,
   },
 
   closeButtonPressed: {
@@ -321,13 +324,15 @@ const styles = StyleSheet.create({
 
   exitTourButton: {
     alignSelf: 'center',
-    minHeight: 44,
-    minWidth: 44,
+    minHeight: 46,
+    minWidth: 64,
     paddingHorizontal: 10,
     paddingVertical: 10,
     marginTop: 2,
     alignItems: 'center',
     justifyContent: 'center',
+    zIndex: 30,
+    elevation: 10,
   },
 
   exitTourText: {

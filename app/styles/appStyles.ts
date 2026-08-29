@@ -512,7 +512,7 @@ export const styles = StyleSheet.create({
   darkText: { color: '#FFFFFF' },
   darkSubText: { color: '#C7CCD5' },
   premiumCarouselArea: { flex: 1 },
-  premiumHeaderClose: { minWidth: 44, minHeight: 44, paddingVertical: 8, paddingHorizontal: 8, alignItems: 'center', justifyContent: 'center', borderRadius: 22 },
+  premiumHeaderClose: { width: 64, height: 46, paddingVertical: 8, paddingHorizontal: 8, alignItems: 'center', justifyContent: 'center', borderRadius: 23, zIndex: 30, elevation: 10 },
   premiumTopActions: { marginTop: 0, marginBottom: 7 },
   premiumTopCta: { minHeight: 44, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
   premiumTopCtaText: { fontSize: 14, fontWeight: '900' },
