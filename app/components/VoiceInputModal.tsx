@@ -106,7 +106,7 @@ function useSpeechEvent(eventName: string, listener: (event: SpeechEvent) => voi
   }, [eventName, listener]);
 }
 
-type Props = { visible: boolean; designMode: DesignMode; chicPalette?: ChicThemePalette; dateKey: (date: Date) => string; onClose: () => void; onRoute: (result: VoiceParseResult) => void; hapticsEnabled?: boolean; isPremium?: boolean; remainingUses?: number; onRecognitionAccepted?: () => void };
+type Props = { visible: boolean; designMode: DesignMode; chicPalette?: ChicThemePalette; dateKey: (date: Date) => string; onClose: () => void; onRoute: (result: VoiceParseResult) => boolean; hapticsEnabled?: boolean; isPremium?: boolean; remainingUses?: number; onRecognitionAccepted?: () => void };
 const INTENT_LABELS: Array<[VoiceIntent, string]> = [['todo', 'ToDo'], ['schedule', '予定'], ['routine', 'Routine'], ['focus', '集中'], ['wish', 'Wish'], ['wishAction', 'Wish Action']];
 
 export function VoiceInputModal({ visible, designMode, chicPalette, dateKey, onClose, onRoute, hapticsEnabled = true, isPremium = false, remainingUses, onRecognitionAccepted }: Props) {
@@ -204,6 +204,15 @@ export function VoiceInputModal({ visible, designMode, chicPalette, dateKey, onC
     })();
   };
 
+  const routeResult = React.useCallback((result: VoiceParseResult) => {
+    const handled = onRoute(result);
+    if (handled && !usageConsumedRef.current) {
+      usageConsumedRef.current = true;
+      onRecognitionAccepted?.();
+    }
+    return handled;
+  }, [onRecognitionAccepted, onRoute]);
+
   useEffect(() => {
     if (!visible) { routedRef.current = false; usageConsumedRef.current = false; setPermissionReady(false); setStatus('idle'); setTranscript(''); setParsed(undefined); return; }
     let active = true;
@@ -274,15 +283,17 @@ export function VoiceInputModal({ visible, designMode, chicPalette, dateKey, onC
 
   useEffect(() => {
     if (!parsed || status !== 'processing') return;
-    if (!usageConsumedRef.current) {
-      usageConsumedRef.current = true;
-      onRecognitionAccepted?.();
-    }
     setStatus('recognized');
-    if (parsed.intent !== 'ambiguous' && !routedRef.current) { routedRef.current = true; onRoute(parsed); }
-  }, [onRecognitionAccepted, onRoute, parsed, status]);
+    if (parsed.intent !== 'ambiguous' && !routedRef.current) {
+      const handled = routeResult(parsed);
+      routedRef.current = handled;
+    }
+  }, [parsed, routeResult, status]);
 
-  const chooseIntent = (intent: VoiceIntent) => { if (!parsed || intent === 'ambiguous') return; routedRef.current = true; onRoute({ ...parsed, intent }); };
+  const chooseIntent = (intent: VoiceIntent) => {
+    if (!parsed || intent === 'ambiguous') return;
+    routedRef.current = routeResult({ ...parsed, intent });
+  };
   const stop = () => { try { speechModule?.stop(); } catch { /* no-op */ } if (transcript && !parsed) { setParsed(parseVoiceInput(transcript, new Date(), dateKey)); setStatus('processing'); } };
   const statusLabel = status === 'listening' ? '聞き取り中…' : status === 'processing' ? '解析しています…' : status === 'recognized' ? '認識しました' : status === 'error' ? '音声入力を利用できません' : '話してください';
 

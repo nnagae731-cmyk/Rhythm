@@ -1355,13 +1355,13 @@ export default function App() {
     recordBehaviorEvent(createNotificationActionEvent({ notificationInstanceId: args.notificationInstanceId, action: args.action, taskId: args.taskId, taskTitle: task?.title ?? scheduled?.taskTitleSnapshot, actualAt: args.actualAt, scheduledAt: scheduled?.scheduledAt }));
   }, [recordBehaviorEvent]);
 
-  const completeTaskIds = React.useCallback((ids: string[], source: 'manual' | 'notification' = 'manual') => {
+  const completeTaskIds = React.useCallback((ids: string[], source: 'manual' | 'notification' = 'manual'): boolean => {
     const previousTasks = tasksRef.current;
     const result = completeTasksAndCollectEvents(tasksRef.current, ids);
-    if (result.tasks === tasksRef.current) return;
+    if (result.tasks === tasksRef.current) return false;
     tasksRef.current = result.tasks;
     setTasks(result.tasks);
-    if (result.newlyCompleted.length === 0) return;
+    if (result.newlyCompleted.length === 0) return false;
     result.newlyCompleted.forEach((task) => { void cancelPendingTaskNotifications(task.id); });
     const previousIds = new Set(previousTasks.map((task) => task.id));
     result.tasks.filter((task) => !previousIds.has(task.id) && !task.done).forEach((nextTask) => {
@@ -1383,6 +1383,7 @@ export default function App() {
       }));
       if (task.isRoutine) recordBehaviorEvent(createRoutineStateChangedBehaviorEvent({ taskId: task.id, routineId: task.routineId ?? task.id, routineTitle: task.title, occurredAt: completedAt, targetDate: dateKey(completedAt), completed: true, source }));
     });
+    return true;
   }, [hapticsEnabled, recordBehaviorEvent, showCompletionAffirmation]);
   affirmationsRef.current = affirmations;
   completeTaskIdsRef.current = completeTaskIds;
@@ -2313,7 +2314,7 @@ export default function App() {
     setPlanEditorOpen(true);
   }, []);
 
-  const handleVoiceRoute = (result: VoiceParseResult) => {
+  const handleVoiceRoute = (result: VoiceParseResult): boolean => {
     setVoiceOpen(false);
     setVoiceTaskDraft(undefined);
     setVoiceWishDraft(undefined);
@@ -2321,15 +2322,15 @@ export default function App() {
       setTimelineInitialTab('focus');
       if (!result.focusDurationMinutes || !result.executeFocus) {
         setScreen('timeline');
-        return;
+        return false;
       }
       if (planTier !== 'premium') {
         openPremiumFeature('focus_custom_duration');
-        return;
+        return false;
       }
       setVoiceFocusRequest({ durationMinutes: result.focusDurationMinutes, id: Date.now() });
       setScreen('timeline');
-      return;
+      return true;
     }
     if (result.intent === 'routine' && result.explicitRoutineCompletion) {
       const today = dateKey();
@@ -2342,32 +2343,36 @@ export default function App() {
         Alert.alert('完了するルーティンを確認してください', candidates.length > 1 ? '同じ名前のルーティンが複数あります。Routine画面から選択してください。' : '一致する未完了のルーティンがありません。Routine画面から確認してください。');
         setAnalysisInitialTab('routine');
         setScreen('analysis');
-        return;
+        return false;
       }
       if (targetDate && targetDate !== today) {
         Alert.alert('今日は対象日ではありません', 'Routine画面から対象日を確認してください。');
         setAnalysisInitialTab('routine');
         setScreen('analysis');
-        return;
+        return false;
       }
       // Use the same completion path as the manual Routine check so the
       // repeating task, routine history, behavior events, and notifications
       // stay in sync.
-      completeTaskIds([target.id]);
+      const completed = completeTaskIds([target.id]);
       setAnalysisInitialTab('routine');
       setScreen('analysis');
-      return;
+      return completed;
     }
     if (result.intent === 'routine' && result.explicitRoutineRegistration) {
-      addTask(result.title, categories[0]!, priorities[1]!, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, result.repeatRule ?? 'daily', 'once', result.scheduledDate ?? dateKey(), undefined, undefined, true);
+      if (!result.title.trim()) {
+        setScreen('home');
+        return false;
+      }
+      const routine = addTask(result.title, categories[0]!, priorities[1]!, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, result.repeatRule ?? 'daily', 'once', result.scheduledDate ?? dateKey(), undefined, undefined, true);
       setScreen('home');
-      return;
+      return Boolean(routine);
     }
     if (result.intent === 'todo' || result.intent === 'routine') {
       setVoiceTaskDraft(result);
       setScreen('home');
       setAddOpen(true);
-      return;
+      return Boolean(result.title.trim());
     }
     if (result.intent === 'schedule') {
       setPlan({
@@ -2382,17 +2387,19 @@ export default function App() {
       setTimelineInitialTab('calendar');
       setScreen('timeline');
       setPlanEditorOpen(true);
-      return;
+      return Boolean(result.title.trim() && result.scheduledTime);
     }
     if (result.intent === 'wish' || result.intent === 'wishAction') {
       if (result.intent === 'wishAction' && planTier !== 'premium') {
         openPremiumFeature('wish');
-        return;
+        return false;
       }
       const relatedWish = currentWishState.wishes.find((wish) => Boolean(result.relatedWishTitle) && (wish.title.includes(result.relatedWishTitle!) || result.relatedWishTitle!.includes(wish.title)));
       setVoiceWishDraft({ mode: result.intent === 'wishAction' ? 'action' : 'wish', title: result.title, wishId: relatedWish?.id });
       setScreen('wish');
+      return Boolean(result.title.trim());
     }
+    return false;
   };
 
   useEffect(() => {
@@ -3268,6 +3275,17 @@ export default function App() {
     };
   }, [pendingGuideFeature, releaseGuideTransition]);
 
+  const handleHeaderVoice = React.useCallback(() => {
+    // During the first-run tour the real header microphone is the GUIDE
+    // target. A tap marks that step complete without opening recognition or
+    // consuming the Free allowance; the next feature then appears normally.
+    if (firstRunDemoActive && productionGuideFeature === 'voice') {
+      void advanceGuide('voice');
+      return;
+    }
+    openVoiceInput();
+  }, [advanceGuide, firstRunDemoActive, openVoiceInput, productionGuideFeature]);
+
   /*
    * Target readiness is advisory only.  It can help a screen position a
    * spotlight, but it must never prevent the next GUIDE card from appearing.
@@ -3381,7 +3399,7 @@ export default function App() {
         <CThemeRibbonPreload />
         {uiDesignMode === 'chic' && !photoThemeEnabled && <View pointerEvents="none" style={StyleSheet.absoluteFillObject}><ChicPatternDecor pattern={effectiveChicPattern} accent={chicPalette.accent} warm={chicPalette.accentSoft} checkColor={chicCheckColor} /></View>}
         {backgroundVeilVisible && <View pointerEvents="none" style={[StyleSheet.absoluteFillObject, { backgroundColor: backgroundVeilColor, opacity: backgroundVeilOpacity }]} />}
-        {photoTopImageUri && screen !== 'wish' ? <><Header designMode={uiDesignMode} now={now} compact chicPalette={chicPalette} onVoice={openVoiceInput} onPremium={planTier === 'premium' ? undefined : () => openPremiumFeature('voice')} /><View style={styles.photoThemeTopImage}><Image source={{ uri: photoTopImageUri }} resizeMode="contain" style={styles.photoThemeTopImageContent} /></View></> : <Header designMode={uiDesignMode} now={now} chicPalette={chicPalette} onVoice={openVoiceInput} onPremium={planTier === 'premium' ? undefined : () => openPremiumFeature('voice')} />}
+        {photoTopImageUri && screen !== 'wish' ? <><Header designMode={uiDesignMode} now={now} compact chicPalette={chicPalette} onVoice={handleHeaderVoice} onPremium={planTier === 'premium' ? undefined : () => openPremiumFeature('voice')} /><View style={styles.photoThemeTopImage}><Image source={{ uri: photoTopImageUri }} resizeMode="contain" style={styles.photoThemeTopImageContent} /></View></> : <Header designMode={uiDesignMode} now={now} chicPalette={chicPalette} onVoice={handleHeaderVoice} onPremium={planTier === 'premium' ? undefined : () => openPremiumFeature('voice')} />}
         {completionAffirmation && <Animated.View pointerEvents="none" style={{ position: 'absolute', top: 72, left: 20, right: 20, zIndex: 30, opacity: completionAffirmationOpacity, alignItems: 'center' }}><View style={{ maxWidth: 340, paddingHorizontal: 18, paddingVertical: 12, borderRadius: 18, backgroundColor: uiDesignMode === 'dark' ? '#20293A' : uiDesignMode === 'chic' ? chicPalette.cardSurface : '#FFFFFF', borderWidth: 1, borderColor: uiDesignMode === 'dark' ? '#40506A' : uiDesignMode === 'chic' ? chicPalette.border : '#E5E0E5', shadowColor: '#000', shadowOpacity: 0.12, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 4 }}><Text style={{ textAlign: 'center', color: uiDesignMode === 'dark' ? '#F4F7FC' : uiDesignMode === 'chic' ? chicPalette.textPrimary : '#282538', fontSize: 14, fontWeight: '600' }}>{completionAffirmation}</Text></View></Animated.View>}
 
         <ScrollView contentContainerStyle={[styles.content, screen === 'timeline' && styles.contentTimeline]} keyboardShouldPersistTaps="handled">

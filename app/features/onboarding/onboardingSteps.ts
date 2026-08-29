@@ -34,11 +34,11 @@ export type OnboardingFeatureId =
  */
 export const FREE_GUIDE_TOUR = [
   'todo',
-  'voice',
   'taskDetails',
   'taskBuckets',
   'todoComplete',
   'completedTasks',
+  'voice',
   'schedule',
   'planRegistration',
   'focus',
@@ -165,8 +165,8 @@ export const ONBOARDING_STEPS: Record<
 
   voice: {
     id: 'voice',
-    title: '話すだけで、Rhythmに入る',
-    description: '右上のマイクから話すと、ToDoや予定をフォームへ整理できます。',
+    title: '話すだけで追加できます',
+    description: 'ToDoや予定、ルーティンも、右上のマイクから話して追加できます。',
   },
 
   schedule: {
