@@ -16,7 +16,7 @@
         "NSMicrophoneUsageDescription": "音声入力で話した内容を文字に変換するためにマイクを使用します。",
         "NSSpeechRecognitionUsageDescription": "音声入力で話した内容を文字に変換するために音声認識を使用します。"
       },
-      "buildNumber": "2",
+      "buildNumber": "3",
       "entitlements": {
         "com.apple.developer.usernotifications.time-sensitive": true,
         "com.apple.security.application-groups": [
@@ -51,16 +51,10 @@
         "expo-image-picker",
         {
           "photosPermission": "好きな写真をRhythmの背景やトップ画像に設定するために使用します。",
-          "cameraPermission": false,
-          "microphonePermission": false
+          "cameraPermission": false
         }
       ],
-      [
-        "expo-av",
-        {
-          "microphonePermission": false
-        }
-      ],
+      "expo-av",
       [
         "expo-speech-recognition",
         {
