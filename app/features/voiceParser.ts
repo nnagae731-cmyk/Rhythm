@@ -59,8 +59,8 @@ function parseFocusDuration(value: string) {
 
 function stripRoutineInstruction(value: string) {
   return value
-    .replace(/^(?:これ|それ)(?:を)?\s*(?:ルーティン|習慣)(?:に)?(?:して|する|登録して|化して)\s*[、,]?\s*/u, '')
-    .replace(/(?:の)?(?:を)?\s*(?:ルーティン|習慣)(?:に)?(?:して|する|登録して|化して)\s*[。！？]?$/u, '')
+    .replace(/^(?:これ|それ)(?:を)?\s*(?:ルーティン|ルーチン|ルーティーン|routine|習慣)(?:に)?(?:して|する|登録して|化して)\s*[、,]?\s*/iu, '')
+    .replace(/(?:の)?(?:を)?\s*(?:ルーティン|ルーチン|ルーティーン|routine|習慣)(?:に)?(?:して|する|登録して|化して)\s*[。！？]?$/iu, '')
     .trim();
 }
 
@@ -69,7 +69,7 @@ export function parseVoiceInput(input: string, now = new Date(), dateKey?: (date
   const transcript = input.trim();
   const task = parseSmartTaskInput(transcript, now, dateKey);
   const hasRoutine = /毎日|毎朝|毎晩|毎週|平日|毎月/u.test(transcript);
-  const executeRoutine = /(?:ルーティン|routine|習慣)(?:に)?(?:して|する|登録して|化して)/iu.test(transcript);
+  const executeRoutine = /(?:ルーティン|ルーチン|ルーティーン|routine|習慣)(?:に)?(?:して|する|登録して|化して)/iu.test(transcript);
   const focusDurationMinutes = parseFocusDuration(transcript);
   const hasFocus = /集中/u.test(transcript);
   const executeFocus = Boolean(focusDurationMinutes && hasFocus && /始めて|開始(?:して)?|起動(?:して)?|スタート(?:して)?|セットして|集中(?:する|して)(?:よ|ね|。)?$/u.test(transcript));
