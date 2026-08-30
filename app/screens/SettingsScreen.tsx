@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Alert, DevSettings, Image, Pressable, Switch, Text, TextInput, View } from 'react-native';
+import { BannerAd, BannerAdSize, TestIds } from 'react-native-google-mobile-ads';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { ChicCheckColor, ChicPattern, ChicThemePalette, DesignMode, getDesignCheckColorLabel, getThemeTokens } from '../theme';
 import { Affirmation, AffirmationCustomText, PhotoThemePhotoTarget, PhotoThemeSettings, Task, WidgetSize } from '../types';
@@ -12,6 +13,11 @@ import { TravelAppSettings } from '../features/travel/travelApps';
 import { STORAGE_KEY } from '../storage/rhythmState';
 import { ONBOARDING_STORAGE_KEY } from '../features/onboarding/onboardingStorage';
 import { REWARDED_ACCESS_STORAGE_KEY } from '../features/ads/rewardedAccessStorage';
+
+// Keep the production unit configurable without scattering IDs through the UI.
+// Development builds use Google's test unit unless an explicit test/production
+// override is supplied by the build environment.
+const SETTINGS_BANNER_AD_UNIT_ID = process.env.EXPO_PUBLIC_RHYTHM_BANNER_AD_UNIT_ID ?? TestIds.BANNER;
 
 function DesignCustomizeCard({ designMode, chicPalette, planTier, purchased, onOpen, onTry }: { designMode: DesignMode; chicPalette?: ChicThemePalette; planTier: PlanTier; purchased: boolean; onOpen?: () => void; onTry: () => void }) {
   const theme = getThemeTokens(designMode, chicPalette?.id ?? 'cool');
@@ -314,6 +320,13 @@ export function SettingsScreen({
          <Pressable style={[styles.settingsCard, isDark && styles.darkSurface]} onPress={onReview}><Text style={[styles.settingsTitle, isDark && styles.darkBodyText]}>アプリを評価する</Text><Text style={[styles.switchCopy, isDark && styles.darkMutedText]}>短いレビューでRhythmの改善を応援できます</Text></Pressable>
        </SettingsDisclosure>
       </>}
+      {!captureDesignOnly && <View style={{ alignItems: 'center', marginTop: 24, marginBottom: 12, paddingVertical: 8 }} accessibilityLabel="広告">
+        <BannerAd
+          unitId={SETTINGS_BANNER_AD_UNIT_ID}
+          size={BannerAdSize.ANCHORED_ADAPTIVE_BANNER}
+          requestOptions={{ requestNonPersonalizedAdsOnly: true }}
+        />
+      </View>}
     </>
   );
 }

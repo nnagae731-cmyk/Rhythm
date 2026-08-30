@@ -158,6 +158,9 @@ function configureWidgetBuildConfigurations(project, target) {
     buildSettings.APPLICATION_EXTENSION_API_ONLY = 'YES';
     buildSettings.TARGETED_DEVICE_FAMILY = '1';
     buildSettings.SWIFT_VERSION = '5.0';
+    // Keep the Widget extension's Swift module distinct from the local
+    // RhythmWidget Expo module pod imported by ExpoModulesProvider.
+    buildSettings.PRODUCT_MODULE_NAME = 'RhythmWidgetExtension';
   });
 }
 

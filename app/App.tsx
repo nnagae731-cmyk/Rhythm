@@ -53,7 +53,8 @@ import { getDeparturePlanMode, getPlanScheduledTime, isArrivalReversePlan, isDep
 import { WishScreen } from './WishScreen';
 import { VoiceInputModal } from './components/VoiceInputModal';
 import { VoiceParseResult } from './features/voiceParser';
-import { consumeVoiceUsage, FREE_VOICE_DAILY_LIMIT, normalizeVoiceUsage, remainingVoiceUses, VoiceUsage } from './features/voice/voiceUsage';
+import { consumeVoiceUsage, grantVoiceReward as grantVoiceUsageReward, normalizeVoiceUsage, remainingVoiceRewards, remainingVoiceUses, VoiceUsage } from './features/voice/voiceUsage';
+import { VoiceUsageLimitModal } from './components/VoiceUsageLimitModal';
 import { buildRoutineInterruptionSummary, getRoutineHistories } from './features/analytics/routineInterruptionAnalysis';
 import type { RoutineArchive } from './types';
 import { SharedEventScreen } from './SharedEventScreen';
@@ -613,7 +614,9 @@ export default function App() {
   const [addOpen, setAddOpen] = useState(false);
   const [bulkAddOpen, setBulkAddOpen] = useState(false);
   const [voiceOpen, setVoiceOpen] = useState(false);
-  const [voiceUsage, setVoiceUsage] = useState<VoiceUsage>(() => ({ date: dateKey(), count: 0 }));
+  const [voiceUsage, setVoiceUsage] = useState<VoiceUsage>(() => ({ date: dateKey(), count: 0, rewardedCount: 0, bonusUses: 0 }));
+  const [voiceUsageLimitOpen, setVoiceUsageLimitOpen] = useState(false);
+  const voiceRewardBusyRef = React.useRef(false);
   const openVoiceInputRef = React.useRef<() => void>(() => undefined);
   const [voiceTaskDraft, setVoiceTaskDraft] = useState<VoiceParseResult>();
   const [voiceWishDraft, setVoiceWishDraft] = useState<{ mode: 'wish' | 'action'; title: string; wishId?: string }>();
@@ -844,15 +847,8 @@ export default function App() {
       return;
     }
     const current = normalizeVoiceUsage(voiceUsage, dateKey());
-    if (current.count >= FREE_VOICE_DAILY_LIMIT) {
-      Alert.alert(
-        '今日の無料音声入力を使い切りました',
-        'Freeでは音声入力を1日5回まで使えます。Premiumなら回数を気にせず使えます。',
-        [
-          { text: 'また明日', style: 'cancel' },
-          { text: 'Premiumを見る', onPress: () => openPremiumFeature('voice') },
-        ],
-      );
+    if (remainingVoiceUses(current, dateKey()) <= 0) {
+      setVoiceUsageLimitOpen(true);
       return;
     }
     setVoiceUsage(current);
@@ -863,6 +859,26 @@ export default function App() {
     if (planTier === 'premium' || onboarding.state.firstRunStage === 'demo') return;
     setVoiceUsage((current) => consumeVoiceUsage(current, dateKey()));
   }, [onboarding.state.firstRunStage, planTier]);
+  const grantVoiceReward = React.useCallback(async (): Promise<boolean> => {
+    if (planTier === 'premium' || voiceRewardBusyRef.current) return false;
+    const current = normalizeVoiceUsage(voiceUsage, dateKey());
+    if (remainingVoiceRewards(current, dateKey()) <= 0) return false;
+    voiceRewardBusyRef.current = true;
+    try {
+      let showTestRewardedAd: typeof import('./services/rewardedAds').showTestRewardedAd;
+      try {
+        ({ showTestRewardedAd } = require('./services/rewardedAds') as typeof import('./services/rewardedAds'));
+      } catch {
+        return false;
+      }
+      const earned = await showTestRewardedAd().catch(() => false);
+      if (!earned) return false;
+      setVoiceUsage((value) => grantVoiceUsageReward(value, dateKey()));
+      return true;
+    } finally {
+      voiceRewardBusyRef.current = false;
+    }
+  }, [planTier, voiceUsage]);
   // Development plan switches are session-only test controls. Close the
   // Premium sheet before changing the plan so its transparent Modal/backdrop
   // cannot remain mounted over the production app after the override rerender.
@@ -3967,6 +3983,22 @@ export default function App() {
         components={{ CompactNumberSetting }}
       />}
       <PremiumModal visible={premiumOpen} initialFeatureId={premiumTargetFeature} designMode={uiDesignMode} chicPalette={chicPalette} planTier={planTier} isDevelopment={__DEV__} onMockPlanTier={handleMockPlanTier} onClose={() => setPremiumOpen(false)} styles={styles} helpers={{ getThemeTokens: getThemedThemeTokens }} renderReadOnlyPreview={renderPremiumReadOnlyPreview} />
+      <VoiceUsageLimitModal
+        visible={voiceUsageLimitOpen}
+        designMode={uiDesignMode}
+        chicPalette={chicPalette}
+        canWatchReward={remainingVoiceRewards(voiceUsage, dateKey()) > 0}
+        onReward={async () => {
+          const earned = await grantVoiceReward();
+          if (earned) {
+            setVoiceUsageLimitOpen(false);
+            setVoiceOpen(true);
+          }
+          return earned;
+        }}
+        onPremium={() => { setVoiceUsageLimitOpen(false); openPremiumFeature('voice'); }}
+        onClose={() => setVoiceUsageLimitOpen(false)}
+      />
       <VoiceInputModal visible={voiceOpen} designMode={uiDesignMode} chicPalette={chicPalette} dateKey={dateKey} onClose={() => setVoiceOpen(false)} onRoute={handleVoiceRoute} hapticsEnabled={hapticsEnabled} isPremium={planTier === 'premium'} remainingUses={remainingVoiceUses(voiceUsage, dateKey())} onRecognitionAccepted={consumeVoiceInput} />
       <DesignCustomizeModal visible={designCustomizeOpen} designMode={uiDesignMode} chicPalette={chicPalette} purchased={designCustomizePurchased} isDevelopment={__DEV__} onPurchase={purchaseDesignCustomize} onRestore={restoreDesignCustomizePurchase} onPremium={() => { setDesignCustomizeOpen(false); openPremiumFeature('photo_design'); }} onClose={() => setDesignCustomizeOpen(false)} />
       {__DEV__ && <OnboardingCaptureStudio visible={captureStudioOpen} onClose={() => setCaptureStudioOpen(false)} renderStep={renderOnboardingCaptureStep} renderGuideStep={renderGuideCaptureStep} renderPremiumStep={renderPremiumReadOnlyPreview} colors={{ background: theme.colors.screenBackground, surface: theme.colors.surface, border: theme.colors.border, text: theme.colors.primaryText, muted: theme.colors.secondaryText, accent: theme.colors.primaryAccent, onAccent: uiDesignMode === 'chic' && chicPalette ? chicPalette.onAccent : uiDesignMode === 'dark' ? theme.colors.screenBackground : '#FFFFFF' }} />}

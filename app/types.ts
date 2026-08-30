@@ -267,5 +267,5 @@ export type PersistedState = {
   /** Explicitly deactivated routines retained for 90 days. */
   routineArchives?: RoutineArchive[];
   /** Local daily voice recognition usage; optional for older saves. */
-  voiceUsage?: { date: string; count: number };
+  voiceUsage?: { date: string; count: number; rewardedCount?: number; bonusUses?: number };
 };
