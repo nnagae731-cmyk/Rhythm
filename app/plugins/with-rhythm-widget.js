@@ -1,4 +1,4 @@
-const { IOSConfig, withDangerousMod, withEntitlementsPlist, withPodfile, withXcodeProject } = require('expo/config-plugins');
+const { withDangerousMod, withEntitlementsPlist, withPodfile, withXcodeProject } = require('expo/config-plugins');
 const fs = require('fs');
 const path = require('path');
 
@@ -140,13 +140,33 @@ function findNativeTarget(project, targetName) {
   return null;
 }
 
+function getWidgetBuildConfigurations(project, configurationListId) {
+  const lists = project.pbxXCConfigurationList?.() ?? {};
+  const buildConfigurations = project.pbxXCBuildConfigurationSection?.() ?? {};
+  const rawListId = typeof configurationListId === 'object'
+    ? configurationListId.value
+    : configurationListId;
+  const listId = unquoteXcodeValue(rawListId);
+  const configurationList = lists[listId] ?? lists[`"${listId}"`];
+  if (!configurationList || !Array.isArray(configurationList.buildConfigurations)) return [];
+
+  return configurationList.buildConfigurations
+    .map((entry) => {
+      const rawConfigurationId = typeof entry === 'object' ? entry.value : entry;
+      const configurationId = unquoteXcodeValue(rawConfigurationId);
+      return [configurationId, buildConfigurations[configurationId] ?? buildConfigurations[`"${configurationId}"`]];
+    })
+    .filter(([, configuration]) => configuration?.isa === 'XCBuildConfiguration');
+}
+
 function configureWidgetBuildConfigurations(project, target) {
   if (!target?.buildConfigurationList) return;
 
-  const configurations = IOSConfig.XcodeUtils.getBuildConfigurationsForListId(
-    project,
-    target.buildConfigurationList,
-  );
+  // Resolve the list attached to this PBXNativeTarget directly. The generic
+  // XcodeUtils helper can miss newly-created target lists when the project
+  // parser retains quoted UUID keys; mutating a global configuration set would
+  // also risk applying Widget settings to the app or Pods targets.
+  const configurations = getWidgetBuildConfigurations(project, target.buildConfigurationList);
   configurations.forEach(([, configuration]) => {
     const buildSettings = configuration.buildSettings ?? (configuration.buildSettings = {});
     buildSettings.INFOPLIST_FILE = `${TARGET_NAME}/${TARGET_NAME}-Info.plist`;
