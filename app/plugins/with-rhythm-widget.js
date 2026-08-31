@@ -159,7 +159,7 @@ function getWidgetBuildConfigurations(project, configurationListId) {
     .filter(([, configuration]) => configuration?.isa === 'XCBuildConfiguration');
 }
 
-function configureWidgetBuildConfigurations(project, target) {
+function configureWidgetBuildConfigurations(project, target, appConfig) {
   if (!target?.buildConfigurationList) return;
 
   // Resolve the list attached to this PBXNativeTarget directly. The generic
@@ -169,11 +169,18 @@ function configureWidgetBuildConfigurations(project, target) {
   const configurations = getWidgetBuildConfigurations(project, target.buildConfigurationList);
   configurations.forEach(([, configuration]) => {
     const buildSettings = configuration.buildSettings ?? (configuration.buildSettings = {});
+    const appVersion = String(appConfig?.version ?? '1.0.0');
+    const appBuildNumber = String(appConfig?.ios?.buildNumber ?? '1');
     buildSettings.INFOPLIST_FILE = `${TARGET_NAME}/${TARGET_NAME}-Info.plist`;
     buildSettings.CODE_SIGN_ENTITLEMENTS = `${TARGET_NAME}/${TARGET_NAME}.entitlements`;
     buildSettings.DEVELOPMENT_TEAM = 'KV26KLUSL6';
     buildSettings.CODE_SIGN_STYLE = 'Automatic';
     buildSettings.PRODUCT_BUNDLE_IDENTIFIER = BUNDLE_IDENTIFIER;
+    // Keep the extension metadata synchronized with the parent app version.
+    // These values come from Expo app config, so future version/build changes
+    // are propagated without hardcoding the current release numbers.
+    buildSettings.MARKETING_VERSION = appVersion;
+    buildSettings.CURRENT_PROJECT_VERSION = appBuildNumber;
     buildSettings.IPHONEOS_DEPLOYMENT_TARGET = '15.1';
     buildSettings.APPLICATION_EXTENSION_API_ONLY = 'YES';
     buildSettings.TARGETED_DEVICE_FAMILY = '1';
@@ -288,7 +295,7 @@ function ensureWidgetSourceFiles(project, target) {
 
 }
 
-function addWidgetTarget(project) {
+function addWidgetTarget(project, appConfig) {
   const existingTarget = findNativeTarget(project, TARGET_NAME);
   if (!existingTarget) {
     project.addTarget(TARGET_NAME, 'app_extension', TARGET_NAME, BUNDLE_IDENTIFIER);
@@ -302,7 +309,7 @@ function addWidgetTarget(project) {
   ensureWidgetSourceFiles(project, target);
   // Apply values directly to the target's configuration list so the settings
   // are attached to the exact PBXNativeTarget used by archive.
-  configureWidgetBuildConfigurations(project, target);
+  configureWidgetBuildConfigurations(project, target, appConfig);
 }
 
 module.exports = function withRhythmWidget(config) {
@@ -325,7 +332,7 @@ module.exports = function withRhythmWidget(config) {
     return nextConfig;
   });
   config = withXcodeProject(config, (nextConfig) => {
-    addWidgetTarget(nextConfig.modResults);
+    addWidgetTarget(nextConfig.modResults, nextConfig);
     return nextConfig;
   });
   return config;
