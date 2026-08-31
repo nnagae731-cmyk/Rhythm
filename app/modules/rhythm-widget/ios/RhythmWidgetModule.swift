@@ -14,7 +14,9 @@ public final class RhythmWidgetModule: Module {
         throw NSError(domain: "RhythmWidget", code: 1, userInfo: [NSLocalizedDescriptionKey: "App Group is unavailable"])
       }
       defaults.set(snapshot, forKey: self.snapshotKey)
-      WidgetCenter.shared.reloadTimelines(ofKind: "RhythmWidget")
+      ["RhythmWidget", "RhythmCurrentTaskWidget", "RhythmNextScheduleWidget"].forEach {
+        WidgetCenter.shared.reloadTimelines(ofKind: $0)
+      }
       return true
     }
   }

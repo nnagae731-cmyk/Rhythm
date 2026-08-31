@@ -5,5 +5,7 @@ import SwiftUI
 struct RhythmWidgetBundle: WidgetBundle {
   var body: some Widget {
     RhythmWidget()
+    RhythmCurrentTaskWidget()
+    RhythmNextScheduleWidget()
   }
 }

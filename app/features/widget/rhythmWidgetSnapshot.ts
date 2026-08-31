@@ -7,14 +7,34 @@ import { dateForReminder, dateKey } from '../tasks/taskUtils';
 
 export const RHYTHM_WIDGET_APP_GROUP = 'group.app.rhythm.daily';
 
+export type RhythmWidgetAppearance = {
+  /** Reserved for the future Widget settings UI. Mono remains the default. */
+  style: 'mono' | 'color' | 'photo';
+  accentHex?: string;
+};
+
 export type RhythmWidgetSnapshot = {
   updatedAt: string;
-  currentTask?: { id: string; title: string };
+  appearance?: RhythmWidgetAppearance;
+  currentTask?: {
+    id: string;
+    title: string;
+    startAt?: string;
+    estimatedMinutes?: number;
+    /** Minutes until the scheduled start when it is in the future. */
+    remainingMinutes?: number;
+    status?: string;
+    priority?: Task['priority'];
+  };
   nextPlan?: {
     id?: string;
     title: string;
     scheduledAt: string;
+    location?: string;
     allDay?: boolean;
+    leaveAt?: string;
+    remainingToLeave?: number;
+    /** Kept for compatibility with the first snapshot schema. */
     departureAt?: string;
   };
 };
@@ -47,6 +67,19 @@ function departureAtForWidget(plan: DeparturePlan, checkIns: DepartureCheckIn[],
   return undefined;
 }
 
+function taskStartAt(task: Task | undefined) {
+  if (!task || !task.scheduledDate || !task.scheduledTime) return undefined;
+  return dateForReminder(task.scheduledDate, task.scheduledTime);
+}
+
+function taskEstimatedMinutes(task: Task | undefined) {
+  if (!task || !task.scheduledDate || !task.scheduledTime || !task.endAt) return undefined;
+  const start = dateForReminder(task.scheduledDate, task.scheduledTime);
+  const end = dateForReminder(task.scheduledDate, task.endAt);
+  const minutes = Math.round((end.getTime() - start.getTime()) / 60000);
+  return minutes > 0 ? minutes : undefined;
+}
+
 export function buildRhythmWidgetSnapshot({
   tasks,
   departurePlans,
@@ -68,18 +101,41 @@ export function buildRhythmWidgetSnapshot({
     ? departureAtForWidget(nextPlan.plan, departureCheckIns, canShowArrivalReverseCountdown)
     : undefined;
   const departureAt = rawDepartureAt && rawDepartureAt.getTime() > now.getTime() ? rawDepartureAt : undefined;
+  const startAt = taskStartAt(currentTask);
+  const estimatedMinutes = taskEstimatedMinutes(currentTask);
+  const remainingMinutes = startAt && startAt.getTime() > now.getTime()
+    ? Math.max(0, Math.ceil((startAt.getTime() - now.getTime()) / 60000))
+    : undefined;
+  const remainingToLeave = departureAt
+    ? Math.max(0, Math.ceil((departureAt.getTime() - now.getTime()) / 60000))
+    : undefined;
 
   return {
     updatedAt: now.toISOString(),
-    ...(currentTask ? { currentTask: { id: currentTask.id, title: currentTask.title } } : {}),
+    ...(currentTask ? {
+      currentTask: {
+        id: currentTask.id,
+        title: currentTask.title,
+        ...(startAt ? { startAt: startAt.toISOString() } : {}),
+        ...(estimatedMinutes ? { estimatedMinutes } : {}),
+        ...(remainingMinutes !== undefined ? { remainingMinutes } : {}),
+        status: currentTask.status ?? (currentTask.done ? 'completed' : 'active'),
+        priority: currentTask.priority,
+      },
+    } : {}),
     ...(nextPlan ? {
       nextPlan: {
         id: nextPlan.plan.id,
         title: nextPlan.plan.title,
         scheduledAt: nextPlan.scheduledAt.toISOString(),
+        ...(nextPlan.plan.destination?.trim() ? { location: nextPlan.plan.destination.trim() } : {}),
         ...(nextPlan.plan.allDay ? { allDay: true } : {}),
         ...(departureAt
-          ? { departureAt: departureAt.toISOString() }
+          ? {
+            leaveAt: departureAt.toISOString(),
+            remainingToLeave,
+            departureAt: departureAt.toISOString(),
+          }
           : {}),
       },
     } : {}),
