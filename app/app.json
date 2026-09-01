@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "Rhythm",
+    "name": "RhythmPace",
     "slug": "rhythm",
     "version": "0.1.0",
     "orientation": "portrait",
@@ -55,6 +55,7 @@
         }
       ],
       "expo-av",
+      "expo-iap",
       [
         "expo-speech-recognition",
         {

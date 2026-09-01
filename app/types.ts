@@ -10,6 +10,26 @@ import type { TravelAppSettings } from './features/travel/travelApps';
 export type Screen = 'home' | 'timeline' | 'analysis' | 'settings' | 'wish';
 export type TimeTab = 'departure' | 'deadline' | 'calendar' | 'focus';
 export type WidgetSize = 'small' | 'medium';
+export type WidgetType = 'current' | 'next' | 'combined' | 'monthly' | 'weekly' | 'today' | 'checklist' | 'goal' | 'voice' | 'affirmation';
+export type WidgetStyle = 'mono' | 'color' | 'photo';
+export type WidgetAccentColor = 'blue' | 'purple' | 'pink' | 'green' | 'orange' | 'gray';
+export type WidgetPhotoSource = 'widget' | 'wish';
+export type WidgetPhotoLayout = 'background' | 'right' | 'top' | 'card' | 'circle';
+export type WidgetDisplayOption = 'startTime' | 'remainingTime' | 'status' | 'scheduleTime' | 'location' | 'remainingToLeave' | 'currentTask' | 'nextPlan' | 'combinedRemainingToLeave';
+export type WidgetSettings = {
+  widgetType: WidgetType;
+  style: WidgetStyle;
+  accentColor: WidgetAccentColor;
+  /** App-local, managed copy used when the Widget photo source is `widget`. */
+  photoUri?: string;
+  photoSource: WidgetPhotoSource;
+  photoLayout: WidgetPhotoLayout;
+  displayOptions: Partial<Record<WidgetDisplayOption, boolean>>;
+  /** Optional defaults used by the affirmation widget. Kept app-local and backward compatible. */
+  affirmationRotationMode?: 'fixed' | 'automatic';
+  affirmationBackgrounds?: Array<'floral' | 'dot' | 'check' | 'photo'>;
+  affirmationPhotoUris?: string[];
+};
 export type Category = '仕事' | '家事' | '健康' | '予定' | 'その他';
 export type Priority = '高' | '中' | '低';
 export type RepeatRule = 'none' | 'daily' | 'weekdays' | 'weekly' | 'monthly';
@@ -230,6 +250,8 @@ export type PersistedState = {
   plan: DeparturePlan;
   departurePlans: DeparturePlan[];
   widgetSize: WidgetSize;
+  /** Optional first-generation Widget appearance/display settings. */
+  widgetSettings?: WidgetSettings;
   showCompleted: boolean;
   completionIcon: string;
   designMode: DesignMode;

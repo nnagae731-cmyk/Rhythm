@@ -25,7 +25,8 @@ export type OnboardingFeatureId =
   | 'wish'
   | 'affirmation'
   | 'design'
-  | 'recovery';
+  | 'recovery'
+  | 'widgetGuide';
 
 /**
  * The first-run tour is intentionally explicit. It is separate from the
@@ -63,7 +64,10 @@ export type IntroCardId =
   | 'schedule'
   | 'focus'
   | 'recovery'
-  | 'records';
+  | 'records'
+  | 'widget'
+  | 'widgetAdd'
+  | 'widgetEdit';
 
 export type OnboardingStep = {
   id: OnboardingFeatureId;
@@ -120,6 +124,30 @@ export const INTRO_CARDS: IntroCard[] = [
     id: 'records',
     title: 'できたことも、ちゃんと残る',
     description: '完了したことを振り返って、今日の積み重ねを確認できます。',
+  },
+  {
+    id: 'widget',
+    title: 'ホーム画面から、すぐ動ける。',
+    description: '「今はこれ」「次の予定」「カレンダー」などをWidgetですぐ確認。音声入力やアファメーションも、ホーム画面から使えます。',
+  },
+];
+
+/** Short, repeatable guide shown from Settings > Widget. */
+export const WIDGET_GUIDE_CARDS: IntroCard[] = [
+  {
+    id: 'widgetAdd',
+    title: 'Widgetをホーム画面に追加しよう',
+    description: 'ホーム画面を長押しして、「＋」からRhythmPaceを選びます。',
+  },
+  {
+    id: 'widget',
+    title: '好きなWidgetを選ぶ',
+    description: '「今はこれ」「予定」「カレンダー」「音声入力」など、使いたいWidgetを追加できます。',
+  },
+  {
+    id: 'widgetEdit',
+    title: '見た目もWidgetごとに変えられる',
+    description: '追加したWidgetを長押しして「ウィジェットを編集」を選ぶと、Mono / Design / Photoから好きな見た目を選べます。',
   },
 ];
 
@@ -256,6 +284,11 @@ export const ONBOARDING_STEPS: Record<
     title: '予定が崩れても、ここから',
     description:
       '遅れてしまった時も、今から出発・予定を変更・遅れる連絡など、次にできることを選べます。',
+  },
+  widgetGuide: {
+    id: 'widgetGuide',
+    title: 'Widgetをホーム画面に追加しよう',
+    description: 'ホーム画面から予定やタスクを確認する方法を案内します。',
   },
 };
 

@@ -3,7 +3,7 @@ import { Alert, DevSettings, Image, Pressable, Switch, Text, TextInput, View } f
 import { BannerAd, BannerAdSize, TestIds } from 'react-native-google-mobile-ads';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { ChicCheckColor, ChicPattern, ChicThemePalette, DesignMode, getDesignCheckColorLabel, getThemeTokens } from '../theme';
-import { Affirmation, AffirmationCustomText, PhotoThemePhotoTarget, PhotoThemeSettings, Task, WidgetSize } from '../types';
+import { Affirmation, AffirmationCustomText, PhotoThemePhotoTarget, PhotoThemeSettings, Task, WidgetSettings, WidgetSize } from '../types';
 import { PlanTier } from '../premiumAccess';
 import { PremiumGuideFeatureId } from '../premiumGuide';
 import { PremiumTaskTemplate } from '../taskTemplates';
@@ -13,13 +13,14 @@ import { TravelAppSettings } from '../features/travel/travelApps';
 import { STORAGE_KEY } from '../storage/rhythmState';
 import { ONBOARDING_STORAGE_KEY } from '../features/onboarding/onboardingStorage';
 import { REWARDED_ACCESS_STORAGE_KEY } from '../features/ads/rewardedAccessStorage';
+import { WidgetSettingsCard } from '../components/WidgetSettingsCard';
 
 // Keep the production unit configurable without scattering IDs through the UI.
 // Development builds use Google's test unit unless an explicit test/production
 // override is supplied by the build environment.
 const SETTINGS_BANNER_AD_UNIT_ID = process.env.EXPO_PUBLIC_RHYTHM_BANNER_AD_UNIT_ID ?? TestIds.BANNER;
 
-function DesignCustomizeCard({ designMode, chicPalette, planTier, purchased, onOpen, onTry }: { designMode: DesignMode; chicPalette?: ChicThemePalette; planTier: PlanTier; purchased: boolean; onOpen?: () => void; onTry: () => void }) {
+function DesignCustomizeCard({ designMode, chicPalette, planTier, purchased, localizedPrice, priceStatus, onOpen, onTry }: { designMode: DesignMode; chicPalette?: ChicThemePalette; planTier: PlanTier; purchased: boolean; localizedPrice?: string; priceStatus?: 'loading' | 'ready' | 'unavailable'; onOpen?: () => void; onTry: () => void }) {
   const theme = getThemeTokens(designMode, chicPalette?.id ?? 'cool');
   const colors = designMode === 'chic' && chicPalette
     ? { surface: chicPalette.cardSurface, border: chicPalette.border, text: chicPalette.textPrimary, muted: chicPalette.textSecondary, accent: chicPalette.accent, soft: chicPalette.accentSoft, onAccent: chicPalette.onAccent }
@@ -28,7 +29,7 @@ function DesignCustomizeCard({ designMode, chicPalette, planTier, purchased, onO
     <Text style={{ color: colors.text, fontSize: 15, fontWeight: '900' }}>Design Customize</Text>
     {planTier === 'premium' ? <Text style={{ color: colors.accent, marginTop: 6, fontSize: 12, fontWeight: '800' }}>Premiumで利用できます</Text> : purchased ? <Text style={{ color: colors.accent, marginTop: 6, fontSize: 12, fontWeight: '800' }}>購入済み</Text> : <>
       <Text style={{ color: colors.muted, marginTop: 6, fontSize: 12, lineHeight: 18, fontWeight: '600' }}>Rhythmの見た目を、もっと自分らしく。{ '\n' }Designと写真カスタマイズを広告なしでずっと使えます。</Text>
-      <Text style={{ color: colors.accent, marginTop: 8, fontSize: 14, fontWeight: '900' }}>買い切り（価格はApp Storeで表示）</Text>
+      <Text style={{ color: colors.accent, marginTop: 8, fontSize: 14, fontWeight: '900' }}>{priceStatus === 'loading' ? '価格を取得中…' : localizedPrice ? `買い切り ${localizedPrice}` : '価格は購入画面で確認'}</Text>
       <View style={{ flexDirection: 'row', gap: 8, marginTop: 11 }}>
         <Pressable onPress={onTry} style={{ flex: 1, minHeight: 40, borderRadius: 11, borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center' }}><Text style={{ color: colors.accent, fontSize: 12, fontWeight: '900' }}>試してみる</Text></Pressable>
         <Pressable onPress={onOpen} style={{ flex: 1, minHeight: 40, borderRadius: 11, backgroundColor: colors.accent, alignItems: 'center', justifyContent: 'center' }}><Text style={{ color: colors.onAccent, fontSize: 12, fontWeight: '900' }}>購入画面を開く</Text></Pressable>
@@ -58,7 +59,14 @@ export function SettingsScreen({
   affirmationCustomTexts,
   photoTheme,
   travelApps,
+  widgetSettings,
+  onPickWidgetPhoto,
+  onRemoveAffirmationPhoto,
+  onWidgetGuide,
+  onRefreshWidget,
+  onWidgetSectionOpened,
   onSize,
+  onWidgetSettings,
   onShowCompleted,
   onCompletionIcon,
   onDesignMode,
@@ -85,6 +93,8 @@ export function SettingsScreen({
   onDeleteSavedTemplate,
   onOpenCaptureStudio,
   designCustomizePurchased = false,
+  designCustomizePrice,
+  designCustomizePriceStatus,
   onOpenDesignCustomize,
   initialAppearanceOpen = false,
   captureDesignOnly = false,
@@ -112,7 +122,14 @@ export function SettingsScreen({
   affirmationCustomTexts: AffirmationCustomText[];
   photoTheme: PhotoThemeSettings;
   travelApps: TravelAppSettings;
+  widgetSettings: WidgetSettings;
+  onPickWidgetPhoto?: () => void;
+  onRemoveAffirmationPhoto?: (index?: number) => void;
+  onWidgetGuide?: () => void;
+  onRefreshWidget?: () => void;
+  onWidgetSectionOpened?: () => void;
   onSize: (size: WidgetSize) => void;
+  onWidgetSettings: (settings: WidgetSettings) => void;
   onShowCompleted: (value: boolean) => void;
   onCompletionIcon: (icon: string) => void;
   onDesignMode: (mode: DesignMode) => void;
@@ -139,6 +156,8 @@ export function SettingsScreen({
   onDeleteSavedTemplate: (template: PremiumTaskTemplate) => void;
   onOpenCaptureStudio?: () => void;
   designCustomizePurchased?: boolean;
+  designCustomizePrice?: string;
+  designCustomizePriceStatus?: 'loading' | 'ready' | 'unavailable';
   onOpenDesignCustomize?: () => void;
   /** Opens the appearance section for the first-run design choice. */
   initialAppearanceOpen?: boolean;
@@ -226,7 +245,7 @@ export function SettingsScreen({
           <Text style={planTier === 'premium' ? styles.affirmationEdit : styles.taskTemplateSavePremium}>{planTier === 'premium' ? (selectedMode === 'photo' ? '選択中' : '選ぶ') : designCustomizePurchased ? (selectedMode === 'photo' ? '選択中' : '選ぶ') : (selectedMode === 'photo' ? '広告で解放' : '試す')}</Text>
         </Pressable>
           {selectedMode === 'photo' && <PhotoThemeSettingsCard photoTheme={photoTheme} designMode={designMode} chicPalette={chicPalette} planTier={planTier} designCustomizePurchased={designCustomizePurchased} onPremium={onPremium} onPick={onPickPhotoTheme} onAdjust={onAdjustPhotoTheme} onClear={onClearPhotoTheme} styles={styles} />}
-        {!captureDesignOnly && <DesignCustomizeCard designMode={designMode} chicPalette={chicPalette} planTier={planTier} purchased={designCustomizePurchased} onOpen={onOpenDesignCustomize} onTry={() => onDesignPreview('floral')} />}
+        {!captureDesignOnly && <DesignCustomizeCard designMode={designMode} chicPalette={chicPalette} planTier={planTier} purchased={designCustomizePurchased} localizedPrice={designCustomizePrice} priceStatus={designCustomizePriceStatus} onOpen={onOpenDesignCustomize} onTry={() => onDesignPreview('floral')} />}
       </View>
       </SettingsDisclosure>
       {!captureDesignOnly && <>
@@ -254,60 +273,47 @@ export function SettingsScreen({
        {hasPremiumAccess(planTier, 'saved_task_templates') ? savedTemplates.length === 0 ? <Text style={[styles.savedTemplateEmpty, isDark && styles.darkMutedText]}>タスクの「•••」から「設定ごとひな型に保存」を選べます。</Text> : savedTemplates.map((template) => <View key={template.id} style={[styles.savedTemplateSettingRow, isDark && styles.darkSurface]}><View style={{ flex: 1 }}><Text style={[styles.savedTemplateSettingTitle, isDark && styles.darkBodyText]}>{template.title}</Text><Text style={[styles.savedTemplateSettingCopy, isDark && styles.darkMutedText]}>{summarizePremiumTaskTemplate(template)}</Text></View><Pressable onPress={() => onDeleteSavedTemplate(template)}><Text style={[styles.templateDelete, isDark && styles.darkAccentText]}>削除</Text></Pressable></View>) : <Pressable style={[styles.savedTemplateLocked, isDark && styles.darkSurface]} onPress={() => onPremium('templates')}><View style={{ flex: 1 }}><Text style={[styles.savedTemplateLockedTitle, isDark && styles.darkBodyText]}>この機能を見る</Text><Text style={[styles.savedTemplateLockedCopy, isDark && styles.darkMutedText]}>保存済みデータは無料へ戻っても消えません</Text></View><Text style={[styles.guideCardArrow, isDark && styles.darkAccentText]}>›</Text></Pressable>}
        </View>
        </SettingsDisclosure>
-       <SettingsDisclosure designMode={designMode} title="ウィジェット" subtitle="サイズと表示内容" expanded={expandedSetting === 'widget'} onPress={() => setExpandedSetting((current) => current === 'widget' ? null : 'widget')}>
-       <Text style={[styles.settingsSectionLabel, isDark && styles.darkBodyText]}>ウィジェット設定</Text>
-      <Text style={[styles.previewLabel, isDark && styles.darkAccentText]}>WIDGET PREVIEW</Text>
-
-      <View style={[styles.phonePreview, selectedMode === 'minimal' && styles.phonePreviewMinimal, selectedMode === 'chic' && { backgroundColor: chicPalette?.accent ?? patternVisual.accent }, ]}>
-        <Text style={styles.phoneClock}>9:41</Text>
-        <View style={[styles.widget, size === 'small' && styles.widgetSmall, selectedMode === 'minimal' && styles.widgetMinimal, selectedMode === 'chic' && { backgroundColor: chicPalette?.cardSurface ?? patternVisual.background }, ]}>
-          {selectedMode === 'chic' && <View pointerEvents="none" style={styles.widgetChicWash} />}
-          <View style={styles.widgetTop}>
-            <View>
-              <Text style={[styles.widgetBrand, designMode === 'minimal' && styles.widgetBrandMinimal]}>Rhythm</Text>
-              <Text style={styles.widgetDate}>{selectedMode !== 'chic' ? 'SAT / JUL 04' : 'TODAY'}</Text>
-            </View>
-            <View style={styles.widgetDeparture}>
-              <Text style={styles.widgetDepartureLabel}>出発まで</Text>
-              <Text style={styles.widgetDepartureTime}>{countdownToClock(timeline.leave, now)}</Text>
-            </View>
-          </View>
-          <View style={styles.widgetDivider} />
-          
-          {dangerousTask && <View style={styles.widgetUrgency}>
-            <Text style={styles.widgetUrgencyStatus}>{getUrgencyStatus(dangerousTask, now)}</Text>
-            <Text numberOfLines={1} style={styles.widgetUrgencyAction}>{getNextBestAction(dangerousTask, now)}</Text>
-          </View>}
-          {previewTasks.length === 0 ? (
-            <Text style={styles.widgetEmpty}>今日のタスクはありません ✦</Text>
-          ) : previewTasks.map((task) => (
-            <View key={task.id} style={styles.widgetTask}>
-              <View style={[styles.widgetCheck, task.done && styles.widgetCheckDone]}><Text style={styles.widgetCheckText}>{task.done ? completionIcon : ''}</Text></View>
-              <Text numberOfLines={1} style={[styles.widgetTaskText, task.done && styles.widgetTaskDone]}>{task.title}</Text>
-            </View>
-          ))}
-        </View>
-      </View>
-
-       <View style={[styles.settingsCard, isDark && styles.darkSurface]}>
-         <Text style={[styles.settingsTitle, isDark && styles.darkBodyText]}>ウィジェット設定</Text>
-        <Text style={[styles.fieldLabel, isDark && styles.darkAccentText]}>サイズ</Text>
-        <View style={styles.segment}>
-          <Pressable style={[styles.segmentButton, size === 'small' && styles.segmentActive]} onPress={() => onSize('small')}>
-            <Text style={[styles.segmentText, size === 'small' && styles.segmentTextActive]}>小</Text>
-          </Pressable>
-          <Pressable style={[styles.segmentButton, size === 'medium' && styles.segmentActive]} onPress={() => onSize('medium')}>
-            <Text style={[styles.segmentText, size === 'medium' && styles.segmentTextActive]}>中</Text>
-          </Pressable>
-        </View>
-        <Pressable style={styles.lockedSetting} onPress={() => onPremium()}>
-          <View>
-            <Text style={[styles.switchTitle, isDark && styles.darkBodyText]}>カスタムテーマ</Text>
-            <Text style={[styles.switchCopy, isDark && styles.darkAccentText]}>色・背景・フォントを自由に変更</Text>
-          </View>
-          <Text style={styles.smallLock}>▣ PREMIUM</Text>
-        </Pressable>
-      </View>
+       <SettingsDisclosure designMode={designMode} title="ホーム画面のWidget" subtitle="追加・管理・使い方" expanded={expandedSetting === 'widget'} onPress={() => {
+         const opening = expandedSetting !== 'widget';
+         setExpandedSetting((current) => current === 'widget' ? null : 'widget');
+         if (opening) onWidgetSectionOpened?.();
+       }}>
+       <View style={[styles.settingsCard, { backgroundColor: guideColors.surface, borderColor: guideColors.border, borderWidth: 1 }]}>
+         <Text style={[styles.settingsTitle, { color: guideColors.textPrimary }]}>ホーム画面のWidget</Text>
+         <Text style={[styles.switchCopy, { color: guideColors.textSecondary, marginTop: 6 }]}>予定やタスクを確認したり、音声入力を始めたりできます。</Text>
+         <Text style={[styles.switchCopy, { color: guideColors.textSecondary, marginTop: 4 }]}>Widgetごとの見た目は、ホーム画面で長押しして「ウィジェットを編集」から変更できます。</Text>
+         <View style={{ flexDirection: 'row', gap: 8, marginTop: 12 }}>
+           <Pressable accessibilityRole="button" onPress={onWidgetGuide} style={{ flex: 1, minHeight: 42, borderRadius: 11, borderWidth: 1, borderColor: guideColors.accent, alignItems: 'center', justifyContent: 'center' }}><Text style={{ color: guideColors.accent, fontSize: 12, fontWeight: '800' }}>追加方法を見る</Text></Pressable>
+           <Pressable accessibilityRole="button" onPress={onRefreshWidget} style={{ flex: 1, minHeight: 42, borderRadius: 11, backgroundColor: guideColors.accent, alignItems: 'center', justifyContent: 'center' }}><Text style={{ color: guideColors.onAccent, fontSize: 12, fontWeight: '800' }}>Widgetを更新</Text></Pressable>
+         </View>
+       </View>
+      <WidgetSettingsCard
+        settings={widgetSettings}
+        onChange={onWidgetSettings}
+        onPickPhoto={onPickWidgetPhoto}
+        onRemoveAffirmationPhoto={onRemoveAffirmationPhoto}
+        styles={styles}
+        colors={isDesign && chicPalette ? {
+          surface: chicPalette.cardSurface,
+          border: chicPalette.border,
+          primaryText: chicPalette.textPrimary,
+          secondaryText: chicPalette.textSecondary,
+          primaryAccent: chicPalette.accent,
+          softAccent: chicPalette.accentSoft,
+          screenBackground: chicPalette.background,
+        } : {
+          surface: baseTheme.surface,
+          border: baseTheme.border,
+          primaryText: baseTheme.primaryText,
+          secondaryText: baseTheme.secondaryText,
+          primaryAccent: baseTheme.primaryAccent,
+          softAccent: baseTheme.softAccent,
+          screenBackground: baseTheme.screenBackground,
+        }}
+        designPattern={isDesign ? chicPattern : 'plain'}
+        designCheckColor={chicCheckColor}
+        PatternDecor={ChicPatternDecor}
+      />
       </SettingsDisclosure>
        <View style={styles.settingsDisclosure}>
          <Pressable style={[styles.settingsDisclosureHeader, isDark && styles.darkSurface]} onPress={() => onPremium()} accessibilityRole="button">

@@ -12,6 +12,8 @@ export type PremiumStoreProduct = {
   periodLabel: string;
   /** Numeric localized price, when provided by StoreKit, for savings math. */
   amount?: number;
+  /** ISO 4217 currency code supplied by StoreKit. */
+  currency?: string;
 };
 
 export type PremiumStoreProducts = {
@@ -19,6 +21,19 @@ export type PremiumStoreProducts = {
   annual?: PremiumStoreProduct;
 };
 export type PremiumStoreProductStatus = 'loading' | 'ready' | 'unavailable';
+
+function formatMonthlyEquivalent(product: PremiumStoreProduct | undefined): string | undefined {
+  if (!product || typeof product.amount !== 'number' || !Number.isFinite(product.amount) || product.amount <= 0 || !product.currency) return undefined;
+  try {
+    return new Intl.NumberFormat(undefined, {
+      style: 'currency',
+      currency: product.currency,
+      maximumFractionDigits: 2,
+    }).format(product.amount / 12);
+  } catch {
+    return undefined;
+  }
+}
 
 const darkPreviewStyleOverrides: Record<string, any> = {
   premiumPreview: { backgroundColor: '#181F2E', borderColor: '#40506A' },
@@ -261,7 +276,7 @@ function PremiumFeatureDetail({ icon, kind, title, description, designMode, chic
   </View>;
 }
 
-export function PremiumModal({ visible, initialFeatureId, designMode, chicPalette, planTier, isDevelopment = false, onMockPlanTier, onClose, styles, helpers, renderReadOnlyPreview, products, productStatus = products ? 'ready' : 'unavailable', onRestorePurchase }: { visible: boolean; initialFeatureId: PremiumGuideFeatureId; designMode: DesignMode; chicPalette?: ChicThemePalette; planTier: PlanTier; isDevelopment?: boolean; onMockPlanTier?: (tier: PlanTier | null) => void; onClose: () => void; styles: any; helpers: any; renderReadOnlyPreview?: (kind: PremiumPreviewKind) => React.ReactNode; products?: PremiumStoreProducts; productStatus?: PremiumStoreProductStatus; onRestorePurchase?: () => void }) {
+export function PremiumModal({ visible, initialFeatureId, designMode, chicPalette, planTier, isDevelopment = false, onMockPlanTier, onClose, styles, helpers, renderReadOnlyPreview, products, productStatus = products ? 'ready' : 'unavailable', onRestorePurchase, onPurchasePlan, purchaseError }: { visible: boolean; initialFeatureId: PremiumGuideFeatureId; designMode: DesignMode; chicPalette?: ChicThemePalette; planTier: PlanTier; isDevelopment?: boolean; onMockPlanTier?: (tier: PlanTier | null) => void; onClose: () => void; styles: any; helpers: any; renderReadOnlyPreview?: (kind: PremiumPreviewKind) => React.ReactNode; products?: PremiumStoreProducts; productStatus?: PremiumStoreProductStatus; onRestorePurchase?: () => void; onPurchasePlan?: (plan: 'monthly' | 'annual') => Promise<boolean>; purchaseError?: string }) {
   const { getThemeTokens } = helpers;
   const theme = getThemeTokens(designMode);
   const designSurface = designMode === 'chic' && chicPalette ? { backgroundColor: chicPalette.cardSurface, borderColor: chicPalette.border } : undefined;
@@ -330,9 +345,10 @@ export function PremiumModal({ visible, initialFeatureId, designMode, chicPalett
   const [selectedPlan, setSelectedPlan] = useState<'annual' | 'monthly'>('annual');
   const monthlyAmount = products?.monthly?.amount;
   const annualAmount = products?.annual?.amount;
-  const annualMonthlyEquivalent = typeof annualAmount === 'number' ? annualAmount / 12 : undefined;
+  const annualMonthlyEquivalent = formatMonthlyEquivalent(products?.annual);
   const annualSavingsPercent = typeof monthlyAmount === 'number' && monthlyAmount > 0 && typeof annualAmount === 'number'
-    ? Math.max(0, Math.round((1 - annualAmount / (monthlyAmount * 12)) * 100))
+    && products?.monthly?.currency === products?.annual?.currency
+    ? Math.min(100, Math.max(0, Math.round((1 - annualAmount / (monthlyAmount * 12)) * 100)))
     : undefined;
   const selectedProduct = products?.[selectedPlan];
   const canPurchaseSelectedPlan = planTier === 'premium' || (productStatus === 'ready' && Boolean(selectedProduct)) || (isDevelopment && Boolean(onMockPlanTier));
@@ -384,7 +400,7 @@ export function PremiumModal({ visible, initialFeatureId, designMode, chicPalett
               const product = products?.[plan];
               const isAnnual = plan === 'annual';
               return <Pressable key={plan} accessibilityRole="radio" accessibilityState={{ selected: selectedPlan === plan }} onPress={() => setSelectedPlan(plan)} style={[styles.premiumPlanCard, { backgroundColor: selectedPlan === plan ? surfaceSoft : surface, borderColor: selectedPlan === plan ? accent : theme.colors.border }]}>
-                <View style={{ flex: 1 }}><Text style={[styles.premiumPlanTitle, { color: primaryText }]}>{isAnnual ? '年額プラン' : '月額プラン'}</Text>{isAnnual && <Text style={[styles.premiumPlanRecommended, { color: accent }]}>おすすめ</Text>}{isAnnual && annualMonthlyEquivalent !== undefined && <Text style={[styles.premiumPlanMeta, { color: secondaryText }]}>月あたり約 {annualMonthlyEquivalent.toFixed(0)} {products?.annual?.displayPrice.replace(/[0-9.,\s]/g, '').trim()}{annualSavingsPercent !== undefined ? ` ・ 約${annualSavingsPercent}%お得` : ''}</Text>}</View>
+                <View style={{ flex: 1 }}><Text style={[styles.premiumPlanTitle, { color: primaryText }]}>{isAnnual ? '年額プラン' : '月額プラン'}</Text>{isAnnual && <Text style={[styles.premiumPlanRecommended, { color: accent }]}>おすすめ</Text>}{isAnnual && annualMonthlyEquivalent !== undefined && <Text style={[styles.premiumPlanMeta, { color: secondaryText }]}>月あたり約 {annualMonthlyEquivalent}{annualSavingsPercent !== undefined ? ` ・ 約${annualSavingsPercent}%お得` : ''}</Text>}</View>
                 <Text style={[styles.premiumPlanPrice, { color: product ? accentStrong : secondaryText }]}>{productStatus === 'loading' ? '価格を確認中…' : product ? `${product.displayPrice} / ${product.periodLabel}` : '価格を取得できませんでした'}</Text>
               </Pressable>;
             })}
@@ -392,8 +408,12 @@ export function PremiumModal({ visible, initialFeatureId, designMode, chicPalett
             <Text style={[styles.premiumPurchaseNote, { color: secondaryText }]}>購入前にApp Storeの表示をご確認ください。いつでも解約できます。</Text>
             {purchaseStatus === 'success' && <View style={[styles.premiumPurchaseStatus, { borderColor: accent }]}><Text style={[styles.premiumPurchaseStatusTitle, { color: accentStrong }]}>Premiumを有効にしました</Text><Text style={[styles.premiumPurchaseStatusCopy, { color: secondaryText }]}>すべてのPremium機能を利用できます。</Text></View>}
             {purchaseStatus === 'unavailable' && <View style={[styles.premiumPurchaseStatus, { borderColor: theme.colors.border }]}><Text style={[styles.premiumPurchaseStatusTitle, { color: primaryText }]}>購入処理を準備しています</Text><Text style={[styles.premiumPurchaseStatusCopy, { color: secondaryText }]}>現在はApp Storeの購入画面を利用できません。しばらくしてから再度お試しください。</Text></View>}
+            {purchaseError && <View style={[styles.premiumPurchaseStatus, { borderColor: theme.colors.border }]}><Text style={[styles.premiumPurchaseStatusTitle, { color: primaryText }]}>購入を完了できませんでした</Text><Text style={[styles.premiumPurchaseStatusCopy, { color: secondaryText }]}>{purchaseError}</Text></View>}
             <Pressable disabled={purchaseStatus === 'processing' || planTier === 'premium' || !canPurchaseSelectedPlan} onPress={() => {
-              if (isDevelopment && onMockPlanTier) {
+              if (onPurchasePlan && selectedProduct) {
+                setPurchaseStatus('processing');
+                void onPurchasePlan(selectedPlan).then((success) => setPurchaseStatus(success ? 'success' : 'idle')).catch(() => setPurchaseStatus('idle'));
+              } else if (isDevelopment && onMockPlanTier) {
                 setPurchaseStatus('processing');
                 onMockPlanTier('premium');
                 setPurchaseStatus('success');

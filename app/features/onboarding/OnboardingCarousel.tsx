@@ -28,6 +28,8 @@ type Props = {
   finalActionLabel?: string;
   designMode?: DesignMode;
   chicPalette?: ChicThemePalette;
+  cards?: IntroCard[];
+  brandName?: string;
 };
 
 const theme = getThemeTokens(ONBOARDING_DESIGN_MODE);
@@ -47,6 +49,10 @@ function IntroPreview({
       {card.id === 'focus' && <><View style={styles.previewFocus}><Text style={styles.previewFocusTime}>25:00</Text><Text style={styles.previewFocusTask}>資料をまとめる</Text><View style={styles.previewButton}><Text style={styles.previewButtonText}>スタート</Text></View></View></>}
       {card.id === 'recovery' && <View style={styles.previewRecovery}><Text style={styles.previewLabel}>予定が崩れても</Text><Text style={styles.previewRecoveryTitle}>ここから立て直す</Text><Text style={styles.previewRecoveryText}>今の状況から、次にできることを選べます。</Text><View style={styles.previewRecoveryActions}><Text style={styles.previewRecoveryAction}>今から出発</Text><Text style={styles.previewRecoveryAction}>予定を変更</Text><Text style={styles.previewRecoveryAction}>連絡する</Text></View></View>}
       {card.id === 'records' && <><View style={styles.previewCalendar}><Text style={styles.previewCalendarTitle}>2026年 8月</Text><View style={styles.previewCalendarRow}>{['18', '19', '20', '21', '22', '23'].map((day) => <Text key={day} style={day === '23' ? styles.previewCalendarDayActive : styles.previewCalendarDay}>{day}</Text>)}</View></View><View style={styles.previewRecord}><Text style={styles.previewRecordTitle}>今日できたこと</Text><Text style={styles.previewRecordText}>写真・ひとこと・メモ</Text></View></>}
+      {(card.id === 'widget' || card.id === 'widgetAdd' || card.id === 'widgetEdit') && <View style={styles.widgetIntroPreview}>
+        <View style={styles.widgetIntroRow}><View style={[styles.widgetIntroTile, styles.widgetIntroTileWide]}><Text style={styles.widgetIntroLabel}>今はこれ</Text><Text numberOfLines={1} style={styles.widgetIntroTitle}>資料をまとめる</Text><Text style={styles.widgetIntroMeta}>25 min ・ 集中モード中</Text></View><View style={styles.widgetIntroTile}><Text style={styles.widgetIntroMic}>◉</Text><Text style={styles.widgetIntroLabel}>音声入力</Text></View></View>
+        <View style={styles.widgetIntroRow}><View style={styles.widgetIntroTile}><Text style={styles.widgetIntroLabel}>次の予定</Text><Text style={styles.widgetIntroTitle}>18:00 美容院</Text></View><View style={[styles.widgetIntroTile, styles.widgetIntroTileWide]}><Text style={styles.widgetIntroLabel}>今日の言葉</Text><Text numberOfLines={2} style={styles.widgetIntroTitle}>私は私のペースで進めばいい</Text></View></View>
+      </View>}
     </View>
   );
 }
@@ -55,7 +61,7 @@ function IntroPreview({
  * Fits a production screen preview into the intro card without changing the
  * production screen's layout or clipping its content before it is measured.
  */
-function OnboardingPreviewViewport({ children, colors }: { children: React.ReactNode; colors: { surface: string; border: string } }) {
+function OnboardingPreviewViewport({ children, colors, height = 320 }: { children: React.ReactNode; colors: { surface: string; border: string }; height?: number }) {
   const [viewport, setViewport] = useState({ width: 0, height: 0 });
   const [canvas, setCanvas] = useState({ width: 0, height: 0 });
   const availableWidth = Math.max(0, viewport.width - 16);
@@ -67,8 +73,8 @@ function OnboardingPreviewViewport({ children, colors }: { children: React.React
   const scaledHeight = canvas.height > 0 ? canvas.height * scale : undefined;
 
   return (
-    <View
-      style={[styles.productionPreviewViewport, { backgroundColor: colors.surface, borderColor: colors.border }]}
+      <View
+      style={[styles.productionPreviewViewport, { height, backgroundColor: colors.surface, borderColor: colors.border }]}
       pointerEvents="none"
       onLayout={(event) => {
         const { width, height } = event.nativeEvent.layout;
@@ -102,8 +108,11 @@ export function OnboardingCarousel({
   finalActionLabel = 'デザインを選ぶ',
   designMode = ONBOARDING_DESIGN_MODE,
   chicPalette,
+  cards = INTRO_CARDS,
+  brandName = 'RhythmPace',
 }: Props) {
-  const { width } = useWindowDimensions();
+  const { width, height } = useWindowDimensions();
+  const compact = height < 700;
   const appearance = designMode === 'chic' && chicPalette
     ? { screenBackground: chicPalette.background, surface: chicPalette.cardSurface, secondarySurface: chicPalette.cardTint, primaryText: chicPalette.textPrimary, secondaryText: chicPalette.textSecondary, primaryAccent: chicPalette.accent, border: chicPalette.border, onAccent: chicPalette.onAccent }
     : { ...getThemeTokens(designMode).colors, onAccent: designMode === 'dark' ? getThemeTokens(designMode).colors.screenBackground : '#FFFFFF' };
@@ -113,7 +122,7 @@ export function OnboardingCarousel({
 
   const [index, setIndex] = useState(0);
 
-  const lastIndex = INTRO_CARDS.length - 1;
+  const lastIndex = cards.length - 1;
   const isLast = index === lastIndex;
 
   useEffect(() => {
@@ -158,7 +167,7 @@ export function OnboardingCarousel({
       <SafeAreaView style={[styles.screen, { backgroundColor: appearance.screenBackground }]}>
         <View style={styles.top}>
           <Text style={[styles.brand, { color: appearance.primaryText }]}>
-            Rhythm
+            {brandName}
           </Text>
 
           {showSkip && !isLast ? (
@@ -180,7 +189,7 @@ export function OnboardingCarousel({
 
         <FlatList
           ref={listRef}
-          data={INTRO_CARDS}
+          data={cards}
           keyExtractor={(item) => item.id}
           horizontal
           pagingEnabled
@@ -211,11 +220,13 @@ export function OnboardingCarousel({
             <View
               style={[
                 styles.page,
-                { width },
+                { width, paddingTop: compact ? 8 : 18, paddingBottom: compact ? 6 : 12 },
               ]}
             >
-              <View style={[styles.card, { backgroundColor: appearance.surface, borderColor: appearance.border }]}>
-                {renderStep ? <View style={styles.productionPreview}><OnboardingPreviewViewport colors={{ surface: appearance.surface, border: appearance.border }}>{renderStep(item.id)}</OnboardingPreviewViewport></View> : <IntroPreview card={item} />}
+              <View
+                style={[styles.card, { minHeight: compact ? 350 : 430, padding: compact ? 16 : 22, backgroundColor: appearance.surface, borderColor: appearance.border }]}
+              >
+                {renderStep ? <View style={styles.productionPreview}><OnboardingPreviewViewport height={compact ? 220 : 320} colors={{ surface: appearance.surface, border: appearance.border }}>{renderStep(item.id)}</OnboardingPreviewViewport></View> : <IntroPreview card={item} />}
 
                 <Text style={[styles.title, { color: appearance.primaryText }]}>
                   {item.title}
@@ -244,9 +255,9 @@ export function OnboardingCarousel({
         <View style={styles.bottom}>
           <View
             style={styles.dots}
-            accessibilityLabel={`${index + 1} / ${INTRO_CARDS.length}`}
+            accessibilityLabel={`${index + 1} / ${cards.length}`}
           >
-            {INTRO_CARDS.map(
+            {cards.map(
               (card, dotIndex) => (
                 <View
                   key={card.id}
@@ -421,6 +432,14 @@ const styles = StyleSheet.create({
   previewRecord: { borderRadius: 12, borderWidth: 1, borderColor: theme.colors.border, backgroundColor: theme.colors.surface, padding: 10, marginTop: 8 },
   previewRecordTitle: { color: theme.colors.primaryText, fontSize: 12, fontWeight: '900' },
   previewRecordText: { color: theme.colors.secondaryText, fontSize: 10, marginTop: 4 },
+  widgetIntroPreview: { gap: 8, marginBottom: 18 },
+  widgetIntroRow: { flexDirection: 'row', gap: 8 },
+  widgetIntroTile: { flex: 1, minHeight: 74, borderRadius: 12, borderWidth: 1, borderColor: theme.colors.border, backgroundColor: theme.colors.surface, padding: 10, justifyContent: 'center' },
+  widgetIntroTileWide: { flex: 1.35 },
+  widgetIntroLabel: { color: theme.colors.secondaryText, fontSize: 9, fontWeight: '800' },
+  widgetIntroTitle: { color: theme.colors.primaryText, fontSize: 12, fontWeight: '900', marginTop: 4, flexShrink: 1 },
+  widgetIntroMeta: { color: theme.colors.secondaryText, fontSize: 9, marginTop: 4 },
+  widgetIntroMic: { color: theme.colors.primaryAccent, fontSize: 21, fontWeight: '900', marginBottom: 4 },
   previewWish: { borderRadius: 11, borderWidth: 1, borderColor: theme.colors.border, backgroundColor: theme.colors.surface, padding: 10, marginBottom: 7 },
   previewWishLocked: { borderRadius: 11, borderWidth: 1, borderColor: theme.colors.border, backgroundColor: theme.colors.secondarySurface, padding: 10, marginBottom: 7 },
   previewWishTitle: { color: theme.colors.primaryText, fontSize: 13, fontWeight: '900', marginTop: 4 },

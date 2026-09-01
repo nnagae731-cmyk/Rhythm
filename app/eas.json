@@ -14,7 +14,10 @@
       "developmentClient": true,
       "distribution": "internal",
       "env": {
-        "RHYTHM_ENABLE_WIDGET": "true"
+        "RHYTHM_ENABLE_WIDGET": "true",
+        "EXPO_PUBLIC_RHYTHM_PREMIUM_MONTHLY_PRODUCT_ID": "app.rhythm.daily.premium.monthly",
+        "EXPO_PUBLIC_RHYTHM_PREMIUM_ANNUAL_PRODUCT_ID": "app.rhythm.daily.premium.yearly",
+        "EXPO_PUBLIC_RHYTHM_DESIGN_CUSTOMIZE_PRODUCT_ID": "app.rhythm.daily.design.customize"
       }
     },
     "preview": {

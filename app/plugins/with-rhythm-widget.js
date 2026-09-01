@@ -10,6 +10,12 @@ const TEMPLATE_FILES = [
   'RhythmWidgetBundle.swift',
   'RhythmWidget-Info.plist',
   'RhythmWidget.entitlements',
+  'RhythmWidgetConfiguration.intentdefinition',
+];
+const WIDGET_DESIGN_ASSETS = [
+  { fileName: 'vintage-bloom.jpg', source: path.join('assets', 'themes', 'floral', 'vintage-bloom.jpg'), lastKnownFileType: 'image.jpeg' },
+  { fileName: 'botanical-line.jpg', source: path.join('assets', 'themes', 'floral', 'botanical-line.jpg'), lastKnownFileType: 'image.jpeg' },
+  { fileName: 'sheer-floral.jpg', source: path.join('assets', 'themes', 'floral', 'sheer-floral.jpg'), lastKnownFileType: 'image.jpeg' },
 ];
 
 const RESOURCE_BUNDLE_SIGNING_MARKER = '# @rhythm-widget-resource-bundle-signing';
@@ -123,6 +129,9 @@ function copyWidgetTemplate(iosRoot) {
   const destinationRoot = path.join(iosRoot, TARGET_NAME);
   fs.mkdirSync(destinationRoot, { recursive: true });
   TEMPLATE_FILES.forEach((file) => fs.copyFileSync(path.join(templateRoot, file), path.join(destinationRoot, file)));
+  WIDGET_DESIGN_ASSETS.forEach(({ fileName, source }) => {
+    fs.copyFileSync(path.join(__dirname, '..', source), path.join(destinationRoot, fileName));
+  });
 }
 
 function unquoteXcodeValue(value) {
@@ -185,6 +194,10 @@ function configureWidgetBuildConfigurations(project, target, appConfig) {
     buildSettings.APPLICATION_EXTENSION_API_ONLY = 'YES';
     buildSettings.TARGETED_DEVICE_FAMILY = '1';
     buildSettings.SWIFT_VERSION = '5.0';
+    // Generate the iOS 15-compatible SiriKit configuration intent used by
+    // IntentConfiguration. This keeps the edit screen available without
+    // requiring the iOS 17-only AppIntents framework.
+    buildSettings.INTENTS_CODEGEN_LANGUAGE = 'Swift';
     // Keep the Widget extension's Swift module distinct from the local
     // RhythmWidget Expo module pod imported by ExpoModulesProvider.
     buildSettings.PRODUCT_MODULE_NAME = 'RhythmWidgetExtension';
@@ -295,6 +308,48 @@ function ensureWidgetSourceFiles(project, target) {
 
 }
 
+function ensureWidgetResourceFiles(project, target) {
+  const resourceFiles = [
+    { fileName: 'RhythmWidgetConfiguration.intentdefinition', lastKnownFileType: 'file.intentdefinition' },
+    ...WIDGET_DESIGN_ASSETS,
+  ];
+  const { group } = ensureWidgetSourceGroup(project);
+  const fileReferences = project.getPBXObject('PBXFileReference') ?? {};
+  const buildFiles = project.pbxBuildFileSection();
+  const resources = project.getPBXObject('PBXResourcesBuildPhase') ?? {};
+  const targetPhases = target.buildPhases ?? [];
+  let resourcePhase = targetPhases.map((entry) => resources[entry.value]).find((phase) => phase?.isa === 'PBXResourcesBuildPhase');
+  if (!resourcePhase) {
+    const created = project.addBuildPhase([], 'PBXResourcesBuildPhase', 'Resources', target.uuid);
+    resourcePhase = resources[created.uuid] ?? created.buildPhase;
+  }
+  resourcePhase.files = Array.isArray(resourcePhase.files) ? resourcePhase.files : [];
+  resourceFiles.forEach(({ fileName, lastKnownFileType }) => {
+    let child = (group.children ?? []).find((candidate) => unquoteXcodeValue(candidate.comment) === fileName);
+    if (!child) {
+      const refUuid = project.generateUuid();
+      fileReferences[refUuid] = { isa: 'PBXFileReference', name: `"${fileName}"`, path: `"${fileName}"`, sourceTree: '"<group>"', lastKnownFileType };
+      fileReferences[`${refUuid}_comment`] = fileName;
+      child = { value: refUuid, comment: fileName };
+      group.children = [...(group.children ?? []), child];
+    }
+    const ref = fileReferences[child.value];
+    if (ref) {
+      ref.path = `"${fileName}"`;
+      ref.name = `"${fileName}"`;
+      ref.sourceTree = '"<group>"';
+      ref.lastKnownFileType = lastKnownFileType;
+    }
+    let buildFileUuid = Object.keys(buildFiles).find((key) => !key.endsWith('_comment') && buildFiles[key]?.isa === 'PBXBuildFile' && buildFiles[key].fileRef === child.value);
+    if (!buildFileUuid) {
+      buildFileUuid = project.generateUuid();
+      buildFiles[buildFileUuid] = { isa: 'PBXBuildFile', fileRef: child.value, fileRef_comment: fileName };
+      buildFiles[`${buildFileUuid}_comment`] = `"${fileName}" in Resources`;
+    }
+    if (!resourcePhase.files.some((entry) => entry.value === buildFileUuid)) resourcePhase.files.push({ value: buildFileUuid, comment: `"${fileName}" in Resources` });
+  });
+}
+
 function addWidgetTarget(project, appConfig) {
   const existingTarget = findNativeTarget(project, TARGET_NAME);
   if (!existingTarget) {
@@ -307,6 +362,7 @@ function addWidgetTarget(project, appConfig) {
   const target = findNativeTarget(project, TARGET_NAME);
   if (!target) throw new Error(`Unable to resolve ${TARGET_NAME} PBXNativeTarget`);
   ensureWidgetSourceFiles(project, target);
+  ensureWidgetResourceFiles(project, target);
   // Apply values directly to the target's configuration list so the settings
   // are attached to the exact PBXNativeTarget used by archive.
   configureWidgetBuildConfigurations(project, target, appConfig);

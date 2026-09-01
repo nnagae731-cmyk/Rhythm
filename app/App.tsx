@@ -27,23 +27,25 @@ import { BulkTaskModal } from './components/BulkTaskModal';
 import { DeparturePlanForm } from './components/DeparturePlanForm';
 import { AffirmationSettingsCard, MAX_AFFIRMATIONS } from './components/AffirmationSettingsCard';
 import { PremiumModal } from './components/PremiumModal';
+import { useRhythmStoreKit } from './features/purchases/useRhythmStoreKit';
 import { RewardedAccessModal, RewardedAccessResult } from './components/RewardedAccessModal';
 import { BottomNav } from './components/BottomNav';
 import { OnboardingCarousel } from './features/onboarding/OnboardingCarousel';
 import { OnboardingCaptureStudio } from './features/onboarding/OnboardingCaptureStudio';
 import { OnboardingHint } from './features/onboarding/OnboardingHint';
-import { FREE_GUIDE_TOUR, PREMIUM_GUIDE_TOUR } from './features/onboarding/onboardingSteps';
+import { FREE_GUIDE_TOUR, PREMIUM_GUIDE_TOUR, WIDGET_GUIDE_CARDS } from './features/onboarding/onboardingSteps';
 import type { IntroCardId, OnboardingFeatureId } from './features/onboarding/onboardingSteps';
 import { useOnboarding } from './features/onboarding/useOnboarding';
 import { RecoveryModal } from './components/RecoveryModal';
 import { DesignCustomizeModal } from './components/DesignCustomizeModal';
 import { TravelAppsSettingsCard } from './components/TravelAppsSettingsCard';
 import { styles } from './styles/appStyles';
-import { Affirmation, AffirmationCustomText, CalendarMarks, Category, DeparturePlan, DeparturePreparationStatus, MonthlyReflectionCard, MonthlyReview, MonthlyWishState, NudgeMode, PersistedState, PhotoThemePhotoTarget, PhotoThemeSettings, Priority, RepeatRule, Screen, SharedEvent, SharedParticipantPrefs, Subtask, Task, TaskBucket, TaskListItem, ThemeMode, TimeTab, UrgencyStatus, WidgetSize, WishAction, WishMonthMap } from './types';
+import { Affirmation, AffirmationCustomText, CalendarMarks, Category, DeparturePlan, DeparturePreparationStatus, MonthlyReflectionCard, MonthlyReview, MonthlyWishState, NudgeMode, PersistedState, PhotoThemePhotoTarget, PhotoThemeSettings, Priority, RepeatRule, Screen, SharedEvent, SharedParticipantPrefs, Subtask, Task, TaskBucket, TaskListItem, ThemeMode, TimeTab, UrgencyStatus, WidgetSettings, WidgetSize, WishAction, WishMonthMap } from './types';
 import { initialPlan } from './storage/rhythmState';
 import { DEFAULT_TRAVEL_APP_SETTINGS, normalizeTravelAppSettings, TravelAppSettings } from './features/travel/travelApps';
 import { loadRhythmState, saveRhythmState } from './storage/rhythmStorage';
-import { buildRhythmWidgetSnapshot, saveRhythmWidgetSnapshot } from './features/widget/rhythmWidgetSnapshot';
+import { buildRhythmWidgetSnapshot, saveRhythmAffirmationPhoto, saveRhythmWidgetPhoto, saveRhythmWidgetSnapshot } from './features/widget/rhythmWidgetSnapshot';
+import { DEFAULT_WIDGET_SETTINGS, getWidgetAccentHex, normalizeWidgetSettings } from './features/widget/widgetSettings';
 import { categories, priorities, completionIcons, categoryColors as baseCategoryColors, designModes, getLateRiskMessage, getNextBestAction, getUrgencyStatus, urgencyLevel } from './features/tasks/taskUtils';
 import { createSharedEventPacket, createSharedEventToken, encodeSharedEventLink, normalizeSharedEvent, parseSharedEventLink, upsertSharedEvent } from './features/shared/sharedUtils';
 import { getMonthlyWishState, normalizeWishMonthsForSave, wishMonthKey } from './features/wish/wishUtils';
@@ -509,6 +511,7 @@ export default function App() {
   const [currentGuideFeature, setCurrentGuideFeature] = useState<Exclude<OnboardingFeatureId, 'intro'>>();
   const [guideTransitioning, setGuideTransitioning] = useState(false);
   const [pendingGuideFeature, setPendingGuideFeature] = useState<Exclude<OnboardingFeatureId, 'intro'>>();
+  const [widgetGuideVisible, setWidgetGuideVisible] = useState(false);
   const guideTransitioningRef = React.useRef(false);
   const [openTodayReview, setOpenTodayReview] = useState(false);
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -546,6 +549,11 @@ export default function App() {
   const departureCheckInsRef = React.useRef<DepartureCheckIn[]>([]);
   const [departurePreparationStatuses, setDeparturePreparationStatuses] = useState<Record<string, DeparturePreparationStatus>>({});
   const [widgetSize, setWidgetSize] = useState<WidgetSize>('medium');
+  const [widgetSettings, setWidgetSettings] = useState<WidgetSettings>(DEFAULT_WIDGET_SETTINGS);
+  const widgetPhotoSyncedUriRef = React.useRef<string | undefined>(undefined);
+  const widgetAffirmationPhotoSyncedUrisRef = React.useRef<Record<number, string>>({});
+  const widgetSnapshotSerializedRef = React.useRef<string | undefined>(undefined);
+  const widgetSnapshotInFlightRef = React.useRef<string | undefined>(undefined);
   const [showCompleted, setShowCompleted] = useState(false);
   const [completionIcon, setCompletionIcon] = useState('✓');
   // Mono is available to every plan. Keep the persisted design mode stable and
@@ -614,10 +622,12 @@ export default function App() {
   const [addOpen, setAddOpen] = useState(false);
   const [bulkAddOpen, setBulkAddOpen] = useState(false);
   const [voiceOpen, setVoiceOpen] = useState(false);
+  const [voiceAutoStart, setVoiceAutoStart] = useState(false);
+  const handledRhythmNavigationUrlRef = React.useRef<string | undefined>(undefined);
   const [voiceUsage, setVoiceUsage] = useState<VoiceUsage>(() => ({ date: dateKey(), count: 0, rewardedCount: 0, bonusUses: 0 }));
   const [voiceUsageLimitOpen, setVoiceUsageLimitOpen] = useState(false);
   const voiceRewardBusyRef = React.useRef(false);
-  const openVoiceInputRef = React.useRef<() => void>(() => undefined);
+  const openVoiceInputRef = React.useRef<(autoStart?: boolean) => void>(() => undefined);
   const [voiceTaskDraft, setVoiceTaskDraft] = useState<VoiceParseResult>();
   const [voiceWishDraft, setVoiceWishDraft] = useState<{ mode: 'wish' | 'action'; title: string; wishId?: string }>();
   const [editingTask, setEditingTask] = useState<Task | null>(null);
@@ -628,6 +638,8 @@ export default function App() {
   const [designCustomizeOpen, setDesignCustomizeOpen] = useState(false);
   const [designCustomizePurchased, setDesignCustomizePurchased] = useState(false);
   const [premiumTargetFeature, setPremiumTargetFeature] = useState<PremiumGuideFeatureId>(DEFAULT_PREMIUM_GUIDE_FEATURE);
+  const [storePremiumAccess, setStorePremiumAccess] = useState(false);
+  const [storeDesignCustomizeAccess, setStoreDesignCustomizeAccess] = useState(false);
   const [designPreviewPattern, setDesignPreviewPattern] = useState<ChicPattern>();
   const [designPreviewMode, setDesignPreviewMode] = useState<DesignPreviewMode>('chic');
   const [designPreviewPhotoUri, setDesignPreviewPhotoUri] = useState<string>();
@@ -641,9 +653,18 @@ export default function App() {
   // App Store product is configured. It is intentionally session-scoped and
   // never persisted over the user's saved data.
   const [devPlanTierOverride, setDevPlanTierOverride] = useState<PlanTier | null>(null);
-  const planTier: PlanTier = devPlanTierOverride ?? configuredPlanTier;
+  const planTier: PlanTier = devPlanTierOverride ?? (configuredPlanTier === 'premium' || storePremiumAccess ? 'premium' : 'free');
   const planTierRef = React.useRef<PlanTier>(planTier);
-  const hasDesignCustomizeAccess = planTier === 'premium' || designCustomizePurchased;
+  const handleStoreDesignEntitlement = React.useCallback((active: boolean) => {
+    setStoreDesignCustomizeAccess(active);
+    if (active) setDesignCustomizePurchased(true);
+  }, []);
+  const storeKit = useRhythmStoreKit({
+    onPremiumEntitlement: setStorePremiumAccess,
+    onDesignCustomizeEntitlement: handleStoreDesignEntitlement,
+  });
+  const hasDesignCustomizeAccess = planTier === 'premium'
+    || (storeKit.designConfigured ? storeKit.entitlementsResolved && storeDesignCustomizeAccess : __DEV__ && designCustomizePurchased);
   const activeDesignTrialId = planTier !== 'premium' && (isPremiumDesignTrialActive(rewardedAccess, now) || isPremiumDesignUnlocked(rewardedAccess, now))
     ? rewardedAccess.premiumDesignTrial.designId
     : null;
@@ -840,9 +861,10 @@ export default function App() {
     setPremiumTargetFeature(featureId);
     setPremiumOpen(true);
   }, []);
-  const openVoiceInput = React.useCallback(() => {
+  const openVoiceInput = React.useCallback((autoStart = false) => {
     // The demo and previews never consume a user's allowance.
     if (planTier === 'premium' || onboarding.state.firstRunStage === 'demo') {
+      setVoiceAutoStart(autoStart);
       setVoiceOpen(true);
       return;
     }
@@ -852,8 +874,9 @@ export default function App() {
       return;
     }
     setVoiceUsage(current);
+    setVoiceAutoStart(autoStart);
     setVoiceOpen(true);
-  }, [onboarding.state.firstRunStage, openPremiumFeature, planTier, voiceUsage]);
+  }, [onboarding.state.firstRunStage, planTier, voiceUsage]);
   openVoiceInputRef.current = openVoiceInput;
   const consumeVoiceInput = React.useCallback(() => {
     if (planTier === 'premium' || onboarding.state.firstRunStage === 'demo') return;
@@ -886,19 +909,37 @@ export default function App() {
     setPremiumOpen(false);
     setDevPlanTierOverride(tier);
   }, []);
-  const purchaseDesignCustomize = React.useCallback(() => {
+  const purchaseDesignCustomize = React.useCallback(async () => {
+    if (storeKit.designConfigured) {
+      const success = await storeKit.purchaseDesignCustomize();
+      if (success) setDesignCustomizePurchased(true);
+      else if (storeKit.errorMessage) Alert.alert('購入を完了できませんでした', storeKit.errorMessage);
+      return;
+    }
     if (!__DEV__) {
-      Alert.alert('購入機能は準備中です', 'App Store接続後に購入できるようになります。');
+      Alert.alert('購入機能は準備中です', 'App Storeの商品情報を確認できません。');
       return;
     }
     Alert.alert('開発用購入確認', 'Design Customizeを購入済みにしますか？', [
       { text: 'キャンセル', style: 'cancel' },
       { text: '購入成功', onPress: () => setDesignCustomizePurchased(true) },
     ]);
-  }, []);
-  const restoreDesignCustomizePurchase = React.useCallback(() => {
+  }, [storeKit]);
+  const restoreDesignCustomizePurchase = React.useCallback(async () => {
+    if (storeKit.designConfigured) {
+      const restored = await storeKit.restore();
+      if (restored.designCustomize) {
+        setDesignCustomizePurchased(true);
+        Alert.alert('購入を復元しました', 'Design Customizeを利用できます。');
+      } else if (storeKit.errorMessage) {
+        Alert.alert('購入を復元できませんでした', storeKit.errorMessage);
+      } else {
+        Alert.alert('復元できる購入はありません', '同じApple IDで購入した履歴が見つかりませんでした。');
+      }
+      return;
+    }
     if (!__DEV__) {
-      Alert.alert('購入の復元は準備中です', 'App Store接続後に購入を復元できるようになります。');
+      Alert.alert('購入の復元は準備中です', 'App Storeの商品情報を確認できません。');
       return;
     }
     if (designCustomizePurchased) {
@@ -906,7 +947,17 @@ export default function App() {
       return;
     }
     Alert.alert('復元できる購入はありません', 'App Store接続後に購入履歴を確認できます。');
-  }, [designCustomizePurchased]);
+  }, [designCustomizePurchased, storeKit]);
+  const restorePremiumPurchase = React.useCallback(async () => {
+    if (!storeKit.configured) {
+      Alert.alert('購入の復元は準備中です', 'App Storeの商品情報を確認できません。');
+      return;
+    }
+    const restored = await storeKit.restore();
+    if (restored.premium) Alert.alert('購入を復元しました', 'Premiumを利用できます。');
+    else if (storeKit.errorMessage) Alert.alert('購入を復元できませんでした', storeKit.errorMessage);
+    else Alert.alert('復元できる購入はありません', '同じApple IDで購入した履歴が見つかりませんでした。');
+  }, [storeKit]);
   const markDesignNoticeSeen = React.useCallback((expiry: string) => {
     if (rewardedAccess.premiumDesignNoticeSeenFor === expiry) return;
     const next = { ...rewardedAccess, premiumDesignNoticeSeenFor: expiry };
@@ -1078,6 +1129,34 @@ export default function App() {
     const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], allowsEditing: false, quality: 0.85 });
     const selectedUri = result.canceled ? undefined : result.assets[0]?.uri;
     if (selectedUri) setDesignPreviewPhotoUri(selectedUri);
+  }, []);
+
+  const pickWidgetPhoto = React.useCallback(async () => {
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permission.granted) {
+      Alert.alert('写真へのアクセスが必要です', '許可するとWidgetに写真を表示できます。');
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], allowsEditing: false, quality: 0.8 });
+    const selectedUri = result.canceled ? undefined : result.assets[0]?.uri;
+    if (!selectedUri) return;
+    try {
+      // Keep the App Group payload small and use a stable JPEG format that
+      // WidgetKit can decode even when the source is HEIC or a cloud asset.
+      const compressed = await ImageManipulator.manipulateAsync(
+        selectedUri,
+        [{ resize: { width: 1200 } }],
+        { compress: 0.82, format: ImageManipulator.SaveFormat.JPEG },
+      );
+      const persistentUri = persistPhotoUri(compressed.uri, 'widget-photo');
+      setWidgetSettings((current) => {
+        deleteManagedPhotoUri(current.photoUri, [persistentUri, ...(current.affirmationPhotoUris ?? [])]);
+        return { ...current, photoUri: persistentUri, style: 'photo', affirmationPhotoUris: [...(current.affirmationPhotoUris ?? []).filter((uri) => uri !== persistentUri), persistentUri].slice(0, 3) };
+      });
+    } catch (error) {
+      console.warn('Could not persist selected Widget photo.', error);
+      Alert.alert('写真を保存できませんでした', 'もう一度選び直してください。');
+    }
   }, []);
   const applyPhotoDesign = React.useCallback(() => {
     if (!designPreviewPhotoUri) {
@@ -1263,7 +1342,11 @@ export default function App() {
         return true;
       }
       if (parsed.hostname === 'voice') {
-        openVoiceInputRef.current();
+        openVoiceInputRef.current(true);
+        return true;
+      }
+      if (parsed.hostname === 'affirmation') {
+        setScreen('settings');
         return true;
       }
     } catch {
@@ -1633,6 +1716,7 @@ export default function App() {
         setDepartureCheckIns(loadedDepartureCheckIns);
         setDeparturePreparationStatuses(saved.departurePreparationStatuses ?? {});
         if (saved.widgetSize) setWidgetSize(saved.widgetSize);
+        setWidgetSettings(normalizeWidgetSettings(saved.widgetSettings));
         if (typeof saved.showCompleted === 'boolean') setShowCompleted(saved.showCompleted);
         if (saved.completionIcon) setCompletionIcon(saved.completionIcon);
         if (!hapticsPreferenceTouchedRef.current && typeof saved.hapticsEnabled === 'boolean') setHapticsEnabled(saved.hapticsEnabled);
@@ -1848,7 +1932,7 @@ export default function App() {
 
   useEffect(() => {
     if (!hydrated) return;
-    const state: PersistedState = { tasks, plan, departurePlans, widgetSize, showCompleted, completionIcon, designMode, monoAppearance, hapticsEnabled, reviewPromptedAt, taskTemplates, savedTaskTemplates, chicPattern, chicCheckColor, recoveryHistory, focusSessions, focusCustomDurationMinutes, departureCheckIns, behaviorEvents, wishMonths: normalizeWishMonthsForSave(wishMonths), calendarMarks, calendarImportCalendarIds, calendarImportKnownCalendarIds, sharedEvents, sharedParticipantIdsByToken, sharedParticipantPrefsByToken, departurePreparationStatuses, affirmations, affirmationCustomTexts, photoTheme, travelApps, designCustomizePurchased, routineArchives: pruneRoutineArchives(routineArchives), voiceUsage: normalizeVoiceUsage(voiceUsage, dateKey()) };
+    const state: PersistedState = { tasks, plan, departurePlans, widgetSize, widgetSettings, showCompleted, completionIcon, designMode, monoAppearance, hapticsEnabled, reviewPromptedAt, taskTemplates, savedTaskTemplates, chicPattern, chicCheckColor, recoveryHistory, focusSessions, focusCustomDurationMinutes, departureCheckIns, behaviorEvents, wishMonths: normalizeWishMonthsForSave(wishMonths), calendarMarks, calendarImportCalendarIds, calendarImportKnownCalendarIds, sharedEvents, sharedParticipantIdsByToken, sharedParticipantPrefsByToken, departurePreparationStatuses, affirmations, affirmationCustomTexts, photoTheme, travelApps, designCustomizePurchased, routineArchives: pruneRoutineArchives(routineArchives), voiceUsage: normalizeVoiceUsage(voiceUsage, dateKey()) };
     latestPersistedStateRef.current = state;
     if (persistenceDisabledRef.current) return;
     if (persistenceTimerRef.current) clearTimeout(persistenceTimerRef.current);
@@ -1864,7 +1948,7 @@ export default function App() {
     return () => {
       if (persistenceTimerRef.current) clearTimeout(persistenceTimerRef.current);
     };
-  }, [tasks, plan, departurePlans, widgetSize, showCompleted, completionIcon, designMode, monoAppearance, hapticsEnabled, reviewPromptedAt, taskTemplates, savedTaskTemplates, chicPattern, chicCheckColor, recoveryHistory, focusSessions, focusCustomDurationMinutes, departureCheckIns, behaviorEvents, wishMonths, calendarMarks, calendarImportCalendarIds, calendarImportKnownCalendarIds, sharedEvents, sharedParticipantIdsByToken, sharedParticipantPrefsByToken, departurePreparationStatuses, affirmations, affirmationCustomTexts, photoTheme, travelApps, designCustomizePurchased, routineArchives, voiceUsage, hydrated]);
+  }, [tasks, plan, departurePlans, widgetSize, widgetSettings, showCompleted, completionIcon, designMode, monoAppearance, hapticsEnabled, reviewPromptedAt, taskTemplates, savedTaskTemplates, chicPattern, chicCheckColor, recoveryHistory, focusSessions, focusCustomDurationMinutes, departureCheckIns, behaviorEvents, wishMonths, calendarMarks, calendarImportCalendarIds, calendarImportKnownCalendarIds, sharedEvents, sharedParticipantIdsByToken, sharedParticipantPrefsByToken, departurePreparationStatuses, affirmations, affirmationCustomTexts, photoTheme, travelApps, designCustomizePurchased, routineArchives, voiceUsage, hydrated]);
 
   useEffect(() => {
     if (!hydrated) return;
@@ -1935,6 +2019,11 @@ export default function App() {
 
   useEffect(() => {
     const openFromUrl = (url: string) => {
+      // iOS may deliver the cold-start URL and the runtime event for the same
+      // tap. Ignore that duplicate so voice input cannot start twice.
+      if (handledRhythmNavigationUrlRef.current === url) return;
+      handledRhythmNavigationUrlRef.current = url;
+      setTimeout(() => { if (handledRhythmNavigationUrlRef.current === url) handledRhythmNavigationUrlRef.current = undefined; }, 1000);
       if (!handleRhythmNavigationLink(url)) handleSharedEventLink(url);
     };
     Linking.getInitialURL().then((url) => {
@@ -1953,21 +2042,96 @@ export default function App() {
     })
     .sort((a, b) => getPlanCountdownAt(a).getTime() - getPlanCountdownAt(b).getTime())[0], [departurePlans, now, planTier]);
 
-  const syncRhythmWidgetSnapshot = React.useCallback(() => {
+  const syncRhythmWidgetSnapshot = React.useCallback(async () => {
     // The first-run tour is deliberately read-only; its temporary data must
     // never escape to the user's home-screen widget.
     if (!hydrated || onboarding.state.firstRunStage === 'demo') return;
+    const selectedPhotoUri = widgetSettings.style === 'photo'
+      ? widgetSettings.photoSource === 'widget' ? widgetSettings.photoUri : wishTopImageUri
+      : undefined;
+    let photoFileName: string | undefined;
+    let photoWasCopied = false;
+    if (selectedPhotoUri) {
+      if (widgetPhotoSyncedUriRef.current !== selectedPhotoUri) {
+        const copied = await saveRhythmWidgetPhoto(selectedPhotoUri).catch(() => false);
+        if (copied) {
+          widgetPhotoSyncedUriRef.current = selectedPhotoUri;
+          photoWasCopied = true;
+        }
+      }
+      if (widgetPhotoSyncedUriRef.current === selectedPhotoUri) photoFileName = 'rhythm-widget-photo.jpg';
+    }
+    const affirmationPhotoUris = (widgetSettings.affirmationPhotoUris ?? []).slice(0, 3);
+    const affirmationPhotoFileNames: string[] = [];
+    for (let index = 0; index < affirmationPhotoUris.length; index += 1) {
+      const slot = index + 1;
+      const uri = affirmationPhotoUris[index]!;
+      let copied = widgetAffirmationPhotoSyncedUrisRef.current[slot] === uri;
+      if (!copied) copied = await saveRhythmAffirmationPhoto(uri, slot).catch(() => false);
+      if (copied) {
+        affirmationPhotoFileNames.push(`rhythm-affirmation-photo-${slot}.jpg`);
+        if (widgetAffirmationPhotoSyncedUrisRef.current[slot] !== uri) photoWasCopied = true;
+        widgetAffirmationPhotoSyncedUrisRef.current[slot] = uri;
+      }
+    }
+    Object.keys(widgetAffirmationPhotoSyncedUrisRef.current).forEach((slotKey) => {
+      if (!affirmationPhotoUris[Number(slotKey) - 1]) delete widgetAffirmationPhotoSyncedUrisRef.current[Number(slotKey)];
+    });
     const snapshot = buildRhythmWidgetSnapshot({
       tasks,
       departurePlans,
       departureCheckIns,
       canShowArrivalReverseCountdown: hasPremiumAccess(planTier, 'late_recovery'),
+      appearance: {
+        style: widgetSettings.style,
+        accentHex: getWidgetAccentHex(widgetSettings.accentColor),
+        // Keep the existing Design selection available to each widget's
+        // IntentConfiguration even when the app's current screen mode is
+        // Mono or Photo. The native widget still gates patterns using this
+        // persisted entitlement flag; carrying the values does not unlock
+        // Design for users who do not own it.
+        designPattern: effectiveChicPattern,
+        designCheckColor: chicCheckColor,
+        designPatternUnlocked: hasDesignCustomizeAccess,
+        affirmationBackgrounds: widgetSettings.affirmationBackgrounds,
+        ...(photoFileName ? { photoFileName, photoLayout: widgetSettings.photoLayout } : {}),
+      },
+      displayOptions: widgetSettings.displayOptions,
+      wishMonths,
+      affirmations,
+      affirmationCustomTexts,
+      // Photo bytes stay in the App Group file container; snapshots carry
+      // bounded filenames only. Dedicated affirmation photo management can
+      // add these slots without changing the snapshot schema again.
+      affirmationPhotoFileNames,
     });
-    void saveRhythmWidgetSnapshot(snapshot).catch((error) => {
+    const serialized = JSON.stringify(snapshot);
+    if (!photoWasCopied && (serialized === widgetSnapshotSerializedRef.current || serialized === widgetSnapshotInFlightRef.current)) return;
+    widgetSnapshotInFlightRef.current = serialized;
+    try {
+      const saved = await saveRhythmWidgetSnapshot(snapshot);
+      if (saved) widgetSnapshotSerializedRef.current = serialized;
+    } catch (error) {
       // Expo Go has no WidgetKit module. Native failures should not affect app state.
       console.warn('Rhythm widget snapshot save failed.', error);
-    });
-  }, [departureCheckIns, departurePlans, hydrated, onboarding.state.firstRunStage, planTier, tasks]);
+    } finally {
+      if (widgetSnapshotInFlightRef.current === serialized) widgetSnapshotInFlightRef.current = undefined;
+    }
+  }, [affirmationCustomTexts, affirmations, chicCheckColor, designMode, departureCheckIns, departurePlans, effectiveChicPattern, hasDesignCustomizeAccess, hydrated, onboarding.state.firstRunStage, planTier, tasks, widgetPhotoSyncedUriRef, widgetSettings, wishMonths, wishTopImageUri]);
+
+  const openWidgetGuide = React.useCallback(() => {
+    setWidgetGuideVisible(true);
+  }, []);
+  const closeWidgetGuide = React.useCallback(() => {
+    setWidgetGuideVisible(false);
+    if (!onboarding.isCompleted('widgetGuide')) void onboarding.complete('widgetGuide');
+  }, [onboarding]);
+  const openWidgetSection = React.useCallback(() => {
+    if (!onboarding.isCompleted('widgetGuide')) setWidgetGuideVisible(true);
+  }, [onboarding]);
+  const refreshWidgetFromSettings = React.useCallback(() => {
+    void syncRhythmWidgetSnapshot().then(() => Alert.alert('Widgetを更新しました', '最新の予定とタスクを同期しました。')).catch(() => Alert.alert('Widgetを更新できませんでした', '時間をおいてもう一度お試しください。'));
+  }, [syncRhythmWidgetSnapshot]);
 
   useEffect(() => {
     syncRhythmWidgetSnapshot();
@@ -2943,6 +3107,10 @@ export default function App() {
       { id: 'capture-schedule-3', title: '病院', destination: '病院', date: previewDate, arrival: '14:00', planMode: 'calendar_only', travelMinutes: 0, preparationMinutes: 0, bufferMinutes: 0 },
     ];
     if (id === 'schedule') return <View pointerEvents="none" style={{ width: '100%', padding: 12 }}><DailyScheduleTimeline date={previewDate} tasks={[]} plans={schedulePreviewPlans} externalEvents={[]} now={now} designMode={uiDesignMode} chicPalette={chicPalette} planTier="premium" onEditTask={() => undefined} onEditPlan={() => undefined} visibleStartHour={9} visibleEndHour={14} /></View>;
+    if (id === 'widget' || id === 'widgetAdd' || id === 'widgetEdit') {
+      const widgetColors = getThemeTokens(uiDesignMode, chicPalette.id).colors;
+      return <View pointerEvents="none" style={{ width: '100%', padding: 12 }}><View style={{ gap: 8 }}><View style={{ flexDirection: 'row', gap: 8 }}><View style={{ flex: 1.3, minHeight: 92, borderRadius: 14, padding: 12, backgroundColor: widgetColors.surface, borderWidth: 1, borderColor: widgetColors.border }}><Text style={{ color: widgetColors.secondaryText, fontSize: 10, fontWeight: '800' }}>今はこれ</Text><Text numberOfLines={1} style={{ color: widgetColors.primaryText, fontSize: 15, fontWeight: '900', marginTop: 8 }}>資料をまとめる</Text><Text style={{ color: widgetColors.primaryAccent, fontSize: 11, marginTop: 5 }}>25 min</Text></View><View style={{ flex: 1, minHeight: 92, borderRadius: 14, padding: 12, backgroundColor: widgetColors.softAccent, borderWidth: 1, borderColor: widgetColors.border }}><Text style={{ color: widgetColors.secondaryText, fontSize: 10, fontWeight: '800' }}>音声入力</Text><Text style={{ color: widgetColors.primaryAccent, fontSize: 24, marginTop: 10 }}>◉</Text></View></View><View style={{ flexDirection: 'row', gap: 8 }}><View style={{ flex: 1, minHeight: 76, borderRadius: 14, padding: 12, backgroundColor: widgetColors.surface, borderWidth: 1, borderColor: widgetColors.border }}><Text style={{ color: widgetColors.secondaryText, fontSize: 10, fontWeight: '800' }}>次の予定</Text><Text style={{ color: widgetColors.primaryText, fontSize: 13, fontWeight: '900', marginTop: 7 }}>18:00 美容院</Text></View><View style={{ flex: 1.3, minHeight: 76, borderRadius: 14, padding: 12, backgroundColor: widgetColors.surface, borderWidth: 1, borderColor: widgetColors.border }}><Text style={{ color: widgetColors.secondaryText, fontSize: 10, fontWeight: '800' }}>今日の言葉</Text><Text numberOfLines={2} style={{ color: widgetColors.primaryText, fontSize: 12, fontWeight: '900', marginTop: 6 }}>私は私のペースで進めばいい</Text></View></View></View></View>;
+    }
     if (id === 'focus') return renderPremiumReadOnlyPreview('calendar', true, { initialTab: 'focus', previewMode: false, previewCustomDurationOpen: false });
     if (id === 'recovery') return <View style={{ width: '100%', justifyContent: 'center', paddingVertical: 12, backgroundColor: getThemeTokens(uiDesignMode, chicPalette.id).colors.screenBackground }}>{renderPremiumReadOnlyPreview('recovery')}</View>;
     if (id === 'records') return <View pointerEvents="none" style={{ width: '100%', justifyContent: 'center', paddingVertical: 8 }}><TodayWinStrip tasks={completedCaptureTasks.slice(0, 2)} designMode={uiDesignMode} chicPattern={effectiveChicPattern} chicPalette={chicPalette} onRestore={() => undefined} /><View style={[styles.premiumPreview, { marginTop: 10, padding: 14, minHeight: 0, backgroundColor: getThemeTokens(uiDesignMode, chicPalette.id).colors.surface, borderColor: getThemeTokens(uiDesignMode, chicPalette.id).colors.border }]}><Text style={{ color: getThemeTokens(uiDesignMode, chicPalette.id).colors.primaryText, fontSize: 15, fontWeight: '900' }}>今日できたこと</Text>{completedCaptureTasks.slice(0, 2).map((task) => <View key={task.id} style={{ marginTop: 9, paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: getThemeTokens(uiDesignMode, chicPalette.id).colors.border }}><Text style={{ color: getThemeTokens(uiDesignMode, chicPalette.id).colors.primaryText, fontSize: 13, fontWeight: '800' }}>✓ {task.title}</Text><Text style={{ color: getThemeTokens(uiDesignMode, chicPalette.id).colors.secondaryText, fontSize: 11, marginTop: 2 }}>{task.category} ・ 完了</Text></View>)}</View></View>;
@@ -2976,7 +3144,9 @@ export default function App() {
       affirmationCustomTexts={[]}
       photoTheme={photoTheme}
       travelApps={travelApps}
+      widgetSettings={DEFAULT_WIDGET_SETTINGS}
       onSize={() => undefined}
+      onWidgetSettings={() => undefined}
       onShowCompleted={() => undefined}
       onCompletionIcon={() => undefined}
       onDesignMode={() => undefined}
@@ -3725,8 +3895,19 @@ export default function App() {
                affirmationCustomTexts={affirmationCustomTexts}
                photoTheme={photoTheme}
                travelApps={travelApps}
+              widgetSettings={widgetSettings}
+              onPickWidgetPhoto={pickWidgetPhoto}
+              onRemoveAffirmationPhoto={(index) => setWidgetSettings((current) => {
+                const photos = current.affirmationPhotoUris ?? [];
+                const removeIndex = index ?? photos.length - 1;
+                return { ...current, affirmationPhotoUris: photos.filter((_, photoIndex) => photoIndex !== removeIndex) };
+              })}
+              onWidgetGuide={openWidgetGuide}
+              onRefreshWidget={refreshWidgetFromSettings}
+              onWidgetSectionOpened={openWidgetSection}
               planTier={planTier}
               onSize={setWidgetSize}
+              onWidgetSettings={setWidgetSettings}
               onShowCompleted={setShowCompleted}
               onCompletionIcon={setCompletionIcon}
                 onDesignMode={(mode) => {
@@ -3805,6 +3986,8 @@ export default function App() {
                onDeleteSavedTemplate={deleteSavedTaskTemplate}
                onOpenCaptureStudio={__DEV__ ? () => setCaptureStudioOpen(true) : undefined}
                designCustomizePurchased={designCustomizePurchased}
+               designCustomizePrice={storeKit.designProduct?.displayPrice}
+               designCustomizePriceStatus={storeKit.status}
                onOpenDesignCustomize={() => setDesignCustomizeOpen(true)}
                initialAppearanceOpen={onboardingDesignSelectionPending}
                           styles={styles}
@@ -3982,7 +4165,7 @@ export default function App() {
         helpers={{ getThemeTokens: getThemedThemeTokens, todayInputValue, hasPremiumAccess, dateForReminder, dateKey, formatLiveTime, colors: themedColors, summarizePremiumTaskTemplate }}
         components={{ CompactNumberSetting }}
       />}
-      <PremiumModal visible={premiumOpen} initialFeatureId={premiumTargetFeature} designMode={uiDesignMode} chicPalette={chicPalette} planTier={planTier} isDevelopment={__DEV__} onMockPlanTier={handleMockPlanTier} onClose={() => setPremiumOpen(false)} styles={styles} helpers={{ getThemeTokens: getThemedThemeTokens }} renderReadOnlyPreview={renderPremiumReadOnlyPreview} />
+      <PremiumModal visible={premiumOpen} initialFeatureId={premiumTargetFeature} designMode={uiDesignMode} chicPalette={chicPalette} planTier={planTier} isDevelopment={__DEV__} onMockPlanTier={handleMockPlanTier} onClose={() => setPremiumOpen(false)} styles={styles} helpers={{ getThemeTokens: getThemedThemeTokens }} renderReadOnlyPreview={renderPremiumReadOnlyPreview} products={storeKit.products} productStatus={storeKit.status} purchaseError={storeKit.errorMessage} onPurchasePlan={storeKit.purchasePremium} onRestorePurchase={() => { void restorePremiumPurchase(); }} />
       <VoiceUsageLimitModal
         visible={voiceUsageLimitOpen}
         designMode={uiDesignMode}
@@ -3999,8 +4182,8 @@ export default function App() {
         onPremium={() => { setVoiceUsageLimitOpen(false); openPremiumFeature('voice'); }}
         onClose={() => setVoiceUsageLimitOpen(false)}
       />
-      <VoiceInputModal visible={voiceOpen} designMode={uiDesignMode} chicPalette={chicPalette} dateKey={dateKey} onClose={() => setVoiceOpen(false)} onRoute={handleVoiceRoute} hapticsEnabled={hapticsEnabled} isPremium={planTier === 'premium'} remainingUses={remainingVoiceUses(voiceUsage, dateKey())} onRecognitionAccepted={consumeVoiceInput} />
-      <DesignCustomizeModal visible={designCustomizeOpen} designMode={uiDesignMode} chicPalette={chicPalette} purchased={designCustomizePurchased} isDevelopment={__DEV__} onPurchase={purchaseDesignCustomize} onRestore={restoreDesignCustomizePurchase} onPremium={() => { setDesignCustomizeOpen(false); openPremiumFeature('photo_design'); }} onClose={() => setDesignCustomizeOpen(false)} />
+      <VoiceInputModal visible={voiceOpen} autoStart={voiceAutoStart} designMode={uiDesignMode} chicPalette={chicPalette} dateKey={dateKey} onClose={() => { setVoiceAutoStart(false); setVoiceOpen(false); }} onRoute={handleVoiceRoute} hapticsEnabled={hapticsEnabled} isPremium={planTier === 'premium'} remainingUses={remainingVoiceUses(voiceUsage, dateKey())} onRecognitionAccepted={consumeVoiceInput} />
+      <DesignCustomizeModal visible={designCustomizeOpen} designMode={uiDesignMode} chicPalette={chicPalette} purchased={designCustomizePurchased || storeDesignCustomizeAccess} localizedPrice={storeKit.designProduct?.displayPrice} purchaseError={storeKit.errorMessage} isDevelopment={__DEV__} onPurchase={purchaseDesignCustomize} onRestore={restoreDesignCustomizePurchase} onPremium={() => { setDesignCustomizeOpen(false); openPremiumFeature('photo_design'); }} onClose={() => setDesignCustomizeOpen(false)} />
       {__DEV__ && <OnboardingCaptureStudio visible={captureStudioOpen} onClose={() => setCaptureStudioOpen(false)} renderStep={renderOnboardingCaptureStep} renderGuideStep={renderGuideCaptureStep} renderPremiumStep={renderPremiumReadOnlyPreview} colors={{ background: theme.colors.screenBackground, surface: theme.colors.surface, border: theme.colors.border, text: theme.colors.primaryText, muted: theme.colors.secondaryText, accent: theme.colors.primaryAccent, onAccent: uiDesignMode === 'chic' && chicPalette ? chicPalette.onAccent : uiDesignMode === 'dark' ? theme.colors.screenBackground : '#FFFFFF' }} />}
       <DesignPreviewModal visible={Boolean(designPreviewPattern)} initialPattern={designPreviewPattern} initialMode={designPreviewMode} chicCheckColor={chicCheckColor} planTier={planTier} photoUri={designPreviewPhotoUri} onPickPhoto={() => void pickPhotoForDesignPreview()} onClose={() => { setDesignPreviewPattern(undefined); setDesignPreviewPhotoUri(undefined); setDesignPreviewMode('chic'); }} onTrial={(mode, pattern) => {
         if (mode === 'chic' && pattern && canStartPremiumDesignTrial(rewardedAccess)) {
@@ -4091,6 +4274,17 @@ export default function App() {
   }}
   renderStep={renderOnboardingCaptureStep}
 />
+      <OnboardingCarousel
+        visible={widgetGuideVisible}
+        onDismiss={closeWidgetGuide}
+        onFinalAction={closeWidgetGuide}
+        finalActionLabel="閉じる"
+        showSkip={false}
+        cards={WIDGET_GUIDE_CARDS}
+        renderStep={renderOnboardingCaptureStep}
+        designMode={uiDesignMode}
+        chicPalette={chicPalette}
+      />
     </SafeAreaView>
   );
 }

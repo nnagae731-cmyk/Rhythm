@@ -37,6 +37,7 @@ const ONBOARDING_FEATURE_IDS: readonly OnboardingFeatureId[] = [
   'affirmation',
   'design',
   'recovery',
+  'widgetGuide',
 ];
 
 export function isOnboardingFeatureId(

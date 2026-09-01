@@ -32,10 +32,10 @@ function useSpeechEvent(eventName: string, listener: (event: SpeechEvent) => voi
   }, [eventName, listener]);
 }
 
-type Props = { visible: boolean; designMode: DesignMode; chicPalette?: ChicThemePalette; dateKey: (date: Date) => string; onClose: () => void; onRoute: (result: VoiceParseResult) => boolean; hapticsEnabled?: boolean; isPremium?: boolean; remainingUses?: number; onRecognitionAccepted?: () => void };
+type Props = { visible: boolean; designMode: DesignMode; chicPalette?: ChicThemePalette; dateKey: (date: Date) => string; onClose: () => void; onRoute: (result: VoiceParseResult) => boolean; hapticsEnabled?: boolean; isPremium?: boolean; remainingUses?: number; onRecognitionAccepted?: () => void; autoStart?: boolean };
 const INTENT_LABELS: Array<[VoiceIntent, string]> = [['todo', 'ToDo'], ['schedule', '予定'], ['routine', 'Routine'], ['focus', '集中'], ['wish', 'Wish'], ['wishAction', 'Wish Action']];
 
-export function VoiceInputModal({ visible, designMode, chicPalette, dateKey, onClose, onRoute, hapticsEnabled = true, isPremium = false, remainingUses, onRecognitionAccepted }: Props) {
+export function VoiceInputModal({ visible, designMode, chicPalette, dateKey, onClose, onRoute, hapticsEnabled = true, isPremium = false, remainingUses, onRecognitionAccepted, autoStart = false }: Props) {
   const theme = getThemeTokens(designMode, chicPalette?.id ?? 'cool');
   const isChic = designMode === 'chic' && !!chicPalette;
   const surface = isChic ? chicPalette!.cardSurface : theme.colors.surface;
@@ -53,6 +53,7 @@ export function VoiceInputModal({ visible, designMode, chicPalette, dateKey, onC
   const recognitionStartingRef = useRef(false);
   const routedRef = useRef(false);
   const usageConsumedRef = useRef(false);
+  const autoStartRunRef = useRef(false);
 
   const waitForRecognitionReady = async () => {
     if (AppState.currentState !== 'active') {
@@ -128,7 +129,7 @@ export function VoiceInputModal({ visible, designMode, chicPalette, dateKey, onC
   }, [onRecognitionAccepted, onRoute]);
 
   useEffect(() => {
-    if (!visible) { routedRef.current = false; usageConsumedRef.current = false; setPermissionReady(false); setStatus('idle'); setTranscript(''); setParsed(undefined); return; }
+    if (!visible) { routedRef.current = false; usageConsumedRef.current = false; autoStartRunRef.current = false; setPermissionReady(false); setStatus('idle'); setTranscript(''); setParsed(undefined); return; }
     let active = true;
     void (async () => {
       try {
@@ -141,6 +142,12 @@ export function VoiceInputModal({ visible, designMode, chicPalette, dateKey, onC
           } else {
             const requestedMicrophonePermission = await Audio.requestPermissionsAsync();
             permission = requestedMicrophonePermission;
+          }
+          if (permission.granted && speechModule) {
+            const recognitionPermission = speechModule.getPermissionsAsync
+              ? await speechModule.getPermissionsAsync()
+              : await speechModule.requestPermissionsAsync();
+            if (!recognitionPermission.granted) permission = recognitionPermission;
           }
         } else {
           const currentPermission = speechModule.getPermissionsAsync ? await speechModule.getPermissionsAsync() : undefined;
@@ -159,6 +166,12 @@ export function VoiceInputModal({ visible, designMode, chicPalette, dateKey, onC
     })();
     return () => { active = false; try { speechModule?.stop(); } catch { /* Expo Go has no native module. */ } };
   }, [dateKey, visible]);
+
+  useEffect(() => {
+    if (!visible || !autoStart || !permissionReady || autoStartRunRef.current || status !== 'idle') return;
+    autoStartRunRef.current = true;
+    startRecognition();
+  }, [autoStart, permissionReady, status, visible]);
 
   useEffect(() => {
     if (!parsed || status !== 'processing') return;

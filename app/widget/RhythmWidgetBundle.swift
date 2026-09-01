@@ -7,5 +7,12 @@ struct RhythmWidgetBundle: WidgetBundle {
     RhythmWidget()
     RhythmCurrentTaskWidget()
     RhythmNextScheduleWidget()
+    RhythmMonthlyCalendarWidget()
+    RhythmWeeklyCalendarWidget()
+    RhythmTodayScheduleWidget()
+    RhythmChecklistWidget()
+    RhythmGoalWidget()
+    RhythmVoiceWidget()
+    RhythmAffirmationWidget()
   }
 }
