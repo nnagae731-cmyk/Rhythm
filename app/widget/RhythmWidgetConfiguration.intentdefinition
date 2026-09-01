@@ -11,8 +11,9 @@
       <key>INEnumType</key><string>Regular</string>
       <key>INEnumValues</key>
       <array>
-        <dict><key>INEnumValueDisplayName</key><string>固定</string><key>INEnumValueName</key><string>fixed</string><key>INEnumValueIndex</key><integer>0</integer></dict>
-        <dict><key>INEnumValueDisplayName</key><string>自動切替</string><key>INEnumValueName</key><string>automatic</string><key>INEnumValueIndex</key><integer>1</integer></dict>
+        <dict><key>INEnumValueDisplayName</key><string>unknown</string><key>INEnumValueName</key><string>unknown</string></dict>
+        <dict><key>INEnumValueDisplayName</key><string>固定</string><key>INEnumValueName</key><string>fixed</string><key>INEnumValueIndex</key><integer>1</integer></dict>
+        <dict><key>INEnumValueDisplayName</key><string>自動切替</string><key>INEnumValueName</key><string>automatic</string><key>INEnumValueIndex</key><integer>2</integer></dict>
       </array>
     </dict>
     <dict>
@@ -22,9 +23,10 @@
       <key>INEnumType</key><string>Regular</string>
       <key>INEnumValues</key>
       <array>
-        <dict><key>INEnumValueDisplayName</key><string>Mono</string><key>INEnumValueName</key><string>mono</string><key>INEnumValueIndex</key><integer>0</integer></dict>
-        <dict><key>INEnumValueDisplayName</key><string>Design</string><key>INEnumValueName</key><string>design</string><key>INEnumValueIndex</key><integer>1</integer></dict>
-        <dict><key>INEnumValueDisplayName</key><string>Photo</string><key>INEnumValueName</key><string>photo</string><key>INEnumValueIndex</key><integer>2</integer></dict>
+        <dict><key>INEnumValueDisplayName</key><string>unknown</string><key>INEnumValueName</key><string>unknown</string></dict>
+        <dict><key>INEnumValueDisplayName</key><string>Mono</string><key>INEnumValueName</key><string>mono</string><key>INEnumValueIndex</key><integer>1</integer></dict>
+        <dict><key>INEnumValueDisplayName</key><string>Design</string><key>INEnumValueName</key><string>design</string><key>INEnumValueIndex</key><integer>2</integer></dict>
+        <dict><key>INEnumValueDisplayName</key><string>Photo</string><key>INEnumValueName</key><string>photo</string><key>INEnumValueIndex</key><integer>3</integer></dict>
       </array>
     </dict>
     <dict>
@@ -34,11 +36,12 @@
       <key>INEnumType</key><string>Regular</string>
       <key>INEnumValues</key>
       <array>
-        <dict><key>INEnumValueDisplayName</key><string>花柄</string><key>INEnumValueName</key><string>floral</string><key>INEnumValueIndex</key><integer>0</integer></dict>
-        <dict><key>INEnumValueDisplayName</key><string>ドット</string><key>INEnumValueName</key><string>dot</string><key>INEnumValueIndex</key><integer>1</integer></dict>
-        <dict><key>INEnumValueDisplayName</key><string>くすみラベンダーチェック</string><key>INEnumValueName</key><string>checkLavenderSatin</string><key>INEnumValueIndex</key><integer>2</integer></dict>
-        <dict><key>INEnumValueDisplayName</key><string>ベージュ×ブラックチェック</string><key>INEnumValueName</key><string>checkBeigeNoir</string><key>INEnumValueIndex</key><integer>3</integer></dict>
-        <dict><key>INEnumValueDisplayName</key><string>モーブフレームチェック</string><key>INEnumValueName</key><string>checkMauveFrame</string><key>INEnumValueIndex</key><integer>4</integer></dict>
+        <dict><key>INEnumValueDisplayName</key><string>unknown</string><key>INEnumValueName</key><string>unknown</string></dict>
+        <dict><key>INEnumValueDisplayName</key><string>花柄</string><key>INEnumValueName</key><string>floral</string><key>INEnumValueIndex</key><integer>1</integer></dict>
+        <dict><key>INEnumValueDisplayName</key><string>ドット</string><key>INEnumValueName</key><string>dot</string><key>INEnumValueIndex</key><integer>2</integer></dict>
+        <dict><key>INEnumValueDisplayName</key><string>くすみラベンダーチェック</string><key>INEnumValueName</key><string>checkLavenderSatin</string><key>INEnumValueIndex</key><integer>3</integer></dict>
+        <dict><key>INEnumValueDisplayName</key><string>ベージュ×ブラックチェック</string><key>INEnumValueName</key><string>checkBeigeNoir</string><key>INEnumValueIndex</key><integer>4</integer></dict>
+        <dict><key>INEnumValueDisplayName</key><string>モーブフレームチェック</string><key>INEnumValueName</key><string>checkMauveFrame</string><key>INEnumValueIndex</key><integer>5</integer></dict>
       </array>
     </dict>
     <dict>
@@ -48,10 +51,11 @@
       <key>INEnumType</key><string>Regular</string>
       <key>INEnumValues</key>
       <array>
-        <dict><key>INEnumValueDisplayName</key><string>モノトーン</string><key>INEnumValueName</key><string>monochrome</string><key>INEnumValueIndex</key><integer>0</integer></dict>
-        <dict><key>INEnumValueDisplayName</key><string>寒色系</string><key>INEnumValueName</key><string>cool</string><key>INEnumValueIndex</key><integer>1</integer></dict>
-        <dict><key>INEnumValueDisplayName</key><string>暖色系</string><key>INEnumValueName</key><string>warm</string><key>INEnumValueIndex</key><integer>2</integer></dict>
-        <dict><key>INEnumValueDisplayName</key><string>緑系</string><key>INEnumValueName</key><string>green</string><key>INEnumValueIndex</key><integer>3</integer></dict>
+        <dict><key>INEnumValueDisplayName</key><string>unknown</string><key>INEnumValueName</key><string>unknown</string></dict>
+        <dict><key>INEnumValueDisplayName</key><string>モノトーン</string><key>INEnumValueName</key><string>monochrome</string><key>INEnumValueIndex</key><integer>1</integer></dict>
+        <dict><key>INEnumValueDisplayName</key><string>寒色系</string><key>INEnumValueName</key><string>cool</string><key>INEnumValueIndex</key><integer>2</integer></dict>
+        <dict><key>INEnumValueDisplayName</key><string>暖色系</string><key>INEnumValueName</key><string>warm</string><key>INEnumValueIndex</key><integer>3</integer></dict>
+        <dict><key>INEnumValueDisplayName</key><string>緑系</string><key>INEnumValueName</key><string>green</string><key>INEnumValueIndex</key><integer>4</integer></dict>
       </array>
     </dict>
     <dict>
@@ -61,11 +65,12 @@
       <key>INEnumType</key><string>Regular</string>
       <key>INEnumValues</key>
       <array>
-        <dict><key>INEnumValueDisplayName</key><string>背景</string><key>INEnumValueName</key><string>background</string><key>INEnumValueIndex</key><integer>0</integer></dict>
-        <dict><key>INEnumValueDisplayName</key><string>右</string><key>INEnumValueName</key><string>right</string><key>INEnumValueIndex</key><integer>1</integer></dict>
-        <dict><key>INEnumValueDisplayName</key><string>上</string><key>INEnumValueName</key><string>top</string><key>INEnumValueIndex</key><integer>2</integer></dict>
-        <dict><key>INEnumValueDisplayName</key><string>カード</string><key>INEnumValueName</key><string>card</string><key>INEnumValueIndex</key><integer>3</integer></dict>
-        <dict><key>INEnumValueDisplayName</key><string>丸</string><key>INEnumValueName</key><string>circle</string><key>INEnumValueIndex</key><integer>4</integer></dict>
+        <dict><key>INEnumValueDisplayName</key><string>unknown</string><key>INEnumValueName</key><string>unknown</string></dict>
+        <dict><key>INEnumValueDisplayName</key><string>背景</string><key>INEnumValueName</key><string>background</string><key>INEnumValueIndex</key><integer>1</integer></dict>
+        <dict><key>INEnumValueDisplayName</key><string>右</string><key>INEnumValueName</key><string>right</string><key>INEnumValueIndex</key><integer>2</integer></dict>
+        <dict><key>INEnumValueDisplayName</key><string>上</string><key>INEnumValueName</key><string>top</string><key>INEnumValueIndex</key><integer>3</integer></dict>
+        <dict><key>INEnumValueDisplayName</key><string>カード</string><key>INEnumValueName</key><string>card</string><key>INEnumValueIndex</key><integer>4</integer></dict>
+        <dict><key>INEnumValueDisplayName</key><string>丸</string><key>INEnumValueName</key><string>circle</string><key>INEnumValueIndex</key><integer>5</integer></dict>
       </array>
     </dict>
   </array>

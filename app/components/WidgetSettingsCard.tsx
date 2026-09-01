@@ -5,6 +5,7 @@ import {
   WidgetSettings,
 } from '../types';
 import { ChicCheckColor, ChicPattern } from '../theme';
+import { PlanTier } from '../premiumAccess';
 import {
   WIDGET_TYPE_OPTIONS,
 } from '../features/widget/widgetSettings';
@@ -19,6 +20,8 @@ type WidgetSettingsCardProps = {
   designPattern?: ChicPattern;
   designCheckColor?: ChicCheckColor;
   PatternDecor?: React.ComponentType<any>;
+  planTier?: PlanTier;
+  designCustomizePurchased?: boolean;
 };
 
 const displayOptionsByType: Record<WidgetSettings['widgetType'], ReadonlyArray<{ key: WidgetDisplayOption; label: string }>> = {
@@ -67,14 +70,16 @@ function WidgetTypePreview({ type, style, colors, designPattern, designCheckColo
   </View>;
 }
 
-export function WidgetSettingsCard({ settings, onChange, onPickPhoto, onRemoveAffirmationPhoto, colors, styles, designPattern, designCheckColor, PatternDecor }: WidgetSettingsCardProps) {
+export function WidgetSettingsCard({ settings, onChange, onPickPhoto, onRemoveAffirmationPhoto, colors, styles, designPattern, designCheckColor, PatternDecor, planTier = 'free', designCustomizePurchased = false }: WidgetSettingsCardProps) {
   const update = (patch: Partial<WidgetSettings>) => onChange({ ...settings, ...patch });
+  const canUseWidget = (access: 'free' | 'design' | 'premium') => access === 'free' || planTier === 'premium' || (access === 'design' && designCustomizePurchased);
+  const accessLabel = (access: 'free' | 'design' | 'premium') => access === 'free' ? 'Free' : access === 'design' ? 'Design Customize / Premium' : 'Premium';
   return (
     <View style={[styles.settingsCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
       <Text style={[styles.settingsTitle, { color: colors.primaryText }]}>使えるWidget</Text>
       <Text style={{ color: colors.secondaryText, fontSize: 11, lineHeight: 16, marginTop: 5 }}>ここはWidgetの種類を選ぶ画面ではなく、使えるWidgetと追加方法を確認する場所です。見た目はホーム画面の「ウィジェットを編集」からWidgetごとに設定できます。</Text>
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', rowGap: 8, marginTop: 12 }}>
-        {WIDGET_TYPE_OPTIONS.map((option) => <View key={option.id} accessible accessibilityLabel={`${option.label}。${option.description}。対応サイズ ${option.sizes}`} style={{ width: '48%', borderWidth: 1, borderColor: colors.border, backgroundColor: colors.screenBackground, borderRadius: 12, paddingHorizontal: 11, paddingVertical: 10 }}><Text numberOfLines={1} style={{ color: colors.primaryText, fontSize: 13, fontWeight: '800' }}>{option.label}</Text><Text numberOfLines={2} style={{ color: colors.secondaryText, fontSize: 11, lineHeight: 15, marginTop: 3 }}>{option.description}</Text><Text style={{ color: colors.primaryAccent, fontSize: 10, marginTop: 5, fontWeight: '700' }}>{option.sizes}</Text><WidgetTypePreview type={option.id} style={settings.style} colors={colors} designPattern={designPattern} designCheckColor={designCheckColor} PatternDecor={PatternDecor} /></View>)}
+        {WIDGET_TYPE_OPTIONS.map((option) => { const available = canUseWidget(option.access); return <View key={option.id} accessible accessibilityLabel={`${option.label}。${option.description}。対応サイズ ${option.sizes}。${accessLabel(option.access)}${available ? '' : '。ロック中'}`} style={{ width: '48%', borderWidth: 1, borderColor: colors.border, backgroundColor: colors.screenBackground, borderRadius: 12, paddingHorizontal: 11, paddingVertical: 10 }}><View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 5 }}><Text numberOfLines={1} style={{ flex: 1, color: colors.primaryText, fontSize: 13, fontWeight: '800' }}>{option.label}</Text><Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7} style={{ color: available ? colors.primaryAccent : colors.secondaryText, fontSize: 9, fontWeight: '800' }}>{available ? accessLabel(option.access) : '🔒 ' + accessLabel(option.access)}</Text></View><Text numberOfLines={2} style={{ color: colors.secondaryText, fontSize: 11, lineHeight: 15, marginTop: 3 }}>{option.description}</Text><Text style={{ color: colors.primaryAccent, fontSize: 10, marginTop: 5, fontWeight: '700' }}>{option.sizes}</Text><WidgetTypePreview type={option.id} style={settings.style} colors={colors} designPattern={designPattern} designCheckColor={designCheckColor} PatternDecor={PatternDecor} /></View>; })}
       </View>
 
       <>

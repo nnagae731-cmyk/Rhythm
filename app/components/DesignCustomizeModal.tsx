@@ -32,7 +32,7 @@ export function DesignCustomizeModal({ visible, designMode, chicPalette, purchas
             <View style={[styles.featureList, { backgroundColor: colors.surface, borderColor: colors.border }]}>
               {['花柄・チェック・ドット', '写真背景', '画面ごとのトップ画像', '集中タイマー背景'].map((label) => <Text key={label} style={[styles.feature, { color: colors.text }]}>• {label}</Text>)}
             </View>
-            <Text style={[styles.description, { color: colors.muted }]}>を広告なしでずっと利用できます。</Text>
+            <Text style={[styles.description, { color: colors.muted }]}>を買い切りで利用できます。Premiumなら対象デザインも利用できます。</Text>
             <Text style={[styles.price, { color: colors.accent }]}>{localizedPrice ? `${localizedPrice} 買い切り` : '買い切り（価格はApp Storeで表示）'}</Text>
             {purchaseError ? <Text style={[styles.note, { color: colors.muted }]}>{purchaseError}</Text> : null}
             {purchased ? <View style={[styles.purchased, { borderColor: colors.border, backgroundColor: colors.surface }]}><Text style={[styles.purchasedText, { color: colors.accent }]}>購入済み</Text></View> : <>

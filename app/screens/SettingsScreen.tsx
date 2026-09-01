@@ -28,7 +28,7 @@ function DesignCustomizeCard({ designMode, chicPalette, planTier, purchased, loc
   return <View style={{ marginTop: 14, padding: 15, borderRadius: 16, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface }}>
     <Text style={{ color: colors.text, fontSize: 15, fontWeight: '900' }}>Design Customize</Text>
     {planTier === 'premium' ? <Text style={{ color: colors.accent, marginTop: 6, fontSize: 12, fontWeight: '800' }}>Premiumで利用できます</Text> : purchased ? <Text style={{ color: colors.accent, marginTop: 6, fontSize: 12, fontWeight: '800' }}>購入済み</Text> : <>
-      <Text style={{ color: colors.muted, marginTop: 6, fontSize: 12, lineHeight: 18, fontWeight: '600' }}>Rhythmの見た目を、もっと自分らしく。{ '\n' }Designと写真カスタマイズを広告なしでずっと使えます。</Text>
+      <Text style={{ color: colors.muted, marginTop: 6, fontSize: 12, lineHeight: 18, fontWeight: '600' }}>Rhythmの見た目を、もっと自分らしく。{ '\n' }Designと写真カスタマイズを買い切りで利用できます。</Text>
       <Text style={{ color: colors.accent, marginTop: 8, fontSize: 14, fontWeight: '900' }}>{priceStatus === 'loading' ? '価格を取得中…' : localizedPrice ? `買い切り ${localizedPrice}` : '価格は購入画面で確認'}</Text>
       <View style={{ flexDirection: 'row', gap: 8, marginTop: 11 }}>
         <Pressable onPress={onTry} style={{ flex: 1, minHeight: 40, borderRadius: 11, borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center' }}><Text style={{ color: colors.accent, fontSize: 12, fontWeight: '900' }}>試してみる</Text></Pressable>
@@ -313,6 +313,8 @@ export function SettingsScreen({
         designPattern={isDesign ? chicPattern : 'plain'}
         designCheckColor={chicCheckColor}
         PatternDecor={ChicPatternDecor}
+        planTier={planTier}
+        designCustomizePurchased={designCustomizePurchased}
       />
       </SettingsDisclosure>
        <View style={styles.settingsDisclosure}>

@@ -26,6 +26,10 @@ export type RhythmWidgetAppearance = {
 
 export type RhythmWidgetSnapshot = {
   updatedAt: string;
+  /** Effective entitlements used by the extension to gate Widget kinds. */
+  isPremium?: boolean;
+  /** True when Design Customize is purchased or included with Premium. */
+  designCustomizePurchased?: boolean;
   appearance?: RhythmWidgetAppearance;
   /** Kept in the payload for the native renderer's future display filtering. */
   displayOptions?: Record<string, boolean>;
@@ -84,6 +88,8 @@ type SnapshotInput = {
   departureCheckIns: DepartureCheckIn[];
   /** Arrival-reverse countdowns stay behind the existing Premium entitlement. */
   canShowArrivalReverseCountdown: boolean;
+  isPremium?: boolean;
+  designCustomizePurchased?: boolean;
   appearance?: RhythmWidgetAppearance;
   displayOptions?: Record<string, boolean>;
   wishMonths?: WishMonthMap;
@@ -196,6 +202,8 @@ export function buildRhythmWidgetSnapshot({
   departurePlans,
   departureCheckIns,
   canShowArrivalReverseCountdown,
+  isPremium = false,
+  designCustomizePurchased = false,
   appearance,
   displayOptions,
   wishMonths,
@@ -253,6 +261,8 @@ export function buildRhythmWidgetSnapshot({
 
   return {
     updatedAt: now.toISOString(),
+    isPremium,
+    designCustomizePurchased,
     ...(appearance ? { appearance } : {}),
     ...(displayOptions ? { displayOptions } : {}),
     ...(currentTask ? {

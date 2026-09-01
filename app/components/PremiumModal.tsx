@@ -85,7 +85,8 @@ const darkPreviewStyleOverrides: Record<string, any> = {
 };
 
 const PREMIUM_GUIDE_FEATURES: Array<{ id: PremiumGuideFeatureId; kind: PremiumPreviewKind; title: string; description: string }> = [
-  { id: 'voice', kind: 'voice', title: '音声入力', description: '話した内容から、ToDo・予定・ルーティン・叶えたいことをすぐに整理できます。Freeは1日5回、Premiumは無制限です。' },
+  { id: 'widget', kind: 'widget', title: 'ホーム画面から、もっと動ける', description: 'Premiumなら10種類すべてのWidgetと、Design Customize対象のデザインを利用できます。' },
+  { id: 'voice', kind: 'voice', title: '音声入力', description: '話した内容から、ToDo・予定・ルーティン・叶えたいことをすぐに整理できます。Freeは1日5回に加え、広告視聴で1回につき3回分を追加できます。Premiumは無制限です。' },
   { id: 'focus_custom_duration', kind: 'focus_custom_duration', title: '集中時間を自由に設定', description: '決まった時間だけでなく、その日に合わせて好きな集中時間を設定できます。' },
   { id: 'records', kind: 'records', title: '今日の記録', description: '写真・ひとこと・メモを日付ごとに保存。カレンダーから記録済みの日を確認し、登録後の編集・削除もできます。' },
   { id: 'reflection', kind: 'reflection', title: '今月を振り返る', description: 'カレンダー上部のボタンから開く独立機能。今月の写真・言葉・ベストをテンプレートやレイアウトでまとめ、画像保存・共有できます。' },
@@ -100,12 +101,13 @@ const PREMIUM_GUIDE_FEATURES: Array<{ id: PremiumGuideFeatureId; kind: PremiumPr
   { id: 'templates', kind: 'templates', title: 'タスクひな型', description: '一度作ったタスクのカテゴリ・優先度・通知設定をひな型として保存し、次回の登録を簡単にします。' },
   { id: 'wish', kind: 'wish', title: '叶えたいこと', description: '叶えたいことを残して、今日できる行動に分けながら進み具合を確認できます。' },
   { id: 'affirmation', kind: 'affirmation', title: '好きな言葉を、選んだ時間に届ける', description: '自分で書いたアファメーションを毎日指定時刻に通知。忙しい日も、自分の軸へ静かに戻れます。' },
-  { id: 'photo_design', kind: 'photo_design', title: '選べるデザイン', description: '花柄1〜3、ドット、チェックデザイン、写真背景はPremiumで利用できます。FreeでもTrialや広告で試せます。Design Customizeを¥500で買い切れば、Premiumなしでも広告なしでずっと利用できます。' },
+  { id: 'photo_design', kind: 'photo_design', title: '選べるデザイン', description: '花柄1〜3、ドット、チェックデザイン、写真背景はPremiumで利用できます。Design Customizeの買い切り商品でも対象デザインを開放できます。価格はApp Storeに表示されます。' },
 ];
 
 type PremiumFeatureIconName = 'timer' | 'journal' | 'calendarChart' | 'calendarSync' | 'pin' | 'bell' | 'bellSparkle' | 'chart' | 'analyticsBars' | 'historyTrend' | 'calendarList' | 'search' | 'copy' | 'target' | 'pathCheck' | 'quote' | 'messageSparkle' | 'refresh' | 'palette' | 'swatches' | 'pattern' | 'mic';
 
 const PREMIUM_FEATURE_ICONS: Record<PremiumGuideFeatureId, PremiumFeatureIconName> = {
+  widget: 'target',
   voice: 'mic',
   focus_custom_duration: 'timer', records: 'journal', reflection: 'calendarChart', calendar: 'calendarSync', route: 'pin', travel_apps: 'pin',
   nudge: 'bellSparkle', time: 'analyticsBars', behavior: 'historyTrend', month: 'calendarList', history: 'search', recovery: 'refresh', templates: 'copy', wish: 'pathCheck',
@@ -113,6 +115,7 @@ const PREMIUM_FEATURE_ICONS: Record<PremiumGuideFeatureId, PremiumFeatureIconNam
 };
 
 const PREMIUM_FEATURE_NAV_LABELS: Record<PremiumGuideFeatureId, string> = {
+  widget: 'Widget',
   voice: '音声入力',
   focus_custom_duration: '集中時間', records: '今日の記録', reflection: '月の振り返り', calendar: 'カレンダー連携', route: '出発・地図・共有', travel_apps: '移動アプリ',
   nudge: '高度な通知', time: '行動分析', behavior: '振り返り', month: '月別履歴', history: '履歴検索', recovery: '立て直し', templates: 'タスクひな型', wish: '叶えたいこと',
@@ -120,7 +123,8 @@ const PREMIUM_FEATURE_NAV_LABELS: Record<PremiumGuideFeatureId, string> = {
 };
 
 const PREMIUM_FEATURE_DIFFS: Partial<Record<PremiumGuideFeatureId, { free: string; premium: string }>> = {
-  voice: { free: '1日5回まで', premium: '無制限' },
+  widget: { free: '基本の3種類', premium: '10種類すべて' },
+  voice: { free: '1日5回＋広告で追加', premium: '無制限' },
   focus_custom_duration: { free: '固定の集中時間を利用', premium: '好きな集中時間を設定' },
   records: { free: '利用できません', premium: '写真・ひとこと・メモを保存' },
   reflection: { free: '利用できません', premium: '今月の写真・言葉・ベストをまとめる' },
@@ -141,7 +145,8 @@ const PREMIUM_FEATURE_DIFFS: Partial<Record<PremiumGuideFeatureId, { free: strin
 const PREMIUM_COMPARISON_ROWS: Array<{ label: string; free: '○' | '△' | '×'; premium: '○' | '△' | '×'; note?: string }> = [
   { label: '基本のToDo・予定管理', free: '○', premium: '○' },
   { label: '基本の集中タイム', free: '○', premium: '○' },
-  { label: '音声入力', free: '△', premium: '○', note: 'Freeは1日5回' },
+  { label: 'Widget', free: '△', premium: '○', note: 'Freeは基本の3種類。Premiumは10種類すべて' },
+  { label: '音声入力', free: '△', premium: '○', note: 'Freeは1日5回＋広告で追加' },
   { label: '今日の記録', free: '×', premium: '○' },
   { label: '今月を振り返る', free: '×', premium: '○' },
   { label: 'カレンダー取り込み', free: '△', premium: '○', note: 'Freeは広告1回で1予定' },
@@ -167,6 +172,7 @@ function PremiumComparison({ styles, primaryText, secondaryText, border, surface
 }
 
 function LegacyPreviewFallback({ kind, styles }: { kind: PremiumPreviewKind; styles: any }) {
+  if (kind === 'widget') return <View style={styles.premiumPreview}><Text style={styles.previewImageLabel}>ホーム画面のWidget</Text><View style={styles.previewTemplateSource}><Text style={styles.previewTemplateTitle}>今はこれ　　25分</Text><Text style={styles.previewTemplateMeta}>資料をまとめる　・　集中モード中</Text><Text style={styles.previewTemplateMeta}>次の予定　18:00 美容院</Text></View><Text style={styles.previewTemplateReady}>Premiumなら10種類すべてを利用できます</Text></View>;
   if (kind === 'calendar') return <View style={styles.premiumPreview}><Text style={styles.previewImageLabel}>予定表の表示イメージ</Text>{[['09:00', '朝会', '外部予定'], ['11:00', '資料提出', 'Rhythm'], ['14:00', '病院訪問', '外部予定'], ['18:30', 'ピラティス', '外部予定']].map(([time, title, source]) => <View key={`${time}-${title}`} style={styles.previewScheduleRow}><Text style={styles.previewTime}>{time}</Text><Text style={styles.previewScheduleTitle}>{title}</Text><Text style={[styles.previewSource, source === 'Rhythm' && styles.previewSourceRhythm]}>{source}</Text></View>)}<View style={styles.previewFlow}><Text style={styles.previewFlowText}>14:00 病院訪問</Text><Text style={styles.previewArrow}>↓</Text><Text style={styles.previewFlowButton}>出発を考える</Text></View></View>;
   if (kind === 'records') return <View style={styles.premiumPreview}><Text style={styles.previewImageLabel}>今日の記録</Text><View style={styles.previewTemplateSource}><Text style={styles.previewCompareTag}>8月23日</Text><Text style={styles.previewTemplateTitle}>写真・ひとこと・メモ</Text><Text style={styles.previewTemplateMeta}>カレンダーから記録済みの日を確認</Text></View><Text style={styles.previewTemplateReady}>登録後も編集・削除できます</Text></View>;
   if (kind === 'reflection') return <View style={styles.premiumPreview}><Text style={styles.previewImageLabel}>今月を振り返る</Text><View style={styles.previewTemplateSaved}><View><Text style={styles.previewCompareTag}>今月の言葉</Text><Text style={styles.previewTemplateTitle}>自分のペースで進む</Text></View><Text style={styles.previewTemplateChoose}>写真 3枚</Text></View><Text style={styles.previewTemplateReady}>テンプレートで画像保存・共有</Text></View>;
@@ -385,7 +391,8 @@ export function PremiumModal({ visible, initialFeatureId, designMode, chicPalett
           <View style={{ flex: 1 }}>
             <Text style={[styles.premiumCarouselBrand, { color: primaryText }]}>Rhythm Premium</Text>
             <Text style={[styles.premiumCarouselCopy, { color: secondaryText }]}>予定を立てるだけでなく、間に合う・続けるまで支えます。</Text>
-            <Text style={[styles.premiumCarouselCopy, { color: secondaryText }, { marginTop: 5, fontSize: 10 }]}>{purchaseOpen ? 'Premiumを始める準備をしています。' : '記録・分析・デザイン・共有を、あなたの使い方に合わせて広げます。'}</Text>
+            <Text style={[styles.premiumCarouselCopy, { color: accentStrong }, { marginTop: 5, fontSize: 11, fontWeight: '800' }]}>Premiumならすべての機能・Widget・デザインを利用できます。</Text>
+            <Text style={[styles.premiumCarouselCopy, { color: secondaryText }, { marginTop: 4, fontSize: 10 }]}>{purchaseOpen ? 'Premiumを始める準備をしています。' : '記録・分析・デザイン・共有を、あなたの使い方に合わせて広げます。'}</Text>
           </View>
           {purchaseOpen ? <Pressable accessibilityRole="button" accessibilityLabel="Premium購入画面から戻る" hitSlop={10} style={styles.premiumHeaderClose} onPress={() => { setPurchaseOpen(false); setPurchaseStatus('idle'); }}><Text style={[styles.premiumCloseButtonText, { color: accentStrong }]}>戻る</Text></Pressable> : <Pressable accessibilityRole="button" accessibilityLabel="Premium案内を閉じる" hitSlop={10} style={styles.premiumHeaderClose} onPress={onClose}><Text style={[styles.premiumHeaderCloseText, { color: accentStrong }]}>×</Text></Pressable>}
         </View>
@@ -393,8 +400,8 @@ export function PremiumModal({ visible, initialFeatureId, designMode, chicPalett
         {purchaseOpen ? <ScrollView style={styles.premiumCarouselArea} contentContainerStyle={styles.premiumModalScroll} showsVerticalScrollIndicator={false} nestedScrollEnabled keyboardShouldPersistTaps="handled">
           <View style={[styles.premiumPurchasePanel, { backgroundColor: surface, borderColor: accent }]}>
             <Text style={[styles.premiumPurchaseTitle, { color: primaryText }]}>Premiumを始める</Text>
-            <Text style={[styles.premiumPurchaseCopy, { color: secondaryText }]}>記録・振り返り・デザインを、Rhythmの使い方に合わせて広げます。</Text>
-            <View style={[styles.premiumPurchaseBenefits, { borderTopColor: theme.colors.border, borderBottomColor: theme.colors.border }]}><Text style={[styles.premiumPurchaseBenefit, { color: primaryText }]}>今日の記録と今月の振り返り</Text><Text style={[styles.premiumPurchaseBenefit, { color: primaryText }]}>詳細な履歴・検索</Text><Text style={[styles.premiumPurchaseBenefit, { color: primaryText }]}>選べるデザイン・写真・アファメーション</Text></View>
+            <Text style={[styles.premiumPurchaseCopy, { color: secondaryText }]}>すべての機能・Widget・デザインを、RhythmPaceの使い方に合わせて広げます。</Text>
+            <View style={[styles.premiumPurchaseBenefits, { borderTopColor: theme.colors.border, borderBottomColor: theme.colors.border }]}><Text style={[styles.premiumPurchaseBenefit, { color: primaryText }]}>10種類すべてのWidget</Text><Text style={[styles.premiumPurchaseBenefit, { color: primaryText }]}>今日の記録・振り返り・詳細な履歴</Text><Text style={[styles.premiumPurchaseBenefit, { color: primaryText }]}>選べるデザイン・写真・アファメーション</Text></View>
             <Text style={[styles.premiumPlanHeading, { color: primaryText }]}>プランを選択</Text>
             {(['annual', 'monthly'] as const).map((plan) => {
               const product = products?.[plan];

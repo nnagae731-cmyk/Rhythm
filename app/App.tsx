@@ -1349,11 +1349,19 @@ export default function App() {
         setScreen('settings');
         return true;
       }
+      if (parsed.hostname === 'premium') {
+        openPremiumFeature('widget');
+        return true;
+      }
+      if (parsed.hostname === 'design') {
+        setDesignCustomizeOpen(true);
+        return true;
+      }
     } catch {
       // A malformed external URL should not block the existing share handler.
     }
     return false;
-  }, []);
+  }, [openPremiumFeature]);
 
   const shareDeparturePlan = React.useCallback((targetPlan: DeparturePlan) => {
     if (!hasPremiumAccess(planTierRef.current, 'late_recovery')) {
@@ -2082,6 +2090,8 @@ export default function App() {
       departurePlans,
       departureCheckIns,
       canShowArrivalReverseCountdown: hasPremiumAccess(planTier, 'late_recovery'),
+      isPremium: planTier === 'premium',
+      designCustomizePurchased: hasDesignCustomizeAccess,
       appearance: {
         style: widgetSettings.style,
         accentHex: getWidgetAccentHex(widgetSettings.accentColor),

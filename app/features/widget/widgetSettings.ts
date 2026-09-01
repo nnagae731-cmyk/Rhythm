@@ -8,17 +8,19 @@ import {
   WidgetType,
 } from '../../types';
 
-export const WIDGET_TYPE_OPTIONS: ReadonlyArray<{ id: WidgetType; label: string; description: string; sizes: string }> = [
-  { id: 'current', label: '今はこれ', description: 'いま取り組むタスクを表示', sizes: 'S / M' },
-  { id: 'next', label: '次の予定', description: '次に控えている予定を表示', sizes: 'S / M' },
-  { id: 'combined', label: '今はこれ＋次の予定', description: 'タスクと予定をまとめて表示', sizes: 'M' },
-  { id: 'monthly', label: '月間カレンダー', description: '予定のある日を月ごとに確認', sizes: 'M / L' },
-  { id: 'weekly', label: '週間カレンダー', description: '今週の予定を一覧で確認', sizes: 'M / L' },
-  { id: 'today', label: '今日の予定', description: '今日の予定を時刻順に表示', sizes: 'M' },
-  { id: 'checklist', label: '忘れたくない', description: '忘れたくない項目を確認', sizes: 'S / M' },
-  { id: 'goal', label: '叶えたいこと', description: '目標と進捗を表示', sizes: 'M' },
-  { id: 'voice', label: '音声入力', description: 'ホーム画面から音声入力を開始', sizes: 'S / M' },
-  { id: 'affirmation', label: 'アファメーション', description: '言葉と背景で気持ちを整える', sizes: 'S / M' },
+export type WidgetAccessTier = 'free' | 'design' | 'premium';
+
+export const WIDGET_TYPE_OPTIONS: ReadonlyArray<{ id: WidgetType; label: string; description: string; sizes: string; access: WidgetAccessTier }> = [
+  { id: 'current', label: '今はこれ', description: 'いま取り組むタスクを表示', sizes: 'S / M', access: 'free' },
+  { id: 'next', label: '次の予定', description: '次に控えている予定を表示', sizes: 'S / M', access: 'free' },
+  { id: 'combined', label: '今はこれ＋次の予定', description: 'タスクと予定をまとめて表示', sizes: 'M', access: 'design' },
+  { id: 'monthly', label: '月間カレンダー', description: '予定のある日を月ごとに確認', sizes: 'M / L', access: 'design' },
+  { id: 'weekly', label: '週間カレンダー', description: '今週の予定を一覧で確認', sizes: 'M / L', access: 'design' },
+  { id: 'today', label: '今日の予定', description: '今日の予定を時刻順に表示', sizes: 'M', access: 'design' },
+  { id: 'checklist', label: '忘れたくない', description: '忘れたくない項目を確認', sizes: 'S / M', access: 'design' },
+  { id: 'goal', label: '叶えたいこと', description: '目標と進捗を表示', sizes: 'M', access: 'premium' },
+  { id: 'voice', label: '音声入力', description: 'ホーム画面から音声入力を開始', sizes: 'S / M', access: 'free' },
+  { id: 'affirmation', label: 'アファメーション', description: '言葉と背景で気持ちを整える', sizes: 'S / M', access: 'premium' },
 ];
 
 export const WIDGET_STYLE_OPTIONS: ReadonlyArray<{ id: WidgetStyle; label: string; description: string }> = [

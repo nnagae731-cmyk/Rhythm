@@ -107,6 +107,8 @@ struct WidgetSnapshot: Codable {
   }
 
   let updatedAt: Date
+  let isPremium: Bool?
+  let designCustomizePurchased: Bool?
   let appearance: Appearance?
   let displayOptions: [String: Bool]?
   let currentTask: Task?
@@ -120,6 +122,23 @@ struct WidgetSnapshot: Codable {
   let affirmations: [AffirmationItem]?
   let affirmationPhotoFileNames: [String]?
 
+  /// Widget kinds are gated by the effective entitlements written by the
+  /// containing app. Missing fields are treated as the free tier so older
+  /// snapshots remain safe and readable.
+  func canDisplayWidget(kind: String) -> Bool {
+    if isPremium == true { return true }
+    switch kind {
+    case "RhythmCurrentTaskWidget", "RhythmNextScheduleWidget", "RhythmVoiceWidget":
+      return true
+    case "RhythmWidget", "RhythmMonthlyCalendarWidget", "RhythmWeeklyCalendarWidget", "RhythmTodayScheduleWidget", "RhythmChecklistWidget":
+      return designCustomizePurchased == true
+    case "RhythmGoalWidget", "RhythmAffirmationWidget":
+      return false
+    default:
+      return true
+    }
+  }
+
   /// Older snapshots do not contain displayOptions. Treat missing or malformed
   /// entries as enabled so an upgrade never hides existing widget content.
   func isDisplayOptionEnabled(_ key: String) -> Bool {
@@ -132,12 +151,14 @@ struct RhythmWidgetEntry: TimelineEntry {
   let snapshot: WidgetSnapshot?
   let affirmationTextOverride: String?
   let affirmationPhotoFileNameOverride: String?
+  let widgetKind: String?
 
-  init(date: Date, snapshot: WidgetSnapshot?, affirmationTextOverride: String? = nil, affirmationPhotoFileNameOverride: String? = nil) {
+  init(date: Date, snapshot: WidgetSnapshot?, affirmationTextOverride: String? = nil, affirmationPhotoFileNameOverride: String? = nil, widgetKind: String? = nil) {
     self.date = date
     self.snapshot = snapshot
     self.affirmationTextOverride = affirmationTextOverride
     self.affirmationPhotoFileNameOverride = affirmationPhotoFileNameOverride
+    self.widgetKind = widgetKind
   }
 }
 
@@ -228,6 +249,8 @@ private func gallerySampleSnapshot(now: Date = Date()) -> WidgetSnapshot {
   }
   return WidgetSnapshot(
     updatedAt: now,
+    isPremium: true,
+    designCustomizePurchased: true,
     appearance: WidgetSnapshot.Appearance(style: .color, accentHex: "#8EA6FF", photoFileName: nil, photoLayout: nil, designPattern: "dot", designCheckColor: "cool", designPatternUnlocked: true, affirmationBackgrounds: ["floral", "dot", "check"]),
     displayOptions: nil,
     currentTask: WidgetSnapshot.Task(id: "gallery-task", title: "資料をまとめる", startAt: taskStart, estimatedMinutes: 45, remainingMinutes: 25, status: "active", priority: "中"),
@@ -260,12 +283,12 @@ struct RhythmWidgetProvider: IntentTimelineProvider {
   }
 
   func placeholder(in context: Context) -> RhythmWidgetEntry {
-    RhythmWidgetEntry(date: .now, snapshot: gallerySampleSnapshot())
+    RhythmWidgetEntry(date: .now, snapshot: gallerySampleSnapshot(), widgetKind: widgetKind)
   }
 
   func getSnapshot(for configuration: RhythmWidgetIntent, in context: Context, completion: @escaping (RhythmWidgetEntry) -> Void) {
     let snapshot = context.isPreview ? gallerySampleSnapshot() : loadSnapshot().map { applying(configuration, to: $0) }
-    completion(RhythmWidgetEntry(date: .now, snapshot: snapshot))
+    completion(RhythmWidgetEntry(date: .now, snapshot: snapshot, widgetKind: widgetKind))
   }
 
   func getTimeline(for configuration: RhythmWidgetIntent, in context: Context, completion: @escaping (Timeline<RhythmWidgetEntry>) -> Void) {
@@ -281,20 +304,20 @@ struct RhythmWidgetProvider: IntentTimelineProvider {
         guard let date = calendar.date(bySettingHour: hour, minute: 0, second: 0, of: startOfDay), date > now else { return nil }
         let text = affirmations[index % affirmations.count].text
         let photo = photoNames.isEmpty ? nil : photoNames[index % photoNames.count]
-        return RhythmWidgetEntry(date: date, snapshot: snapshot, affirmationTextOverride: text, affirmationPhotoFileNameOverride: photo)
+        return RhythmWidgetEntry(date: date, snapshot: snapshot, affirmationTextOverride: text, affirmationPhotoFileNameOverride: photo, widgetKind: widgetKind)
       }
       let tomorrow = calendar.date(byAdding: .day, value: 1, to: startOfDay) ?? startOfDay
       let nextEntries = hours.enumerated().compactMap { index, hour -> RhythmWidgetEntry? in
         guard let date = calendar.date(bySettingHour: hour, minute: 0, second: 0, of: tomorrow) else { return nil }
         let text = affirmations[(index + entries.count) % affirmations.count].text
         let photo = photoNames.isEmpty ? nil : photoNames[(index + entries.count) % photoNames.count]
-        return RhythmWidgetEntry(date: date, snapshot: snapshot, affirmationTextOverride: text, affirmationPhotoFileNameOverride: photo)
+        return RhythmWidgetEntry(date: date, snapshot: snapshot, affirmationTextOverride: text, affirmationPhotoFileNameOverride: photo, widgetKind: widgetKind)
       }
       completion(Timeline(entries: entries + nextEntries, policy: .atEnd))
       return
     }
     let refresh = nextRefreshDate(snapshot: snapshot, from: now)
-    completion(Timeline(entries: [RhythmWidgetEntry(date: now, snapshot: snapshot)], policy: .after(refresh)))
+    completion(Timeline(entries: [RhythmWidgetEntry(date: now, snapshot: snapshot, widgetKind: widgetKind)], policy: .after(refresh)))
   }
 
   private func applying(_ configuration: RhythmWidgetIntent, to snapshot: WidgetSnapshot) -> WidgetSnapshot {
@@ -303,11 +326,40 @@ struct RhythmWidgetProvider: IntentTimelineProvider {
     let patternId = configuration.designPattern?.identifier
     let colorId = configuration.designColor?.identifier
     let layoutId = configuration.photoLayout?.identifier
-    let style = styleId == "photo" ? WidgetSnapshot.Style.photo : styleId == "design" ? WidgetSnapshot.Style.color : styleId == "color" ? WidgetSnapshot.Style.color : styleId == "mono" ? WidgetSnapshot.Style.mono : stored.style
-    let pattern = stored.designPatternUnlocked == true ? (patternId ?? stored.designPattern) : stored.designPattern
-    let layout = layoutId ?? stored.photoLayout
-    let appearance = WidgetSnapshot.Appearance(style: style, accentHex: stored.accentHex, photoFileName: stored.photoFileName, photoLayout: layout, designPattern: pattern, designCheckColor: colorId ?? stored.designCheckColor, designPatternUnlocked: stored.designPatternUnlocked, affirmationBackgrounds: stored.affirmationBackgrounds)
-    return WidgetSnapshot(updatedAt: snapshot.updatedAt, appearance: appearance, displayOptions: snapshot.displayOptions, currentTask: snapshot.currentTask, nextPlan: snapshot.nextPlan, calendarMonth: snapshot.calendarMonth, calendarWeek: snapshot.calendarWeek, todaySchedules: snapshot.todaySchedules, todayScheduleCount: snapshot.todayScheduleCount, checklist: snapshot.checklist, goal: snapshot.goal, affirmations: snapshot.affirmations, affirmationPhotoFileNames: snapshot.affirmationPhotoFileNames)
+    // IntentDefinition reserves index 0 for `unknown`. Treat it as a safe
+    // default instead of allowing an unknown identifier to reach the view.
+    let style: WidgetSnapshot.Style = {
+      switch styleId {
+      case "photo": return .photo
+      case "design", "color": return .color
+      case "mono", "unknown": return .mono
+      default: return stored.style
+      }
+    }()
+    let pattern: String? = {
+      guard stored.designPatternUnlocked == true else { return stored.designPattern }
+      switch patternId {
+      case "unknown": return "dot"
+      case .some(let value): return value
+      default: return stored.designPattern ?? "dot"
+      }
+    }()
+    let layout: String? = {
+      switch layoutId {
+      case "unknown": return "background"
+      case .some(let value): return value
+      default: return stored.photoLayout
+      }
+    }()
+    let designCheckColor: String? = {
+      switch colorId {
+      case "unknown": return "monochrome"
+      case .some(let value): return value
+      default: return stored.designCheckColor
+      }
+    }()
+    let appearance = WidgetSnapshot.Appearance(style: style, accentHex: stored.accentHex, photoFileName: stored.photoFileName, photoLayout: layout, designPattern: pattern, designCheckColor: designCheckColor, designPatternUnlocked: stored.designPatternUnlocked, affirmationBackgrounds: stored.affirmationBackgrounds)
+    return WidgetSnapshot(updatedAt: snapshot.updatedAt, isPremium: snapshot.isPremium, designCustomizePurchased: snapshot.designCustomizePurchased, appearance: appearance, displayOptions: snapshot.displayOptions, currentTask: snapshot.currentTask, nextPlan: snapshot.nextPlan, calendarMonth: snapshot.calendarMonth, calendarWeek: snapshot.calendarWeek, todaySchedules: snapshot.todaySchedules, todayScheduleCount: snapshot.todayScheduleCount, checklist: snapshot.checklist, goal: snapshot.goal, affirmations: snapshot.affirmations, affirmationPhotoFileNames: snapshot.affirmationPhotoFileNames)
   }
 
   private func loadSnapshot() -> WidgetSnapshot? {
@@ -1102,13 +1154,78 @@ private extension Color {
   }
 }
 
+private struct WidgetAccessLockedView: View {
+  let kind: String
+
+  private var premiumOnly: Bool {
+    kind == "RhythmGoalWidget" || kind == "RhythmAffirmationWidget"
+  }
+
+  var body: some View {
+    let title = premiumOnly ? "Premiumで使えます" : "Design Customizeで使えます"
+    let message = premiumOnly ? "PremiumならすべてのWidgetを利用できます。" : "購入済みのDesign CustomizeまたはPremiumで利用できます。"
+    let destination = URL(string: premiumOnly ? "rhythm://premium" : "rhythm://design")
+    Group {
+      if let destination = destination {
+        Link(destination: destination) {
+          lockedContent(title: title, message: message)
+        }
+      } else {
+        lockedContent(title: title, message: message)
+      }
+    }
+    .padding(16)
+    .frame(maxWidth: .infinity, maxHeight: .infinity)
+    .background(Color(.systemBackground))
+    .accessibilityElement(children: .combine)
+    .accessibilityLabel("\(title)。タップして利用方法を確認")
+  }
+
+  private func lockedContent(title: String, message: String) -> some View {
+    VStack(spacing: 8) {
+      Image(systemName: "lock.fill")
+        .font(.title3)
+        .foregroundColor(.secondary)
+      Text(title)
+        .font(.headline)
+        .foregroundColor(.primary)
+      Text(message)
+        .font(.caption)
+        .foregroundColor(.secondary)
+        .multilineTextAlignment(.center)
+        .lineLimit(3)
+    }
+  }
+}
+
+private struct WidgetAccessGate<Content: View>: View {
+  let entry: RhythmWidgetEntry
+  let content: Content
+
+  init(entry: RhythmWidgetEntry, @ViewBuilder content: () -> Content) {
+    self.entry = entry
+    self.content = content()
+  }
+
+  @ViewBuilder
+  var body: some View {
+    if let snapshot = entry.snapshot,
+       let kind = entry.widgetKind,
+       !snapshot.canDisplayWidget(kind: kind) {
+      WidgetAccessLockedView(kind: kind)
+    } else {
+      content
+    }
+  }
+}
+
 /// The original combined widget remains available for existing placements.
 struct RhythmWidget: Widget {
   let kind = "RhythmWidget"
 
   var body: some WidgetConfiguration {
-    IntentConfiguration(kind: kind, intent: RhythmWidgetIntent.self, provider: RhythmWidgetProvider()) { entry in
-      RhythmWidgetView(entry: entry)
+    IntentConfiguration(kind: kind, intent: RhythmWidgetIntent.self, provider: RhythmWidgetProvider(widgetKind: kind)) { entry in
+      WidgetAccessGate(entry: entry) { RhythmWidgetView(entry: entry) }
     }
     .configurationDisplayName("今はこれ＋次の予定")
     .description("今やることと次の予定を確認できます。")
@@ -1120,8 +1237,8 @@ struct RhythmCurrentTaskWidget: Widget {
   let kind = "RhythmCurrentTaskWidget"
 
   var body: some WidgetConfiguration {
-    IntentConfiguration(kind: kind, intent: RhythmWidgetIntent.self, provider: RhythmWidgetProvider()) { entry in
-      CurrentTaskWidgetView(entry: entry)
+    IntentConfiguration(kind: kind, intent: RhythmWidgetIntent.self, provider: RhythmWidgetProvider(widgetKind: kind)) { entry in
+      WidgetAccessGate(entry: entry) { CurrentTaskWidgetView(entry: entry) }
     }
     .configurationDisplayName("今はこれ")
     .description("今やることをすぐ確認できます。")
@@ -1133,8 +1250,8 @@ struct RhythmNextScheduleWidget: Widget {
   let kind = "RhythmNextScheduleWidget"
 
   var body: some WidgetConfiguration {
-    IntentConfiguration(kind: kind, intent: RhythmWidgetIntent.self, provider: RhythmWidgetProvider()) { entry in
-      NextScheduleWidgetView(entry: entry)
+    IntentConfiguration(kind: kind, intent: RhythmWidgetIntent.self, provider: RhythmWidgetProvider(widgetKind: kind)) { entry in
+      WidgetAccessGate(entry: entry) { NextScheduleWidgetView(entry: entry) }
     }
     .configurationDisplayName("次の予定")
     .description("次の予定と出発時刻を確認できます。")
@@ -1146,8 +1263,8 @@ struct RhythmMonthlyCalendarWidget: Widget {
   let kind = "RhythmMonthlyCalendarWidget"
 
   var body: some WidgetConfiguration {
-    IntentConfiguration(kind: kind, intent: RhythmWidgetIntent.self, provider: RhythmWidgetProvider()) { entry in
-      MonthlyCalendarWidgetView(entry: entry)
+    IntentConfiguration(kind: kind, intent: RhythmWidgetIntent.self, provider: RhythmWidgetProvider(widgetKind: kind)) { entry in
+      WidgetAccessGate(entry: entry) { MonthlyCalendarWidgetView(entry: entry) }
     }
     .configurationDisplayName("月間カレンダー")
     .description("予定のある日を月ごとに確認できます。")
@@ -1159,8 +1276,8 @@ struct RhythmWeeklyCalendarWidget: Widget {
   let kind = "RhythmWeeklyCalendarWidget"
 
   var body: some WidgetConfiguration {
-    IntentConfiguration(kind: kind, intent: RhythmWidgetIntent.self, provider: RhythmWidgetProvider()) { entry in
-      WeeklyCalendarWidgetView(entry: entry)
+    IntentConfiguration(kind: kind, intent: RhythmWidgetIntent.self, provider: RhythmWidgetProvider(widgetKind: kind)) { entry in
+      WidgetAccessGate(entry: entry) { WeeklyCalendarWidgetView(entry: entry) }
     }
     .configurationDisplayName("週間カレンダー")
     .description("今週の予定の流れを確認できます。")
@@ -1172,8 +1289,8 @@ struct RhythmTodayScheduleWidget: Widget {
   let kind = "RhythmTodayScheduleWidget"
 
   var body: some WidgetConfiguration {
-    IntentConfiguration(kind: kind, intent: RhythmWidgetIntent.self, provider: RhythmWidgetProvider()) { entry in
-      TodayScheduleWidgetView(entry: entry)
+    IntentConfiguration(kind: kind, intent: RhythmWidgetIntent.self, provider: RhythmWidgetProvider(widgetKind: kind)) { entry in
+      WidgetAccessGate(entry: entry) { TodayScheduleWidgetView(entry: entry) }
     }
     .configurationDisplayName("今日の予定")
     .description("今日の予定を時系列で確認できます。")
@@ -1185,8 +1302,8 @@ struct RhythmChecklistWidget: Widget {
   let kind = "RhythmChecklistWidget"
 
   var body: some WidgetConfiguration {
-    IntentConfiguration(kind: kind, intent: RhythmWidgetIntent.self, provider: RhythmWidgetProvider()) { entry in
-      ChecklistWidgetView(entry: entry)
+    IntentConfiguration(kind: kind, intent: RhythmWidgetIntent.self, provider: RhythmWidgetProvider(widgetKind: kind)) { entry in
+      WidgetAccessGate(entry: entry) { ChecklistWidgetView(entry: entry) }
     }
     .configurationDisplayName("忘れたくない")
     .description("待機中の項目を確認できます。")
@@ -1198,8 +1315,8 @@ struct RhythmGoalWidget: Widget {
   let kind = "RhythmGoalWidget"
 
   var body: some WidgetConfiguration {
-    IntentConfiguration(kind: kind, intent: RhythmWidgetIntent.self, provider: RhythmWidgetProvider()) { entry in
-      GoalWidgetView(entry: entry)
+    IntentConfiguration(kind: kind, intent: RhythmWidgetIntent.self, provider: RhythmWidgetProvider(widgetKind: kind)) { entry in
+      WidgetAccessGate(entry: entry) { GoalWidgetView(entry: entry) }
     }
     .configurationDisplayName("叶えたいこと")
     .description("叶えたいことの進み具合を確認できます。")
@@ -1211,8 +1328,8 @@ struct RhythmVoiceWidget: Widget {
   let kind = "RhythmVoiceWidget"
 
   var body: some WidgetConfiguration {
-    IntentConfiguration(kind: kind, intent: RhythmWidgetIntent.self, provider: RhythmWidgetProvider()) { entry in
-      VoiceWidgetView(entry: entry)
+    IntentConfiguration(kind: kind, intent: RhythmWidgetIntent.self, provider: RhythmWidgetProvider(widgetKind: kind)) { entry in
+      WidgetAccessGate(entry: entry) { VoiceWidgetView(entry: entry) }
     }
     .configurationDisplayName("音声入力")
     .description("ホーム画面からすぐに音声入力を開始できます。")
@@ -1225,7 +1342,7 @@ struct RhythmAffirmationWidget: Widget {
 
   var body: some WidgetConfiguration {
     IntentConfiguration(kind: kind, intent: RhythmWidgetIntent.self, provider: RhythmWidgetProvider(widgetKind: kind)) { entry in
-      AffirmationWidgetView(entry: entry)
+      WidgetAccessGate(entry: entry) { AffirmationWidgetView(entry: entry) }
     }
     .configurationDisplayName("アファメーション")
     .description("言葉と背景で気持ちを整えます。")
