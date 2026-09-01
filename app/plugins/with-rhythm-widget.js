@@ -236,7 +236,15 @@ function ensureWidgetSourceGroup(project) {
 }
 
 function ensureWidgetSourceFiles(project, target) {
-  const sourceNames = ['RhythmWidget.swift', 'RhythmWidgetBundle.swift'];
+  // Intent definitions are compiled by Xcode's Intent Definition Codegen
+  // when they are part of the target Sources phase (not merely copied as a
+  // resource). Keep the generated configuration type in the same target as
+  // the Widget Swift sources.
+  const sourceNames = [
+    'RhythmWidget.swift',
+    'RhythmWidgetBundle.swift',
+    'RhythmWidgetConfiguration.intentdefinition',
+  ];
   const { group } = ensureWidgetSourceGroup(project);
   const fileReferences = project.getPBXObject('PBXFileReference') ?? {};
   const buildFiles = project.pbxBuildFileSection();
@@ -251,7 +259,7 @@ function ensureWidgetSourceFiles(project, target) {
         path: `"${fileName}"`,
         sourceTree: '"<group>"',
         fileEncoding: 4,
-        lastKnownFileType: 'sourcecode.swift',
+        lastKnownFileType: fileName.endsWith('.intentdefinition') ? 'file.intentdefinition' : 'sourcecode.swift',
         includeInIndex: 0,
       };
       fileReferences[`${refUuid}_comment`] = fileName;
@@ -265,6 +273,7 @@ function ensureWidgetSourceFiles(project, target) {
       ref.path = `"${fileName}"`;
       ref.name = `"${fileName}"`;
       ref.sourceTree = '"<group>"';
+      ref.lastKnownFileType = fileName.endsWith('.intentdefinition') ? 'file.intentdefinition' : 'sourcecode.swift';
     }
     return { fileName, refUuid: child.value };
   });
@@ -281,7 +290,7 @@ function ensureWidgetSourceFiles(project, target) {
   sourcePhase.files = Array.isArray(sourcePhase.files) ? sourcePhase.files : [];
 
   const sourceRefIds = new Set(sourceRefs.map((source) => source.refUuid));
-  // Remove stale source entries for these two files (including the old
+  // Remove stale source entries for these files (including the old
   // ios/RhythmWidget.swift references) before adding the group-owned refs.
   sourcePhase.files = sourcePhase.files.filter((entry) => {
     const buildFile = buildFiles[entry.value];
@@ -310,7 +319,6 @@ function ensureWidgetSourceFiles(project, target) {
 
 function ensureWidgetResourceFiles(project, target) {
   const resourceFiles = [
-    { fileName: 'RhythmWidgetConfiguration.intentdefinition', lastKnownFileType: 'file.intentdefinition' },
     ...WIDGET_DESIGN_ASSETS,
   ];
   const { group } = ensureWidgetSourceGroup(project);
@@ -324,6 +332,14 @@ function ensureWidgetResourceFiles(project, target) {
     resourcePhase = resources[created.uuid] ?? created.buildPhase;
   }
   resourcePhase.files = Array.isArray(resourcePhase.files) ? resourcePhase.files : [];
+  // If a previously generated project placed the intent definition in
+  // Resources, remove that stale build-file entry. It must be compiled via
+  // PBXSourcesBuildPhase for Intent Definition Codegen to emit the Swift
+  // RhythmWidgetConfigurationIntent type.
+  resourcePhase.files = resourcePhase.files.filter((entry) => {
+    const buildFile = buildFiles[entry.value];
+    return !buildFile || unquoteXcodeValue(buildFile.fileRef_comment) !== 'RhythmWidgetConfiguration.intentdefinition';
+  });
   resourceFiles.forEach(({ fileName, lastKnownFileType }) => {
     let child = (group.children ?? []).find((candidate) => unquoteXcodeValue(candidate.comment) === fileName);
     if (!child) {
