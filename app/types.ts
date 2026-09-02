@@ -19,6 +19,8 @@ export type WidgetMonoTemplate = 'clean' | 'pinNote' | 'ruledNote';
 export type WidgetCustomization = {
   photoUri?: string;
   photoLayout?: WidgetPhotoLayout;
+  /** Optional per-widget Mono paper treatment; native falls back to the shared value. */
+  monoTemplate?: WidgetMonoTemplate;
 };
 /** Per-widget appearance values. Optional entries preserve older shared settings. */
 export type WidgetCustomizations = Partial<Record<WidgetType, WidgetCustomization>>;

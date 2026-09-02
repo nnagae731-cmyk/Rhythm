@@ -122,7 +122,8 @@ export function normalizeWidgetSettings(value: unknown): WidgetSettings {
     if (!raw) return;
     const customPhotoUri = typeof raw.photoUri === 'string' && raw.photoUri.trim() ? raw.photoUri : undefined;
     const customPhotoLayout = photoLayoutIds.has(raw.photoLayout as WidgetPhotoLayout) ? raw.photoLayout as WidgetPhotoLayout : undefined;
-    if (customPhotoUri || customPhotoLayout) widgetCustomizations[id] = { photoUri: customPhotoUri, photoLayout: customPhotoLayout };
+    const customMonoTemplate = monoTemplateIds.has(raw.monoTemplate as WidgetMonoTemplate) ? raw.monoTemplate as WidgetMonoTemplate : undefined;
+    if (customPhotoUri || customPhotoLayout || customMonoTemplate) widgetCustomizations[id] = { photoUri: customPhotoUri, photoLayout: customPhotoLayout, monoTemplate: customMonoTemplate };
   });
   const affirmationRotationMode = source.affirmationRotationMode === 'automatic' ? 'automatic' : 'fixed';
   const allowedBackgrounds = new Set(['floral', 'dot', 'check', 'photo']);
@@ -141,6 +142,7 @@ export function getWidgetCustomization(settings: WidgetSettings, widgetType: Wid
   return {
     photoUri: customization?.photoUri ?? settings.photoUri,
     photoLayout: customization?.photoLayout ?? settings.photoLayout,
+    monoTemplate: customization?.monoTemplate ?? settings.monoTemplate,
   };
 }
 

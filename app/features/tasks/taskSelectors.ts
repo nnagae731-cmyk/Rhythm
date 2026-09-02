@@ -33,8 +33,8 @@ function taskActionableAt(task: Task) {
   return start.getTime() < riskAt.getTime() ? start : riskAt;
 }
 
-/** Selects from an already-filtered "now" candidate list. Scope is intentionally owned by callers. */
-export function selectCurrentTask(candidates: Task[], now = new Date()) {
+/** Sorts an already-filtered "now" candidate list using the shared Home/Widget ranking. */
+export function selectCurrentTasks(candidates: Task[], now = new Date()) {
   return candidates
     .map((task, index) => {
       const deadline = taskDeadline(task);
@@ -51,8 +51,13 @@ export function selectCurrentTask(candidates: Task[], now = new Date()) {
     .sort((a, b) => a.temporalRank - b.temporalRank
       || priorityRank[a.task.priority] - priorityRank[b.task.priority]
       || a.targetTime - b.targetTime
-      || (a.registrationTime - b.registrationTime)
-      || a.index - b.index)[0]?.task;
+    || (a.registrationTime - b.registrationTime)
+      || a.index - b.index).map(({ task }) => task);
+}
+
+/** Selects the highest-ranked current task. Scope is intentionally owned by callers. */
+export function selectCurrentTask(candidates: Task[], now = new Date()) {
+  return selectCurrentTasks(candidates, now)[0];
 }
 
 function planScheduledAt(plan: DeparturePlan) {

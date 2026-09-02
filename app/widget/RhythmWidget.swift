@@ -3,9 +3,62 @@ import SwiftUI
 import UIKit
 import WidgetKit
 import Intents
+#if canImport(AppIntents)
+import AppIntents
+#endif
 
 private let appGroup = "group.app.rhythm.daily"
 private let snapshotKey = "rhythmWidgetSnapshot"
+private let pendingActionsKey = "rhythmWidgetPendingActions"
+
+#if canImport(AppIntents)
+@available(iOS 17.0, *)
+private enum WidgetPendingActionStore {
+  static func append(_ action: [String: Any]) {
+    guard let defaults = UserDefaults(suiteName: appGroup),
+          let data = try? JSONSerialization.data(withJSONObject: action),
+          let decoded = try? JSONSerialization.jsonObject(with: data),
+          let object = decoded as? [String: Any] else { return }
+    var actions: [[String: Any]] = []
+    if let raw = defaults.string(forKey: pendingActionsKey), let rawData = raw.data(using: .utf8),
+       let existing = try? JSONSerialization.jsonObject(with: rawData) as? [[String: Any]] { actions = existing }
+    if let id = object["id"] as? String { actions.removeAll { ($0["id"] as? String) == id } }
+    actions.append(object)
+    if actions.count > 20 { actions = Array(actions.suffix(20)) }
+    if let encoded = try? JSONSerialization.data(withJSONObject: actions), let text = String(data: encoded, encoding: .utf8) {
+      defaults.set(text, forKey: pendingActionsKey)
+    }
+  }
+}
+
+@available(iOS 17.0, *)
+private struct RhythmCompleteTaskIntent: AppIntent {
+  static var title: LocalizedStringResource = "タスクを完了"
+  @Parameter(title: "Task ID") var taskId: String
+  init() { taskId = "" }
+  init(taskId: String) { self.taskId = taskId }
+  func perform() async throws -> some IntentResult {
+    WidgetPendingActionStore.append(["id": "completeTask:\(taskId)", "type": "completeTask", "taskId": taskId])
+    WidgetCenter.shared.reloadAllTimelines()
+    return .result()
+  }
+}
+
+@available(iOS 17.0, *)
+private struct RhythmToggleListItemIntent: AppIntent {
+  static var title: LocalizedStringResource = "リスト項目を切り替え"
+  @Parameter(title: "Task ID") var taskId: String
+  @Parameter(title: "List Item ID") var listItemId: String
+  @Parameter(title: "完了") var completed: Bool
+  init() { taskId = ""; listItemId = ""; completed = false }
+  init(taskId: String, listItemId: String, completed: Bool) { self.taskId = taskId; self.listItemId = listItemId; self.completed = completed }
+  func perform() async throws -> some IntentResult {
+    WidgetPendingActionStore.append(["id": "toggleListItem:\(taskId):\(listItemId)", "type": "toggleListItem", "taskId": taskId, "listItemId": listItemId, "completed": completed])
+    WidgetCenter.shared.reloadAllTimelines()
+    return .result()
+  }
+}
+#endif
 
 /// The payload is intentionally shared by all widget configurations. Optional
 /// fields keep snapshots written by older app versions backwards compatible.
@@ -31,6 +84,7 @@ struct WidgetSnapshot: Codable {
   struct WidgetCustomization: Codable {
     let photoFileName: String?
     let photoLayout: String?
+    let monoTemplate: String?
   }
 
   struct Task: Codable {
@@ -104,6 +158,8 @@ struct WidgetSnapshot: Codable {
 
   struct ChecklistItem: Codable {
     let id: String
+    let taskId: String?
+    let listItemId: String?
     let title: String
     let done: Bool
   }
@@ -122,6 +178,7 @@ struct WidgetSnapshot: Codable {
   let widgetCustomizations: [String: WidgetCustomization]?
   let displayOptions: [String: Bool]?
   let currentTask: Task?
+  let todayNowTasks: [Task]?
   let nextPlan: Plan?
   let calendarMonth: CalendarMonth?
   let calendarWeek: CalendarWeek?
@@ -266,16 +323,20 @@ private func gallerySampleSnapshot(now: Date = Date()) -> WidgetSnapshot {
     widgetCustomizations: nil,
     displayOptions: nil,
     currentTask: WidgetSnapshot.Task(id: "gallery-task", title: "資料をまとめる", startAt: taskStart, estimatedMinutes: 45, remainingMinutes: 25, status: "active", priority: "中"),
+    todayNowTasks: [
+      WidgetSnapshot.Task(id: "gallery-task-2", title: "メールを確認", startAt: dateAt(today, 16, 0), estimatedMinutes: nil, remainingMinutes: nil, status: "active", priority: "低"),
+      WidgetSnapshot.Task(id: "gallery-task-3", title: "資料を送る", startAt: dateAt(today, 17, 0), estimatedMinutes: nil, remainingMinutes: nil, status: "active", priority: "中"),
+    ],
     nextPlan: WidgetSnapshot.Plan(id: "gallery-plan", title: "美容院", scheduledAt: nextSchedule, location: "駅前", allDay: false, leaveAt: leaveAt, remainingToLeave: 102, departureAt: leaveAt),
     calendarMonth: WidgetSnapshot.CalendarMonth(year: monthComponents.year ?? calendar.component(.year, from: today), month: monthComponents.month ?? calendar.component(.month, from: today), leadingEmptyCount: calendar.component(.weekday, from: monthStart) - 1, days: monthDays),
     calendarWeek: WidgetSnapshot.CalendarWeek(startDate: isoDay(weekStart), days: weekDays),
     todaySchedules: todayItems,
     todayScheduleCount: todayItems.count,
     checklist: [
-      WidgetSnapshot.ChecklistItem(id: "gallery-wallet", title: "財布", done: true),
-      WidgetSnapshot.ChecklistItem(id: "gallery-keys", title: "鍵", done: false),
-      WidgetSnapshot.ChecklistItem(id: "gallery-charger", title: "充電器", done: false),
-      WidgetSnapshot.ChecklistItem(id: "gallery-medicine", title: "薬", done: false),
+      WidgetSnapshot.ChecklistItem(id: "gallery-wallet", taskId: nil, listItemId: nil, title: "財布", done: true),
+      WidgetSnapshot.ChecklistItem(id: "gallery-keys", taskId: nil, listItemId: nil, title: "鍵", done: false),
+      WidgetSnapshot.ChecklistItem(id: "gallery-charger", taskId: nil, listItemId: nil, title: "充電器", done: false),
+      WidgetSnapshot.ChecklistItem(id: "gallery-medicine", taskId: nil, listItemId: nil, title: "薬", done: false),
     ],
     goal: WidgetSnapshot.Goal(id: "gallery-goal", title: "アプリ完成", progress: 60, completedActions: 1, actionCount: 2),
     affirmations: [
@@ -353,6 +414,12 @@ struct RhythmWidgetProvider: IntentTimelineProvider {
       case .checkLavenderSatin: return "checkLavenderSatin"
       case .checkBeigeNoir: return "checkBeigeNoir"
       case .checkMauveFrame: return "checkMauveFrame"
+      case .clean: return "clean"
+      case .pinNote: return "pinNote"
+      case .ruledNote: return "ruledNote"
+      case .vintageBloom: return "floral"
+      case .botanicalLine: return "floralSoft"
+      case .sheerFloral: return "floralSeasonal"
       @unknown default: return "dot"
       }
     }()
@@ -393,8 +460,16 @@ struct RhythmWidgetProvider: IntentTimelineProvider {
     let customization = customizationKey.flatMap { snapshot.widgetCustomizations?[$0] }
     let resolvedPhotoFileName = customization?.photoFileName ?? stored.photoFileName
     let resolvedPhotoLayout = customization?.photoLayout ?? layout
-    let appearance = WidgetSnapshot.Appearance(style: style, monoTemplate: stored.monoTemplate, accentHex: stored.accentHex, photoFileName: resolvedPhotoFileName, photoLayout: resolvedPhotoLayout, designPattern: pattern, designCheckColor: designCheckColor, designPatternUnlocked: stored.designPatternUnlocked, affirmationBackgrounds: stored.affirmationBackgrounds)
-    return WidgetSnapshot(updatedAt: snapshot.updatedAt, isPremium: snapshot.isPremium, designCustomizePurchased: snapshot.designCustomizePurchased, appearance: appearance, widgetCustomizations: snapshot.widgetCustomizations, displayOptions: snapshot.displayOptions, currentTask: snapshot.currentTask, nextPlan: snapshot.nextPlan, calendarMonth: snapshot.calendarMonth, calendarWeek: snapshot.calendarWeek, todaySchedules: snapshot.todaySchedules, todayScheduleCount: snapshot.todayScheduleCount, checklist: snapshot.checklist, goal: snapshot.goal, affirmations: snapshot.affirmations, affirmationPhotoFileNames: snapshot.affirmationPhotoFileNames)
+    let resolvedMonoTemplate: String? = {
+      switch configuration.designPattern {
+      case .clean: return "clean"
+      case .pinNote: return "pinNote"
+      case .ruledNote: return "ruledNote"
+      @unknown default: return customization?.monoTemplate ?? stored.monoTemplate
+      }
+    }()
+    let appearance = WidgetSnapshot.Appearance(style: style, monoTemplate: resolvedMonoTemplate, accentHex: stored.accentHex, photoFileName: resolvedPhotoFileName, photoLayout: resolvedPhotoLayout, designPattern: pattern, designCheckColor: designCheckColor, designPatternUnlocked: stored.designPatternUnlocked, affirmationBackgrounds: stored.affirmationBackgrounds)
+    return WidgetSnapshot(updatedAt: snapshot.updatedAt, isPremium: snapshot.isPremium, designCustomizePurchased: snapshot.designCustomizePurchased, appearance: appearance, widgetCustomizations: snapshot.widgetCustomizations, displayOptions: snapshot.displayOptions, currentTask: snapshot.currentTask, todayNowTasks: snapshot.todayNowTasks, nextPlan: snapshot.nextPlan, calendarMonth: snapshot.calendarMonth, calendarWeek: snapshot.calendarWeek, todaySchedules: snapshot.todaySchedules, todayScheduleCount: snapshot.todayScheduleCount, checklist: snapshot.checklist, goal: snapshot.goal, affirmations: snapshot.affirmations, affirmationPhotoFileNames: snapshot.affirmationPhotoFileNames)
   }
 
   private func loadSnapshot() -> WidgetSnapshot? {
@@ -452,7 +527,7 @@ private struct WidgetPalette {
     case .photo:
       // The photo layer is applied by WidgetSurface. Keep a readable Mono
       // palette underneath it so missing or stale images fall back safely.
-      return WidgetPalette(foreground: photoBackground ? .white : Color.primary, secondary: photoBackground ? .white.opacity(0.78) : Color.secondary, accent: accent, background: Color(uiColor: .systemBackground), divider: photoBackground ? .white.opacity(0.3) : Color.primary.opacity(0.12), monoTemplate: nil, designPattern: nil, designCheckColor: nil)
+      return WidgetPalette(foreground: photoBackground ? .white : Color.primary, secondary: photoBackground ? .white.opacity(0.78) : Color.secondary, accent: accent, background: Color(uiColor: .systemBackground), divider: photoBackground ? .white.opacity(0.3) : Color.primary.opacity(0.12), monoTemplate: appearance?.monoTemplate, designPattern: nil, designCheckColor: nil)
     }
   }
 }
@@ -546,6 +621,14 @@ private struct DesignPatternLayer: View {
           .opacity(0.20)
           .frame(width: proxy.size.width, height: proxy.size.height)
           .clipped()
+      case "pinNote":
+        Circle().fill(colors.accent.opacity(0.75)).frame(width: 9, height: 9).position(x: proxy.size.width * 0.5, y: 8)
+      case "ruledNote":
+        ForEach(1..<max(2, Int(proxy.size.height / 22)), id: \.self) { index in
+          Rectangle().fill(colors.stripe.opacity(0.45)).frame(width: proxy.size.width, height: 1).offset(y: CGFloat(index) * 22)
+        }
+      case "clean":
+        Color.clear
       default:
         Color.clear
       }
@@ -618,8 +701,9 @@ private struct WidgetSurface<Content: View>: View {
       }()
       ZStack {
         palette.background
-        if palette.monoTemplate != nil, appearance?.style == .mono {
-          MonoTemplateLayer(template: palette.monoTemplate ?? "clean", line: palette.divider, accent: palette.accent)
+        if let monoTemplate = palette.monoTemplate,
+           (appearance?.style == .mono || (appearance?.style == .photo && appearance?.photoLayout != "background")) {
+          MonoTemplateLayer(template: monoTemplate, line: palette.divider, accent: palette.accent)
         }
         if palette.designPattern != nil, palette.designPattern != "plain", let pattern = palette.designPattern {
           DesignPatternLayer(pattern: pattern, colors: DesignPatternColors(checkColor: palette.designCheckColor))
@@ -757,27 +841,47 @@ private struct CurrentTaskWidgetView: View {
     let palette = WidgetPalette.forAppearance(entry.snapshot?.appearance)
     Group {
       if let snapshot = entry.snapshot, let task = snapshot.currentTask {
-        Link(destination: URL(string: "rhythm://todo")!) {
-          Group {
-            if family == .systemMedium {
-              HStack(alignment: .center, spacing: 10) {
-                TaskInformation(task: task, snapshot: snapshot, palette: palette)
-                Spacer(minLength: 4)
-                if snapshot.isDisplayOptionEnabled("remainingTime") {
-                  TaskTimerRing(task: task, palette: palette)
+        if family == .systemMedium {
+          VStack(alignment: .leading, spacing: 7) {
+            HStack(alignment: .center, spacing: 8) {
+              TaskCompletionButton(taskId: task.id, palette: palette)
+              Link(destination: URL(string: "rhythm://todo")!) {
+                HStack(alignment: .center, spacing: 10) {
+                  TaskInformation(task: task, snapshot: snapshot, palette: palette)
+                  Spacer(minLength: 4)
+                  if snapshot.isDisplayOptionEnabled("remainingTime") { TaskTimerRing(task: task, palette: palette) }
                 }
               }
-            } else {
-              VStack(alignment: .leading, spacing: 7) {
-                Text("今はこれ").font(.caption.weight(.semibold)).foregroundStyle(palette.accent)
-                Text(task.title).font(.title3.weight(.semibold)).foregroundStyle(palette.foreground).lineLimit(3)
-                if snapshot.isDisplayOptionEnabled("remainingTime") { TaskTimerRing(task: task, palette: palette).frame(maxWidth: .infinity, alignment: .center) }
-                if snapshot.isDisplayOptionEnabled("startTime"), let startAt = task.startAt { Text(startAt.formatted(date: .omitted, time: .shortened)).font(.caption2).foregroundStyle(palette.secondary) }
-                if snapshot.isDisplayOptionEnabled("status"), let status = task.status, !status.isEmpty { Text(widgetStatusText(status)).font(.caption2).foregroundStyle(palette.secondary) }
+            }
+            if let more = snapshot.todayNowTasks, !more.isEmpty {
+              Divider().overlay(palette.divider)
+              ForEach(Array(more.prefix(3)), id: \.id) { item in
+                HStack(spacing: 6) {
+                  TaskCompletionButton(taskId: item.id, palette: palette)
+                  Link(destination: URL(string: "rhythm://todo")!) {
+                    Text(item.title).font(.caption).foregroundStyle(palette.foreground).lineLimit(1)
+                    Spacer(minLength: 2)
+                    if let startAt = item.startAt { Text(startAt, style: .time).font(.caption2).foregroundStyle(palette.secondary) }
+                  }
+                }
               }
             }
           }
           .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        } else {
+          HStack(alignment: .top, spacing: 6) {
+            TaskCompletionButton(taskId: task.id, palette: palette)
+            Link(destination: URL(string: "rhythm://todo")!) {
+              VStack(alignment: .leading, spacing: 7) {
+              Text("今はこれ").font(.caption.weight(.semibold)).foregroundStyle(palette.accent)
+              Text(task.title).font(.title3.weight(.semibold)).foregroundStyle(palette.foreground).lineLimit(3)
+              if snapshot.isDisplayOptionEnabled("remainingTime") { TaskTimerRing(task: task, palette: palette).frame(maxWidth: .infinity, alignment: .center) }
+              if snapshot.isDisplayOptionEnabled("startTime"), let startAt = task.startAt { Text(startAt.formatted(date: .omitted, time: .shortened)).font(.caption2).foregroundStyle(palette.secondary) }
+              if snapshot.isDisplayOptionEnabled("status"), let status = task.status, !status.isEmpty { Text(widgetStatusText(status)).font(.caption2).foregroundStyle(palette.secondary) }
+              }
+              .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            }
+          }
         }
       } else {
         VStack(alignment: .leading, spacing: 6) {
@@ -811,6 +915,46 @@ private struct TaskInformation: View {
       if snapshot.isDisplayOptionEnabled("status"), let status = task.status, !status.isEmpty {
         Text(widgetStatusText(status)).font(.caption2).foregroundStyle(palette.secondary)
       }
+    }
+  }
+}
+
+private struct TaskCompletionButton: View {
+  let taskId: String
+  let palette: WidgetPalette
+
+  @ViewBuilder
+  var body: some View {
+    if #available(iOSApplicationExtension 17.0, *) {
+      Button(intent: RhythmCompleteTaskIntent(taskId: taskId)) {
+        Image(systemName: "circle")
+          .foregroundStyle(palette.accent)
+          .accessibilityLabel("タスクを完了")
+      }
+      .buttonStyle(.plain)
+    } else {
+      Image(systemName: "circle").foregroundStyle(palette.secondary).accessibilityHidden(true)
+    }
+  }
+}
+
+private struct ListItemToggleButton: View {
+  let item: WidgetSnapshot.ChecklistItem
+  let palette: WidgetPalette
+
+  @ViewBuilder
+  var body: some View {
+    if #available(iOSApplicationExtension 17.0, *), let taskId = item.taskId, let listItemId = item.listItemId {
+      Button(intent: RhythmToggleListItemIntent(taskId: taskId, listItemId: listItemId, completed: !item.done)) {
+        Image(systemName: item.done ? "checkmark.circle.fill" : "circle")
+          .foregroundStyle(item.done ? palette.accent : palette.secondary)
+          .accessibilityLabel(item.done ? "完了済み" : "未完了")
+      }
+      .buttonStyle(.plain)
+    } else {
+      Image(systemName: item.done ? "checkmark.circle.fill" : "circle")
+        .foregroundStyle(item.done ? palette.accent : palette.secondary)
+        .accessibilityHidden(true)
     }
   }
 }
@@ -1112,15 +1256,17 @@ private struct ChecklistWidgetView: View {
     Group {
       if let items = entry.snapshot?.checklist, !items.isEmpty {
         VStack(alignment: .leading, spacing: 5) {
-          Text("ToDoメモ").font(.caption.weight(.semibold)).foregroundStyle(palette.accent)
+            Text("ToDoメモ").font(.caption.weight(.semibold)).foregroundStyle(palette.accent)
           ForEach(Array(items.prefix(limit).enumerated()), id: \.offset) { _, item in
             HStack(spacing: 6) {
-              Image(systemName: item.done ? "checkmark.circle.fill" : "circle").foregroundStyle(item.done ? palette.accent : palette.secondary)
-              Text(item.title)
-                .font(.caption)
-                .foregroundStyle(palette.foreground)
-                .opacity(item.done ? 0.55 : 1)
-                .lineLimit(1)
+              ListItemToggleButton(item: item, palette: palette)
+              Link(destination: URL(string: "rhythm://todo")!) {
+                Text(item.title)
+                  .font(.caption)
+                  .foregroundStyle(palette.foreground)
+                  .opacity(item.done ? 0.55 : 1)
+                  .lineLimit(1)
+              }
             }
           }
           if items.count > limit { Text("ほか\(items.count - limit)件").font(.caption2).foregroundStyle(palette.secondary) }

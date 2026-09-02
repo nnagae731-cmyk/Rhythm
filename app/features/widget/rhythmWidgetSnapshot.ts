@@ -5,7 +5,7 @@ import { DepartureCheckIn } from '../../departureCheckIn';
 import { getDeparturePlanMode, getPlanScheduledTime, isDepartureReminderPlan } from '../departure/departurePlanMode';
 import { getDepartureMoments } from '../departure/departureUtils';
 import { dateForReminder, dateKey } from '../tasks/taskUtils';
-import { selectCurrentTask, selectNextUpcomingPlan } from '../tasks/taskSelectors';
+import { selectCurrentTask, selectCurrentTasks, selectNextUpcomingPlan } from '../tasks/taskSelectors';
 
 export const RHYTHM_WIDGET_APP_GROUP = 'group.app.rhythm.daily';
 
@@ -30,6 +30,7 @@ export type RhythmWidgetAppearance = {
 export type RhythmWidgetCustomization = {
   photoFileName?: string;
   photoLayout?: WidgetPhotoLayout;
+  monoTemplate?: WidgetMonoTemplate;
 };
 
 export type RhythmWidgetSnapshot = {
@@ -52,6 +53,8 @@ export type RhythmWidgetSnapshot = {
     status?: string;
     priority?: Task['priority'];
   };
+  /** Additional actionable tasks for the Medium current-task widget. */
+  todayNowTasks?: Array<NonNullable<RhythmWidgetSnapshot['currentTask']>>;
   nextPlan?: {
     id?: string;
     title: string;
@@ -231,6 +234,8 @@ export function buildRhythmWidgetSnapshot({
     .filter((task) => !task.done && task.status !== 'skipped' && (task.bucket ?? 'now') === 'now')
     .filter((task) => !task.scheduledDate || task.scheduledDate <= today);
   const currentTask = selectCurrentTask(currentCandidates, now);
+  const rankedCurrentTasks = selectCurrentTasks(currentCandidates, now);
+  const todayNowTasks = rankedCurrentTasks.filter((task) => task.id !== currentTask?.id).slice(0, 3);
 
   const nextPlanValue = selectNextUpcomingPlan(departurePlans, now, canShowArrivalReverseCountdown);
   const nextPlan = nextPlanValue ? { plan: nextPlanValue, scheduledAt: planScheduledAt(nextPlanValue) } : undefined;
@@ -289,6 +294,20 @@ export function buildRhythmWidgetSnapshot({
         priority: currentTask.priority,
       },
     } : {}),
+    ...(todayNowTasks.length ? {
+      todayNowTasks: todayNowTasks.map((task) => {
+        const taskStart = taskStartAt(task);
+        const estimated = taskEstimatedMinutes(task);
+        return {
+          id: task.id,
+          title: task.title,
+          ...(taskStart ? { startAt: taskStart.toISOString() } : {}),
+          ...(estimated ? { estimatedMinutes: estimated } : {}),
+          status: task.status ?? 'active',
+          priority: task.priority,
+        };
+      }),
+    } : {}),
     ...(nextPlan ? {
       nextPlan: {
         id: nextPlan.plan.id,
@@ -310,7 +329,7 @@ export function buildRhythmWidgetSnapshot({
     ...(todaySchedules.length ? { todaySchedules } : {}),
     ...(allTodaySchedules.length ? { todayScheduleCount: allTodaySchedules.length } : {}),
     checklist: tasks
-      .flatMap((task) => (task.listItems ?? []).slice().sort((a, b) => a.order - b.order).map((item) => ({ id: `${task.id}:${item.id}`, title: item.text, done: item.checked })))
+      .flatMap((task) => (task.listItems ?? []).slice().sort((a, b) => a.order - b.order).map((item) => ({ id: `${task.id}:${item.id}`, taskId: task.id, listItemId: item.id, title: item.text, done: item.checked })))
       .filter((item) => item.title.trim().length > 0)
       .slice(0, 8),
     ...(goal ? { goal } : {}),
@@ -324,6 +343,8 @@ type RhythmWidgetNativeModule = {
   savePhoto?(uri: string): Promise<boolean>;
   saveWidgetPhoto?(uri: string, widgetType: WidgetType): Promise<boolean>;
   saveAffirmationPhoto?(uri: string, slot: number): Promise<boolean>;
+  getPendingWidgetActions?(): Promise<string>;
+  acknowledgePendingWidgetActions?(actionIds: string[]): Promise<boolean>;
 };
 
 /** No-op in Expo Go or Android; the production iOS extension supplies this module. */
@@ -355,4 +376,23 @@ export async function saveRhythmAffirmationPhoto(uri: string, slot: number) {
   const module = requireOptionalNativeModule<RhythmWidgetNativeModule>('RhythmWidget');
   if (!module?.saveAffirmationPhoto) return false;
   return module.saveAffirmationPhoto(uri, slot);
+}
+
+export async function getRhythmWidgetPendingActions() {
+  if (Platform.OS !== 'ios') return [];
+  const module = requireOptionalNativeModule<RhythmWidgetNativeModule>('RhythmWidget');
+  if (!module?.getPendingWidgetActions) return [];
+  try {
+    const raw = await module.getPendingWidgetActions();
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+export async function acknowledgeRhythmWidgetPendingActions(actionIds: string[]) {
+  if (Platform.OS !== 'ios' || actionIds.length === 0) return false;
+  const module = requireOptionalNativeModule<RhythmWidgetNativeModule>('RhythmWidget');
+  return module?.acknowledgePendingWidgetActions ? module.acknowledgePendingWidgetActions(actionIds) : false;
 }

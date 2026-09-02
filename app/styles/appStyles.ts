@@ -948,6 +948,7 @@ export const styles = StyleSheet.create({
   taskActionOption: { width: '48.5%', minHeight: 70, borderRadius: 16, backgroundColor: '#F5F1F7', alignItems: 'center', justifyContent: 'center' },
   taskActionIcon: { color: colors.violet, fontSize: 18, fontWeight: '900' },
   taskActionLabel: { color: colors.ink, fontSize: 10, fontWeight: '900', marginTop: 5 },
+  taskActionSubcopy: { fontSize: 8, fontWeight: '700', marginTop: 2 },
   taskActionDelete: { backgroundColor: '#FFF0F1' },
   taskActionDeleteText: { color: '#C54D58' },
   scheduleCalendarCard: { backgroundColor: '#FFFFFF', borderRadius: 24, padding: 16, marginBottom: 20, borderWidth: 1, borderColor: '#E9E1ED', shadowColor: '#513D62', shadowOpacity: 0.1, shadowRadius: 18, shadowOffset: { width: 0, height: 8 }, elevation: 3 },

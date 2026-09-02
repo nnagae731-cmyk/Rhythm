@@ -42,6 +42,12 @@
         <dict><key>INEnumValueDisplayName</key><string>くすみラベンダーチェック</string><key>INEnumValueName</key><string>checkLavenderSatin</string><key>INEnumValueIndex</key><integer>3</integer></dict>
         <dict><key>INEnumValueDisplayName</key><string>ベージュ×ブラックチェック</string><key>INEnumValueName</key><string>checkBeigeNoir</string><key>INEnumValueIndex</key><integer>4</integer></dict>
         <dict><key>INEnumValueDisplayName</key><string>モーブフレームチェック</string><key>INEnumValueName</key><string>checkMauveFrame</string><key>INEnumValueIndex</key><integer>5</integer></dict>
+        <dict><key>INEnumValueDisplayName</key><string>Clean</string><key>INEnumValueName</key><string>clean</string><key>INEnumValueIndex</key><integer>6</integer></dict>
+        <dict><key>INEnumValueDisplayName</key><string>Pin Note</string><key>INEnumValueName</key><string>pinNote</string><key>INEnumValueIndex</key><integer>7</integer></dict>
+        <dict><key>INEnumValueDisplayName</key><string>Ruled Note</string><key>INEnumValueName</key><string>ruledNote</string><key>INEnumValueIndex</key><integer>8</integer></dict>
+        <dict><key>INEnumValueDisplayName</key><string>Vintage Bloom</string><key>INEnumValueName</key><string>vintageBloom</string><key>INEnumValueIndex</key><integer>9</integer></dict>
+        <dict><key>INEnumValueDisplayName</key><string>Botanical Line</string><key>INEnumValueName</key><string>botanicalLine</string><key>INEnumValueIndex</key><integer>10</integer></dict>
+        <dict><key>INEnumValueDisplayName</key><string>Sheer Floral</string><key>INEnumValueName</key><string>sheerFloral</string><key>INEnumValueIndex</key><integer>11</integer></dict>
       </array>
     </dict>
     <dict>

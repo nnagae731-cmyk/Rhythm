@@ -45,7 +45,7 @@ import { Affirmation, AffirmationCustomText, CalendarMarks, Category, DepartureP
 import { initialPlan } from './storage/rhythmState';
 import { DEFAULT_TRAVEL_APP_SETTINGS, normalizeTravelAppSettings, TravelAppSettings } from './features/travel/travelApps';
 import { loadRhythmState, saveRhythmState } from './storage/rhythmStorage';
-import { buildRhythmWidgetSnapshot, saveRhythmAffirmationPhoto, saveRhythmWidgetPhoto, saveRhythmWidgetPhotoForWidget, saveRhythmWidgetSnapshot } from './features/widget/rhythmWidgetSnapshot';
+import { acknowledgeRhythmWidgetPendingActions, buildRhythmWidgetSnapshot, getRhythmWidgetPendingActions, saveRhythmAffirmationPhoto, saveRhythmWidgetPhoto, saveRhythmWidgetPhotoForWidget, saveRhythmWidgetSnapshot } from './features/widget/rhythmWidgetSnapshot';
 import { DEFAULT_WIDGET_SETTINGS, getWidgetAccentHex, getWidgetCustomization, normalizeWidgetSettings, WIDGET_TYPE_OPTIONS } from './features/widget/widgetSettings';
 import type { WidgetEntitlementOverride } from './features/widget/widgetSettings';
 import { categories, priorities, completionIcons, categoryColors as baseCategoryColors, designModes, getLateRiskMessage, getNextBestAction, getUrgencyStatus, urgencyLevel } from './features/tasks/taskUtils';
@@ -2188,7 +2188,7 @@ export default function App() {
       }
       if (widgetPhotoSyncedUriRef.current === selectedPhotoUri) photoFileName = 'rhythm-widget-photo.jpg';
     }
-    const widgetCustomizations: Record<string, { photoFileName?: string; photoLayout?: WidgetSettings['photoLayout'] }> = {};
+    const widgetCustomizations: Record<string, { photoFileName?: string; photoLayout?: WidgetSettings['photoLayout']; monoTemplate?: WidgetSettings['monoTemplate'] }> = {};
     for (const { id } of WIDGET_TYPE_OPTIONS) {
       const storedCustomization = widgetSettings.widgetCustomizations?.[id];
       const customization = getWidgetCustomization(widgetSettings, id);
@@ -2209,10 +2209,11 @@ export default function App() {
         // shared appearance photo without inflating the snapshot.
         widgetPhotoFileName = photoFileName;
       }
-      if (widgetPhotoFileName || storedCustomization?.photoLayout) {
+      if (widgetPhotoFileName || storedCustomization?.photoLayout || storedCustomization?.monoTemplate) {
         widgetCustomizations[id] = {
           ...(widgetPhotoFileName ? { photoFileName: widgetPhotoFileName } : {}),
           ...(customization.photoLayout ? { photoLayout: customization.photoLayout } : {}),
+          ...(customization.monoTemplate ? { monoTemplate: customization.monoTemplate } : {}),
         };
       }
     }
@@ -2297,13 +2298,6 @@ export default function App() {
 
   useEffect(() => {
     syncRhythmWidgetSnapshot();
-  }, [syncRhythmWidgetSnapshot]);
-
-  useEffect(() => {
-    const subscription = AppState.addEventListener('change', (nextState) => {
-      if (nextState === 'active') syncRhythmWidgetSnapshot();
-    });
-    return () => subscription.remove();
   }, [syncRhythmWidgetSnapshot]);
 
   const displayPlan = nextDeparturePlan ?? plan;
@@ -2435,6 +2429,53 @@ export default function App() {
     tasksRef.current = next;
     setTasks(next);
   }, []);
+
+  const processPendingWidgetActions = React.useCallback(async () => {
+    if (!hydratedRef.current || onboarding.state.firstRunStage === 'demo') return;
+    const actions = await getRhythmWidgetPendingActions();
+    if (!actions.length) return;
+    const handledIds: string[] = [];
+    const taskIdsToComplete: string[] = [];
+    let nextTasks = tasksRef.current;
+    actions.forEach((raw: any) => {
+      if (!raw || typeof raw !== 'object' || typeof raw.id !== 'string') return;
+      if (raw.type === 'completeTask' && typeof raw.taskId === 'string') {
+        const target = nextTasks.find((task) => task.id === raw.taskId);
+        if (target && !target.done) {
+          taskIdsToComplete.push(raw.taskId);
+        }
+        handledIds.push(raw.id);
+      } else if (raw.type === 'toggleListItem' && typeof raw.taskId === 'string' && typeof raw.listItemId === 'string' && typeof raw.completed === 'boolean') {
+        const target = nextTasks.find((task) => task.id === raw.taskId);
+        if (target?.listItems?.some((item) => item.id === raw.listItemId)) {
+          nextTasks = nextTasks.map((task) => task.id === raw.taskId
+            ? { ...task, listItems: task.listItems?.map((item) => item.id === raw.listItemId ? { ...item, checked: raw.completed } : item) }
+            : task);
+        }
+        handledIds.push(raw.id);
+      }
+    });
+    if (nextTasks !== tasksRef.current) {
+      tasksRef.current = nextTasks;
+      setTasks(nextTasks);
+    }
+    if (taskIdsToComplete.length) completeTaskIds(taskIdsToComplete, 'manual');
+    if (handledIds.length) await acknowledgeRhythmWidgetPendingActions(handledIds);
+  }, [completeTaskIds, onboarding.state.firstRunStage]);
+
+  React.useEffect(() => {
+    if (!hydrated) return;
+    void processPendingWidgetActions();
+  }, [hydrated, processPendingWidgetActions]);
+
+  React.useEffect(() => {
+    const subscription = AppState.addEventListener('change', (nextState) => {
+      if (nextState === 'active') {
+        void processPendingWidgetActions().finally(() => { void syncRhythmWidgetSnapshot(); });
+      }
+    });
+    return () => subscription.remove();
+  }, [processPendingWidgetActions, syncRhythmWidgetSnapshot]);
 
   const addBulkTasks = React.useCallback((titles: string[], scheduledDate: string) => {
     const uniqueTitles = titles.map((title) => title.trim()).filter(Boolean);

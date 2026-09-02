@@ -8,6 +8,7 @@ public final class RhythmWidgetModule: Module {
   private let photoFileName = "rhythm-widget-photo.jpg"
   private let widgetPhotoPrefix = "rhythm-widget-photo-"
   private let affirmationPhotoPrefix = "rhythm-affirmation-photo-"
+  private let pendingActionsKey = "rhythmWidgetPendingActions"
   private let widgetPhotoKinds: Set<String> = [
     "current", "next", "combined", "monthly", "weekly", "today", "checklist", "goal", "voice", "affirmation",
   ]
@@ -113,6 +114,28 @@ public final class RhythmWidgetModule: Module {
       try FileManager.default.copyItem(at: sourceURL, to: temporary)
       try? FileManager.default.removeItem(at: destination)
       try FileManager.default.moveItem(at: temporary, to: destination)
+      return true
+    }
+
+    AsyncFunction("getPendingWidgetActions") { () -> String in
+      guard let defaults = UserDefaults(suiteName: self.appGroup) else { return "[]" }
+      return defaults.string(forKey: self.pendingActionsKey) ?? "[]"
+    }
+
+    AsyncFunction("acknowledgePendingWidgetActions") { (actionIds: [String]) -> Bool in
+      guard let defaults = UserDefaults(suiteName: self.appGroup), !actionIds.isEmpty,
+            let raw = defaults.string(forKey: self.pendingActionsKey),
+            let data = raw.data(using: .utf8),
+            let decodedObject = try? JSONSerialization.jsonObject(with: data),
+            let decoded = decodedObject as? [[String: Any]] else { return false }
+      var actions = decoded
+      let ids = Set(actionIds)
+      actions.removeAll { action in
+        guard let id = action["id"] as? String else { return false }
+        return ids.contains(id)
+      }
+      guard let encoded = try? JSONSerialization.data(withJSONObject: actions), let text = String(data: encoded, encoding: .utf8) else { return false }
+      defaults.set(text, forKey: self.pendingActionsKey)
       return true
     }
   }
