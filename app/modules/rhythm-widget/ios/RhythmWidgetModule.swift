@@ -6,7 +6,11 @@ public final class RhythmWidgetModule: Module {
   private let appGroup = "group.app.rhythm.daily"
   private let snapshotKey = "rhythmWidgetSnapshot"
   private let photoFileName = "rhythm-widget-photo.jpg"
+  private let widgetPhotoPrefix = "rhythm-widget-photo-"
   private let affirmationPhotoPrefix = "rhythm-affirmation-photo-"
+  private let widgetPhotoKinds: Set<String> = [
+    "current", "next", "combined", "monthly", "weekly", "today", "checklist", "goal", "voice", "affirmation",
+  ]
 
   public func definition() -> ModuleDefinition {
     Name("RhythmWidget")
@@ -24,6 +28,20 @@ public final class RhythmWidgetModule: Module {
         for slot in 1...3 {
           let name = "\(self.affirmationPhotoPrefix)\(slot).jpg"
           if !allowed.contains(name) { try? FileManager.default.removeItem(at: container.appendingPathComponent(name)) }
+        }
+        // Clean only the per-widget namespace, and only when a current
+        // snapshot explicitly contains that field. Older snapshots remain
+        // backward compatible and do not delete files they cannot reference.
+        if let customizations = object["widgetCustomizations"] as? [String: Any] {
+          let allowedWidgetNames = Set(customizations.values.compactMap { value -> String? in
+            guard let customization = value as? [String: Any], let name = customization["photoFileName"] as? String,
+                  name.hasPrefix(self.widgetPhotoPrefix), name.hasSuffix(".jpg") else { return nil }
+            return name
+          })
+          for kind in self.widgetPhotoKinds {
+            let name = "\(self.widgetPhotoPrefix)\(kind).jpg"
+            if !allowedWidgetNames.contains(name) { try? FileManager.default.removeItem(at: container.appendingPathComponent(name)) }
+          }
         }
       }
       ["RhythmWidget", "RhythmCurrentTaskWidget", "RhythmNextScheduleWidget", "RhythmMonthlyCalendarWidget", "RhythmWeeklyCalendarWidget", "RhythmTodayScheduleWidget", "RhythmChecklistWidget", "RhythmGoalWidget", "RhythmVoiceWidget", "RhythmAffirmationWidget"].forEach {
@@ -46,6 +64,28 @@ public final class RhythmWidgetModule: Module {
         throw NSError(domain: "RhythmWidget", code: 3, userInfo: [NSLocalizedDescriptionKey: "Photo file is unavailable"])
       }
       let destination = container.appendingPathComponent(self.photoFileName)
+      let temporary = destination.appendingPathExtension("tmp")
+      try? FileManager.default.removeItem(at: temporary)
+      try FileManager.default.copyItem(at: sourceURL, to: temporary)
+      try? FileManager.default.removeItem(at: destination)
+      try FileManager.default.moveItem(at: temporary, to: destination)
+      return true
+    }
+
+    AsyncFunction("saveWidgetPhoto") { (uri: String, widgetType: String) throws -> Bool in
+      guard self.widgetPhotoKinds.contains(widgetType), let container = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: self.appGroup) else {
+        throw NSError(domain: "RhythmWidget", code: 6, userInfo: [NSLocalizedDescriptionKey: "Invalid widget photo target"])
+      }
+      let sourceURL: URL
+      if let parsed = URL(string: uri), parsed.isFileURL {
+        sourceURL = parsed
+      } else {
+        sourceURL = URL(fileURLWithPath: uri)
+      }
+      guard FileManager.default.fileExists(atPath: sourceURL.path) else {
+        throw NSError(domain: "RhythmWidget", code: 7, userInfo: [NSLocalizedDescriptionKey: "Widget photo file is unavailable"])
+      }
+      let destination = container.appendingPathComponent("\(self.widgetPhotoPrefix)\(widgetType).jpg")
       let temporary = destination.appendingPathExtension("tmp")
       try? FileManager.default.removeItem(at: temporary)
       try FileManager.default.copyItem(at: sourceURL, to: temporary)

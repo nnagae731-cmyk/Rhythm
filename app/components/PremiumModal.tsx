@@ -22,14 +22,14 @@ export type PremiumStoreProducts = {
 };
 export type PremiumStoreProductStatus = 'loading' | 'ready' | 'unavailable';
 
-function formatMonthlyEquivalent(product: PremiumStoreProduct | undefined): string | undefined {
-  if (!product || typeof product.amount !== 'number' || !Number.isFinite(product.amount) || product.amount <= 0 || !product.currency) return undefined;
+function formatMonthlyEquivalent(annual: PremiumStoreProduct | undefined, monthly: PremiumStoreProduct | undefined): string | undefined {
+  if (!annual || !monthly || annual.currency !== monthly.currency || typeof annual.amount !== 'number' || !Number.isFinite(annual.amount) || annual.amount <= 0 || !annual.currency) return undefined;
   try {
     return new Intl.NumberFormat(undefined, {
       style: 'currency',
-      currency: product.currency,
+      currency: annual.currency,
       maximumFractionDigits: 2,
-    }).format(product.amount / 12);
+    }).format(annual.amount / 12);
   } catch {
     return undefined;
   }
@@ -101,7 +101,7 @@ const PREMIUM_GUIDE_FEATURES: Array<{ id: PremiumGuideFeatureId; kind: PremiumPr
   { id: 'templates', kind: 'templates', title: 'タスクひな型', description: '一度作ったタスクのカテゴリ・優先度・通知設定をひな型として保存し、次回の登録を簡単にします。' },
   { id: 'wish', kind: 'wish', title: '叶えたいこと', description: '叶えたいことを残して、今日できる行動に分けながら進み具合を確認できます。' },
   { id: 'affirmation', kind: 'affirmation', title: '好きな言葉を、選んだ時間に届ける', description: '自分で書いたアファメーションを毎日指定時刻に通知。忙しい日も、自分の軸へ静かに戻れます。' },
-  { id: 'photo_design', kind: 'photo_design', title: '選べるデザイン', description: '花柄1〜3、ドット、チェックデザイン、写真背景はPremiumで利用できます。Design Customizeの買い切り商品でも対象デザインを開放できます。価格はApp Storeに表示されます。' },
+  { id: 'photo_design', kind: 'photo_design', title: '選べるデザイン', description: '花柄・チェック・ドット・写真を、RhythmPaceの画面に合わせて楽しめます。Premiumは対象デザインを含むすべての機能を利用でき、Design Customizeは対象デザインを開放する買い切り商品です。価格はStoreKitの表示に従います。' },
 ];
 
 type PremiumFeatureIconName = 'timer' | 'journal' | 'calendarChart' | 'calendarSync' | 'pin' | 'bell' | 'bellSparkle' | 'chart' | 'analyticsBars' | 'historyTrend' | 'calendarList' | 'search' | 'copy' | 'target' | 'pathCheck' | 'quote' | 'messageSparkle' | 'refresh' | 'palette' | 'swatches' | 'pattern' | 'mic';
@@ -351,9 +351,10 @@ export function PremiumModal({ visible, initialFeatureId, designMode, chicPalett
   const [selectedPlan, setSelectedPlan] = useState<'annual' | 'monthly'>('annual');
   const monthlyAmount = products?.monthly?.amount;
   const annualAmount = products?.annual?.amount;
-  const annualMonthlyEquivalent = formatMonthlyEquivalent(products?.annual);
-  const annualSavingsPercent = typeof monthlyAmount === 'number' && monthlyAmount > 0 && typeof annualAmount === 'number'
+  const annualMonthlyEquivalent = formatMonthlyEquivalent(products?.annual, products?.monthly);
+  const annualSavingsPercent = typeof monthlyAmount === 'number' && Number.isFinite(monthlyAmount) && monthlyAmount > 0 && typeof annualAmount === 'number' && Number.isFinite(annualAmount) && annualAmount > 0
     && products?.monthly?.currency === products?.annual?.currency
+    && annualAmount < monthlyAmount * 12
     ? Math.min(100, Math.max(0, Math.round((1 - annualAmount / (monthlyAmount * 12)) * 100)))
     : undefined;
   const selectedProduct = products?.[selectedPlan];
@@ -407,15 +408,15 @@ export function PremiumModal({ visible, initialFeatureId, designMode, chicPalett
               const product = products?.[plan];
               const isAnnual = plan === 'annual';
               return <Pressable key={plan} accessibilityRole="radio" accessibilityState={{ selected: selectedPlan === plan }} onPress={() => setSelectedPlan(plan)} style={[styles.premiumPlanCard, { backgroundColor: selectedPlan === plan ? surfaceSoft : surface, borderColor: selectedPlan === plan ? accent : theme.colors.border }]}>
-                <View style={{ flex: 1 }}><Text style={[styles.premiumPlanTitle, { color: primaryText }]}>{isAnnual ? '年額プラン' : '月額プラン'}</Text>{isAnnual && <Text style={[styles.premiumPlanRecommended, { color: accent }]}>おすすめ</Text>}{isAnnual && annualMonthlyEquivalent !== undefined && <Text style={[styles.premiumPlanMeta, { color: secondaryText }]}>月あたり約 {annualMonthlyEquivalent}{annualSavingsPercent !== undefined ? ` ・ 約${annualSavingsPercent}%お得` : ''}</Text>}</View>
+                <View style={{ flex: 1, minWidth: 0 }}><Text style={[styles.premiumPlanTitle, { color: primaryText }]}>{isAnnual ? '年額プラン' : '月額プラン'}</Text>{isAnnual ? <Text style={[styles.premiumPlanRecommended, { color: accent }]}>いちばんお得</Text> : product && <Text style={[styles.premiumPlanRecommended, { color: accent }]}>7日間無料</Text>}{isAnnual && annualMonthlyEquivalent !== undefined && <Text style={[styles.premiumPlanMeta, { color: secondaryText }]}>月あたり約 {annualMonthlyEquivalent}{annualSavingsPercent !== undefined ? ` ・ 約${annualSavingsPercent}%お得` : ''}</Text>}{!isAnnual && product && <Text style={[styles.premiumPlanMeta, { color: secondaryText }]}>その後 {product.displayPrice} / 月</Text>}</View>
                 <Text style={[styles.premiumPlanPrice, { color: product ? accentStrong : secondaryText }]}>{productStatus === 'loading' ? '価格を確認中…' : product ? `${product.displayPrice} / ${product.periodLabel}` : '価格を取得できませんでした'}</Text>
               </Pressable>;
             })}
             {productStatus !== 'ready' || !products?.annual || !products?.monthly ? <View style={[styles.premiumPurchaseStatus, { borderColor: theme.colors.border }]}><Text style={[styles.premiumPurchaseStatusTitle, { color: primaryText }]}>{productStatus === 'loading' ? '価格を確認中…' : '価格を取得できませんでした'}</Text><Text style={[styles.premiumPurchaseStatusCopy, { color: secondaryText }]}>{productStatus === 'loading' ? 'App Storeの商品情報を確認しています。' : 'App Storeの商品情報を取得後、ローカライズされた価格が表示されます。'}</Text></View> : null}
-            <Text style={[styles.premiumPurchaseNote, { color: secondaryText }]}>購入前にApp Storeの表示をご確認ください。いつでも解約できます。</Text>
+            <Text style={[styles.premiumPurchaseNote, { color: secondaryText }]}>月額は7日間の無料トライアル後に自動更新されます。月額・年額とも購入前にApp Storeの表示をご確認ください。解約はApple IDのサブスクリプション管理からいつでも行えます。</Text>
             {purchaseStatus === 'success' && <View style={[styles.premiumPurchaseStatus, { borderColor: accent }]}><Text style={[styles.premiumPurchaseStatusTitle, { color: accentStrong }]}>Premiumを有効にしました</Text><Text style={[styles.premiumPurchaseStatusCopy, { color: secondaryText }]}>すべてのPremium機能を利用できます。</Text></View>}
             {purchaseStatus === 'unavailable' && <View style={[styles.premiumPurchaseStatus, { borderColor: theme.colors.border }]}><Text style={[styles.premiumPurchaseStatusTitle, { color: primaryText }]}>購入処理を準備しています</Text><Text style={[styles.premiumPurchaseStatusCopy, { color: secondaryText }]}>現在はApp Storeの購入画面を利用できません。しばらくしてから再度お試しください。</Text></View>}
-            {purchaseError && <View style={[styles.premiumPurchaseStatus, { borderColor: theme.colors.border }]}><Text style={[styles.premiumPurchaseStatusTitle, { color: primaryText }]}>購入を完了できませんでした</Text><Text style={[styles.premiumPurchaseStatusCopy, { color: secondaryText }]}>{purchaseError}</Text></View>}
+            {purchaseError && <View style={[styles.premiumPurchaseStatus, { borderColor: theme.colors.border }]}><Text style={[styles.premiumPurchaseStatusTitle, { color: primaryText }]}>購入を完了できませんでした</Text><Text style={[styles.premiumPurchaseStatusCopy, { color: secondaryText }]}>App Storeの商品情報を取得できませんでした。時間をおいてもう一度お試しください。</Text></View>}
             <Pressable disabled={purchaseStatus === 'processing' || planTier === 'premium' || !canPurchaseSelectedPlan} onPress={() => {
               if (onPurchasePlan && selectedProduct) {
                 setPurchaseStatus('processing');

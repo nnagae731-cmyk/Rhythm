@@ -128,7 +128,7 @@ export const INTRO_CARDS: IntroCard[] = [
   {
     id: 'widget',
     title: 'ホーム画面から、すぐ動ける。',
-    description: '「今はこれ」「次の予定」「カレンダー」などをWidgetですぐ確認。音声入力やアファメーションも、ホーム画面から使えます。',
+    description: 'ホーム画面を見るだけで、今やることや次の予定を確認。タップすれば音声入力やアファメーションもすぐ使えます。自分の写真やデザインもWidgetごとに選べます。',
   },
 ];
 
@@ -142,7 +142,7 @@ export const WIDGET_GUIDE_CARDS: IntroCard[] = [
   {
     id: 'widget',
     title: '好きなWidgetを選ぶ',
-    description: '「今はこれ」「予定」「カレンダー」「音声入力」など、使いたいWidgetを追加できます。',
+    description: '今やること、予定、カレンダー、音声入力など、必要な情報をホーム画面で確認できます。',
   },
   {
     id: 'widgetEdit',

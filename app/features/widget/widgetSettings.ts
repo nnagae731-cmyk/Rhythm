@@ -1,11 +1,14 @@
 import {
   WidgetAccentColor,
+  WidgetCustomization,
+  WidgetCustomizations,
   WidgetDisplayOption,
   WidgetPhotoLayout,
   WidgetPhotoSource,
   WidgetSettings,
   WidgetStyle,
   WidgetType,
+  WidgetMonoTemplate,
 } from '../../types';
 
 export type WidgetAccessTier = 'free' | 'design' | 'premium';
@@ -17,7 +20,7 @@ export const WIDGET_TYPE_OPTIONS: ReadonlyArray<{ id: WidgetType; label: string;
   { id: 'monthly', label: '月間カレンダー', description: '予定のある日を月ごとに確認', sizes: 'M / L', access: 'design' },
   { id: 'weekly', label: '週間カレンダー', description: '今週の予定を一覧で確認', sizes: 'M / L', access: 'design' },
   { id: 'today', label: '今日の予定', description: '今日の予定を時刻順に表示', sizes: 'M', access: 'design' },
-  { id: 'checklist', label: '忘れたくない', description: '忘れたくない項目を確認', sizes: 'S / M', access: 'design' },
+  { id: 'checklist', label: 'ToDoメモ', description: '持ち物やメモを確認', sizes: 'S / M', access: 'design' },
   { id: 'goal', label: '叶えたいこと', description: '目標と進捗を表示', sizes: 'M', access: 'premium' },
   { id: 'voice', label: '音声入力', description: 'ホーム画面から音声入力を開始', sizes: 'S / M', access: 'free' },
   { id: 'affirmation', label: 'アファメーション', description: '言葉と背景で気持ちを整える', sizes: 'S / M', access: 'premium' },
@@ -53,6 +56,12 @@ export const WIDGET_PHOTO_LAYOUT_OPTIONS: ReadonlyArray<{ id: WidgetPhotoLayout;
   { id: 'circle', label: '丸型' },
 ];
 
+export const WIDGET_MONO_TEMPLATE_OPTIONS: ReadonlyArray<{ id: WidgetMonoTemplate; label: string }> = [
+  { id: 'clean', label: 'Clean' },
+  { id: 'pinNote', label: 'Pin Note' },
+  { id: 'ruledNote', label: 'Ruled Note' },
+];
+
 const DEFAULT_DISPLAY_OPTIONS: Record<WidgetDisplayOption, boolean> = {
   startTime: true,
   remainingTime: true,
@@ -71,6 +80,7 @@ export const DEFAULT_WIDGET_SETTINGS: WidgetSettings = {
   accentColor: 'blue',
   photoSource: 'widget',
   photoLayout: 'background',
+  monoTemplate: 'clean',
   displayOptions: DEFAULT_DISPLAY_OPTIONS,
   affirmationRotationMode: 'fixed',
   affirmationBackgrounds: ['floral', 'dot', 'check', 'photo'],
@@ -82,6 +92,7 @@ const widgetStyleIds = new Set<WidgetStyle>(WIDGET_STYLE_OPTIONS.map((item) => i
 const accentIds = new Set<WidgetAccentColor>(WIDGET_ACCENT_OPTIONS.map((item) => item.id));
 const photoSourceIds = new Set<WidgetPhotoSource>(WIDGET_PHOTO_SOURCE_OPTIONS.map((item) => item.id));
 const photoLayoutIds = new Set<WidgetPhotoLayout>(WIDGET_PHOTO_LAYOUT_OPTIONS.map((item) => item.id));
+const monoTemplateIds = new Set<WidgetMonoTemplate>(WIDGET_MONO_TEMPLATE_OPTIONS.map((item) => item.id));
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
@@ -99,7 +110,17 @@ export function normalizeWidgetSettings(value: unknown): WidgetSettings {
   const accentColor = accentIds.has(source.accentColor as WidgetAccentColor) ? source.accentColor as WidgetAccentColor : DEFAULT_WIDGET_SETTINGS.accentColor;
   const photoSource = photoSourceIds.has(source.photoSource as WidgetPhotoSource) ? source.photoSource as WidgetPhotoSource : DEFAULT_WIDGET_SETTINGS.photoSource;
   const photoLayout = photoLayoutIds.has(source.photoLayout as WidgetPhotoLayout) ? source.photoLayout as WidgetPhotoLayout : DEFAULT_WIDGET_SETTINGS.photoLayout;
+  const monoTemplate = monoTemplateIds.has(source.monoTemplate as WidgetMonoTemplate) ? source.monoTemplate as WidgetMonoTemplate : DEFAULT_WIDGET_SETTINGS.monoTemplate;
   const photoUri = typeof source.photoUri === 'string' && source.photoUri.trim() ? source.photoUri : undefined;
+  const rawCustomizations = isRecord(source.widgetCustomizations) ? source.widgetCustomizations : {};
+  const widgetCustomizations: WidgetCustomizations = {};
+  WIDGET_TYPE_OPTIONS.forEach(({ id }) => {
+    const raw = isRecord(rawCustomizations[id]) ? rawCustomizations[id] : undefined;
+    if (!raw) return;
+    const customPhotoUri = typeof raw.photoUri === 'string' && raw.photoUri.trim() ? raw.photoUri : undefined;
+    const customPhotoLayout = photoLayoutIds.has(raw.photoLayout as WidgetPhotoLayout) ? raw.photoLayout as WidgetPhotoLayout : undefined;
+    if (customPhotoUri || customPhotoLayout) widgetCustomizations[id] = { photoUri: customPhotoUri, photoLayout: customPhotoLayout };
+  });
   const affirmationRotationMode = source.affirmationRotationMode === 'automatic' ? 'automatic' : 'fixed';
   const allowedBackgrounds = new Set(['floral', 'dot', 'check', 'photo']);
   const affirmationBackgrounds = Array.isArray(source.affirmationBackgrounds)
@@ -108,7 +129,16 @@ export function normalizeWidgetSettings(value: unknown): WidgetSettings {
   const affirmationPhotoUris = Array.isArray(source.affirmationPhotoUris)
     ? source.affirmationPhotoUris.filter((item): item is string => typeof item === 'string' && item.trim().length > 0).slice(0, 3)
     : [];
-  return { widgetType, style, accentColor, photoUri, photoSource, photoLayout, displayOptions, affirmationRotationMode, affirmationBackgrounds, affirmationPhotoUris };
+  return { widgetType, style, accentColor, photoUri, photoSource, photoLayout, monoTemplate, widgetCustomizations, displayOptions, affirmationRotationMode, affirmationBackgrounds, affirmationPhotoUris };
+}
+
+/** Resolves a widget's new per-kind photo first, while retaining the legacy shared photo fallback. */
+export function getWidgetCustomization(settings: WidgetSettings, widgetType: WidgetType): WidgetCustomization {
+  const customization = settings.widgetCustomizations?.[widgetType];
+  return {
+    photoUri: customization?.photoUri ?? settings.photoUri,
+    photoLayout: customization?.photoLayout ?? settings.photoLayout,
+  };
 }
 
 export function getWidgetAccentHex(accentColor: WidgetAccentColor) {

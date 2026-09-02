@@ -1,6 +1,6 @@
 import { requireOptionalNativeModule } from 'expo';
 import { Platform } from 'react-native';
-import { Affirmation, AffirmationCustomText, DeparturePlan, Task, WishMonthMap } from '../../types';
+import { Affirmation, AffirmationCustomText, DeparturePlan, Task, WidgetMonoTemplate, WidgetPhotoLayout, WidgetType, WishMonthMap } from '../../types';
 import { DepartureCheckIn } from '../../departureCheckIn';
 import { getDeparturePlanMode, getPlanScheduledTime, isDepartureReminderPlan } from '../departure/departurePlanMode';
 import { getDepartureMoments } from '../departure/departureUtils';
@@ -11,6 +11,7 @@ export const RHYTHM_WIDGET_APP_GROUP = 'group.app.rhythm.daily';
 export type RhythmWidgetAppearance = {
   /** Selected by the app's Widget settings UI. Mono remains the default. */
   style: 'mono' | 'color' | 'photo';
+  monoTemplate?: WidgetMonoTemplate;
   accentHex?: string;
   /** Filename in the App Group container; the image itself is never in the snapshot. */
   photoFileName?: string;
@@ -24,6 +25,12 @@ export type RhythmWidgetAppearance = {
   affirmationBackgrounds?: Array<'floral' | 'dot' | 'check' | 'photo'>;
 };
 
+/** Per-widget photo references. Image bytes remain in the App Group container. */
+export type RhythmWidgetCustomization = {
+  photoFileName?: string;
+  photoLayout?: WidgetPhotoLayout;
+};
+
 export type RhythmWidgetSnapshot = {
   updatedAt: string;
   /** Effective entitlements used by the extension to gate Widget kinds. */
@@ -31,6 +38,7 @@ export type RhythmWidgetSnapshot = {
   /** True when Design Customize is purchased or included with Premium. */
   designCustomizePurchased?: boolean;
   appearance?: RhythmWidgetAppearance;
+  widgetCustomizations?: Partial<Record<WidgetType, RhythmWidgetCustomization>>;
   /** Kept in the payload for the native renderer's future display filtering. */
   displayOptions?: Record<string, boolean>;
   currentTask?: {
@@ -58,7 +66,7 @@ export type RhythmWidgetSnapshot = {
     year: number;
     month: number;
     leadingEmptyCount: number;
-    days: Array<{ date: string; day: number; weekdayIndex: number; hasSchedule: boolean; scheduleCount: number; isToday: boolean }>;
+    days: Array<{ date: string; day: number; weekdayIndex: number; hasSchedule: boolean; scheduleCount: number; scheduleTitle?: string; isToday: boolean }>;
   };
   calendarWeek?: {
     startDate: string;
@@ -91,6 +99,7 @@ type SnapshotInput = {
   isPremium?: boolean;
   designCustomizePurchased?: boolean;
   appearance?: RhythmWidgetAppearance;
+  widgetCustomizations?: Partial<Record<WidgetType, RhythmWidgetCustomization>>;
   displayOptions?: Record<string, boolean>;
   wishMonths?: WishMonthMap;
   affirmations?: Affirmation[];
@@ -156,7 +165,11 @@ function buildCalendarMonth(departurePlans: DeparturePlan[], now: Date) {
   const daysInMonth = new Date(year, month, 0).getDate();
   const firstWeekday = new Date(year, month - 1, 1).getDay();
   const scheduleCounts = new Map<string, number>();
-  departurePlans.forEach((plan) => scheduleCounts.set(plan.date, (scheduleCounts.get(plan.date) ?? 0) + 1));
+  const scheduleTitles = new Map<string, string>();
+  departurePlans.forEach((plan) => {
+    scheduleCounts.set(plan.date, (scheduleCounts.get(plan.date) ?? 0) + 1);
+    if (!scheduleTitles.has(plan.date) && plan.title.trim()) scheduleTitles.set(plan.date, plan.title.trim());
+  });
   const days = Array.from({ length: daysInMonth }, (_, index) => {
     const day = index + 1;
     const date = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
@@ -167,6 +180,7 @@ function buildCalendarMonth(departurePlans: DeparturePlan[], now: Date) {
       weekdayIndex: new Date(year, month - 1, day).getDay(),
       hasSchedule: scheduleCount > 0,
       scheduleCount,
+      ...(scheduleTitles.get(date) ? { scheduleTitle: scheduleTitles.get(date)!.slice(0, 8) } : {}),
       isToday: date === dateKey(now),
     };
   });
@@ -205,6 +219,7 @@ export function buildRhythmWidgetSnapshot({
   isPremium = false,
   designCustomizePurchased = false,
   appearance,
+  widgetCustomizations,
   displayOptions,
   wishMonths,
   affirmations = [],
@@ -264,6 +279,7 @@ export function buildRhythmWidgetSnapshot({
     isPremium,
     designCustomizePurchased,
     ...(appearance ? { appearance } : {}),
+    ...(widgetCustomizations && Object.keys(widgetCustomizations).length ? { widgetCustomizations } : {}),
     ...(displayOptions ? { displayOptions } : {}),
     ...(currentTask ? {
       currentTask: {
@@ -306,6 +322,7 @@ export function buildRhythmWidgetSnapshot({
 type RhythmWidgetNativeModule = {
   saveSnapshot(snapshot: string): Promise<boolean>;
   savePhoto?(uri: string): Promise<boolean>;
+  saveWidgetPhoto?(uri: string, widgetType: WidgetType): Promise<boolean>;
   saveAffirmationPhoto?(uri: string, slot: number): Promise<boolean>;
 };
 
@@ -323,6 +340,14 @@ export async function saveRhythmWidgetPhoto(uri: string) {
   const module = requireOptionalNativeModule<RhythmWidgetNativeModule>('RhythmWidget');
   if (!module?.savePhoto) return false;
   return module.savePhoto(uri);
+}
+
+/** Copies a widget-kind-specific image into the shared App Group container. */
+export async function saveRhythmWidgetPhotoForWidget(uri: string, widgetType: WidgetType) {
+  if (Platform.OS !== 'ios') return false;
+  const module = requireOptionalNativeModule<RhythmWidgetNativeModule>('RhythmWidget');
+  if (!module?.saveWidgetPhoto) return false;
+  return module.saveWidgetPhoto(uri, widgetType);
 }
 
 export async function saveRhythmAffirmationPhoto(uri: string, slot: number) {

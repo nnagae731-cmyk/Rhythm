@@ -3,7 +3,7 @@ import { Alert, DevSettings, Image, Pressable, Switch, Text, TextInput, View } f
 import { BannerAd, BannerAdSize, TestIds } from 'react-native-google-mobile-ads';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { ChicCheckColor, ChicPattern, ChicThemePalette, DesignMode, getDesignCheckColorLabel, getThemeTokens } from '../theme';
-import { Affirmation, AffirmationCustomText, PhotoThemePhotoTarget, PhotoThemeSettings, Task, WidgetSettings, WidgetSize } from '../types';
+import { Affirmation, AffirmationCustomText, PhotoThemePhotoTarget, PhotoThemeSettings, Task, WidgetSettings, WidgetSize, WidgetType } from '../types';
 import { PlanTier } from '../premiumAccess';
 import { PremiumGuideFeatureId } from '../premiumGuide';
 import { PremiumTaskTemplate } from '../taskTemplates';
@@ -28,7 +28,7 @@ function DesignCustomizeCard({ designMode, chicPalette, planTier, purchased, loc
   return <View style={{ marginTop: 14, padding: 15, borderRadius: 16, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface }}>
     <Text style={{ color: colors.text, fontSize: 15, fontWeight: '900' }}>Design Customize</Text>
     {planTier === 'premium' ? <Text style={{ color: colors.accent, marginTop: 6, fontSize: 12, fontWeight: '800' }}>Premiumで利用できます</Text> : purchased ? <Text style={{ color: colors.accent, marginTop: 6, fontSize: 12, fontWeight: '800' }}>購入済み</Text> : <>
-      <Text style={{ color: colors.muted, marginTop: 6, fontSize: 12, lineHeight: 18, fontWeight: '600' }}>Rhythmの見た目を、もっと自分らしく。{ '\n' }Designと写真カスタマイズを買い切りで利用できます。</Text>
+      <Text style={{ color: colors.muted, marginTop: 6, fontSize: 12, lineHeight: 18, fontWeight: '600' }}>RhythmPaceの見た目を、もっと自分らしく。{ '\n' }花柄・チェック・ドット・写真カスタマイズを買い切りで利用できます。Widgetごとの写真設定は順次対応予定です。</Text>
       <Text style={{ color: colors.accent, marginTop: 8, fontSize: 14, fontWeight: '900' }}>{priceStatus === 'loading' ? '価格を取得中…' : localizedPrice ? `買い切り ${localizedPrice}` : '価格は購入画面で確認'}</Text>
       <View style={{ flexDirection: 'row', gap: 8, marginTop: 11 }}>
         <Pressable onPress={onTry} style={{ flex: 1, minHeight: 40, borderRadius: 11, borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center' }}><Text style={{ color: colors.accent, fontSize: 12, fontWeight: '900' }}>試してみる</Text></Pressable>
@@ -52,6 +52,7 @@ export function SettingsScreen({
   selectedDesignMode,
   monoAppearance,
   hapticsEnabled,
+  premiumTrialReminderEnabled = true,
   chicPalette,
   chicPattern,
   chicCheckColor,
@@ -72,6 +73,7 @@ export function SettingsScreen({
   onDesignMode,
   onMonoAppearance,
   onHapticsEnabled,
+  onPremiumTrialReminderEnabled,
   onReview,
   onChicPattern,
   onDesignPreview,
@@ -115,6 +117,7 @@ export function SettingsScreen({
   selectedDesignMode?: DesignMode;
   monoAppearance: 'auto' | 'light' | 'dark';
   hapticsEnabled: boolean;
+  premiumTrialReminderEnabled?: boolean;
   chicPalette?: ChicThemePalette;
   chicPattern: ChicPattern;
   chicCheckColor: ChicCheckColor;
@@ -123,7 +126,7 @@ export function SettingsScreen({
   photoTheme: PhotoThemeSettings;
   travelApps: TravelAppSettings;
   widgetSettings: WidgetSettings;
-  onPickWidgetPhoto?: () => void;
+  onPickWidgetPhoto?: (widgetType?: WidgetType) => void;
   onRemoveAffirmationPhoto?: (index?: number) => void;
   onWidgetGuide?: () => void;
   onRefreshWidget?: () => void;
@@ -135,6 +138,7 @@ export function SettingsScreen({
   onDesignMode: (mode: DesignMode) => void;
   onMonoAppearance: (appearance: 'auto' | 'light' | 'dark') => void;
   onHapticsEnabled: (value: boolean) => void;
+  onPremiumTrialReminderEnabled?: (value: boolean) => void;
   onReview: () => void;
   onChicPattern: (pattern: ChicPattern) => void;
   onDesignPreview: (pattern: ChicPattern) => void;
@@ -254,6 +258,7 @@ export function SettingsScreen({
        </SettingsDisclosure>
        <SettingsDisclosure designMode={designMode} title="通知・フィードバック" subtitle="通知管理・触覚フィードバック" expanded={expandedSetting === 'notifications'} onPress={() => setExpandedSetting((current) => current === 'notifications' ? null : 'notifications')}>
          <NotificationManagerCard designMode={designMode} />
+       {onPremiumTrialReminderEnabled ? <View style={[styles.settingsCard, isDark && styles.darkSurface]}><View style={styles.switchRow}><View style={{ flex: 1 }}><Text style={[styles.switchTitle, isDark && styles.darkBodyText]}>無料期間終了前のお知らせ</Text><Text style={[styles.switchCopy, isDark && styles.darkMutedText]}>StoreKitで終了日時を確認できた場合、前日に通知します</Text></View><Switch value={premiumTrialReminderEnabled !== false} onValueChange={onPremiumTrialReminderEnabled} trackColor={{ false: isDark ? '#40506A' : baseTheme.border, true: isDesign && chicPalette ? chicPalette.accent : baseTheme.primaryAccent }} thumbColor={premiumTrialReminderEnabled !== false ? (isDesign && chicPalette ? chicPalette.onAccent : '#FFFFFF') : (isDark ? '#8F9BB0' : '#FFFFFF')} /></View></View> : null}
        <View style={[styles.settingsCard, isDark && styles.darkSurface]}><View style={styles.switchRow}><View style={{ flex: 1 }}><Text style={[styles.switchTitle, isDark && styles.darkBodyText]}>触覚フィードバック</Text><Text style={[styles.switchCopy, isDark && styles.darkMutedText]}>完了や集中開始を振動で知らせます</Text></View><Switch value={hapticsEnabled} onValueChange={(value) => onHapticsEnabled(value)} trackColor={{ false: isDark ? '#40506A' : baseTheme.border, true: isDesign && chicPalette ? chicPalette.accent : baseTheme.primaryAccent }} thumbColor={hapticsEnabled ? (isDesign && chicPalette ? chicPalette.onAccent : '#FFFFFF') : (isDark ? '#8F9BB0' : '#FFFFFF')} /></View></View>
        </SettingsDisclosure>
         <SettingsDisclosure designMode={designMode} title="タスク" subtitle="完了アイコンを設定" expanded={expandedSetting === 'taskDisplay'} onPress={() => setExpandedSetting((current) => current === 'taskDisplay' ? null : 'taskDisplay')}>
@@ -279,9 +284,8 @@ export function SettingsScreen({
          if (opening) onWidgetSectionOpened?.();
        }}>
        <View style={[styles.settingsCard, { backgroundColor: guideColors.surface, borderColor: guideColors.border, borderWidth: 1 }]}>
-         <Text style={[styles.settingsTitle, { color: guideColors.textPrimary }]}>ホーム画面のWidget</Text>
-         <Text style={[styles.switchCopy, { color: guideColors.textSecondary, marginTop: 6 }]}>予定やタスクを確認したり、音声入力を始めたりできます。</Text>
-         <Text style={[styles.switchCopy, { color: guideColors.textSecondary, marginTop: 4 }]}>Widgetごとの見た目は、ホーム画面で長押しして「ウィジェットを編集」から変更できます。</Text>
+         <Text style={[styles.settingsTitle, { color: guideColors.textPrimary }]}>Widget</Text>
+         <Text style={[styles.switchCopy, { color: guideColors.textSecondary, marginTop: 6 }]}>ホーム画面から、RhythmPaceをもっと使いやすく。</Text>
          <View style={{ flexDirection: 'row', gap: 8, marginTop: 12 }}>
            <Pressable accessibilityRole="button" onPress={onWidgetGuide} style={{ flex: 1, minHeight: 42, borderRadius: 11, borderWidth: 1, borderColor: guideColors.accent, alignItems: 'center', justifyContent: 'center' }}><Text style={{ color: guideColors.accent, fontSize: 12, fontWeight: '800' }}>追加方法を見る</Text></Pressable>
            <Pressable accessibilityRole="button" onPress={onRefreshWidget} style={{ flex: 1, minHeight: 42, borderRadius: 11, backgroundColor: guideColors.accent, alignItems: 'center', justifyContent: 'center' }}><Text style={{ color: guideColors.onAccent, fontSize: 12, fontWeight: '800' }}>Widgetを更新</Text></Pressable>

@@ -223,7 +223,7 @@ export function TaskModal({ visible, task, templates, savedTemplates, designMode
           <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false} contentContainerStyle={[styles.modalScroll, isDark && styles.taskModalScrollDark]}>
           <View style={styles.modalHandle} />
           <Text style={[styles.modalTitle, designMode === 'dark' && styles.modalTitleDark]}>{task ? 'タスクを編集' : '新しいタスク'}</Text>
-          <Text style={[styles.fieldLabel, designMode === 'dark' && styles.fieldLabelDark]}>やること・忘れたくないこと</Text>
+          <Text style={[styles.fieldLabel, designMode === 'dark' && styles.fieldLabelDark]}>やること・ToDoメモ</Text>
           <View style={styles.voiceAddInputRow}>
             <TextInput ref={titleInputRef} value={title} onChangeText={updateTitle} placeholder="例：資料をバッグに入れる" placeholderTextColor={theme.colors.secondaryText} style={[styles.modalInput, { flex: 1, minWidth: 0 }, designMode === 'dark' && styles.darkInput]} selectionColor={isChic && chicPalette ? chicPalette.accent : theme.colors.primaryAccent} returnKeyType="done" onSubmitEditing={save} />
             <Pressable accessibilityRole="button" accessibilityLabel="音声入力" style={[styles.voiceAddMicButton, isDark && styles.voiceAddMicButtonDark]} onPress={onOpenVoice ?? (() => titleInputRef.current?.focus())}><Text style={styles.voiceAddMicText}>⌕</Text></Pressable>

@@ -27,7 +27,8 @@ import { BulkTaskModal } from './components/BulkTaskModal';
 import { DeparturePlanForm } from './components/DeparturePlanForm';
 import { AffirmationSettingsCard, MAX_AFFIRMATIONS } from './components/AffirmationSettingsCard';
 import { PremiumModal } from './components/PremiumModal';
-import { useRhythmStoreKit } from './features/purchases/useRhythmStoreKit';
+import { PremiumTrialStarted, useRhythmStoreKit } from './features/purchases/useRhythmStoreKit';
+import { STORE_PRODUCT_IDS } from './features/purchases/storeProducts';
 import { RewardedAccessModal, RewardedAccessResult } from './components/RewardedAccessModal';
 import { BottomNav } from './components/BottomNav';
 import { OnboardingCarousel } from './features/onboarding/OnboardingCarousel';
@@ -40,12 +41,12 @@ import { RecoveryModal } from './components/RecoveryModal';
 import { DesignCustomizeModal } from './components/DesignCustomizeModal';
 import { TravelAppsSettingsCard } from './components/TravelAppsSettingsCard';
 import { styles } from './styles/appStyles';
-import { Affirmation, AffirmationCustomText, CalendarMarks, Category, DeparturePlan, DeparturePreparationStatus, MonthlyReflectionCard, MonthlyReview, MonthlyWishState, NudgeMode, PersistedState, PhotoThemePhotoTarget, PhotoThemeSettings, Priority, RepeatRule, Screen, SharedEvent, SharedParticipantPrefs, Subtask, Task, TaskBucket, TaskListItem, ThemeMode, TimeTab, UrgencyStatus, WidgetSettings, WidgetSize, WishAction, WishMonthMap } from './types';
+import { Affirmation, AffirmationCustomText, CalendarMarks, Category, DeparturePlan, DeparturePreparationStatus, MonthlyReflectionCard, MonthlyReview, MonthlyWishState, NudgeMode, PersistedState, PhotoThemePhotoTarget, PhotoThemeSettings, Priority, RepeatRule, Screen, SharedEvent, SharedParticipantPrefs, Subtask, Task, TaskBucket, TaskListItem, ThemeMode, TimeTab, UrgencyStatus, WidgetSettings, WidgetSize, WidgetType, WishAction, WishMonthMap } from './types';
 import { initialPlan } from './storage/rhythmState';
 import { DEFAULT_TRAVEL_APP_SETTINGS, normalizeTravelAppSettings, TravelAppSettings } from './features/travel/travelApps';
 import { loadRhythmState, saveRhythmState } from './storage/rhythmStorage';
-import { buildRhythmWidgetSnapshot, saveRhythmAffirmationPhoto, saveRhythmWidgetPhoto, saveRhythmWidgetSnapshot } from './features/widget/rhythmWidgetSnapshot';
-import { DEFAULT_WIDGET_SETTINGS, getWidgetAccentHex, normalizeWidgetSettings } from './features/widget/widgetSettings';
+import { buildRhythmWidgetSnapshot, saveRhythmAffirmationPhoto, saveRhythmWidgetPhoto, saveRhythmWidgetPhotoForWidget, saveRhythmWidgetSnapshot } from './features/widget/rhythmWidgetSnapshot';
+import { DEFAULT_WIDGET_SETTINGS, getWidgetAccentHex, getWidgetCustomization, normalizeWidgetSettings, WIDGET_TYPE_OPTIONS } from './features/widget/widgetSettings';
 import { categories, priorities, completionIcons, categoryColors as baseCategoryColors, designModes, getLateRiskMessage, getNextBestAction, getUrgencyStatus, urgencyLevel } from './features/tasks/taskUtils';
 import { createSharedEventPacket, createSharedEventToken, encodeSharedEventLink, normalizeSharedEvent, parseSharedEventLink, upsertSharedEvent } from './features/shared/sharedUtils';
 import { getMonthlyWishState, normalizeWishMonthsForSave, wishMonthKey } from './features/wish/wishUtils';
@@ -68,6 +69,7 @@ import { addHours, canCreateWish, canImportCalendar, canStartPremiumDesignTrial,
 import { getRequiredAds, RewardedFeatureId } from './features/ads/rewardedAccess';
 import { DEFAULT_REWARDED_ACCESS_STATE, loadRewardedAccessState, RewardedAccessState, saveRewardedAccessState } from './features/ads/rewardedAccessStorage';
 import { cancelFocusCompletionNotification, cancelPendingFocusCompletionNotifications, scheduleFocusCompletionNotification } from './features/focus/focusNotifications';
+import { cancelPremiumTrialReminder, schedulePremiumTrialReminder } from './features/notifications/premiumTrialReminder';
 import { FOCUS_NAVIGATION_GUARD_COPY, getFocusNavigationDecision } from './features/focus/focusUsagePolicy';
 import {
   Alert,
@@ -77,6 +79,7 @@ import {
   useColorScheme,
   Easing,
   Image,
+  InteractionManager,
   Linking,
   Modal,
   Platform,
@@ -551,6 +554,7 @@ export default function App() {
   const [widgetSize, setWidgetSize] = useState<WidgetSize>('medium');
   const [widgetSettings, setWidgetSettings] = useState<WidgetSettings>(DEFAULT_WIDGET_SETTINGS);
   const widgetPhotoSyncedUriRef = React.useRef<string | undefined>(undefined);
+  const widgetCustomPhotoSyncedUrisRef = React.useRef<Record<string, string>>({});
   const widgetAffirmationPhotoSyncedUrisRef = React.useRef<Record<number, string>>({});
   const widgetSnapshotSerializedRef = React.useRef<string | undefined>(undefined);
   const widgetSnapshotInFlightRef = React.useRef<string | undefined>(undefined);
@@ -561,6 +565,9 @@ export default function App() {
   const [designMode, setDesignMode] = useState<DesignMode>('minimal');
   const [monoAppearance, setMonoAppearance] = useState<'auto' | 'light' | 'dark'>('auto');
   const [hapticsEnabled, setHapticsEnabled] = useState(true);
+  const [premiumTrialReminderEnabled, setPremiumTrialReminderEnabled] = useState(true);
+  const premiumTrialNoticeShownRef = React.useRef<string | undefined>(undefined);
+  const pendingPremiumTrialChoiceRef = React.useRef<string | undefined>(undefined);
   const hapticsPreferenceTouchedRef = React.useRef(false);
   const [reviewPromptedAt, setReviewPromptedAt] = useState<string | undefined>();
   // useColorScheme subscribes to iOS/Android appearance changes and triggers a
@@ -659,10 +666,76 @@ export default function App() {
     setStoreDesignCustomizeAccess(active);
     if (active) setDesignCustomizePurchased(true);
   }, []);
+  const choosePremiumTrialReminder = React.useCallback((trial: PremiumTrialStarted, enabled: boolean) => {
+    const noticeKey = `${trial.productId}:${trial.trialEndAt}`;
+    pendingPremiumTrialChoiceRef.current = noticeKey;
+    setPremiumTrialReminderEnabled(enabled);
+    if (!enabled) {
+      void cancelPremiumTrialReminder().finally(() => {
+        if (pendingPremiumTrialChoiceRef.current === noticeKey) pendingPremiumTrialChoiceRef.current = undefined;
+      });
+      return;
+    }
+    // Alert button callbacks can run before the native alert's dismissal
+    // animation finishes. Wait for that interaction to settle before asking
+    // iOS to present its own notification permission sheet.
+    InteractionManager.runAfterInteractions(() => {
+      setTimeout(() => {
+        void (async () => {
+          try {
+            if (await ensureNotifications()) {
+              await schedulePremiumTrialReminder(trial.trialEndAt);
+              if (__DEV__) console.log('[Notifications] Premium trial reminder selected', { trialEndAt: new Date(trial.trialEndAt).toISOString() });
+            }
+          } catch (error) {
+            if (__DEV__) console.log('[Notifications] Premium trial reminder selection failed', error);
+          } finally {
+            if (pendingPremiumTrialChoiceRef.current === noticeKey) pendingPremiumTrialChoiceRef.current = undefined;
+          }
+        })();
+      }, 250);
+    });
+  }, []);
+  const handlePremiumTrialStarted = React.useCallback((trial: PremiumTrialStarted) => {
+    const noticeKey = `${trial.productId}:${trial.trialEndAt}`;
+    if (premiumTrialNoticeShownRef.current === noticeKey) return;
+    premiumTrialNoticeShownRef.current = noticeKey;
+    const monthlyPrice = trial.displayPrice ?? 'App Storeに表示された価格';
+    Alert.alert(
+      'Premiumを開始しました',
+      `7日間無料で利用できます。\n無料期間終了後は${monthlyPrice} / 月で自動更新されます。\n\n無料期間終了の前日にお知らせしますか？\n終了約24時間前に通知します。`,
+      [
+        { text: 'お知らせする', onPress: () => choosePremiumTrialReminder(trial, true) },
+        { text: '今回はしない', style: 'cancel', onPress: () => choosePremiumTrialReminder(trial, false) },
+      ],
+    );
+  }, [choosePremiumTrialReminder]);
   const storeKit = useRhythmStoreKit({
     onPremiumEntitlement: setStorePremiumAccess,
     onDesignCustomizeEntitlement: handleStoreDesignEntitlement,
+    onPremiumTrialStarted: handlePremiumTrialStarted,
   });
+  useEffect(() => {
+    if (!hydrated) return;
+    const trialEndAt = storeKit.premiumTrialEndAt;
+    const trialKey = trialEndAt ? `${STORE_PRODUCT_IDS.premiumMonthly}:${trialEndAt}` : undefined;
+    if (trialKey && pendingPremiumTrialChoiceRef.current === trialKey) return;
+    if (!premiumTrialReminderEnabled) {
+      void cancelPremiumTrialReminder();
+      return;
+    }
+    // A restored subscription does not identify whether its expiration is an
+    // introductory offer. Keep an already scheduled reminder intact rather
+    // than cancelling it when no trustworthy trial date is available.
+    if (!trialEndAt) return;
+    void (async () => {
+      if (!(await ensureNotifications())) return;
+      const scheduled = await schedulePremiumTrialReminder(trialEndAt);
+      if (__DEV__) console.log('[Notifications] Premium trial reminder', { scheduled, trialEndAt: new Date(trialEndAt).toISOString() });
+    })().catch((error) => {
+      if (__DEV__) console.log('[Notifications] Premium trial reminder unavailable', error);
+    });
+  }, [hydrated, premiumTrialReminderEnabled, storeKit.premiumTrialEndAt]);
   const hasDesignCustomizeAccess = planTier === 'premium'
     || (storeKit.designConfigured ? storeKit.entitlementsResolved && storeDesignCustomizeAccess : __DEV__ && designCustomizePurchased);
   const activeDesignTrialId = planTier !== 'premium' && (isPremiumDesignTrialActive(rewardedAccess, now) || isPremiumDesignUnlocked(rewardedAccess, now))
@@ -913,7 +986,7 @@ export default function App() {
     if (storeKit.designConfigured) {
       const success = await storeKit.purchaseDesignCustomize();
       if (success) setDesignCustomizePurchased(true);
-      else if (storeKit.errorMessage) Alert.alert('購入を完了できませんでした', storeKit.errorMessage);
+      else if (storeKit.errorMessage) Alert.alert('購入を完了できませんでした', 'App Storeの商品情報を取得できませんでした。時間をおいてもう一度お試しください。');
       return;
     }
     if (!__DEV__) {
@@ -932,7 +1005,7 @@ export default function App() {
         setDesignCustomizePurchased(true);
         Alert.alert('購入を復元しました', 'Design Customizeを利用できます。');
       } else if (storeKit.errorMessage) {
-        Alert.alert('購入を復元できませんでした', storeKit.errorMessage);
+        Alert.alert('購入を復元できませんでした', 'App Storeの商品情報を取得できませんでした。時間をおいてもう一度お試しください。');
       } else {
         Alert.alert('復元できる購入はありません', '同じApple IDで購入した履歴が見つかりませんでした。');
       }
@@ -955,7 +1028,7 @@ export default function App() {
     }
     const restored = await storeKit.restore();
     if (restored.premium) Alert.alert('購入を復元しました', 'Premiumを利用できます。');
-    else if (storeKit.errorMessage) Alert.alert('購入を復元できませんでした', storeKit.errorMessage);
+    else if (storeKit.errorMessage) Alert.alert('購入を復元できませんでした', 'App Storeの商品情報を取得できませんでした。時間をおいてもう一度お試しください。');
     else Alert.alert('復元できる購入はありません', '同じApple IDで購入した履歴が見つかりませんでした。');
   }, [storeKit]);
   const markDesignNoticeSeen = React.useCallback((expiry: string) => {
@@ -1131,7 +1204,7 @@ export default function App() {
     if (selectedUri) setDesignPreviewPhotoUri(selectedUri);
   }, []);
 
-  const pickWidgetPhoto = React.useCallback(async () => {
+  const pickWidgetPhoto = React.useCallback(async (widgetType?: WidgetType) => {
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!permission.granted) {
       Alert.alert('写真へのアクセスが必要です', '許可するとWidgetに写真を表示できます。');
@@ -1148,8 +1221,13 @@ export default function App() {
         [{ resize: { width: 1200 } }],
         { compress: 0.82, format: ImageManipulator.SaveFormat.JPEG },
       );
-      const persistentUri = persistPhotoUri(compressed.uri, 'widget-photo');
+      const persistentUri = persistPhotoUri(compressed.uri, widgetType ? `widget-photo-${widgetType}` : 'widget-photo');
       setWidgetSettings((current) => {
+        if (widgetType) {
+          const previous = current.widgetCustomizations?.[widgetType];
+          const customizations = { ...(current.widgetCustomizations ?? {}), [widgetType]: { ...(previous ?? {}), photoUri: persistentUri, photoLayout: previous?.photoLayout ?? current.photoLayout } };
+          return { ...current, style: 'photo', widgetCustomizations: customizations };
+        }
         deleteManagedPhotoUri(current.photoUri, [persistentUri, ...(current.affirmationPhotoUris ?? [])]);
         return { ...current, photoUri: persistentUri, style: 'photo', affirmationPhotoUris: [...(current.affirmationPhotoUris ?? []).filter((uri) => uri !== persistentUri), persistentUri].slice(0, 3) };
       });
@@ -1728,6 +1806,7 @@ export default function App() {
         if (typeof saved.showCompleted === 'boolean') setShowCompleted(saved.showCompleted);
         if (saved.completionIcon) setCompletionIcon(saved.completionIcon);
         if (!hapticsPreferenceTouchedRef.current && typeof saved.hapticsEnabled === 'boolean') setHapticsEnabled(saved.hapticsEnabled);
+        setPremiumTrialReminderEnabled(saved.premiumTrialReminderEnabled !== false);
         if (saved.reviewPromptedAt) setReviewPromptedAt(saved.reviewPromptedAt);
         if (saved.designMode === 'minimal' || saved.designMode === 'dark' || saved.designMode === 'chic' || saved.designMode === 'photo') {
           setDesignMode(saved.designMode);
@@ -1940,7 +2019,7 @@ export default function App() {
 
   useEffect(() => {
     if (!hydrated) return;
-    const state: PersistedState = { tasks, plan, departurePlans, widgetSize, widgetSettings, showCompleted, completionIcon, designMode, monoAppearance, hapticsEnabled, reviewPromptedAt, taskTemplates, savedTaskTemplates, chicPattern, chicCheckColor, recoveryHistory, focusSessions, focusCustomDurationMinutes, departureCheckIns, behaviorEvents, wishMonths: normalizeWishMonthsForSave(wishMonths), calendarMarks, calendarImportCalendarIds, calendarImportKnownCalendarIds, sharedEvents, sharedParticipantIdsByToken, sharedParticipantPrefsByToken, departurePreparationStatuses, affirmations, affirmationCustomTexts, photoTheme, travelApps, designCustomizePurchased, routineArchives: pruneRoutineArchives(routineArchives), voiceUsage: normalizeVoiceUsage(voiceUsage, dateKey()) };
+    const state: PersistedState = { tasks, plan, departurePlans, widgetSize, widgetSettings, showCompleted, completionIcon, designMode, monoAppearance, hapticsEnabled, premiumTrialReminderEnabled, reviewPromptedAt, taskTemplates, savedTaskTemplates, chicPattern, chicCheckColor, recoveryHistory, focusSessions, focusCustomDurationMinutes, departureCheckIns, behaviorEvents, wishMonths: normalizeWishMonthsForSave(wishMonths), calendarMarks, calendarImportCalendarIds, calendarImportKnownCalendarIds, sharedEvents, sharedParticipantIdsByToken, sharedParticipantPrefsByToken, departurePreparationStatuses, affirmations, affirmationCustomTexts, photoTheme, travelApps, designCustomizePurchased, routineArchives: pruneRoutineArchives(routineArchives), voiceUsage: normalizeVoiceUsage(voiceUsage, dateKey()) };
     latestPersistedStateRef.current = state;
     if (persistenceDisabledRef.current) return;
     if (persistenceTimerRef.current) clearTimeout(persistenceTimerRef.current);
@@ -1956,7 +2035,7 @@ export default function App() {
     return () => {
       if (persistenceTimerRef.current) clearTimeout(persistenceTimerRef.current);
     };
-  }, [tasks, plan, departurePlans, widgetSize, widgetSettings, showCompleted, completionIcon, designMode, monoAppearance, hapticsEnabled, reviewPromptedAt, taskTemplates, savedTaskTemplates, chicPattern, chicCheckColor, recoveryHistory, focusSessions, focusCustomDurationMinutes, departureCheckIns, behaviorEvents, wishMonths, calendarMarks, calendarImportCalendarIds, calendarImportKnownCalendarIds, sharedEvents, sharedParticipantIdsByToken, sharedParticipantPrefsByToken, departurePreparationStatuses, affirmations, affirmationCustomTexts, photoTheme, travelApps, designCustomizePurchased, routineArchives, voiceUsage, hydrated]);
+  }, [tasks, plan, departurePlans, widgetSize, widgetSettings, showCompleted, completionIcon, designMode, monoAppearance, hapticsEnabled, premiumTrialReminderEnabled, reviewPromptedAt, taskTemplates, savedTaskTemplates, chicPattern, chicCheckColor, recoveryHistory, focusSessions, focusCustomDurationMinutes, departureCheckIns, behaviorEvents, wishMonths, calendarMarks, calendarImportCalendarIds, calendarImportKnownCalendarIds, sharedEvents, sharedParticipantIdsByToken, sharedParticipantPrefsByToken, departurePreparationStatuses, affirmations, affirmationCustomTexts, photoTheme, travelApps, designCustomizePurchased, routineArchives, voiceUsage, hydrated]);
 
   useEffect(() => {
     if (!hydrated) return;
@@ -2069,6 +2148,37 @@ export default function App() {
       }
       if (widgetPhotoSyncedUriRef.current === selectedPhotoUri) photoFileName = 'rhythm-widget-photo.jpg';
     }
+    const widgetCustomizations: Record<string, { photoFileName?: string; photoLayout?: WidgetSettings['photoLayout'] }> = {};
+    for (const { id } of WIDGET_TYPE_OPTIONS) {
+      const storedCustomization = widgetSettings.widgetCustomizations?.[id];
+      const customization = getWidgetCustomization(widgetSettings, id);
+      let widgetPhotoFileName: string | undefined;
+      if (storedCustomization?.photoUri) {
+        const previousUri = widgetCustomPhotoSyncedUrisRef.current[id];
+        let copied = previousUri === storedCustomization.photoUri;
+        if (!copied) copied = await saveRhythmWidgetPhotoForWidget(storedCustomization.photoUri, id).catch(() => false);
+        if (copied) {
+          widgetCustomPhotoSyncedUrisRef.current[id] = storedCustomization.photoUri;
+          widgetPhotoFileName = `rhythm-widget-photo-${id}.jpg`;
+          if (previousUri !== storedCustomization.photoUri) photoWasCopied = true;
+        }
+      } else if (photoFileName && storedCustomization) {
+        // Legacy shared photo remains the fallback for kinds without an
+        // explicit per-widget photo. Only emit it when a per-widget layout is
+        // present; otherwise the native renderer already falls back to the
+        // shared appearance photo without inflating the snapshot.
+        widgetPhotoFileName = photoFileName;
+      }
+      if (widgetPhotoFileName || storedCustomization?.photoLayout) {
+        widgetCustomizations[id] = {
+          ...(widgetPhotoFileName ? { photoFileName: widgetPhotoFileName } : {}),
+          ...(customization.photoLayout ? { photoLayout: customization.photoLayout } : {}),
+        };
+      }
+    }
+    Object.keys(widgetCustomPhotoSyncedUrisRef.current).forEach((id) => {
+      if (!widgetSettings.widgetCustomizations?.[id as WidgetType]?.photoUri) delete widgetCustomPhotoSyncedUrisRef.current[id];
+    });
     const affirmationPhotoUris = (widgetSettings.affirmationPhotoUris ?? []).slice(0, 3);
     const affirmationPhotoFileNames: string[] = [];
     for (let index = 0; index < affirmationPhotoUris.length; index += 1) {
@@ -2094,6 +2204,7 @@ export default function App() {
       designCustomizePurchased: hasDesignCustomizeAccess,
       appearance: {
         style: widgetSettings.style,
+        monoTemplate: widgetSettings.monoTemplate,
         accentHex: getWidgetAccentHex(widgetSettings.accentColor),
         // Keep the existing Design selection available to each widget's
         // IntentConfiguration even when the app's current screen mode is
@@ -2106,6 +2217,7 @@ export default function App() {
         affirmationBackgrounds: widgetSettings.affirmationBackgrounds,
         ...(photoFileName ? { photoFileName, photoLayout: widgetSettings.photoLayout } : {}),
       },
+      widgetCustomizations,
       displayOptions: widgetSettings.displayOptions,
       wishMonths,
       affirmations,
@@ -2127,7 +2239,7 @@ export default function App() {
     } finally {
       if (widgetSnapshotInFlightRef.current === serialized) widgetSnapshotInFlightRef.current = undefined;
     }
-  }, [affirmationCustomTexts, affirmations, chicCheckColor, designMode, departureCheckIns, departurePlans, effectiveChicPattern, hasDesignCustomizeAccess, hydrated, onboarding.state.firstRunStage, planTier, tasks, widgetPhotoSyncedUriRef, widgetSettings, wishMonths, wishTopImageUri]);
+  }, [affirmationCustomTexts, affirmations, chicCheckColor, designMode, departureCheckIns, departurePlans, effectiveChicPattern, hasDesignCustomizeAccess, hydrated, onboarding.state.firstRunStage, planTier, tasks, widgetPhotoSyncedUriRef, widgetCustomPhotoSyncedUrisRef, widgetSettings, wishMonths, wishTopImageUri]);
 
   const openWidgetGuide = React.useCallback(() => {
     setWidgetGuideVisible(true);
@@ -2779,6 +2891,21 @@ export default function App() {
     );
   };
 
+  const renderDesignShowcasePreview = (): React.ReactNode => {
+    const tileStyle = { flex: 1, minWidth: 0, borderRadius: 10, overflow: 'hidden' as const, borderWidth: 1, borderColor: chicPalette.border, backgroundColor: chicPalette.cardSurface };
+    const tileLabel = { color: chicPalette.textPrimary, fontSize: 10, fontWeight: '800' as const, textAlign: 'center' as const, paddingVertical: 5 };
+    return <View pointerEvents="none" style={{ padding: 12, borderRadius: 14, borderWidth: 1, borderColor: chicPalette.border, backgroundColor: chicPalette.cardSurface }}>
+      <Text style={{ color: chicPalette.textPrimary, fontSize: 13, fontWeight: '900' }}>RhythmPace Design</Text>
+      <Text style={{ color: chicPalette.textSecondary, fontSize: 10, lineHeight: 15, marginTop: 3 }}>花柄・ドット・チェック・写真の違いを、実際のデザインで確認できます。</Text>
+      <View style={{ flexDirection: 'row', gap: 7, marginTop: 10 }}>
+        <View style={tileStyle}><Image source={designFloralAssets.floral.thumbnailSource ?? designFloralAssets.floral.source} resizeMode="cover" style={{ width: '100%', height: 62 }} /><Text style={tileLabel}>花柄</Text></View>
+        <View style={tileStyle}><View style={{ height: 62, overflow: 'hidden', backgroundColor: chicPalette.background }}><ChicPatternDecor pattern="dot" accent={chicPalette.accent} warm={chicPalette.accentSoft} checkColor={chicCheckColor} preview /></View><Text style={tileLabel}>ドット</Text></View>
+        <View style={tileStyle}><View style={{ height: 62, overflow: 'hidden', backgroundColor: chicPalette.patternBase }}><ChicPatternDecor pattern="checkLavenderSatin" accent={chicPalette.accent} warm={chicPalette.patternStripe} checkColor={chicCheckColor} preview /></View><Text style={tileLabel}>チェック</Text></View>
+        <View style={tileStyle}>{photoTheme.imageUri ? <Image source={{ uri: photoTheme.imageUri }} resizeMode="cover" style={{ width: '100%', height: 62 }} /> : <View style={{ height: 62, alignItems: 'center', justifyContent: 'center', backgroundColor: chicPalette.surfaceSubtle }}><Text style={{ color: chicPalette.textSecondary, fontSize: 18 }}>▧</Text></View>}<Text style={tileLabel}>写真</Text></View>
+      </View>
+    </View>;
+  };
+
   const renderPremiumReadOnlyPreview = (kind: PremiumGuideFeatureId, wishPremium = true, previewOverride?: { initialTab?: TimeTab; previewMode?: boolean; previewCustomDurationOpen?: boolean; maxHeight?: number; analysisInitialTab?: 'records' | 'insights' | 'routine'; analysisPreviewKind?: 'time' | 'behavior' }): React.ReactNode => {
     const previewDate = dateKey(now);
     // Production preview components still consume the shared legacy styles.
@@ -2819,7 +2946,14 @@ export default function App() {
       { id: 'premium-preview-task-5', title: 'ジム', done: false, category: '健康', priority: '中', scheduledDate: previewDate, scheduledTime: '18:30', bucket: 'now' },
       { id: 'premium-preview-task-3', title: 'シーツを洗濯する', done: true, status: 'completed', category: '家事', priority: '中', scheduledDate: previewDate, completedAt: new Date(Date.now() - 86400000 * 4).toISOString(), bucket: 'later' },
     ];
-    const previewPlans: DeparturePlan[] = [{ id: 'premium-preview-plan', title: '資料提出', destination: '天神○○ビル', date: previewDate, arrival: '14:00', departureTime: '13:15', endAt: '15:00', travelMinutes: 30, preparationMinutes: 15, bufferMinutes: 10, planMode: 'arrival_reverse' }];
+    // Keep the read-only showcase relative to the current time so a stale
+    // fixed clock never renders an absurd multi-hour countdown.
+    const previewArrivalAt = new Date(now.getTime() + 2 * 60 * 60 * 1000);
+    const previewDepartureAt = new Date(previewArrivalAt.getTime() - 45 * 60 * 1000);
+    const previewEndAt = new Date(previewArrivalAt.getTime() + 60 * 60 * 1000);
+    const previewClock = (value: Date) => `${String(value.getHours()).padStart(2, '0')}:${String(value.getMinutes()).padStart(2, '0')}`;
+    const previewPlanDate = dateKey(previewArrivalAt);
+    const previewPlans: DeparturePlan[] = [{ id: 'premium-preview-plan', title: '資料提出', destination: '天神○○ビル', date: previewPlanDate, arrival: previewClock(previewArrivalAt), departureTime: previewClock(previewDepartureAt), endAt: previewClock(previewEndAt), travelMinutes: 30, preparationMinutes: 15, bufferMinutes: 10, planMode: 'arrival_reverse' }];
     const previewCalendarOptions = [
       { id: 'preview-personal-calendar', title: '個人', type: 'local' },
       { id: 'preview-work-calendar', title: '仕事', type: 'local' },
@@ -2898,7 +3032,7 @@ export default function App() {
     // their read-only preview.  The capture/preview callbacks are no-ops, so
     // this cannot persist settings, request permissions, or start ads.
     if (kind === 'photo_design') {
-      return readonly(<View pointerEvents="none">{renderAppearanceSettingsPreview()}</View>);
+      return readonly(<View pointerEvents="none">{renderDesignShowcasePreview()}<View style={{ marginTop: 10 }}>{renderAppearanceSettingsPreview()}</View></View>);
     }
     if (kind === 'voice') {
       return readonly(<View pointerEvents="none" style={{ padding: 18, alignItems: 'center' }}><Text style={{ color: themedColors.muted, fontSize: 12, fontWeight: '800' }}>共通音声入力</Text><View style={{ marginTop: 12, width: 70, height: 70, borderRadius: 35, backgroundColor: themedColors.violet, alignItems: 'center', justifyContent: 'center' }}><Text style={{ color: uiDesignMode === 'dark' ? theme.colors.screenBackground : '#FFFFFF', fontSize: 28 }}>⌕</Text></View><Text style={{ color: themedColors.ink, fontSize: 14, fontWeight: '900', marginTop: 10 }}>明日の18時に美容院</Text><Text style={{ color: themedColors.muted, fontSize: 11, marginTop: 4 }}>予定として整理 → 確認して保存</Text></View>, 430);
@@ -3898,6 +4032,8 @@ export default function App() {
                selectedDesignMode={designMode}
                monoAppearance={monoAppearance}
                hapticsEnabled={hapticsEnabled}
+               premiumTrialReminderEnabled={premiumTrialReminderEnabled}
+               onPremiumTrialReminderEnabled={setPremiumTrialReminderEnabled}
                chicPattern={effectiveChicPattern}
                chicCheckColor={chicCheckColor}
                chicPalette={chicPalette}
@@ -4193,7 +4329,7 @@ export default function App() {
         onClose={() => setVoiceUsageLimitOpen(false)}
       />
       <VoiceInputModal visible={voiceOpen} autoStart={voiceAutoStart} designMode={uiDesignMode} chicPalette={chicPalette} dateKey={dateKey} onClose={() => { setVoiceAutoStart(false); setVoiceOpen(false); }} onRoute={handleVoiceRoute} hapticsEnabled={hapticsEnabled} isPremium={planTier === 'premium'} remainingUses={remainingVoiceUses(voiceUsage, dateKey())} onRecognitionAccepted={consumeVoiceInput} />
-      <DesignCustomizeModal visible={designCustomizeOpen} designMode={uiDesignMode} chicPalette={chicPalette} purchased={designCustomizePurchased || storeDesignCustomizeAccess} localizedPrice={storeKit.designProduct?.displayPrice} purchaseError={storeKit.errorMessage} isDevelopment={__DEV__} onPurchase={purchaseDesignCustomize} onRestore={restoreDesignCustomizePurchase} onPremium={() => { setDesignCustomizeOpen(false); openPremiumFeature('photo_design'); }} onClose={() => setDesignCustomizeOpen(false)} />
+      <DesignCustomizeModal visible={designCustomizeOpen} designMode={uiDesignMode} chicPalette={chicPalette} purchased={designCustomizePurchased || storeDesignCustomizeAccess} localizedPrice={storeKit.designProduct?.displayPrice} priceStatus={storeKit.status} purchaseError={storeKit.errorMessage} isDevelopment={__DEV__} onPurchase={purchaseDesignCustomize} onRestore={restoreDesignCustomizePurchase} onPremium={() => { setDesignCustomizeOpen(false); openPremiumFeature('photo_design'); }} onClose={() => setDesignCustomizeOpen(false)} />
       {__DEV__ && <OnboardingCaptureStudio visible={captureStudioOpen} onClose={() => setCaptureStudioOpen(false)} renderStep={renderOnboardingCaptureStep} renderGuideStep={renderGuideCaptureStep} renderPremiumStep={renderPremiumReadOnlyPreview} colors={{ background: theme.colors.screenBackground, surface: theme.colors.surface, border: theme.colors.border, text: theme.colors.primaryText, muted: theme.colors.secondaryText, accent: theme.colors.primaryAccent, onAccent: uiDesignMode === 'chic' && chicPalette ? chicPalette.onAccent : uiDesignMode === 'dark' ? theme.colors.screenBackground : '#FFFFFF' }} />}
       <DesignPreviewModal visible={Boolean(designPreviewPattern)} initialPattern={designPreviewPattern} initialMode={designPreviewMode} chicCheckColor={chicCheckColor} planTier={planTier} photoUri={designPreviewPhotoUri} onPickPhoto={() => void pickPhotoForDesignPreview()} onClose={() => { setDesignPreviewPattern(undefined); setDesignPreviewPhotoUri(undefined); setDesignPreviewMode('chic'); }} onTrial={(mode, pattern) => {
         if (mode === 'chic' && pattern && canStartPremiumDesignTrial(rewardedAccess)) {

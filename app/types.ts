@@ -15,6 +15,13 @@ export type WidgetStyle = 'mono' | 'color' | 'photo';
 export type WidgetAccentColor = 'blue' | 'purple' | 'pink' | 'green' | 'orange' | 'gray';
 export type WidgetPhotoSource = 'widget' | 'wish';
 export type WidgetPhotoLayout = 'background' | 'right' | 'top' | 'card' | 'circle';
+export type WidgetMonoTemplate = 'clean' | 'pinNote' | 'ruledNote';
+export type WidgetCustomization = {
+  photoUri?: string;
+  photoLayout?: WidgetPhotoLayout;
+};
+/** Per-widget appearance values. Optional entries preserve older shared settings. */
+export type WidgetCustomizations = Partial<Record<WidgetType, WidgetCustomization>>;
 export type WidgetDisplayOption = 'startTime' | 'remainingTime' | 'status' | 'scheduleTime' | 'location' | 'remainingToLeave' | 'currentTask' | 'nextPlan' | 'combinedRemainingToLeave';
 export type WidgetSettings = {
   widgetType: WidgetType;
@@ -24,6 +31,8 @@ export type WidgetSettings = {
   photoUri?: string;
   photoSource: WidgetPhotoSource;
   photoLayout: WidgetPhotoLayout;
+  monoTemplate?: WidgetMonoTemplate;
+  widgetCustomizations?: WidgetCustomizations;
   displayOptions: Partial<Record<WidgetDisplayOption, boolean>>;
   /** Optional defaults used by the affirmation widget. Kept app-local and backward compatible. */
   affirmationRotationMode?: 'fixed' | 'automatic';
@@ -258,6 +267,8 @@ export type PersistedState = {
   /** Mono appearance preference. Optional for backwards compatibility with older saves. */
   monoAppearance?: 'auto' | 'light' | 'dark';
   hapticsEnabled?: boolean;
+  /** Whether to schedule the local reminder before a StoreKit free trial ends. */
+  premiumTrialReminderEnabled?: boolean;
   reviewPromptedAt?: string;
   taskTemplates?: string[];
   chicPattern?: ChicPattern;
