@@ -1,4 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import type { WidgetType } from '../../types';
 
 export const REWARDED_ACCESS_STORAGE_KEY =
   'rhythm-rewarded-access-v1';
@@ -38,6 +39,13 @@ export type RewardedAccessState = {
     topExtraSlotsUnlocked: number;
     backgroundUnlocked: boolean;
     focusUnlocked: boolean;
+  };
+
+  /** One Widget photo customization unlocked by a rewarded ad. */
+  widgetPhotoCustomization: {
+    widgetType: WidgetType | null;
+    unlockedAt: string | null;
+    expiresAt: string | null;
   };
 
   routine: {
@@ -80,6 +88,12 @@ export const DEFAULT_REWARDED_ACCESS_STATE: RewardedAccessState = {
     topExtraSlotsUnlocked: 0,
     backgroundUnlocked: false,
     focusUnlocked: false,
+  },
+
+  widgetPhotoCustomization: {
+    widgetType: null,
+    unlockedAt: null,
+    expiresAt: null,
   },
 
   routine: {
@@ -212,6 +226,12 @@ export function normalizeRewardedAccessState(
       focusUnlocked:
         raw.photoCustomization
           ?.focusUnlocked === true,
+    },
+
+    widgetPhotoCustomization: {
+      widgetType: typeof raw.widgetPhotoCustomization?.widgetType === 'string' ? raw.widgetPhotoCustomization.widgetType : null,
+      unlockedAt: normalizeNullableString(raw.widgetPhotoCustomization?.unlockedAt),
+      expiresAt: normalizeNullableString(raw.widgetPhotoCustomization?.expiresAt),
     },
 
     routine: {

@@ -33,46 +33,55 @@ export function showTestRewardedAd(): Promise<boolean> {
     return Promise.resolve(false);
   }
   rewardedRequestActive = true;
-  return new Promise((resolve) => {
-    let rewardedAd: ReturnType<typeof createTestRewardedAd>;
+  return (async () => {
     try {
-      rewardedAd = createTestRewardedAd();
+      await initializeMobileAds();
     } catch {
       rewardedRequestActive = false;
-      resolve(false);
-      return;
+      return false;
     }
-    let settled = false;
-    let earned = false;
-    let unsubscribeLoaded: () => void = () => undefined;
-    let unsubscribeReward: () => void = () => undefined;
-    let unsubscribeClosed: () => void = () => undefined;
-    let unsubscribeError: () => void = () => undefined;
-    let timeoutId: ReturnType<typeof setTimeout> | undefined;
-    const finish = (value: boolean) => {
-      if (settled) return;
-      settled = true;
-      if (timeoutId) clearTimeout(timeoutId);
-      unsubscribeLoaded();
-      unsubscribeReward();
-      unsubscribeClosed();
-      unsubscribeError();
-      rewardedRequestActive = false;
-      resolve(value);
-    };
-    try {
-      unsubscribeLoaded = rewardedAd.addAdEventListener(RewardedAdEventType.LOADED, () => {
-        void rewardedAd.show().catch(() => finish(false));
-      });
-      unsubscribeReward = rewardedAd.addAdEventListener(RewardedAdEventType.EARNED_REWARD, () => {
-        earned = true;
-      });
-      unsubscribeClosed = rewardedAd.addAdEventListener(AdEventType.CLOSED, () => finish(earned));
-      unsubscribeError = rewardedAd.addAdEventListener(AdEventType.ERROR, () => finish(false));
-      timeoutId = setTimeout(() => finish(false), 30_000);
-      rewardedAd.load();
-    } catch {
-      finish(false);
-    }
-  });
+    return new Promise<boolean>((resolve) => {
+      let rewardedAd: ReturnType<typeof createTestRewardedAd>;
+      try {
+        rewardedAd = createTestRewardedAd();
+      } catch {
+        rewardedRequestActive = false;
+        resolve(false);
+        return;
+      }
+      let settled = false;
+      let earned = false;
+      let unsubscribeLoaded: () => void = () => undefined;
+      let unsubscribeReward: () => void = () => undefined;
+      let unsubscribeClosed: () => void = () => undefined;
+      let unsubscribeError: () => void = () => undefined;
+      let timeoutId: ReturnType<typeof setTimeout> | undefined;
+      const finish = (value: boolean) => {
+        if (settled) return;
+        settled = true;
+        if (timeoutId) clearTimeout(timeoutId);
+        unsubscribeLoaded();
+        unsubscribeReward();
+        unsubscribeClosed();
+        unsubscribeError();
+        rewardedRequestActive = false;
+        resolve(value);
+      };
+      try {
+        unsubscribeLoaded = rewardedAd.addAdEventListener(RewardedAdEventType.LOADED, () => {
+          void rewardedAd.show().catch(() => finish(false));
+        });
+        unsubscribeReward = rewardedAd.addAdEventListener(RewardedAdEventType.EARNED_REWARD, () => {
+          earned = true;
+        });
+        unsubscribeClosed = rewardedAd.addAdEventListener(AdEventType.CLOSED, () => finish(earned));
+        unsubscribeError = rewardedAd.addAdEventListener(AdEventType.ERROR, () => finish(false));
+        // A missing native callback must never leave the RN modal blocked.
+        timeoutId = setTimeout(() => finish(false), 15_000);
+        rewardedAd.load();
+      } catch {
+        finish(false);
+      }
+    });
+  })();
 }

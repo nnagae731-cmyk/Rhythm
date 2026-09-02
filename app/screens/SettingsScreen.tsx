@@ -14,6 +14,7 @@ import { STORAGE_KEY } from '../storage/rhythmState';
 import { ONBOARDING_STORAGE_KEY } from '../features/onboarding/onboardingStorage';
 import { REWARDED_ACCESS_STORAGE_KEY } from '../features/ads/rewardedAccessStorage';
 import { WidgetSettingsCard } from '../components/WidgetSettingsCard';
+import type { WidgetEntitlementOverride } from '../features/widget/widgetSettings';
 
 // Keep the production unit configurable without scattering IDs through the UI.
 // Development builds use Google's test unit unless an explicit test/production
@@ -34,7 +35,7 @@ function DesignCustomizeCard({ designMode, chicPalette, planTier, purchased, loc
         <Pressable onPress={onTry} style={{ flex: 1, minHeight: 40, borderRadius: 11, borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center' }}><Text style={{ color: colors.accent, fontSize: 12, fontWeight: '900' }}>試してみる</Text></Pressable>
         <Pressable onPress={onOpen} style={{ flex: 1, minHeight: 40, borderRadius: 11, backgroundColor: colors.accent, alignItems: 'center', justifyContent: 'center' }}><Text style={{ color: colors.onAccent, fontSize: 12, fontWeight: '900' }}>購入画面を開く</Text></Pressable>
       </View>
-      <Text style={{ color: colors.muted, marginTop: 8, fontSize: 10, lineHeight: 15 }}>広告やTrialで無料で試すこともできます。</Text>
+      <Text style={{ color: colors.muted, marginTop: 8, fontSize: 10, lineHeight: 15 }}>広告やお試しで無料で試すこともできます。</Text>
     </>}
     {planTier === 'premium' || purchased ? <Text style={{ color: colors.muted, marginTop: 6, fontSize: 11 }}>Design / Photoの見た目機能を利用できます。</Text> : null}
   </View>;
@@ -62,6 +63,9 @@ export function SettingsScreen({
   travelApps,
   widgetSettings,
   onPickWidgetPhoto,
+  onUnlockWidgetPhoto,
+  widgetPhotoUnlock,
+  entitlementsResolved,
   onRemoveAffirmationPhoto,
   onWidgetGuide,
   onRefreshWidget,
@@ -95,6 +99,10 @@ export function SettingsScreen({
   onDeleteSavedTemplate,
   onOpenCaptureStudio,
   designCustomizePurchased = false,
+  widgetPlanTier,
+  widgetDesignCustomizePurchased,
+  widgetEntitlementOverride,
+  onWidgetEntitlementOverrideChange,
   designCustomizePrice,
   designCustomizePriceStatus,
   onOpenDesignCustomize,
@@ -126,7 +134,10 @@ export function SettingsScreen({
   photoTheme: PhotoThemeSettings;
   travelApps: TravelAppSettings;
   widgetSettings: WidgetSettings;
-  onPickWidgetPhoto?: (widgetType?: WidgetType) => void;
+  onPickWidgetPhoto?: (widgetType?: WidgetType, override?: WidgetEntitlementOverride) => void;
+  onUnlockWidgetPhoto?: (widgetType: WidgetType, override?: WidgetEntitlementOverride) => void;
+  widgetPhotoUnlock?: { widgetType: WidgetType | null; expiresAt: string | null };
+  entitlementsResolved?: boolean;
   onRemoveAffirmationPhoto?: (index?: number) => void;
   onWidgetGuide?: () => void;
   onRefreshWidget?: () => void;
@@ -160,6 +171,10 @@ export function SettingsScreen({
   onDeleteSavedTemplate: (template: PremiumTaskTemplate) => void;
   onOpenCaptureStudio?: () => void;
   designCustomizePurchased?: boolean;
+  widgetPlanTier?: PlanTier;
+  widgetDesignCustomizePurchased?: boolean;
+  widgetEntitlementOverride?: WidgetEntitlementOverride;
+  onWidgetEntitlementOverrideChange?: (override: WidgetEntitlementOverride) => void;
   designCustomizePrice?: string;
   designCustomizePriceStatus?: 'loading' | 'ready' | 'unavailable';
   onOpenDesignCustomize?: () => void;
@@ -178,7 +193,7 @@ export function SettingsScreen({
   const selectedMode = selectedDesignMode ?? designMode;
   const isDark = designMode === 'dark';
   const isDesign = selectedMode === 'chic' || selectedMode === 'photo';
-  const [expandedSetting, setExpandedSetting] = useState<'appearance' | 'travelApps' | 'notifications' | 'taskDisplay' | 'quick' | 'widget' | 'premium' | 'about' | null>(captureDesignOnly || initialAppearanceOpen ? 'appearance' : null);
+  const [expandedSetting, setExpandedSetting] = useState<'appearance' | 'travelApps' | 'notifications' | 'quick' | 'widget' | 'premium' | 'about' | null>(captureDesignOnly || initialAppearanceOpen ? 'appearance' : null);
   const previewTasks = tasks.filter((task) => showCompleted || !task.done).slice(0, size === 'small' ? 2 : 3);
   const isCheckPattern = chicPattern === 'checkLavenderSatin' || chicPattern === 'checkBeigeNoir' || chicPattern === 'checkMauveFrame';
   const patternVisual = isCheckPattern ? getChicCheckColor(chicCheckColor) : getChicPatternVisual(chicPattern, chicPalette);
@@ -249,6 +264,11 @@ export function SettingsScreen({
           <Text style={planTier === 'premium' ? styles.affirmationEdit : styles.taskTemplateSavePremium}>{planTier === 'premium' ? (selectedMode === 'photo' ? '選択中' : '選ぶ') : designCustomizePurchased ? (selectedMode === 'photo' ? '選択中' : '選ぶ') : (selectedMode === 'photo' ? '広告で解放' : '試す')}</Text>
         </Pressable>
           {selectedMode === 'photo' && <PhotoThemeSettingsCard photoTheme={photoTheme} designMode={designMode} chicPalette={chicPalette} planTier={planTier} designCustomizePurchased={designCustomizePurchased} onPremium={onPremium} onPick={onPickPhotoTheme} onAdjust={onAdjustPhotoTheme} onClear={onClearPhotoTheme} styles={styles} />}
+        <View style={[styles.settingsCard, isDark && styles.darkSurface, { marginTop: 12 }]}>
+          <Text style={[styles.settingsTitle, isDark && styles.darkBodyText]}>完了アイコン</Text>
+          <Text style={[styles.switchCopy, isDark && styles.darkMutedText]}>タスク完了時に表示するマーク</Text>
+          <View style={styles.iconChoices}>{completionIcons.map((icon: string) => <Pressable key={icon} accessibilityRole="button" accessibilityLabel={`完了アイコン ${icon}`} style={[styles.iconChoice, { backgroundColor: isDesign && chicPalette ? chicPalette.surfaceSubtle : baseTheme.secondarySurface, borderColor: isDesign && chicPalette ? chicPalette.border : baseTheme.border }, completionIcon === icon && { backgroundColor: isDesign && chicPalette ? chicPalette.accentSoft : baseTheme.softAccent, borderColor: isDesign && chicPalette ? chicPalette.accent : baseTheme.primaryAccent }]} onPress={() => onCompletionIcon(icon)}><Text style={[styles.iconChoiceText, { color: isDesign && chicPalette ? chicPalette.textSecondary : baseTheme.secondaryText }, completionIcon === icon && { color: isDesign && chicPalette ? chicPalette.accent : baseTheme.primaryAccent }]}>{icon}</Text></Pressable>)}</View>
+        </View>
         {!captureDesignOnly && <DesignCustomizeCard designMode={designMode} chicPalette={chicPalette} planTier={planTier} purchased={designCustomizePurchased} localizedPrice={designCustomizePrice} priceStatus={designCustomizePriceStatus} onOpen={onOpenDesignCustomize} onTry={() => onDesignPreview('floral')} />}
       </View>
       </SettingsDisclosure>
@@ -261,12 +281,6 @@ export function SettingsScreen({
        {onPremiumTrialReminderEnabled ? <View style={[styles.settingsCard, isDark && styles.darkSurface]}><View style={styles.switchRow}><View style={{ flex: 1 }}><Text style={[styles.switchTitle, isDark && styles.darkBodyText]}>無料期間終了前のお知らせ</Text><Text style={[styles.switchCopy, isDark && styles.darkMutedText]}>StoreKitで終了日時を確認できた場合、前日に通知します</Text></View><Switch value={premiumTrialReminderEnabled !== false} onValueChange={onPremiumTrialReminderEnabled} trackColor={{ false: isDark ? '#40506A' : baseTheme.border, true: isDesign && chicPalette ? chicPalette.accent : baseTheme.primaryAccent }} thumbColor={premiumTrialReminderEnabled !== false ? (isDesign && chicPalette ? chicPalette.onAccent : '#FFFFFF') : (isDark ? '#8F9BB0' : '#FFFFFF')} /></View></View> : null}
        <View style={[styles.settingsCard, isDark && styles.darkSurface]}><View style={styles.switchRow}><View style={{ flex: 1 }}><Text style={[styles.switchTitle, isDark && styles.darkBodyText]}>触覚フィードバック</Text><Text style={[styles.switchCopy, isDark && styles.darkMutedText]}>完了や集中開始を振動で知らせます</Text></View><Switch value={hapticsEnabled} onValueChange={(value) => onHapticsEnabled(value)} trackColor={{ false: isDark ? '#40506A' : baseTheme.border, true: isDesign && chicPalette ? chicPalette.accent : baseTheme.primaryAccent }} thumbColor={hapticsEnabled ? (isDesign && chicPalette ? chicPalette.onAccent : '#FFFFFF') : (isDark ? '#8F9BB0' : '#FFFFFF')} /></View></View>
        </SettingsDisclosure>
-        <SettingsDisclosure designMode={designMode} title="タスク" subtitle="完了アイコンを設定" expanded={expandedSetting === 'taskDisplay'} onPress={() => setExpandedSetting((current) => current === 'taskDisplay' ? null : 'taskDisplay')}>
-        <View style={[styles.settingsCard, isDark && styles.darkSurface]}>
-          <Text style={[styles.settingsTitle, isDark && styles.darkBodyText]}>完了アイコンを設定</Text>
-          <View style={styles.iconChoices}>{completionIcons.map((icon: string) => <Pressable key={icon} style={[styles.iconChoice, { backgroundColor: isDesign && chicPalette ? chicPalette.surfaceSubtle : baseTheme.secondarySurface, borderColor: isDesign && chicPalette ? chicPalette.border : baseTheme.border }, completionIcon === icon && { backgroundColor: isDesign && chicPalette ? chicPalette.accentSoft : baseTheme.softAccent, borderColor: isDesign && chicPalette ? chicPalette.accent : baseTheme.primaryAccent }]} onPress={() => onCompletionIcon(icon)}><Text style={[styles.iconChoiceText, { color: isDesign && chicPalette ? chicPalette.textSecondary : baseTheme.secondaryText }, completionIcon === icon && { color: isDesign && chicPalette ? chicPalette.accent : baseTheme.primaryAccent }]}>{icon}</Text></Pressable>)}</View>
-        </View>
-        </SettingsDisclosure>
         <SettingsDisclosure designMode={designMode} title="ひな型" subtitle="よく使うタスクや設定を保存" expanded={expandedSetting === 'quick'} onPress={() => setExpandedSetting((current) => current === 'quick' ? null : 'quick')}>
       <View style={[styles.settingsCard, isDark && styles.darkSurface]}>
         <Text style={[styles.switchCopy, isDark && styles.darkMutedText]}>よく登録するタスクを自分用に保存できます</Text>
@@ -295,6 +309,9 @@ export function SettingsScreen({
         settings={widgetSettings}
         onChange={onWidgetSettings}
         onPickPhoto={onPickWidgetPhoto}
+        onUnlockWidgetPhoto={onUnlockWidgetPhoto}
+        widgetPhotoUnlock={widgetPhotoUnlock}
+        entitlementsResolved={entitlementsResolved}
         onRemoveAffirmationPhoto={onRemoveAffirmationPhoto}
         styles={styles}
         colors={isDesign && chicPalette ? {
@@ -317,8 +334,10 @@ export function SettingsScreen({
         designPattern={isDesign ? chicPattern : 'plain'}
         designCheckColor={chicCheckColor}
         PatternDecor={ChicPatternDecor}
-        planTier={planTier}
-        designCustomizePurchased={designCustomizePurchased}
+        planTier={widgetPlanTier ?? planTier}
+        designCustomizePurchased={widgetDesignCustomizePurchased ?? designCustomizePurchased}
+        widgetEntitlementOverride={widgetEntitlementOverride}
+        onWidgetEntitlementOverrideChange={onWidgetEntitlementOverrideChange}
       />
       </SettingsDisclosure>
        <View style={styles.settingsDisclosure}>

@@ -47,7 +47,9 @@ import { DEFAULT_TRAVEL_APP_SETTINGS, normalizeTravelAppSettings, TravelAppSetti
 import { loadRhythmState, saveRhythmState } from './storage/rhythmStorage';
 import { buildRhythmWidgetSnapshot, saveRhythmAffirmationPhoto, saveRhythmWidgetPhoto, saveRhythmWidgetPhotoForWidget, saveRhythmWidgetSnapshot } from './features/widget/rhythmWidgetSnapshot';
 import { DEFAULT_WIDGET_SETTINGS, getWidgetAccentHex, getWidgetCustomization, normalizeWidgetSettings, WIDGET_TYPE_OPTIONS } from './features/widget/widgetSettings';
+import type { WidgetEntitlementOverride } from './features/widget/widgetSettings';
 import { categories, priorities, completionIcons, categoryColors as baseCategoryColors, designModes, getLateRiskMessage, getNextBestAction, getUrgencyStatus, urgencyLevel } from './features/tasks/taskUtils';
+import { selectCurrentTask } from './features/tasks/taskSelectors';
 import { createSharedEventPacket, createSharedEventToken, encodeSharedEventLink, normalizeSharedEvent, parseSharedEventLink, upsertSharedEvent } from './features/shared/sharedUtils';
 import { getMonthlyWishState, normalizeWishMonthsForSave, wishMonthKey } from './features/wish/wishUtils';
 import { cancelPendingTaskNotifications } from './features/tasks/taskNotifications';
@@ -65,8 +67,8 @@ import { TopImageCropModal } from './components/TopImageCropModal';
 import { cropRectToPixels, displayToNormalizedRect, getContainBounds, getInitialCropRect, NormalizedCropRect } from './features/photo/topImageCrop';
 import { deleteManagedPhotoUri, persistPhotoUri } from './features/photo/persistentPhoto';
 import { canUseNotifications, getNotificationPermissionAction, getNotificationPermissionStatus, requestRhythmNotificationPermission } from './features/notifications/notificationPermission';
-import { addHours, canCreateWish, canImportCalendar, canStartPremiumDesignTrial, endOfCalendarMonth, isPremiumDesignTrialActive, isPremiumDesignUnlocked, isWishMonthlyGoalUnlocked } from './features/ads/rewardedAccessLogic';
-import { getRequiredAds, RewardedFeatureId } from './features/ads/rewardedAccess';
+import { addHours, canCreateWish, canImportCalendar, canStartPremiumDesignTrial, endOfCalendarMonth, isPremiumDesignTrialActive, isPremiumDesignUnlocked, isWishMonthlyGoalUnlocked, isWidgetPhotoUnlockActive } from './features/ads/rewardedAccessLogic';
+import { getRequiredAds, REWARDED_AD_RULES, RewardedFeatureId } from './features/ads/rewardedAccess';
 import { DEFAULT_REWARDED_ACCESS_STATE, loadRewardedAccessState, RewardedAccessState, saveRewardedAccessState } from './features/ads/rewardedAccessStorage';
 import { cancelFocusCompletionNotification, cancelPendingFocusCompletionNotifications, scheduleFocusCompletionNotification } from './features/focus/focusNotifications';
 import { cancelPremiumTrialReminder, schedulePremiumTrialReminder } from './features/notifications/premiumTrialReminder';
@@ -523,6 +525,7 @@ export default function App() {
   const [rewardedAccess, setRewardedAccess] = useState<RewardedAccessState>(DEFAULT_REWARDED_ACCESS_STATE);
   const [rewardedPrompt, setRewardedPrompt] = useState<{ featureId: RewardedFeatureId; title: string; description: string } | null>(null);
   const rewardedPromptCompletionRef = React.useRef<(() => void) | undefined>(undefined);
+  const widgetPhotoUnlockTargetRef = React.useRef<WidgetType | null>(null);
   const rewardedGenericBusyRef = React.useRef(false);
   const rewardedWishBusyRef = React.useRef(false);
   const rewardedDesignBusyRef = React.useRef(false);
@@ -661,6 +664,17 @@ export default function App() {
   // never persisted over the user's saved data.
   const [devPlanTierOverride, setDevPlanTierOverride] = useState<PlanTier | null>(null);
   const planTier: PlanTier = devPlanTierOverride ?? (configuredPlanTier === 'premium' || storePremiumAccess ? 'premium' : 'free');
+  const [widgetEntitlementOverride, setWidgetEntitlementOverride] = useState<WidgetEntitlementOverride>('actual');
+  const widgetPlanTier: PlanTier = __DEV__ && widgetEntitlementOverride === 'premium'
+    ? 'premium'
+    : __DEV__ && (widgetEntitlementOverride === 'free' || widgetEntitlementOverride === 'design')
+      ? 'free'
+      : planTier;
+  const widgetDesignCustomizePurchased = __DEV__ && (widgetEntitlementOverride === 'design' || widgetEntitlementOverride === 'premium')
+    ? true
+    : __DEV__ && widgetEntitlementOverride === 'free'
+      ? false
+      : designCustomizePurchased;
   const planTierRef = React.useRef<PlanTier>(planTier);
   const handleStoreDesignEntitlement = React.useCallback((active: boolean) => {
     setStoreDesignCustomizeAccess(active);
@@ -786,6 +800,7 @@ export default function App() {
     if (featureId === 'wishMonthlyGoal') return { current: rewardedAccess.wishMonthlyGoal.monthKey === currentWishMonthKey ? rewardedAccess.wishMonthlyGoal.progress : 0, required };
     if (featureId === 'wishCreate') return { current: rewardedAccess.wishCreateProgress, required };
     if (featureId === 'routineSkipBonus') return { current: rewardedAccess.routine.skipBonusProgress, required };
+    if (featureId === 'widgetPhoto') return { current: 0, required };
     return { current: 0, required };
   }, [currentWishMonthKey, rewardedAccess]);
 
@@ -828,6 +843,11 @@ export default function App() {
         next = { ...base, photoCustomization: { ...base.photoCustomization, backgroundUnlocked: true } };
       } else if (featureId === 'photoFocus') {
         next = { ...base, photoCustomization: { ...base.photoCustomization, focusUnlocked: true } };
+      } else if (featureId === 'widgetPhoto') {
+        const widgetType = widgetPhotoUnlockTargetRef.current;
+        if (!widgetType) return { success: false, message: '写真を使うWidgetを選択してください。' };
+        const unlockedAt = new Date();
+        next = { ...base, widgetPhotoCustomization: { widgetType, unlockedAt: unlockedAt.toISOString(), expiresAt: addHours(unlockedAt, 24 * REWARDED_AD_RULES.widgetPhoto.unlockDurationDays) } };
       } else if (featureId === 'routineSkip') {
         next = { ...base, routine: { ...base.routine, skipStock: base.routine.skipStock + 1 } };
       } else if (featureId === 'routineSkipBonus') {
@@ -864,6 +884,18 @@ export default function App() {
     }
     return result;
   }, [grantRewarded, rewardedPrompt]);
+  const requestWidgetPhotoUnlock = React.useCallback((widgetType: WidgetType, override?: WidgetEntitlementOverride) => {
+    const overrideFree = __DEV__ && override === 'free';
+    const overrideDesign = __DEV__ && (override === 'design' || override === 'premium');
+    const effectivePlanTier: PlanTier = override === 'premium' ? 'premium' : overrideFree || override === 'design' ? 'free' : planTier;
+    const effectiveDesignAccess = overrideDesign || ((override == null || override === 'actual') && hasDesignCustomizeAccess);
+    if (effectivePlanTier === 'premium' || effectiveDesignAccess) return;
+    if (isWidgetPhotoUnlockActive(rewardedAccess, widgetType, new Date())) return;
+    const current = rewardedAccess.widgetPhotoCustomization;
+    if (current.widgetType && current.expiresAt && new Date(current.expiresAt).getTime() > Date.now()) return;
+    widgetPhotoUnlockTargetRef.current = widgetType;
+    openRewardedPrompt('widgetPhoto', 'Widget写真を7日間使う', '広告を1回見ると、選んだFree Widgetで写真を7日間使えます。', () => undefined);
+  }, [hasDesignCustomizeAccess, openRewardedPrompt, planTier, rewardedAccess]);
   const showCompletionAffirmation = React.useCallback((kind: CompletionFeedbackKind = 'task', withHaptic = false) => {
     const configured = [...affirmations.map((item) => item.text.trim()), ...affirmationCustomTexts.map((item) => item.text.trim())].filter(Boolean);
     const fallback = kind === 'focus' ? focusCompletionMessages : taskCompletionMessages;
@@ -1204,7 +1236,15 @@ export default function App() {
     if (selectedUri) setDesignPreviewPhotoUri(selectedUri);
   }, []);
 
-  const pickWidgetPhoto = React.useCallback(async (widgetType?: WidgetType) => {
+  const pickWidgetPhoto = React.useCallback(async (widgetType?: WidgetType, override?: WidgetEntitlementOverride) => {
+    const overrideFree = __DEV__ && override === 'free';
+    const overrideDesign = __DEV__ && (override === 'design' || override === 'premium');
+    const effectivePlanTier: PlanTier = override === 'premium' ? 'premium' : overrideFree || override === 'design' ? 'free' : planTier;
+    const effectiveDesignAccess = overrideDesign || ((override == null || override === 'actual') && hasDesignCustomizeAccess);
+    if (widgetType && effectivePlanTier !== 'premium' && !effectiveDesignAccess && !isWidgetPhotoUnlockActive(rewardedAccess, widgetType, new Date())) {
+      requestWidgetPhotoUnlock(widgetType, override);
+      return;
+    }
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!permission.granted) {
       Alert.alert('写真へのアクセスが必要です', '許可するとWidgetに写真を表示できます。');
@@ -1235,7 +1275,7 @@ export default function App() {
       console.warn('Could not persist selected Widget photo.', error);
       Alert.alert('写真を保存できませんでした', 'もう一度選び直してください。');
     }
-  }, []);
+  }, [hasDesignCustomizeAccess, planTier, requestWidgetPhotoUnlock, rewardedAccess]);
   const applyPhotoDesign = React.useCallback(() => {
     if (!designPreviewPhotoUri) {
       Alert.alert('写真を選択してください', '写真で試すから画像を選んでください。');
@@ -3850,15 +3890,16 @@ export default function App() {
               onSaveTemplate={(task) => {
                 if (!firstRunDemoActive) saveTaskAsTemplate(task);
               }}
-              onPostpone={(id) => {
+                departurePlans={firstRunDemoActive ? [guideDemoPlan] : departurePlans}
+              onPostpone={(id, targetDate) => {
                 if (firstRunDemoActive) {
-                  updateGuideDemoTasks((current) => current.map((task) => task.id === id ? { ...task, scheduledDate: todayInputValue(1), bucket: 'later' } : task));
+                  updateGuideDemoTasks((current) => current.map((task) => task.id === id ? { ...task, scheduledDate: targetDate ?? todayInputValue(1), bucket: 'later' } : task));
                   return;
                 }
                 const task = tasksRef.current.find((item) => item.id === id);
                 if (!task) return;
-                const tomorrow = todayInputValue(1);
-                const updated = { ...task, scheduledDate: tomorrow, remindDate: task.remindAt ? tomorrow : task.remindDate, bucket: 'later' as TaskBucket };
+                const target = targetDate ?? todayInputValue(1);
+                const updated = { ...task, scheduledDate: target, remindDate: task.remindAt ? target : task.remindDate, bucket: 'later' as TaskBucket };
                 tasksRef.current = tasksRef.current.map((item) => item.id === id ? updated : item);
                 setTasks(tasksRef.current);
                 void scheduleAllTaskNotifications(updated);
@@ -4043,6 +4084,9 @@ export default function App() {
                travelApps={travelApps}
               widgetSettings={widgetSettings}
               onPickWidgetPhoto={pickWidgetPhoto}
+              onUnlockWidgetPhoto={requestWidgetPhotoUnlock}
+              widgetPhotoUnlock={rewardedAccess.widgetPhotoCustomization}
+              entitlementsResolved={!storeKit.configured || storeKit.entitlementsResolved}
               onRemoveAffirmationPhoto={(index) => setWidgetSettings((current) => {
                 const photos = current.affirmationPhotoUris ?? [];
                 const removeIndex = index ?? photos.length - 1;
@@ -4052,6 +4096,10 @@ export default function App() {
               onRefreshWidget={refreshWidgetFromSettings}
               onWidgetSectionOpened={openWidgetSection}
               planTier={planTier}
+              widgetPlanTier={widgetPlanTier}
+              widgetDesignCustomizePurchased={widgetDesignCustomizePurchased}
+              widgetEntitlementOverride={__DEV__ ? widgetEntitlementOverride : 'actual'}
+              onWidgetEntitlementOverrideChange={__DEV__ ? setWidgetEntitlementOverride : undefined}
               onSize={setWidgetSize}
               onWidgetSettings={setWidgetSettings}
               onShowCompleted={setShowCompleted}
@@ -5319,12 +5367,10 @@ function TodayWinStrip({ tasks, designMode, chicPattern, chicPalette, onRestore,
   const previous = React.useRef(count);
   const [dropVisible, setDropVisible] = useState(false);
   const [detailsOpen, setDetailsOpen] = useState(false);
-  const nextNowTask = [...scheduledToday]
-    .filter((task) => !task.done && (task.bucket ?? 'now') === 'now')
-    .sort((a, b) => {
-      const priority: Record<Priority, number> = { 高: 0, 中: 1, 低: 2 };
-      return priority[a.priority] - priority[b.priority];
-    })[0];
+  const nextNowTask = selectCurrentTask(
+    scheduledToday.filter((task) => !task.done && (task.bucket ?? 'now') === 'now'),
+    now,
+  );
   const nextNowTaskSelected = Boolean(nextNowTask && selectionMode && selectedTaskIds.includes(nextNowTask.id));
   const nextNowTaskChecked = selectionMode ? nextNowTaskSelected : Boolean(nextNowTask?.done);
   const remainingNow = scheduledToday.filter((task) => !task.done && (task.bucket ?? 'now') === 'now').reduce((sum, task) => sum + (task.subtasks?.length ? task.subtasks.filter((item) => !item.done).length : 1), 0);

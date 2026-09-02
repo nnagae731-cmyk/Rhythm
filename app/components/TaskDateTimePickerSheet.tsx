@@ -37,6 +37,7 @@ export function TaskDateTimePickerSheet({ visible, mode, title, value, minimumDa
         <Text style={[sheetStyles.title, { color: theme.colors.primaryText }]}>{title}</Text>
         <View style={[sheetStyles.pickerSurface, { backgroundColor: theme.colors.secondarySurface, borderColor: theme.colors.border }]}>
           <DateTimePicker
+            locale="ja-JP"
             value={draft}
             mode={mode}
             minimumDate={minimumDate}

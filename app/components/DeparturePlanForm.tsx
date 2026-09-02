@@ -267,6 +267,7 @@ export function DeparturePlanForm({
       {showDatePicker && <DateTimePicker
         value={dateForReminder(plan.date, pickerTime)}
         mode="date"
+        locale="ja-JP"
         minimumDate={new Date()}
         display={Platform.OS === 'ios' ? 'inline' : 'default'}
         themeVariant={isDark ? 'dark' : 'light'}
@@ -280,6 +281,7 @@ export function DeparturePlanForm({
       {showTimePicker && <DateTimePicker
         value={dateForReminder(plan.date, pickerTime)}
         mode="time"
+        locale="ja-JP"
         display={Platform.OS === 'ios' ? 'spinner' : 'default'}
         themeVariant={isDark ? 'dark' : 'light'}
         textColor={theme.colors.primaryText}
@@ -301,6 +303,7 @@ export function DeparturePlanForm({
       {showEndTimePicker && <DateTimePicker
         value={dateForReminder(plan.date, plan.endAt ?? pickerTime)}
         mode="time"
+        locale="ja-JP"
         display={Platform.OS === 'ios' ? 'spinner' : 'default'}
         themeVariant={isDark ? 'dark' : 'light'}
         textColor={theme.colors.primaryText}

@@ -13,6 +13,9 @@ import {
 
 export type WidgetAccessTier = 'free' | 'design' | 'premium';
 
+/** Development-only presentation override for validating Widget access states. */
+export type WidgetEntitlementOverride = 'actual' | 'free' | 'design' | 'premium';
+
 export const WIDGET_TYPE_OPTIONS: ReadonlyArray<{ id: WidgetType; label: string; description: string; sizes: string; access: WidgetAccessTier }> = [
   { id: 'current', label: '今はこれ', description: 'いま取り組むタスクを表示', sizes: 'S / M', access: 'free' },
   { id: 'next', label: '次の予定', description: '次に控えている予定を表示', sizes: 'S / M', access: 'free' },

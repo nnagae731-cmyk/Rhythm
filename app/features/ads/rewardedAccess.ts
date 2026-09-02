@@ -58,6 +58,12 @@ export const REWARDED_AD_RULES = {
     adsRequired: 1,
   },
 
+  widgetPhoto: {
+    label: 'Widget写真カスタマイズ',
+    adsRequired: 1,
+    unlockDurationDays: 7,
+  },
+
   routineSkip: {
     label: 'ルーティンのスキップ',
     adsRequired: 1,

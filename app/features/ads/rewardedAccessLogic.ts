@@ -139,6 +139,15 @@ export function isFocusPhotoUnlocked(
   return state.photoCustomization.focusUnlocked;
 }
 
+export function isWidgetPhotoUnlockActive(
+  state: RewardedAccessState,
+  widgetType: string,
+  now = new Date(),
+): boolean {
+  return state.widgetPhotoCustomization.widgetType === widgetType
+    && isUnlockActive(state.widgetPhotoCustomization.expiresAt, now);
+}
+
 export function getWishProgress(
   state: RewardedAccessState,
 ) {

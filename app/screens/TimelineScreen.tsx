@@ -366,7 +366,7 @@ export function TimelineScreen({
   }
 
   return <>
-    <View style={[styles.timeTabs, designMode === 'minimal' && styles.timeTabsMinimal, designMode === 'dark' && styles.darkPanel, designMode === 'chic' && styles.timeTabsChic, designMode === 'chic' && chicPalette && { backgroundColor: chicPalette.cardSurface, borderColor: chicPalette.border }]}>
+    <View style={[styles.timeTabs, designMode === 'minimal' && styles.timeTabsMinimal, designMode === 'chic' && styles.timeTabsChic, designMode === 'chic' && chicPalette && { backgroundColor: chicPalette.cardSurface, borderColor: chicPalette.border }]}>
       {(['departure', 'deadline', 'calendar', 'focus'] as TimeTab[]).map((tab) => <TimeTabButton key={tab} tab={tab} active={timeTab === tab} designMode={designMode} chicPattern={chicPattern} chicPalette={chicPalette} themeAccent={theme.colors.primaryAccent} secondaryText={theme.colors.secondaryText} onPress={() => { if (focusTimerActive && tab !== 'focus') { onFocusNavigationBlocked?.(); return; } setTimeTab(tab); onTimeTabChange?.(tab); onScheduleUsed?.(); }} />)}
     </View>
 

@@ -5,6 +5,7 @@ import { DepartureCheckIn } from '../../departureCheckIn';
 import { getDeparturePlanMode, getPlanScheduledTime, isDepartureReminderPlan } from '../departure/departurePlanMode';
 import { getDepartureMoments } from '../departure/departureUtils';
 import { dateForReminder, dateKey } from '../tasks/taskUtils';
+import { selectCurrentTask, selectNextUpcomingPlan } from '../tasks/taskSelectors';
 
 export const RHYTHM_WIDGET_APP_GROUP = 'group.app.rhythm.daily';
 
@@ -107,8 +108,6 @@ type SnapshotInput = {
   affirmationPhotoFileNames?: string[];
   now?: Date;
 };
-
-const priorityOrder: Record<Task['priority'], number> = { 高: 0, 中: 1, 低: 2 };
 
 function planScheduledAt(plan: DeparturePlan) {
   return dateForReminder(plan.date, plan.allDay ? '00:00' : getPlanScheduledTime(plan) || '00:00');
@@ -228,15 +227,13 @@ export function buildRhythmWidgetSnapshot({
   now = new Date(),
 }: SnapshotInput): RhythmWidgetSnapshot {
   const today = dateKey(now);
-  const currentTask = [...tasks]
+  const currentCandidates = tasks
     .filter((task) => !task.done && task.status !== 'skipped' && (task.bucket ?? 'now') === 'now')
-    .filter((task) => !task.scheduledDate || task.scheduledDate <= today)
-    .sort((a, b) => priorityOrder[a.priority] - priorityOrder[b.priority] || (a.scheduledTime ?? '').localeCompare(b.scheduledTime ?? ''))[0];
+    .filter((task) => !task.scheduledDate || task.scheduledDate <= today);
+  const currentTask = selectCurrentTask(currentCandidates, now);
 
-  const nextPlan = departurePlans
-    .map((plan) => ({ plan, scheduledAt: planScheduledAt(plan) }))
-    .filter(({ plan, scheduledAt }) => plan.allDay ? plan.date >= today : scheduledAt.getTime() >= now.getTime())
-    .sort((a, b) => a.scheduledAt.getTime() - b.scheduledAt.getTime())[0];
+  const nextPlanValue = selectNextUpcomingPlan(departurePlans, now, canShowArrivalReverseCountdown);
+  const nextPlan = nextPlanValue ? { plan: nextPlanValue, scheduledAt: planScheduledAt(nextPlanValue) } : undefined;
   const rawDepartureAt = nextPlan
     ? departureAtForWidget(nextPlan.plan, departureCheckIns, canShowArrivalReverseCountdown)
     : undefined;
@@ -312,7 +309,10 @@ export function buildRhythmWidgetSnapshot({
     calendarWeek: buildCalendarWeek(departurePlans, departureCheckIns, canShowArrivalReverseCountdown, now),
     ...(todaySchedules.length ? { todaySchedules } : {}),
     ...(allTodaySchedules.length ? { todayScheduleCount: allTodaySchedules.length } : {}),
-    checklist: tasks.filter((task) => (task.bucket ?? 'now') === 'waiting').slice(0, 8).map((task) => ({ id: task.id, title: task.title, done: task.done })),
+    checklist: tasks
+      .flatMap((task) => (task.listItems ?? []).slice().sort((a, b) => a.order - b.order).map((item) => ({ id: `${task.id}:${item.id}`, title: item.text, done: item.checked })))
+      .filter((item) => item.title.trim().length > 0)
+      .slice(0, 8),
     ...(goal ? { goal } : {}),
     ...(affirmationPool.length ? { affirmations: affirmationPool } : {}),
     ...(affirmationPhotoFileNames.length ? { affirmationPhotoFileNames: affirmationPhotoFileNames.slice(0, 3) } : {}),

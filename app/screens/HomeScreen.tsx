@@ -1,10 +1,12 @@
 import React, { useEffect, useState } from 'react';
 import { Modal, Pressable, ScrollView, Text, View } from 'react-native';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import { ChicThemePalette, DesignMode } from '../theme';
 import { Category, Priority, Task, TaskBucket, TaskListItem } from '../types';
 import { categories } from '../features/tasks/taskUtils';
 import { OnboardingHint } from '../features/onboarding/OnboardingHint';
 import { TaskListSheet } from '../components/TaskListSheet';
+import { selectCurrentTask, selectNextUpcomingItem } from '../features/tasks/taskSelectors';
 type TaskSortOrder = 'recommended' | 'scheduled' | 'priority' | 'created';
 const taskSortOptions: { id: TaskSortOrder; label: string }[] = [
   { id: 'recommended', label: 'おすすめ' },
@@ -45,6 +47,7 @@ export function HomeScreen({
   onDuplicate,
   onSaveTemplate,
   onPostpone,
+  departurePlans = [],
   onBucket,
   styles,
   renderTodayWinStrip,
@@ -87,7 +90,8 @@ export function HomeScreen({
   skipBonusMax?: number;
   onDuplicate: (task: Task) => void;
   onSaveTemplate: (task: Task) => void;
-  onPostpone: (id: string) => void;
+  onPostpone: (id: string, targetDate?: string) => void;
+  departurePlans?: import('../types').DeparturePlan[];
   onBucket: (id: string, bucket: TaskBucket) => void;
   styles: any;
   renderTodayWinStrip: (tasks: Task[], onOpenFocus?: () => void, onToggleNowTask?: (id: string) => void, onOpenTaskActions?: (task: Task) => void, selectionMode?: boolean, selectedTaskIds?: string[]) => React.ReactNode;
@@ -102,9 +106,10 @@ export function HomeScreen({
   const { dateKey } = helpers;
   const priorityOrder: Record<Priority, number> = { 高: 0, 中: 1, 低: 2 };
   const isDark = designMode === 'dark';
+  const isMonoLight = designMode === 'minimal';
   const theme = helpers.getThemeTokens?.(designMode);
   const [categoryFilter, setCategoryFilter] = useState<'すべて' | Category>('すべて');
-  const [bucketFilter, setBucketFilter] = useState<TaskBucket>('now');
+  const [bucketFilter, setBucketFilter] = useState<TaskBucket | 'all'>('now');
   const [bucketTask, setBucketTask] = useState<Task | null>(null);
   const [actionTask, setActionTask] = useState<Task | null>(null);
   const [tomorrowOpen, setTomorrowOpen] = useState(false);
@@ -114,11 +119,12 @@ export function HomeScreen({
   const [categoryPickerOpen, setCategoryPickerOpen] = useState(false);
   const [sortPickerOpen, setSortPickerOpen] = useState(false);
   const [sortOrder, setSortOrder] = useState<TaskSortOrder>('recommended');
+  const [postponeDateTask, setPostponeDateTask] = useState<Task | null>(null);
   useEffect(() => {
     setHomeTab(initialTab);
-    if (initialTab === 'list') setBucketFilter('later');
+    if (initialTab === 'list') setBucketFilter('all');
   }, [initialTab]);
-  const bucketTasks = tasks.filter((task) => (task.bucket ?? 'now') === bucketFilter);
+  const bucketTasks = bucketFilter === 'all' ? tasks.filter((task) => !task.done) : tasks.filter((task) => (task.bucket ?? 'now') === bucketFilter);
   const categoryTasks = categoryFilter === 'すべて' ? bucketTasks : bucketTasks.filter((task) => task.category === categoryFilter);
   const displayTasks = [...categoryTasks].sort((a, b) => {
     if (sortOrder === 'priority') return priorityOrder[a.priority] - priorityOrder[b.priority];
@@ -157,12 +163,16 @@ export function HomeScreen({
   const tomorrowDate = new Date(now);
   tomorrowDate.setDate(tomorrowDate.getDate() + 1);
   const tomorrowKey = dateKey(tomorrowDate);
+  const weekendDate = new Date(now);
+  const daysUntilSaturday = (6 - weekendDate.getDay() + 7) % 7 || 7;
+  weekendDate.setDate(weekendDate.getDate() + daysUntilSaturday);
+  const weekendKey = dateKey(weekendDate);
   const tomorrowTasks = allTasks.filter((task) => task.scheduledDate === tomorrowKey).sort((a, b) => (a.scheduledTime ?? '99:99').localeCompare(b.scheduledTime ?? '99:99'));
   const todayKey = dateKey(now);
-  const nowClock = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
-  const nextScheduledTask = allTasks.filter((task) => task.scheduledDate === todayKey && task.scheduledTime && !task.done && task.scheduledTime >= nowClock).sort((a, b) => (a.scheduledTime ?? '').localeCompare(b.scheduledTime ?? ''))[0];
+  const nextUpcoming = selectNextUpcomingItem(allTasks, departurePlans, now);
+  const nextScheduledLabel = nextUpcoming ? `${String(nextUpcoming.scheduledAt.getHours()).padStart(2, '0')}:${String(nextUpcoming.scheduledAt.getMinutes()).padStart(2, '0')}` : '';
   const nowTasks = tasks.filter((task) => (task.bucket ?? 'now') === 'now');
-  const featuredNowTask = [...nowTasks].filter((task) => !task.done).sort((a, b) => priorityOrder[a.priority] - priorityOrder[b.priority])[0];
+  const featuredNowTask = selectCurrentTask(nowTasks.filter((task) => !task.done && (!task.scheduledDate || task.scheduledDate <= todayKey)), now);
   const remainingNowTasks = nowTasks.filter((task) => !task.done && task.id !== featuredNowTask?.id);
   const handleTaskCheck = (id: string) => {
     if (selectionMode) {
@@ -185,7 +195,7 @@ export function HomeScreen({
         </View>
       </View>
        <View style={{ flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: focusShortcutBorder, marginBottom: 14 }}>
-        {(['now', 'list'] as const).map((tab) => <Pressable key={tab} onPress={() => { clearSelectionForViewChange(); setHomeTab(tab); if (tab === 'now') setBucketFilter('now'); else if (bucketFilter === 'now') setBucketFilter('later'); }} style={{ flex: 1, minHeight: 40, alignItems: 'center', justifyContent: 'center', borderBottomWidth: homeTab === tab ? 2 : 0, borderBottomColor: focusShortcutAccent }}><Text style={{ color: homeTab === tab ? focusShortcutAccent : focusShortcutMuted, fontSize: 13, fontWeight: homeTab === tab ? '900' : '700' }}>{tab === 'now' ? '今' : '一覧'}</Text></Pressable>)}
+        {(['now', 'list'] as const).map((tab) => <Pressable key={tab} onPress={() => { clearSelectionForViewChange(); setHomeTab(tab); if (tab === 'now') setBucketFilter('now'); else setBucketFilter('all'); }} style={{ flex: 1, minHeight: 40, alignItems: 'center', justifyContent: 'center', borderBottomWidth: homeTab === tab ? 2 : 0, borderBottomColor: focusShortcutAccent }}><Text style={{ color: homeTab === tab ? focusShortcutAccent : focusShortcutMuted, fontSize: 13, fontWeight: homeTab === tab ? '900' : '700' }}>{tab === 'now' ? '今' : '一覧'}</Text></Pressable>)}
        </View>
        {selectionBar}
       {homeTab === 'now' && <>
@@ -193,7 +203,7 @@ export function HomeScreen({
       {remainingNowTasks.length > 0 && <View style={{ marginTop: 12, paddingHorizontal: 4 }}><Text style={{ color: focusShortcutMuted, fontSize: 11, fontWeight: '800', marginBottom: 4 }}>今やる</Text>{remainingNowTasks.map((task) => <TodoTaskRow key={`now-task-${task.id}`} task={task} styles={styles} designMode={designMode} chicPalette={chicPalette} isDark={isDark} selected={selectedTaskIds.includes(task.id)} selectionMode={selectionMode} completionIcon={completionIcon} textColor={focusShortcutText} accentColor={focusShortcutAccent} borderColor={focusShortcutBorder} onPress={() => selectionMode ? onToggleSelection(task.id) : setActionTask(task)} onCheck={() => handleTaskCheck(task.id)} />)}</View>}
       <View style={{ minHeight: 58, paddingHorizontal: 14, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: focusShortcutBorder }}>
         <Text style={{ color: focusShortcutMuted, fontSize: 11, fontWeight: '800' }}>次の予定</Text>
-        {nextScheduledTask ? <Pressable onPress={onOpenSchedule} style={{ flexDirection: 'row', alignItems: 'center', marginTop: 5 }}><Text style={{ color: focusShortcutText, fontSize: 14, fontWeight: '800' }}>{nextScheduledTask.scheduledTime}　{nextScheduledTask.title}</Text><Text style={{ marginLeft: 'auto', color: focusShortcutAccent, fontSize: 20 }}>›</Text></Pressable> : <Text style={{ color: focusShortcutMuted, fontSize: 13, marginTop: 5 }}>今日の次の予定はありません</Text>}
+        {nextUpcoming ? <Pressable onPress={onOpenSchedule} style={{ flexDirection: 'row', alignItems: 'center', marginTop: 5 }}><Text numberOfLines={1} style={{ color: focusShortcutText, fontSize: 14, fontWeight: '800', flex: 1 }}>{nextScheduledLabel}　{nextUpcoming.title}</Text><Text style={{ marginLeft: 'auto', color: focusShortcutAccent, fontSize: 20 }}>›</Text></Pressable> : <Text style={{ color: focusShortcutMuted, fontSize: 13, marginTop: 5 }}>今日の次の予定はありません</Text>}
       </View>
       <Pressable onPress={() => setTomorrowOpen(true)} style={{ minHeight: 44, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 4, marginTop: 8 }}><Text style={{ color: focusShortcutText, fontSize: 13, fontWeight: '800' }}>明日の予定を見る</Text><Text style={{ color: focusShortcutAccent, fontSize: 20 }}>›</Text></Pressable>
       <Pressable disabled={!onOpenTodayRecord} onPress={onOpenTodayRecord} style={{ minHeight: 48, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 4, marginTop: 8, borderTopWidth: 1, borderTopColor: focusShortcutBorder }}>
@@ -241,10 +251,10 @@ export function HomeScreen({
         </View>
       </View>
 
-      <View style={styles.bucketTabs}>{([{ id: 'later', label: 'あとで' }, { id: 'waiting', label: '待ち' }] as { id: TaskBucket; label: string }[]).map((item) => {
-        const count = tasks.filter((task) => (task.bucket ?? 'now') === item.id).length;
+      <View style={styles.bucketTabs}>{([{ id: 'all', label: 'すべて' }, { id: 'now', label: '今やる' }, { id: 'later', label: 'あとで' }, { id: 'waiting', label: '待ち' }] as { id: TaskBucket | 'all'; label: string }[]).map((item) => {
+        const count = item.id === 'all' ? tasks.filter((task) => !task.done).length : tasks.filter((task) => (task.bucket ?? 'now') === item.id).length;
         const activeChic = designMode === 'chic' && bucketFilter === item.id;
-        return <Pressable key={item.id} style={[styles.bucketTab, designMode === 'minimal' && styles.bucketTabMinimal, designMode === 'chic' && styles.bucketTabChic, isDark && styles.darkSurface, designMode === 'chic' && { backgroundColor: activeChic ? chicPalette.accent : chicPalette.cardSurface, borderColor: activeChic ? chicPalette.accent : chicPalette.border }, bucketFilter === item.id && styles.bucketTabActive, bucketFilter === item.id && isDark && styles.bucketTabActiveDark, bucketFilter === item.id && designMode === 'chic' && styles.bucketTabActiveChic, activeChic && { backgroundColor: chicPalette.accent, borderColor: chicPalette.accent }]} onPress={() => { clearSelectionForViewChange(); setBucketFilter(item.id); }}><Text style={[styles.bucketTabText, isDark && styles.darkBodyText, bucketFilter === item.id && styles.bucketTabTextActive, designMode === 'chic' && { color: activeChic ? chicPalette.onAccent : chicPalette.textSecondary }, activeChic && { color: chicPalette.onAccent }]}>{item.label} {count}</Text></Pressable>;
+        return <Pressable key={item.id} style={[styles.bucketTab, designMode === 'minimal' && styles.bucketTabMinimal, designMode === 'chic' && styles.bucketTabChic, isDark && styles.darkSurface, designMode === 'chic' && { backgroundColor: activeChic ? chicPalette.accent : chicPalette.cardSurface, borderColor: activeChic ? chicPalette.accent : chicPalette.border }, bucketFilter === item.id && styles.bucketTabActive, bucketFilter === item.id && isDark && styles.bucketTabActiveDark, bucketFilter === item.id && designMode === 'chic' && styles.bucketTabActiveChic, activeChic && { backgroundColor: chicPalette.accent, borderColor: chicPalette.accent }, isMonoLight && { backgroundColor: bucketFilter === item.id ? focusShortcutAccent : '#FFFFFF', borderColor: bucketFilter === item.id ? focusShortcutAccent : '#C8D6F5' }]} onPress={() => { clearSelectionForViewChange(); setBucketFilter(item.id); }}><Text style={[styles.bucketTabText, isDark && styles.darkBodyText, bucketFilter === item.id && styles.bucketTabTextActive, designMode === 'chic' && { color: activeChic ? chicPalette.onAccent : chicPalette.textSecondary }, activeChic && { color: chicPalette.onAccent }, isMonoLight && { color: bucketFilter === item.id ? '#FFFFFF' : focusShortcutAccent }]}>{item.label} {count}</Text></Pressable>;
       })}</View>
 
       <Pressable accessibilityRole="button" onPress={() => setCategoryPickerOpen(true)} style={{ minHeight: 44, marginBottom: 2, paddingHorizontal: 4, borderBottomWidth: 1, borderBottomColor: focusShortcutBorder, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}><Text style={{ color: focusShortcutText, fontSize: 13, fontWeight: '800' }}>絞り込み</Text><Text style={{ color: focusShortcutAccent, fontSize: 13, fontWeight: '800' }}>{categoryFilter} ›</Text></Pressable>
@@ -291,7 +301,10 @@ export function HomeScreen({
             <View style={styles.taskActionGrid}>
               <Pressable style={[styles.taskActionOption, { backgroundColor: popupSoft, borderColor: popupBorder }]} onPress={() => { if (actionTask) onEdit(actionTask); setActionTask(null); }}><Text style={[styles.taskActionIcon, { color: popupAccent }]}>✎</Text><Text style={[styles.taskActionLabel, { color: popupText }]}>編集</Text></Pressable>
               <Pressable style={[styles.taskActionOption, { backgroundColor: popupSoft, borderColor: popupBorder }]} onPress={() => { if (actionTask) onDuplicate(actionTask); setActionTask(null); }}><Text style={[styles.taskActionIcon, { color: popupAccent }]}>▣</Text><Text style={[styles.taskActionLabel, { color: popupText }]}>複製</Text></Pressable>
-              <Pressable style={[styles.taskActionOption, { backgroundColor: popupSoft, borderColor: popupBorder }]} onPress={() => { if (actionTask) onPostpone(actionTask.id); setActionTask(null); }}><Text style={[styles.taskActionIcon, { color: popupAccent }]}>→</Text><Text style={[styles.taskActionLabel, { color: popupText }]}>明日へ</Text></Pressable>
+              <Pressable style={[styles.taskActionOption, { backgroundColor: popupSoft, borderColor: popupBorder }]} onPress={() => { if (actionTask) onPostpone(actionTask.id, todayKey); setActionTask(null); }}><Text style={[styles.taskActionIcon, { color: popupAccent }]}>→</Text><Text style={[styles.taskActionLabel, { color: popupText }]}>今日あとで</Text></Pressable>
+              <Pressable style={[styles.taskActionOption, { backgroundColor: popupSoft, borderColor: popupBorder }]} onPress={() => { if (actionTask) onPostpone(actionTask.id, tomorrowKey); setActionTask(null); }}><Text style={[styles.taskActionIcon, { color: popupAccent }]}>→</Text><Text style={[styles.taskActionLabel, { color: popupText }]}>明日</Text></Pressable>
+              <Pressable style={[styles.taskActionOption, { backgroundColor: popupSoft, borderColor: popupBorder }]} onPress={() => { if (actionTask) onPostpone(actionTask.id, weekendKey); setActionTask(null); }}><Text style={[styles.taskActionIcon, { color: popupAccent }]}>→</Text><Text style={[styles.taskActionLabel, { color: popupText }]}>週末</Text></Pressable>
+              <Pressable style={[styles.taskActionOption, { backgroundColor: popupSoft, borderColor: popupBorder }]} onPress={() => { setPostponeDateTask(actionTask); setActionTask(null); }}><Text style={[styles.taskActionIcon, { color: popupAccent }]}>▣</Text><Text style={[styles.taskActionLabel, { color: popupText }]}>日付を選ぶ</Text></Pressable>
               <Pressable style={[styles.taskActionOption, styles.taskActionDelete, { backgroundColor: popupSurface, borderColor: popupDanger }]} onPress={() => { if (actionTask) onDelete(actionTask.id); setActionTask(null); }}><Text style={[styles.taskActionIcon, styles.taskActionDeleteText, { color: popupDanger }]}>×</Text><Text style={[styles.taskActionLabel, styles.taskActionDeleteText, { color: popupDanger }]}>削除</Text></Pressable>
             </View>
             <View style={styles.taskActionGrid}>
@@ -305,6 +318,15 @@ export function HomeScreen({
         </Pressable>
       </Modal>
       <TaskListSheet visible={Boolean(listTask)} task={listTask} designMode={designMode} chicPalette={chicPalette} styles={styles} onClose={() => setListTask(undefined)} onSave={onUpdateTaskList} />
+      <Modal visible={Boolean(postponeDateTask)} transparent animationType="fade" onRequestClose={() => setPostponeDateTask(null)}>
+        <Pressable style={styles.bucketModalBackdrop} onPress={() => setPostponeDateTask(null)}>
+          <Pressable style={[styles.bucketModalCard, { backgroundColor: popupSurface, borderColor: popupBorder }]} onPress={(event) => event.stopPropagation()}>
+            <Text style={[styles.bucketModalTitle, { color: popupText }]}>日付を選ぶ</Text>
+            <DateTimePicker locale="ja-JP" value={postponeDateTask?.scheduledDate ? new Date(`${postponeDateTask.scheduledDate}T12:00:00`) : now} mode="date" display="spinner" onChange={(_, value) => { if (!value || !postponeDateTask) return; onPostpone(postponeDateTask.id, dateKey(value)); setPostponeDateTask(null); }} />
+            <Pressable style={[styles.taskTemplateSaveAction, { marginTop: 10, backgroundColor: popupSoft, borderColor: popupBorder }]} onPress={() => setPostponeDateTask(null)}><Text style={[styles.taskTemplateSaveTitle, { color: popupText }]}>キャンセル</Text></Pressable>
+          </Pressable>
+        </Pressable>
+      </Modal>
       <Modal visible={tomorrowOpen} transparent animationType="fade" onRequestClose={() => setTomorrowOpen(false)}>
         <Pressable style={styles.bucketModalBackdrop} onPress={() => setTomorrowOpen(false)}>
           <Pressable style={[styles.bucketModalCard, { backgroundColor: popupSurface, borderColor: popupBorder }]} onPress={(event) => event.stopPropagation()}>
