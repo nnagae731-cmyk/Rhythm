@@ -175,6 +175,17 @@ export function HomeScreen({
   const nowTasks = tasks.filter((task) => (task.bucket ?? 'now') === 'now');
   const featuredNowTask = selectCurrentTask(nowTasks.filter((task) => !task.done && (!task.scheduledDate || task.scheduledDate <= todayKey)), now);
   const remainingNowTasks = nowTasks.filter((task) => !task.done && task.id !== featuredNowTask?.id);
+  // The memo area is intentionally separate from the featured "今はこれ"
+  // card. It only follows today's actionable now-bucket tasks and never
+  // changes the task list/card layout itself.
+  const nowMemoTaskCandidates = nowTasks
+    .filter((task) => !task.done && task.status !== 'skipped' && (!task.scheduledDate || task.scheduledDate <= todayKey));
+  const nowMemoTasks = nowMemoTaskCandidates
+    .map((task) => ({ task, items: (task.listItems ?? []).slice().sort((a, b) => a.order - b.order).filter((item) => item.text.trim() && !item.checked) }))
+    .filter(({ items }) => items.length > 0);
+  const completedNowMemoTasks = nowMemoTaskCandidates
+    .map((task) => ({ task, items: (task.listItems ?? []).slice().sort((a, b) => a.order - b.order).filter((item) => item.text.trim() && item.checked) }))
+    .filter(({ items }) => items.length > 0);
   const handleTaskCheck = (id: string) => {
     if (selectionMode) {
       onToggleSelection(id);
@@ -201,7 +212,8 @@ export function HomeScreen({
        {selectionBar}
       {homeTab === 'now' && <>
       {renderTodayWinStrip(allTasks, onOpenFocus, handleTaskCheck, (task) => selectionMode ? onToggleSelection(task.id) : setActionTask(task), selectionMode, selectedTaskIds)}
-      {remainingNowTasks.length > 0 && <View style={{ marginTop: 12, paddingHorizontal: 4 }}><Text style={{ color: focusShortcutMuted, fontSize: 11, fontWeight: '800', marginBottom: 4 }}>今やる</Text>{remainingNowTasks.map((task) => <React.Fragment key={`now-task-${task.id}`}><TodoTaskRow task={task} styles={styles} designMode={designMode} chicPalette={chicPalette} isDark={isDark} selected={selectedTaskIds.includes(task.id)} selectionMode={selectionMode} completionIcon={completionIcon} textColor={focusShortcutText} accentColor={focusShortcutAccent} borderColor={focusShortcutBorder} onPress={() => selectionMode ? onToggleSelection(task.id) : setActionTask(task)} onCheck={() => handleTaskCheck(task.id)} /><TaskListItemsPreview task={task} textColor={focusShortcutText} mutedColor={focusShortcutMuted} accentColor={focusShortcutAccent} borderColor={focusShortcutBorder} isDark={isDark} designMode={designMode} chicPalette={chicPalette} onToggle={(itemId) => { const items = task.listItems ?? []; onUpdateTaskList(task.id, items.map((item) => item.id === itemId ? { ...item, checked: !item.checked } : item)); }} /></React.Fragment>)}</View>}
+      {remainingNowTasks.length > 0 && <View style={{ marginTop: 12, paddingHorizontal: 4 }}><Text style={{ color: focusShortcutMuted, fontSize: 11, fontWeight: '800', marginBottom: 4 }}>今やる</Text>{remainingNowTasks.map((task) => <TodoTaskRow key={`now-task-${task.id}`} task={task} styles={styles} designMode={designMode} chicPalette={chicPalette} isDark={isDark} selected={selectedTaskIds.includes(task.id)} selectionMode={selectionMode} completionIcon={completionIcon} textColor={focusShortcutText} accentColor={focusShortcutAccent} borderColor={focusShortcutBorder} onPress={() => selectionMode ? onToggleSelection(task.id) : setActionTask(task)} onCheck={() => handleTaskCheck(task.id)} />)}</View>}
+      <TaskListItemsSection groups={nowMemoTasks} completedGroups={completedNowMemoTasks} textColor={focusShortcutText} mutedColor={focusShortcutMuted} accentColor={focusShortcutAccent} borderColor={focusShortcutBorder} isDark={isDark} designMode={designMode} chicPalette={chicPalette} onToggle={(taskId, itemId) => { const task = tasks.find((item) => item.id === taskId); const items = task?.listItems ?? []; onUpdateTaskList(taskId, items.map((item) => item.id === itemId ? { ...item, checked: !item.checked } : item)); }} />
       <View style={{ minHeight: 58, paddingHorizontal: 14, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: focusShortcutBorder }}>
         <Text style={{ color: focusShortcutMuted, fontSize: 11, fontWeight: '800' }}>次の予定</Text>
         {nextUpcoming ? <Pressable onPress={onOpenSchedule} style={{ flexDirection: 'row', alignItems: 'center', marginTop: 5 }}><Text numberOfLines={1} style={{ color: focusShortcutText, fontSize: 14, fontWeight: '800', flex: 1 }}>{nextScheduledLabel}　{nextUpcoming.title}</Text><Text style={{ marginLeft: 'auto', color: focusShortcutAccent, fontSize: 20 }}>›</Text></Pressable> : <Text style={{ color: focusShortcutMuted, fontSize: 13, marginTop: 5 }}>今日の次の予定はありません</Text>}
@@ -264,7 +276,6 @@ export function HomeScreen({
       {displayTasks.map((task) => { const taskSubtasks = task.subtasks?.slice().sort((a, b) => a.order - b.order) ?? []; const hasSubtasks = taskSubtasks.length > 0; const isSubtasksExpanded = expandedSubtasks[task.id] === true; const completedSubtaskCount = taskSubtasks.filter((item) => item.done).length; return (
         <React.Fragment key={task.id}>
         <TodoTaskRow task={task} styles={styles} designMode={designMode} chicPalette={chicPalette} isDark={isDark} selected={selectedTaskIds.includes(task.id)} selectionMode={selectionMode} completionIcon={completionIcon} textColor={focusShortcutText} accentColor={focusShortcutAccent} borderColor={focusShortcutBorder} onPress={() => selectionMode ? onToggleSelection(task.id) : setActionTask(task)} onCheck={() => handleTaskCheck(task.id)} />
-        <TaskListItemsPreview task={task} textColor={focusShortcutText} mutedColor={focusShortcutMuted} accentColor={focusShortcutAccent} borderColor={focusShortcutBorder} isDark={isDark} designMode={designMode} chicPalette={chicPalette} onToggle={(itemId) => { const items = task.listItems ?? []; onUpdateTaskList(task.id, items.map((item) => item.id === itemId ? { ...item, checked: !item.checked } : item)); }} />
         {hasSubtasks && <Pressable accessibilityRole="button" style={[{ minHeight: 40, marginTop: 8, paddingHorizontal: 10, borderRadius: 10, borderWidth: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }, isDark ? styles.darkSurface : styles.filterChip, designMode === 'chic' && { backgroundColor: chicPalette.accentSoft, borderColor: chicPalette.border }]} onPress={() => { clearSelectionForViewChange(); setExpandedSubtasks((current) => ({ ...current, [task.id]: !isSubtasksExpanded })); }}><Text style={[styles.taskMeta, isDark && styles.darkBodyText, designMode === 'chic' && { color: chicPalette.accentStrong }]}>サブタスク {taskSubtasks.length}件 ・ 完了 {completedSubtaskCount}件</Text><Text style={[styles.taskMeta, isDark && styles.darkAccentText, designMode === 'chic' && { color: chicPalette.accent }]}>{isSubtasksExpanded ? '閉じる' : '開く'}⌄</Text></Pressable>}
          {isSubtasksExpanded && <ScrollView nestedScrollEnabled style={{ maxHeight: 280, marginTop: 2 }} showsVerticalScrollIndicator={taskSubtasks.length > 6}>{taskSubtasks.map((item) => <Pressable key={`${task.id}:${item.id}`} style={[styles.taskCard, designMode === 'minimal' && styles.taskCardMinimal, isDark && styles.darkSurface, designMode === 'chic' && styles.taskCardChic, { marginLeft: 18, borderLeftWidth: 3, borderLeftColor: designMode === 'chic' ? chicPalette.accent : theme?.colors?.primaryAccent ?? '#68748A' }, item.done && styles.taskCardDone]} onPress={() => onToggleSubtask(task.id, item.id)}><View style={[styles.taskCardInner, designMode === 'chic' && styles.taskCardInnerChic, designMode === 'chic' && { backgroundColor: chicPalette.cardSurface }]}><Pressable style={[styles.check, isDark && styles.checkDark, item.done && styles.checkDone, item.done && isDark && styles.checkDoneDark, designMode === 'chic' && { backgroundColor: item.done ? chicPalette.accent : chicPalette.cardTint, borderColor: chicPalette.accent }]} onPress={() => onToggleSubtask(task.id, item.id)}><Text style={styles.checkMark}>{item.done ? completionIcon : ''}</Text></Pressable><View style={styles.taskBody}><Text style={[styles.taskTitle, item.done && styles.taskTitleDone, isDark && styles.darkBodyText, designMode === 'chic' && { color: chicPalette.textPrimary }]}>{item.title}</Text><Text style={[styles.taskMeta, isDark && styles.darkMutedText, designMode === 'chic' && { color: chicPalette.taskMeta }]}>サブタスク ・ 親: {task.title}</Text><View style={styles.taskInfoRow}><View style={[styles.categoryPill, isDark && styles.darkSurface, designMode === 'chic' && { backgroundColor: chicPalette.accentSoft, borderColor: chicPalette.border }]}><Text style={[styles.categoryText, isDark && styles.darkBodyText, designMode === 'chic' && { color: chicPalette.textSecondary }]}>次の一歩</Text></View><Text style={[styles.taskMeta, isDark && styles.darkAccentText, designMode === 'chic' && { color: chicPalette.taskMeta }]}>{(task.bucket ?? 'now') === 'now' ? '今やる' : task.bucket === 'later' ? 'あとで' : '待ち'}</Text></View></View></View></Pressable>)}</ScrollView>}
         </React.Fragment>
@@ -353,12 +364,33 @@ export function HomeScreen({
   );
 }
 
-function TaskListItemsPreview({ task, textColor, mutedColor, accentColor, borderColor, isDark, designMode, chicPalette, onToggle }: { task: Task; textColor: string; mutedColor: string; accentColor: string; borderColor: string; isDark: boolean; designMode: DesignMode; chicPalette: ChicThemePalette; onToggle: (itemId: string) => void }) {
-  const items = task.listItems?.slice().sort((a, b) => a.order - b.order).filter((item) => item.text.trim()) ?? [];
-  if (items.length === 0) return null;
-  const visibleItems = items.slice(0, 3);
-  const remainingCount = items.length - visibleItems.length;
-  return <View style={{ marginLeft: 34, marginTop: 4, marginBottom: 8, padding: 9, borderRadius: 12, borderWidth: 1, borderColor, backgroundColor: designMode === 'chic' ? chicPalette.cardTint : isDark ? '#20293A' : '#FFFFFF' }}><Text style={{ color: mutedColor, fontSize: 10, fontWeight: '800', marginBottom: 3 }}>リスト・メモ {items.length}件</Text>{visibleItems.map((item) => <Pressable key={item.id} accessibilityRole="checkbox" accessibilityState={{ checked: item.checked }} onPress={() => onToggle(item.id)} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 3 }}><View style={{ width: 16, height: 16, borderRadius: 8, borderWidth: 1, borderColor: accentColor, alignItems: 'center', justifyContent: 'center', marginRight: 7 }}><Text style={{ color: accentColor, fontSize: 10, fontWeight: '900' }}>{item.checked ? '✓' : ''}</Text></View><Text numberOfLines={1} style={{ flex: 1, color: textColor, fontSize: 12, fontWeight: '600', textDecorationLine: item.checked ? 'line-through' : 'none', opacity: item.checked ? 0.58 : 1 }}>{item.text}</Text></Pressable>)}{remainingCount > 0 && <Text style={{ color: mutedColor, fontSize: 11, fontWeight: '700', marginTop: 2 }}>ほか{remainingCount}件</Text>}</View>;
+function TaskListItemsSection({ groups, completedGroups, textColor, mutedColor, accentColor, borderColor, isDark, designMode, chicPalette, onToggle }: { groups: Array<{ task: Task; items: NonNullable<Task['listItems']> }>; completedGroups: Array<{ task: Task; items: NonNullable<Task['listItems']> }>; textColor: string; mutedColor: string; accentColor: string; borderColor: string; isDark: boolean; designMode: DesignMode; chicPalette: ChicThemePalette; onToggle: (taskId: string, itemId: string) => void }) {
+  const [showCompleted, setShowCompleted] = useState(false);
+  const completedCount = completedGroups.reduce((total, group) => total + group.items.length, 0);
+  if (groups.length === 0 && completedCount === 0) return null;
+  return <View style={{ marginTop: 16, paddingTop: 12, paddingHorizontal: 4, borderTopWidth: 1, borderTopColor: borderColor }}>
+    <Text style={{ color: mutedColor, fontSize: 12, fontWeight: '900', marginBottom: 8 }}>関連メモ</Text>
+    {groups.map(({ task, items }) => <View key={`memo-group-${task.id}`} style={{ marginBottom: 10, paddingLeft: 8 }}>
+      <Text numberOfLines={1} style={{ color: mutedColor, fontSize: 11, fontWeight: '800', marginBottom: 3 }}>{task.title}</Text>
+      {items.map((item) => <Pressable key={`${task.id}:${item.id}`} accessibilityRole="checkbox" accessibilityState={{ checked: item.checked }} onPress={() => onToggle(task.id, item.id)} style={{ flexDirection: 'row', alignItems: 'center', minHeight: 30, paddingVertical: 3 }}>
+        <View style={{ width: 18, height: 18, borderRadius: 9, borderWidth: 1, borderColor: accentColor, alignItems: 'center', justifyContent: 'center', marginRight: 8, backgroundColor: designMode === 'chic' ? chicPalette.cardTint : isDark ? '#20293A' : 'transparent' }}><Text style={{ color: accentColor, fontSize: 11, fontWeight: '900' }}>{item.checked ? '✓' : ''}</Text></View>
+        <Text numberOfLines={2} style={{ flex: 1, color: textColor, fontSize: 13, fontWeight: '600' }}>{item.text}</Text>
+      </Pressable>)}
+    </View>)}
+    {completedCount > 0 && <>
+      <Pressable accessibilityRole="button" accessibilityState={{ expanded: showCompleted }} onPress={() => setShowCompleted((current) => !current)} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', minHeight: 34, marginTop: 2, paddingHorizontal: 8, borderTopWidth: 1, borderTopColor: borderColor }}>
+        <Text style={{ color: mutedColor, fontSize: 11, fontWeight: '800' }}>完了した関連メモ {completedCount}件</Text>
+        <Text style={{ color: accentColor, fontSize: 16 }}>{showCompleted ? '⌃' : '›'}</Text>
+      </Pressable>
+      {showCompleted && completedGroups.map(({ task, items }) => <View key={`completed-memo-group-${task.id}`} style={{ marginBottom: 8, paddingLeft: 8 }}>
+        <Text numberOfLines={1} style={{ color: mutedColor, fontSize: 11, fontWeight: '700', marginBottom: 2 }}>{task.title}</Text>
+        {items.map((item) => <Pressable key={`${task.id}:completed:${item.id}`} accessibilityRole="checkbox" accessibilityState={{ checked: item.checked }} onPress={() => onToggle(task.id, item.id)} style={{ flexDirection: 'row', alignItems: 'center', minHeight: 30, paddingVertical: 3 }}>
+          <View style={{ width: 18, height: 18, borderRadius: 9, borderWidth: 1, borderColor: accentColor, alignItems: 'center', justifyContent: 'center', marginRight: 8, backgroundColor: accentColor }}><Text style={{ color: isDark ? '#182235' : '#FFFFFF', fontSize: 11, fontWeight: '900' }}>✓</Text></View>
+          <Text numberOfLines={2} style={{ flex: 1, color: mutedColor, fontSize: 13, fontWeight: '500', textDecorationLine: 'line-through', opacity: 0.78 }}>{item.text}</Text>
+        </Pressable>)}
+      </View>)}
+    </>}
+  </View>;
 }
 
 function TodoTaskRow({ task, styles, designMode, chicPalette, isDark, selected, selectionMode, completionIcon, textColor, accentColor, borderColor, onPress, onCheck }: { task: Task; styles: any; designMode: DesignMode; chicPalette: ChicThemePalette; isDark: boolean; selected: boolean; selectionMode: boolean; completionIcon: string; textColor: string; accentColor: string; borderColor: string; onPress: () => void; onCheck: () => void }) {

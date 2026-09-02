@@ -7,6 +7,7 @@ import mobileAds, {
 
 let initialized = false;
 let rewardedRequestActive = false;
+const REWARDED_OPERATION_TIMEOUT_MS = 15_000;
 
 export async function initializeMobileAds() {
   if (initialized) {
@@ -35,7 +36,13 @@ export function showTestRewardedAd(): Promise<boolean> {
   rewardedRequestActive = true;
   return (async () => {
     try {
-      await initializeMobileAds();
+      // The native SDK can remain pending when a development build has no
+      // network/ad callback. Bound initialization as well as the ad itself so
+      // callers never leave their modal permanently locked.
+      await Promise.race([
+        initializeMobileAds(),
+        new Promise<never>((_, reject) => setTimeout(() => reject(new Error('Rewarded SDK initialization timed out')), REWARDED_OPERATION_TIMEOUT_MS)),
+      ]);
     } catch {
       rewardedRequestActive = false;
       return false;
@@ -77,7 +84,7 @@ export function showTestRewardedAd(): Promise<boolean> {
         unsubscribeClosed = rewardedAd.addAdEventListener(AdEventType.CLOSED, () => finish(earned));
         unsubscribeError = rewardedAd.addAdEventListener(AdEventType.ERROR, () => finish(false));
         // A missing native callback must never leave the RN modal blocked.
-        timeoutId = setTimeout(() => finish(false), 15_000);
+        timeoutId = setTimeout(() => finish(false), REWARDED_OPERATION_TIMEOUT_MS);
         rewardedAd.load();
       } catch {
         finish(false);

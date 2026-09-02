@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Alert, Image, Keyboard, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
 import { ChicPattern, ChicThemePalette, DesignMode, getThemeTokens } from './theme';
-import { Affirmation, AffirmationCustomText, MonthlyWishState, Wish, WishAction, WishMonthMap } from './types';
+import { Affirmation, AffirmationCustomText, MonthlyWishState, Wish, WishAction, WishMonthMap, WishTopImageTitlePosition } from './types';
 import { PlanTier } from './premiumAccess';
 import { PremiumGuideFeatureId } from './premiumGuide';
 import { calculateWishProgress, wishMonthKey } from './features/wish/wishUtils';
@@ -231,6 +231,8 @@ export function WishScreen({ designMode: rawDesignMode, chicPalette, monthLabel,
   const actions = state.actions;
   const selectedWish = wishes[selectedWishIndex];
   const topDisplayedWish = (state.topWishId ? wishes.find((wish) => wish.id === state.topWishId) : undefined) ?? wishes[0];
+  const topImageTitlePosition: WishTopImageTitlePosition = state.topImageTitlePosition ?? 'bottom';
+  const topVisualJustifyContent = topImageTitlePosition === 'top' ? 'flex-start' : topImageTitlePosition === 'center' ? 'center' : 'flex-end';
   const selectedActions = selectedWish ? actions.filter((action) => action.wishId === selectedWish.id) : [];
   const historyMonths = useMemo(() => Object.entries(wishMonths)
     .filter(([monthKey, monthState]) => monthKey !== wishMonthKey() && (Boolean(monthState.monthlyGoal?.trim()) || (monthState.wishes ?? []).length > 0 || (monthState.actions ?? []).length > 0))
@@ -266,7 +268,7 @@ export function WishScreen({ designMode: rawDesignMode, chicPalette, monthLabel,
             <View pointerEvents="none" style={[styles.topVisualVeil, { backgroundColor: topImageUri ? '#101318' : surface, opacity: topImageUri ? 0.32 : 1 }]} />
             <View style={styles.topVisualContent}>
               <Text style={[styles.topVisualMonth, { color: topImageUri ? '#FFFFFF' : textSecondary }, topImageUri && styles.topVisualTextOnImage]}>{monthLabel}</Text>
-              {topDisplayedWish ? <Text numberOfLines={2} style={[styles.topVisualGoal, { color: topImageUri ? '#FFFFFF' : textPrimary }, topImageUri && styles.topVisualTextOnImage]}>{topDisplayedWish.title}</Text> : null}
+              {topDisplayedWish ? <View style={[styles.topVisualTitleWrap, { justifyContent: topVisualJustifyContent }]}><Text numberOfLines={2} style={[styles.topVisualGoal, { color: topImageUri ? '#FFFFFF' : textPrimary }, topImageUri && styles.topVisualTextOnImage]}>{topDisplayedWish.title}</Text></View> : null}
             </View>
           </View>
           <View style={styles.pageHeader}>
@@ -280,6 +282,23 @@ export function WishScreen({ designMode: rawDesignMode, chicPalette, monthLabel,
             <Text style={[styles.topImageSettingText, { color: textSecondary }]}>{topImageUri ? '画像を変更' : 'トップ画像を設定'}</Text>
             <Text style={[styles.topImageSettingChevron, { color: accent }]}>›</Text>
           </Pressable> : null}
+          <View style={[styles.titlePositionPanel, { backgroundColor: subtleSurface, borderColor: border }]}>
+            <Text style={[styles.titlePositionLabel, { color: textSecondary }]}>タイトル位置</Text>
+            <View style={styles.titlePositionOptions}>
+              {([{ id: 'top', label: '上' }, { id: 'center', label: '中央' }, { id: 'bottom', label: '下' }] as const).map((option) => {
+                const selected = topImageTitlePosition === option.id;
+                return <Pressable
+                  key={option.id}
+                  accessibilityRole="radio"
+                  accessibilityState={{ selected }}
+                  onPress={() => commit((current) => ({ ...current, topImageTitlePosition: option.id }))}
+                  style={[styles.titlePositionOption, { backgroundColor: selected ? (rawDesignMode === 'chic' && palette ? palette.accentSoft : theme.colors.softAccent) : surface, borderColor: selected ? accent : border }]}
+                >
+                  <Text style={[styles.titlePositionOptionText, { color: selected ? accent : textSecondary }]}>{option.label}</Text>
+                </Pressable>;
+              })}
+            </View>
+          </View>
           {wishes.length > 0 ? <>
             <ScrollView
               horizontal
@@ -619,7 +638,8 @@ const styles = StyleSheet.create({
   topVisual: { minHeight: 190, borderRadius: 24, borderWidth: 1, overflow: 'hidden', position: 'relative' },
   topVisualImage: { ...StyleSheet.absoluteFillObject },
   topVisualVeil: { ...StyleSheet.absoluteFillObject },
-  topVisualContent: { padding: 20, gap: 7 },
+  topVisualContent: { flex: 1, padding: 20, gap: 7 },
+  topVisualTitleWrap: { flex: 1 },
   topVisualMonth: { fontSize: 11, fontWeight: '800', letterSpacing: 0.5 },
   topVisualTitle: { fontSize: 20, fontWeight: '900' },
   topVisualGoal: { fontSize: 25, lineHeight: 33, fontWeight: '900', marginTop: 8 },
@@ -653,6 +673,11 @@ const styles = StyleSheet.create({
   topImageSettingRow: { minHeight: 38, alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: 6, borderWidth: 1, borderRadius: 999, paddingHorizontal: 12, paddingVertical: 7 },
   topImageSettingText: { fontSize: 11, fontWeight: '800' },
   topImageSettingChevron: { fontSize: 17, lineHeight: 18, fontWeight: '400' },
+  titlePositionPanel: { borderWidth: 1, borderRadius: 14, paddingHorizontal: 12, paddingVertical: 10, gap: 8 },
+  titlePositionLabel: { fontSize: 11, fontWeight: '800' },
+  titlePositionOptions: { flexDirection: 'row', gap: 8 },
+  titlePositionOption: { flex: 1, minHeight: 36, borderWidth: 1, borderRadius: 999, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 10 },
+  titlePositionOptionText: { fontSize: 12, fontWeight: '900' },
   goalInline: { minHeight: 38, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
   goalInlineText: { flex: 1, fontSize: 12, lineHeight: 18, fontWeight: '700' },
   goalInlineAction: { fontSize: 11, fontWeight: '900' },

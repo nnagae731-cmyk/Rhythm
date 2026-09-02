@@ -172,11 +172,16 @@ export type MonthlyReflectionCard = {
   updatedAt: string;
 };
 
+/** Vertical alignment for the Wish top-image title. Optional for legacy months. */
+export type WishTopImageTitlePosition = 'top' | 'center' | 'bottom';
+
 export type MonthlyWishState = {
   /** Optional monthly goal; omitted in older saved months for compatibility. */
   monthlyGoal?: string;
   /** Wish shown in the shared top visual; omitted in older saved months. */
   topWishId?: string;
+  /** Vertical position of the title over the Wish top image; defaults to bottom. */
+  topImageTitlePosition?: WishTopImageTitlePosition;
   wishes: Wish[];
   actions: WishAction[];
   review: MonthlyReview;

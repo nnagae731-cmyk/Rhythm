@@ -55,6 +55,9 @@ export type RhythmWidgetSnapshot = {
   };
   /** Additional actionable tasks for the Medium current-task widget. */
   todayNowTasks?: Array<NonNullable<RhythmWidgetSnapshot['currentTask']>>;
+  /** Total actionable tasks after the featured current task, before the
+   * Medium widget's three-row display limit. */
+  todayNowTaskCount?: number;
   nextPlan?: {
     id?: string;
     title: string;
@@ -235,7 +238,8 @@ export function buildRhythmWidgetSnapshot({
     .filter((task) => !task.scheduledDate || task.scheduledDate <= today);
   const currentTask = selectCurrentTask(currentCandidates, now);
   const rankedCurrentTasks = selectCurrentTasks(currentCandidates, now);
-  const todayNowTasks = rankedCurrentTasks.filter((task) => task.id !== currentTask?.id).slice(0, 3);
+  const remainingCurrentTasks = rankedCurrentTasks.filter((task) => task.id !== currentTask?.id);
+  const todayNowTasks = remainingCurrentTasks.slice(0, 3);
 
   const nextPlanValue = selectNextUpcomingPlan(departurePlans, now, canShowArrivalReverseCountdown);
   const nextPlan = nextPlanValue ? { plan: nextPlanValue, scheduledAt: planScheduledAt(nextPlanValue) } : undefined;
@@ -308,6 +312,7 @@ export function buildRhythmWidgetSnapshot({
         };
       }),
     } : {}),
+    ...(remainingCurrentTasks.length ? { todayNowTaskCount: remainingCurrentTasks.length } : {}),
     ...(nextPlan ? {
       nextPlan: {
         id: nextPlan.plan.id,

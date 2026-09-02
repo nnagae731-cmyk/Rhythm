@@ -29,15 +29,62 @@ private enum WidgetPendingActionStore {
       defaults.set(text, forKey: pendingActionsKey)
     }
   }
+
+  /// Optimistically update the cached snapshot while retaining the pending
+  /// action for the main app to reconcile when it next becomes active.
+  private static func updateSnapshot(_ update: (inout [String: Any]) -> Void) {
+    guard let defaults = UserDefaults(suiteName: appGroup),
+          let raw = defaults.string(forKey: snapshotKey),
+          let data = raw.data(using: .utf8),
+          var object = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else { return }
+    update(&object)
+    guard JSONSerialization.isValidJSONObject(object),
+          let encoded = try? JSONSerialization.data(withJSONObject: object),
+          let text = String(data: encoded, encoding: .utf8) else { return }
+    defaults.set(text, forKey: snapshotKey)
+  }
+
+  static func completeTaskInSnapshot(_ taskId: String) {
+    updateSnapshot { object in
+      let currentId = (object["currentTask"] as? [String: Any])?["id"] as? String
+      var remaining = object["todayNowTasks"] as? [[String: Any]] ?? []
+      let remainingIndex = remaining.firstIndex { ($0["id"] as? String) == taskId }
+      guard currentId == taskId || remainingIndex != nil else { return }
+      if currentId == taskId {
+        if let next = remaining.first { object["currentTask"] = next }
+        else { object.removeValue(forKey: "currentTask") }
+        remaining = Array(remaining.dropFirst())
+      } else if let remainingIndex = remainingIndex {
+        remaining.remove(at: remainingIndex)
+      }
+      if remaining.isEmpty { object.removeValue(forKey: "todayNowTasks") }
+      else { object["todayNowTasks"] = remaining }
+      if let count = object["todayNowTaskCount"] as? Int {
+        object["todayNowTaskCount"] = max(0, count - 1)
+      }
+    }
+  }
+
+  static func toggleListItemInSnapshot(taskId: String, listItemId: String, completed: Bool) {
+    updateSnapshot { object in
+      guard var checklist = object["checklist"] as? [[String: Any]] else { return }
+      for index in checklist.indices where (checklist[index]["taskId"] as? String) == taskId && (checklist[index]["listItemId"] as? String) == listItemId {
+        checklist[index]["done"] = completed
+      }
+      object["checklist"] = checklist
+    }
+  }
 }
 
 @available(iOS 17.0, *)
 private struct RhythmCompleteTaskIntent: AppIntent {
   static var title: LocalizedStringResource = "タスクを完了"
+  static var openAppWhenRun: Bool { false }
   @Parameter(title: "Task ID") var taskId: String
   init() { taskId = "" }
   init(taskId: String) { self.taskId = taskId }
   func perform() async throws -> some IntentResult {
+    WidgetPendingActionStore.completeTaskInSnapshot(taskId)
     WidgetPendingActionStore.append(["id": "completeTask:\(taskId)", "type": "completeTask", "taskId": taskId])
     WidgetCenter.shared.reloadAllTimelines()
     return .result()
@@ -47,12 +94,14 @@ private struct RhythmCompleteTaskIntent: AppIntent {
 @available(iOS 17.0, *)
 private struct RhythmToggleListItemIntent: AppIntent {
   static var title: LocalizedStringResource = "リスト項目を切り替え"
+  static var openAppWhenRun: Bool { false }
   @Parameter(title: "Task ID") var taskId: String
   @Parameter(title: "List Item ID") var listItemId: String
   @Parameter(title: "完了") var completed: Bool
   init() { taskId = ""; listItemId = ""; completed = false }
   init(taskId: String, listItemId: String, completed: Bool) { self.taskId = taskId; self.listItemId = listItemId; self.completed = completed }
   func perform() async throws -> some IntentResult {
+    WidgetPendingActionStore.toggleListItemInSnapshot(taskId: taskId, listItemId: listItemId, completed: completed)
     WidgetPendingActionStore.append(["id": "toggleListItem:\(taskId):\(listItemId)", "type": "toggleListItem", "taskId": taskId, "listItemId": listItemId, "completed": completed])
     WidgetCenter.shared.reloadAllTimelines()
     return .result()
@@ -179,6 +228,7 @@ struct WidgetSnapshot: Codable {
   let displayOptions: [String: Bool]?
   let currentTask: Task?
   let todayNowTasks: [Task]?
+  let todayNowTaskCount: Int?
   let nextPlan: Plan?
   let calendarMonth: CalendarMonth?
   let calendarWeek: CalendarWeek?
@@ -327,6 +377,7 @@ private func gallerySampleSnapshot(now: Date = Date()) -> WidgetSnapshot {
       WidgetSnapshot.Task(id: "gallery-task-2", title: "メールを確認", startAt: dateAt(today, 16, 0), estimatedMinutes: nil, remainingMinutes: nil, status: "active", priority: "低"),
       WidgetSnapshot.Task(id: "gallery-task-3", title: "資料を送る", startAt: dateAt(today, 17, 0), estimatedMinutes: nil, remainingMinutes: nil, status: "active", priority: "中"),
     ],
+    todayNowTaskCount: 2,
     nextPlan: WidgetSnapshot.Plan(id: "gallery-plan", title: "美容院", scheduledAt: nextSchedule, location: "駅前", allDay: false, leaveAt: leaveAt, remainingToLeave: 102, departureAt: leaveAt),
     calendarMonth: WidgetSnapshot.CalendarMonth(year: monthComponents.year ?? calendar.component(.year, from: today), month: monthComponents.month ?? calendar.component(.month, from: today), leadingEmptyCount: calendar.component(.weekday, from: monthStart) - 1, days: monthDays),
     calendarWeek: WidgetSnapshot.CalendarWeek(startDate: isoDay(weekStart), days: weekDays),
@@ -469,7 +520,7 @@ struct RhythmWidgetProvider: IntentTimelineProvider {
       }
     }()
     let appearance = WidgetSnapshot.Appearance(style: style, monoTemplate: resolvedMonoTemplate, accentHex: stored.accentHex, photoFileName: resolvedPhotoFileName, photoLayout: resolvedPhotoLayout, designPattern: pattern, designCheckColor: designCheckColor, designPatternUnlocked: stored.designPatternUnlocked, affirmationBackgrounds: stored.affirmationBackgrounds)
-    return WidgetSnapshot(updatedAt: snapshot.updatedAt, isPremium: snapshot.isPremium, designCustomizePurchased: snapshot.designCustomizePurchased, appearance: appearance, widgetCustomizations: snapshot.widgetCustomizations, displayOptions: snapshot.displayOptions, currentTask: snapshot.currentTask, todayNowTasks: snapshot.todayNowTasks, nextPlan: snapshot.nextPlan, calendarMonth: snapshot.calendarMonth, calendarWeek: snapshot.calendarWeek, todaySchedules: snapshot.todaySchedules, todayScheduleCount: snapshot.todayScheduleCount, checklist: snapshot.checklist, goal: snapshot.goal, affirmations: snapshot.affirmations, affirmationPhotoFileNames: snapshot.affirmationPhotoFileNames)
+    return WidgetSnapshot(updatedAt: snapshot.updatedAt, isPremium: snapshot.isPremium, designCustomizePurchased: snapshot.designCustomizePurchased, appearance: appearance, widgetCustomizations: snapshot.widgetCustomizations, displayOptions: snapshot.displayOptions, currentTask: snapshot.currentTask, todayNowTasks: snapshot.todayNowTasks, todayNowTaskCount: snapshot.todayNowTaskCount, nextPlan: snapshot.nextPlan, calendarMonth: snapshot.calendarMonth, calendarWeek: snapshot.calendarWeek, todaySchedules: snapshot.todaySchedules, todayScheduleCount: snapshot.todayScheduleCount, checklist: snapshot.checklist, goal: snapshot.goal, affirmations: snapshot.affirmations, affirmationPhotoFileNames: snapshot.affirmationPhotoFileNames)
   }
 
   private func loadSnapshot() -> WidgetSnapshot? {
@@ -515,7 +566,10 @@ private struct WidgetPalette {
     let style = appearance?.style ?? .mono
     let accent = appearance?.accentHex.map(Color.init(hex:)) ?? Color.accentColor
     let photoAvailable = appearance?.photoFileName.map { loadWidgetPhoto($0) != nil } ?? false
-    let photoBackground = style == .photo && appearance?.photoLayout == "background" && photoAvailable
+    let photoBackground = appearance?.photoLayout == "background" && photoAvailable
+    if photoBackground {
+      return WidgetPalette(foreground: .white, secondary: .white.opacity(0.80), accent: .white, background: .black, divider: .white.opacity(0.34), monoTemplate: nil, designPattern: nil, designCheckColor: nil)
+    }
     switch style {
     case .mono:
       return WidgetPalette(foreground: Color.primary, secondary: Color.secondary, accent: Color.primary, background: Color(uiColor: .systemBackground), divider: Color.primary.opacity(0.12), monoTemplate: appearance?.monoTemplate, designPattern: nil, designCheckColor: nil)
@@ -588,7 +642,7 @@ private struct DesignPatternLayer: View {
             let column = index % columns
             let size: CGFloat = index % 3 == 0 ? 6 : index % 2 == 0 ? 4 : 3
             Circle()
-              .fill((index % 2 == 0 ? colors.accent : colors.stripe).opacity(0.32))
+              .fill((index % 2 == 0 ? colors.accent : colors.stripe).opacity(0.50))
               .frame(width: size, height: size)
               .offset(x: 4 + CGFloat(column) * 25 + (row % 2 == 1 ? 12.5 : 0), y: 5 + CGFloat(row) * 22)
           }
@@ -600,27 +654,26 @@ private struct DesignPatternLayer: View {
         let countY = max(1, Int(ceil(proxy.size.height / cell)) + 2)
         ZStack(alignment: .topLeading) {
           ForEach(0..<countX, id: \.self) { index in
-            Rectangle().fill(colors.stripe.opacity(0.18)).frame(width: band, height: proxy.size.height).offset(x: CGFloat(index) * cell + (cell - band) / 2)
+            Rectangle().fill(colors.stripe.opacity(0.34)).frame(width: band, height: proxy.size.height).offset(x: CGFloat(index) * cell + (cell - band) / 2)
           }
           ForEach(0..<countY, id: \.self) { index in
-            Rectangle().fill(colors.stripe.opacity(0.16)).frame(width: proxy.size.width, height: band).offset(y: CGFloat(index) * cell + (cell - band) / 2)
+            Rectangle().fill(colors.stripe.opacity(0.30)).frame(width: proxy.size.width, height: band).offset(y: CGFloat(index) * cell + (cell - band) / 2)
           }
           ForEach(0..<(countX * countY), id: \.self) { index in
             let column = index % countX
             let row = index / countX
-            Rectangle().fill(colors.stripe.opacity(0.24)).frame(width: band, height: band).offset(x: CGFloat(column) * cell + (cell - band) / 2, y: CGFloat(row) * cell + (cell - band) / 2)
+            Rectangle().fill(colors.stripe.opacity(0.46)).frame(width: band, height: band).offset(x: CGFloat(column) * cell + (cell - band) / 2, y: CGFloat(row) * cell + (cell - band) / 2)
           }
         }
       case "floral", "floralSoft", "floralSeasonal", "floralDark":
-        // The source image names are the same existing app Design assets. If
-        // a target omits one, Image renders safely as an empty image and the
-        // neutral palette background remains visible.
-        Image(pattern == "floralSoft" ? "botanical-line" : pattern == "floral" ? "vintage-bloom" : "sheer-floral")
-          .resizable()
-          .scaledToFill()
-          .opacity(0.20)
-          .frame(width: proxy.size.width, height: proxy.size.height)
-          .clipped()
+        // These are loose JPG resources copied into the Widget target by the
+        // config plugin, not asset-catalog names. Load them explicitly from
+        // the extension bundle so EAS builds render the actual pattern.
+        if let image = loadBundledDesignImage(pattern == "floralSoft" ? "botanical-line" : pattern == "floral" ? "vintage-bloom" : "sheer-floral") {
+          image.resizable().scaledToFill().opacity(0.20).frame(width: proxy.size.width, height: proxy.size.height).clipped()
+        } else {
+          Color.clear
+        }
       case "pinNote":
         Circle().fill(colors.accent.opacity(0.75)).frame(width: 9, height: 9).position(x: proxy.size.width * 0.5, y: 8)
       case "ruledNote":
@@ -637,16 +690,48 @@ private struct DesignPatternLayer: View {
   }
 }
 
+private func loadBundledDesignImage(_ resourceName: String) -> Image? {
+  guard let url = Bundle.main.url(forResource: resourceName, withExtension: "jpg"),
+        let image = UIImage(contentsOfFile: url.path) else { return nil }
+  return Image(uiImage: image)
+}
+
+/// A small corner ribbon shared by the existing check/dot treatments. It is
+/// decorative only, stays outside the text's leading area, and scales with
+/// the widget family instead of becoming a separate theme.
+private struct DesignRibbonLayer: View {
+  let color: Color
+  @Environment(\.widgetFamily) private var family
+
+  var body: some View {
+    GeometryReader { proxy in
+      let width: CGFloat = family == .systemSmall ? 38 : family == .systemLarge ? 64 : 50
+      RoundedRectangle(cornerRadius: 2, style: .continuous)
+        .fill(color.opacity(0.78))
+        .frame(width: width, height: 10)
+        .rotationEffect(.degrees(32))
+        .position(x: proxy.size.width - width * 0.12, y: 9)
+    }
+    .allowsHitTesting(false)
+  }
+}
+
 private struct WidgetSurface<Content: View>: View {
   let palette: WidgetPalette
   let appearance: WidgetSnapshot.Appearance?
+  let widgetKind: String?
   let content: Content
   @Environment(\.widgetFamily) private var family
 
-  init(palette: WidgetPalette, appearance: WidgetSnapshot.Appearance?, @ViewBuilder content: () -> Content) {
+  init(palette: WidgetPalette, appearance: WidgetSnapshot.Appearance?, widgetKind: String? = nil, @ViewBuilder content: () -> Content) {
     self.palette = palette
     self.appearance = appearance
+    self.widgetKind = widgetKind
     self.content = content()
+  }
+
+  private var calendarPhotoLayout: Bool {
+    widgetKind == "RhythmMonthlyCalendarWidget" || widgetKind == "RhythmWeeklyCalendarWidget" || widgetKind == "RhythmTodayScheduleWidget"
   }
 
   @ViewBuilder
@@ -659,8 +744,9 @@ private struct WidgetSurface<Content: View>: View {
       }
     case "top":
       VStack(spacing: 0) {
+        if calendarPhotoLayout { Spacer(minLength: 0) }
         image.resizable().scaledToFill().frame(width: size.width, height: size.height * (family == .systemLarge ? 0.30 : 0.36)).clipped()
-        Spacer(minLength: 0)
+        if !calendarPhotoLayout { Spacer(minLength: 0) }
       }
     case "card":
       image.resizable().scaledToFill()
@@ -669,7 +755,7 @@ private struct WidgetSurface<Content: View>: View {
         .overlay(RoundedRectangle(cornerRadius: 9, style: .continuous).stroke(Color.white.opacity(0.9), lineWidth: 4))
         .shadow(color: .black.opacity(0.18), radius: 5, y: 2)
         .rotationEffect(.degrees(2))
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: calendarPhotoLayout ? .bottomTrailing : .topTrailing)
         .padding(10)
     case "circle":
       image.resizable().scaledToFill()
@@ -677,7 +763,7 @@ private struct WidgetSurface<Content: View>: View {
         .clipShape(Circle())
         .overlay(Circle().stroke(Color.white.opacity(0.95), lineWidth: 3))
         .shadow(color: .black.opacity(0.18), radius: 4, y: 2)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: calendarPhotoLayout ? .bottomTrailing : .topTrailing)
         .padding(11)
     default:
       ZStack {
@@ -689,8 +775,8 @@ private struct WidgetSurface<Content: View>: View {
 
   var body: some View {
     GeometryReader { proxy in
-      let photo = appearance?.style == .photo ? loadWidgetPhoto(appearance?.photoFileName) : nil
-      let photoLayout = appearance?.photoLayout
+      let photo = loadWidgetPhoto(appearance?.photoFileName)
+      let photoLayout = appearance?.photoLayout ?? "background"
       let trailingInset: CGFloat = {
         guard photo != nil else { return 0 }
         switch photoLayout {
@@ -707,16 +793,20 @@ private struct WidgetSurface<Content: View>: View {
         }
         if palette.designPattern != nil, palette.designPattern != "plain", let pattern = palette.designPattern {
           DesignPatternLayer(pattern: pattern, colors: DesignPatternColors(checkColor: palette.designCheckColor))
+          if pattern == "dot" || pattern == "checkLavenderSatin" || pattern == "checkBeigeNoir" || pattern == "checkMauveFrame" {
+            DesignRibbonLayer(color: palette.accent)
+          }
         }
-        if let photo, let layout = appearance?.photoLayout {
-          photoLayer(photo, layout: layout, size: proxy.size)
+        if let photo = photo {
+          photoLayer(photo, layout: photoLayout, size: proxy.size)
         }
         content
           .padding(family == .systemSmall ? 10 : family == .systemLarge ? 16 : 12)
           .padding(.trailing, trailingInset)
-          .padding(.top, photo != nil && appearance?.photoLayout == "top" ? proxy.size.height * (family == .systemLarge ? 0.23 : 0.27) : 0)
+          .padding(.top, photo != nil && photoLayout == "top" && !calendarPhotoLayout ? proxy.size.height * (family == .systemLarge ? 0.23 : 0.27) : 0)
+          .padding(.bottom, photo != nil && photoLayout == "top" && calendarPhotoLayout ? proxy.size.height * (family == .systemLarge ? 0.23 : 0.27) : 0)
           .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-          .background(photo != nil && appearance?.style == .photo && appearance?.photoLayout == "background" ? Color.black.opacity(0.16) : Color.clear)
+          .background(photo != nil && photoLayout == "background" ? Color.black.opacity(0.16) : Color.clear)
       }
       .clipped()
     }
@@ -786,17 +876,20 @@ struct RhythmWidgetView: View {
         let preferredNext = nextAvailable && nextEnabled
         let noPreferredSection = !preferredCurrent && !preferredNext
         let showCurrent = preferredCurrent || (noPreferredSection && currentAvailable)
-        let showNext = preferredNext || (noPreferredSection && !currentAvailable && nextAvailable)
-        VStack(alignment: .leading, spacing: 10) {
+          let showNext = preferredNext || (noPreferredSection && !currentAvailable && nextAvailable)
+          VStack(alignment: .leading, spacing: 10) {
           Text("RhythmPace")
             .font(.headline.weight(.semibold))
             .foregroundStyle(palette.foreground)
           if showCurrent, let task = snapshot.currentTask {
-            Link(destination: URL(string: "rhythm://todo")!) {
-              HStack(alignment: .center, spacing: 8) {
-                WidgetTaskRow(task: task, palette: palette)
-                Spacer(minLength: 4)
-                if snapshot.isDisplayOptionEnabled("remainingTime") { TaskTimerRing(task: task, palette: palette) }
+            HStack(alignment: .center, spacing: 8) {
+              TaskCompletionButton(taskId: task.id, palette: palette)
+              Link(destination: URL(string: "rhythm://todo")!) {
+                HStack(alignment: .center, spacing: 8) {
+                  WidgetTaskRow(task: task, palette: palette)
+                  Spacer(minLength: 4)
+                  if snapshot.isDisplayOptionEnabled("remainingTime") { TaskTimerRing(task: task, palette: palette) }
+                }
               }
             }
           } else if showCurrent {
@@ -829,7 +922,7 @@ struct RhythmWidgetView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
       }
     }
-    .rhythmWidgetSurface(palette: palette, appearance: entry.snapshot?.appearance)
+    .rhythmWidgetSurface(palette: palette, appearance: entry.snapshot?.appearance, widgetKind: entry.widgetKind)
   }
 }
 
@@ -865,6 +958,12 @@ private struct CurrentTaskWidgetView: View {
                   }
                 }
               }
+              let remainingCount = max(0, (snapshot.todayNowTaskCount ?? more.count) - more.count)
+              if remainingCount > 0 {
+                Text("ほか\(remainingCount)件")
+                  .font(.caption.weight(.medium))
+                  .foregroundStyle(palette.secondary)
+              }
             }
           }
           .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
@@ -895,7 +994,7 @@ private struct CurrentTaskWidgetView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
       }
     }
-    .rhythmWidgetSurface(palette: palette, appearance: entry.snapshot?.appearance)
+    .rhythmWidgetSurface(palette: palette, appearance: entry.snapshot?.appearance, widgetKind: entry.widgetKind)
   }
 }
 
@@ -1037,7 +1136,7 @@ private struct NextScheduleWidgetView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
       }
     }
-    .rhythmWidgetSurface(palette: palette, appearance: entry.snapshot?.appearance)
+    .rhythmWidgetSurface(palette: palette, appearance: entry.snapshot?.appearance, widgetKind: entry.widgetKind)
   }
 }
 
@@ -1166,7 +1265,7 @@ private struct MonthlyCalendarWidgetView: View {
         Text("今月の予定はありません").font(.subheadline).foregroundStyle(palette.secondary)
       }
     }
-    .rhythmWidgetSurface(palette: palette, appearance: entry.snapshot?.appearance)
+    .rhythmWidgetSurface(palette: palette, appearance: entry.snapshot?.appearance, widgetKind: entry.widgetKind)
   }
 }
 
@@ -1214,7 +1313,7 @@ private struct WeeklyCalendarWidgetView: View {
         }
       } else { Text("今週の予定はありません").font(.subheadline).foregroundStyle(palette.secondary) }
     }
-    .rhythmWidgetSurface(palette: palette, appearance: entry.snapshot?.appearance)
+    .rhythmWidgetSurface(palette: palette, appearance: entry.snapshot?.appearance, widgetKind: entry.widgetKind)
   }
 }
 
@@ -1242,7 +1341,7 @@ private struct TodayScheduleWidgetView: View {
         }
       } else { VStack(alignment: .leading, spacing: 5) { Text("今日の予定").font(.headline.weight(.semibold)).foregroundStyle(palette.foreground); Text("予定はありません").font(.subheadline).foregroundStyle(palette.secondary) } }
     }
-    .rhythmWidgetSurface(palette: palette, appearance: entry.snapshot?.appearance)
+    .rhythmWidgetSurface(palette: palette, appearance: entry.snapshot?.appearance, widgetKind: entry.widgetKind)
   }
 }
 
@@ -1273,7 +1372,7 @@ private struct ChecklistWidgetView: View {
         }
       } else { VStack(alignment: .leading, spacing: 5) { Text("ToDoメモ").font(.caption.weight(.semibold)).foregroundStyle(palette.accent); Text("項目はありません").font(.subheadline).foregroundStyle(palette.secondary) } }
     }
-    .rhythmWidgetSurface(palette: palette, appearance: entry.snapshot?.appearance)
+    .rhythmWidgetSurface(palette: palette, appearance: entry.snapshot?.appearance, widgetKind: entry.widgetKind)
   }
 }
 
@@ -1295,7 +1394,7 @@ private struct GoalWidgetView: View {
         }
       } else { VStack(alignment: .leading, spacing: 5) { Text("叶えたいこと").font(.headline.weight(.semibold)).foregroundStyle(palette.foreground); Text("まだ登録されていません").font(.subheadline).foregroundStyle(palette.secondary) } }
     }
-    .rhythmWidgetSurface(palette: palette, appearance: entry.snapshot?.appearance)
+    .rhythmWidgetSurface(palette: palette, appearance: entry.snapshot?.appearance, widgetKind: entry.widgetKind)
   }
 }
 
@@ -1321,7 +1420,7 @@ private struct VoiceWidgetView: View {
       .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
     }
     .accessibilityLabel("音声入力。タップしてRhythmPaceで音声入力を開始")
-    .rhythmWidgetSurface(palette: palette, appearance: entry.snapshot?.appearance)
+    .rhythmWidgetSurface(palette: palette, appearance: entry.snapshot?.appearance, widgetKind: entry.widgetKind)
   }
 }
 
@@ -1372,13 +1471,13 @@ private struct AffirmationWidgetView: View {
       .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
     .accessibilityLabel("今日のアファメーション。タップしてRhythmPaceで設定を開く")
-    .rhythmWidgetSurface(palette: palette, appearance: appearance)
+    .rhythmWidgetSurface(palette: palette, appearance: appearance, widgetKind: entry.widgetKind)
   }
 }
 
 private extension View {
-  func rhythmWidgetSurface(palette: WidgetPalette, appearance: WidgetSnapshot.Appearance?) -> some View {
-    WidgetSurface(palette: palette, appearance: appearance) { self }
+  func rhythmWidgetSurface(palette: WidgetPalette, appearance: WidgetSnapshot.Appearance?, widgetKind: String? = nil) -> some View {
+    WidgetSurface(palette: palette, appearance: appearance, widgetKind: widgetKind) { self }
   }
 
   @ViewBuilder

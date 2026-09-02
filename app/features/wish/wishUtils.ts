@@ -1,6 +1,6 @@
 import { MonthlyReview, MonthlyWishState, WishMonthMap } from '../../types';
 
-const EMPTY_MONTHLY_WISH_STATE: MonthlyWishState = { monthlyGoal: '', wishes: [], actions: [], review: {} };
+const EMPTY_MONTHLY_WISH_STATE: MonthlyWishState = { monthlyGoal: '', wishes: [], actions: [], review: {}, topImageTitlePosition: 'bottom' };
 
 export function wishMonthKey(now = new Date()) {
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
@@ -16,6 +16,7 @@ export function createEmptyMonthlyWishState(): MonthlyWishState {
     wishes: [],
     actions: [],
     review: {},
+    topImageTitlePosition: 'bottom',
   };
 }
 
