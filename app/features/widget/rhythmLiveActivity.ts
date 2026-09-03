@@ -1,7 +1,29 @@
 import { requireOptionalNativeModule } from 'expo';
 import { Platform } from 'react-native';
+import type { LiveActivityDisplayOptions } from '../../types';
+
+export const DEFAULT_LIVE_ACTIVITY_DISPLAY_OPTIONS: LiveActivityDisplayOptions = {
+  currentTask: true,
+  nextSchedule: true,
+  departureCountdown: true,
+  focusRemaining: true,
+  affirmation: true,
+};
+
+export function normalizeRhythmLiveActivityDisplayOptions(value?: Partial<LiveActivityDisplayOptions> | null): LiveActivityDisplayOptions {
+  const normalized: LiveActivityDisplayOptions = {
+    currentTask: value?.currentTask !== false,
+    nextSchedule: value?.nextSchedule !== false,
+    departureCountdown: value?.departureCountdown !== false,
+    focusRemaining: value?.focusRemaining !== false,
+    affirmation: value?.affirmation !== false,
+  };
+  return Object.values(normalized).some(Boolean) ? normalized : { ...DEFAULT_LIVE_ACTIVITY_DISPLAY_OPTIONS };
+}
 
 export type RhythmLiveActivityPayload = {
+  /** Entitlement tier used to redact premium-only state before it reaches ActivityKit. */
+  tier: 'free' | 'design' | 'premium';
   mode: 'normal' | 'focus';
   currentTaskTitle?: string;
   nextScheduleTitle?: string;
@@ -9,7 +31,9 @@ export type RhythmLiveActivityPayload = {
   departureAt?: string;
   focusTaskTitle?: string;
   focusEndsAt?: string;
+  affirmationText?: string;
   accentHex?: string;
+  displayOptions?: LiveActivityDisplayOptions;
 };
 
 type RhythmLiveActivityNativeModule = {

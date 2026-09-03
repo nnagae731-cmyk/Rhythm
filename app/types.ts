@@ -11,6 +11,13 @@ export type Screen = 'home' | 'timeline' | 'analysis' | 'settings' | 'wish';
 export type TimeTab = 'departure' | 'deadline' | 'calendar' | 'focus';
 export type WidgetSize = 'small' | 'medium';
 export type WidgetType = 'current' | 'next' | 'combined' | 'monthly' | 'weekly' | 'today' | 'checklist' | 'goal' | 'voice' | 'affirmation';
+export type LiveActivityDisplayOptions = {
+  currentTask: boolean;
+  nextSchedule: boolean;
+  departureCountdown: boolean;
+  focusRemaining: boolean;
+  affirmation: boolean;
+};
 export type WidgetStyle = 'mono' | 'color' | 'photo';
 export type WidgetAccentColor = 'blue' | 'purple' | 'pink' | 'green' | 'orange' | 'gray';
 export type WidgetPhotoSource = 'widget' | 'wish';
@@ -280,6 +287,8 @@ export type PersistedState = {
   premiumTrialReminderEnabled?: boolean;
   /** Premium-only Live Activity preference; optional for older saves. */
   liveActivityEnabled?: boolean;
+  /** Premium Live Activity content selection; optional for older saves. */
+  liveActivityDisplayOptions?: LiveActivityDisplayOptions;
   reviewPromptedAt?: string;
   taskTemplates?: string[];
   chicPattern?: ChicPattern;

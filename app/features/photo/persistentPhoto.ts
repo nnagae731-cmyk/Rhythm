@@ -26,6 +26,16 @@ export function persistPhotoUri(sourceUri: string, purpose: string): string {
   return destination.uri;
 }
 
+/** DEV diagnostics only: confirms a managed URI is still present on disk. */
+export function isPersistedPhotoAvailable(uri: string | undefined) {
+  if (!uri) return false;
+  try {
+    return new File(uri).exists;
+  } catch {
+    return false;
+  }
+}
+
 /** Deletes only Rhythm-owned copies. Picker, library and legacy URIs are never removed. */
 export function deleteManagedPhotoUri(uri: string | undefined, retainedUris: Iterable<string | undefined> = []) {
   if (!uri || !isManagedPhotoUri(uri)) return;

@@ -9,40 +9,71 @@ struct RhythmLiveActivityWidget: Widget {
       RhythmLiveActivityLockScreenView(state: context.state)
         .activityBackgroundTint(Color(hex: context.state.accentHex).opacity(0.12))
         .activitySystemActionForegroundColor(Color(hex: context.state.accentHex))
-        .widgetURL(URL(string: context.state.mode == .focus ? "rhythm://focus" : "rhythm://today"))
+        .widgetURL(URL(string: context.state.mode == .focus && context.state.tier == .premium && context.state.displayOptions.focusRemaining ? "rhythm://focus" : "rhythm://today"))
     } dynamicIsland: { context in
       DynamicIsland {
         DynamicIslandExpandedRegion(.leading) {
-          Text(context.state.mode == .focus ? "集中" : "Rhythm")
+          Text(RhythmLiveActivityCopy.statusLabel(for: context.state))
             .font(.caption.weight(.semibold))
+            .lineLimit(1)
         }
         DynamicIslandExpandedRegion(.center) {
-          Text(RhythmLiveActivityCopy.title(for: context.state))
+          Text(RhythmLiveActivityCopy.dynamicIslandTitle(for: context.state))
             .font(.headline)
-            .lineLimit(1)
+            .lineLimit(RhythmLiveActivityCopy.isAffirmationOnly(context.state) ? 2 : 1)
             .minimumScaleFactor(0.7)
         }
         DynamicIslandExpandedRegion(.bottom) {
-          RhythmLiveActivityDetail(state: context.state)
+          RhythmLiveActivityDetail(state: context.state, suppressAffirmationOnly: true)
         }
       } compactLeading: {
-        Image(systemName: context.state.mode == .focus ? "timer" : "checkmark.circle")
+        Image(systemName: RhythmLiveActivityCopy.iconName(for: context.state))
+          .accessibilityHidden(true)
       } compactTrailing: {
         RhythmLiveActivityTimer(state: context.state)
       } minimal: {
-        Image(systemName: context.state.mode == .focus ? "timer" : "checkmark.circle")
+        Image(systemName: RhythmLiveActivityCopy.iconName(for: context.state))
+          .accessibilityHidden(true)
       }
-      .widgetURL(URL(string: context.state.mode == .focus ? "rhythm://focus" : "rhythm://today"))
+      .widgetURL(URL(string: context.state.mode == .focus && context.state.tier == .premium && context.state.displayOptions.focusRemaining ? "rhythm://focus" : "rhythm://today"))
     }
   }
 }
 
 @available(iOS 16.1, *)
 private enum RhythmLiveActivityCopy {
+  static func isAffirmationOnly(_ state: RhythmLiveActivityAttributes.ContentState) -> Bool {
+    guard state.tier == .premium, state.mode == .normal, state.displayOptions.affirmation,
+          let text = state.affirmationText?.trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty else { return false }
+    let hasDeparture = state.displayOptions.departureCountdown && state.departureAt != nil
+    let hasNext = state.displayOptions.nextSchedule && state.nextScheduleAt != nil && state.nextScheduleTitle?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
+    let hasCurrent = state.displayOptions.currentTask && state.currentTaskTitle?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
+    return !hasDeparture && !hasNext && !hasCurrent
+  }
+
+  static func dynamicIslandTitle(for state: RhythmLiveActivityAttributes.ContentState) -> String {
+    if isAffirmationOnly(state), let text = state.affirmationText?.trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty { return text }
+    return title(for: state)
+  }
+
+  static func statusLabel(for state: RhythmLiveActivityAttributes.ContentState) -> String {
+    if state.tier == .premium && state.mode == .focus && state.displayOptions.focusRemaining { return "集中" }
+    if state.tier == .premium && state.departureAt != nil && state.displayOptions.departureCountdown { return "次の予定" }
+    return "Rhythm"
+  }
+
+  static func iconName(for state: RhythmLiveActivityAttributes.ContentState) -> String {
+    state.tier == .premium && state.mode == .focus && state.displayOptions.focusRemaining ? "timer" : "checkmark.circle"
+  }
+
   static func title(for state: RhythmLiveActivityAttributes.ContentState) -> String {
-    if state.mode == .focus, let title = state.focusTaskTitle?.trimmingCharacters(in: .whitespacesAndNewlines), !title.isEmpty { return title }
-    if state.mode == .normal, let title = state.currentTaskTitle?.trimmingCharacters(in: .whitespacesAndNewlines), !title.isEmpty { return title }
-    return state.mode == .focus ? "集中タイム" : "今日のRhythm"
+    if state.tier == .premium && state.mode == .focus && state.displayOptions.focusRemaining, let title = state.focusTaskTitle?.trimmingCharacters(in: .whitespacesAndNewlines), !title.isEmpty { return title }
+    if state.tier == .premium && state.departureAt != nil && state.displayOptions.departureCountdown,
+       let title = state.nextScheduleTitle?.trimmingCharacters(in: .whitespacesAndNewlines), !title.isEmpty { return title }
+    if state.tier == .premium && state.displayOptions.nextSchedule, let title = state.nextScheduleTitle?.trimmingCharacters(in: .whitespacesAndNewlines), !title.isEmpty { return title }
+    if state.tier != .premium || state.displayOptions.currentTask,
+       let title = state.currentTaskTitle?.trimmingCharacters(in: .whitespacesAndNewlines), !title.isEmpty { return title }
+    return state.tier == .premium && state.mode == .focus && state.displayOptions.focusRemaining ? "集中タイム" : "今日のRhythm"
   }
 }
 
@@ -51,33 +82,50 @@ private struct RhythmLiveActivityLockScreenView: View {
   let state: RhythmLiveActivityAttributes.ContentState
   var body: some View {
     VStack(alignment: .leading, spacing: 8) {
-      Text(state.mode == .focus ? "集中タイム" : "今日のRhythm")
+      Text(RhythmLiveActivityCopy.statusLabel(for: state))
         .font(.caption.weight(.semibold)).foregroundStyle(.secondary)
       Text(RhythmLiveActivityCopy.title(for: state))
         .font(.headline).lineLimit(2).minimumScaleFactor(0.75)
-      RhythmLiveActivityDetail(state: state)
+      RhythmLiveActivityDetail(state: state, suppressAffirmationOnly: false)
     }.padding(.horizontal, 16).padding(.vertical, 12)
+      .accessibilityElement(children: .combine)
+      .accessibilityLabel(RhythmLiveActivityAccessibility.label(for: state))
   }
 }
 
 @available(iOS 16.1, *)
 private struct RhythmLiveActivityDetail: View {
   let state: RhythmLiveActivityAttributes.ContentState
+  let suppressAffirmationOnly: Bool
   var body: some View {
     VStack(alignment: .leading, spacing: 4) {
-      if state.mode == .normal {
-        if let title = state.nextScheduleTitle, let date = state.nextScheduleAt {
+      if state.tier == .premium && state.mode == .focus && state.displayOptions.focusRemaining {
+        if let ends = state.focusEndsAt {
+          Label { Text(ends, style: .timer).lineLimit(1) } icon: { Image(systemName: "timer") }
+            .font(.title3.monospacedDigit())
+        }
+        if state.displayOptions.affirmation { RhythmLiveActivityAffirmation(text: state.affirmationText) }
+      } else if state.tier == .premium {
+        if state.displayOptions.nextSchedule, let title = state.nextScheduleTitle, let date = state.nextScheduleAt {
           Label { Text(title).lineLimit(1) } icon: { Image(systemName: "calendar") }
           Text(date, style: .time).font(.caption2).foregroundStyle(.secondary)
         }
-        if let departure = state.departureAt {
+        if state.displayOptions.departureCountdown, let departure = state.departureAt {
           Label { Text(departure, style: .relative).lineLimit(1) } icon: { Image(systemName: "figure.walk") }
             .font(.caption)
         }
-      } else if let ends = state.focusEndsAt {
-        Label { Text(ends, style: .timer) } icon: { Image(systemName: "timer") }
-          .font(.title3.monospacedDigit())
+        if state.displayOptions.affirmation && (!suppressAffirmationOnly || !RhythmLiveActivityCopy.isAffirmationOnly(state)) { RhythmLiveActivityAffirmation(text: state.affirmationText) }
       }
+    }
+  }
+}
+
+@available(iOS 16.1, *)
+private struct RhythmLiveActivityAffirmation: View {
+  let text: String?
+  var body: some View {
+    if let text, !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+      Text(text).font(.caption2).foregroundStyle(.secondary).lineLimit(1).minimumScaleFactor(0.8)
     }
   }
 }
@@ -86,9 +134,29 @@ private struct RhythmLiveActivityDetail: View {
 private struct RhythmLiveActivityTimer: View {
   let state: RhythmLiveActivityAttributes.ContentState
   var body: some View {
-    if let date = state.mode == .focus ? state.focusEndsAt : state.nextScheduleAt {
-      Text(date, style: .timer).font(.caption2.monospacedDigit())
-    } else { Image(systemName: "circle") }
+    if state.tier == .premium {
+      if state.mode == .focus && state.displayOptions.focusRemaining, let date = state.focusEndsAt {
+        Text(date, style: .timer).font(.caption2.monospacedDigit())
+      } else if state.displayOptions.departureCountdown, let date = state.departureAt {
+        Text(date, style: .timer).font(.caption2.monospacedDigit())
+      } else if state.displayOptions.nextSchedule, let date = state.nextScheduleAt {
+        Text(date, style: .timer).font(.caption2.monospacedDigit())
+      } else {
+        Image(systemName: "checkmark.circle").accessibilityHidden(true)
+      }
+    } else {
+      Image(systemName: "checkmark.circle").accessibilityHidden(true)
+    }
+  }
+}
+
+@available(iOS 16.1, *)
+private enum RhythmLiveActivityAccessibility {
+  static func label(for state: RhythmLiveActivityAttributes.ContentState) -> String {
+    let title = RhythmLiveActivityCopy.title(for: state)
+    if state.tier == .premium && state.mode == .focus && state.displayOptions.focusRemaining { return "集中タイム。\(title)" }
+    if state.tier == .premium && state.departureAt != nil && state.displayOptions.departureCountdown { return "次の予定。\(title)" }
+    return "今はこれ。\(title)"
   }
 }
 

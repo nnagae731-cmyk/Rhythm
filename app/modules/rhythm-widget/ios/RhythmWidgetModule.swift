@@ -119,12 +119,12 @@ public final class RhythmWidgetModule: Module {
     AsyncFunction("isWidgetPhotoBackgroundRemovalAvailable") { () -> Bool in
       if #available(iOS 17.0, *) {
         #if DEBUG
-        print("[BackgroundRemoval] availability true")
+        print("[BackgroundRemoval][Native] availability true")
         #endif
         return true
       }
       #if DEBUG
-      print("[BackgroundRemoval] availability false")
+      print("[BackgroundRemoval][Native] availability false")
       #endif
       return false
     }
@@ -135,13 +135,21 @@ public final class RhythmWidgetModule: Module {
       }
       guard #available(iOS 17.0, *) else { return nil }
       #if DEBUG
-      print("[BackgroundRemoval] start widget=\(widgetType)")
+      print("[BackgroundRemoval][Native] start")
+      print("[BackgroundRemoval][Native] widget=\(widgetType)")
       #endif
       let sourceURL = Self.resolvedFileURL(uri)
-      guard FileManager.default.fileExists(atPath: sourceURL.path) else {
+      let sourceExists = FileManager.default.fileExists(atPath: sourceURL.path)
+      #if DEBUG
+      print("[BackgroundRemoval][Native] sourceExists \(sourceExists)")
+      #endif
+      guard sourceExists else {
         throw NSError(domain: "RhythmWidget", code: 11, userInfo: [NSLocalizedDescriptionKey: "Widget photo file is unavailable"])
       }
       let sourcePath = sourceURL.path
+      #if DEBUG
+      print("[BackgroundRemoval][Native] sourcePath \(sourcePath)")
+      #endif
       let pngData: Data
       do {
         pngData = try await Task.detached(priority: .userInitiated) {
@@ -149,7 +157,7 @@ public final class RhythmWidgetModule: Module {
         }.value
       } catch {
         #if DEBUG
-        print("[BackgroundRemoval] error \(error.localizedDescription)")
+        print("[BackgroundRemoval][Native] error \(error.localizedDescription)")
         #endif
         throw error
       }
@@ -159,14 +167,31 @@ public final class RhythmWidgetModule: Module {
       let fileName = "\(self.widgetCutoutPrefix)\(widgetType).png"
       let destination = container.appendingPathComponent(fileName)
       try Self.atomicWrite(pngData, to: destination)
+      #if DEBUG
+      print("[BackgroundRemoval][Native] appGroupWrite \(destination.path)")
+      #endif
       // Keep a managed cache copy so the RN preview can display the result;
       // the Widget itself reads only the App Group filename from the snapshot.
       let cacheURL = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0].appendingPathComponent(fileName)
-      try? Self.atomicWrite(pngData, to: cacheURL)
+      let cacheWritten: Bool
+      do {
+        try Self.atomicWrite(pngData, to: cacheURL)
+        cacheWritten = true
+      } catch {
+        // App Group output is already valid. Returning it keeps the cutout
+        // usable even if the optional preview cache cannot be written.
+        cacheWritten = false
+        #if DEBUG
+        print("[BackgroundRemoval][Native] cacheWrite failure \(error.localizedDescription)")
+        #endif
+      }
       #if DEBUG
-      print("[BackgroundRemoval] success widget=\(widgetType)")
+      print("[BackgroundRemoval][Native] pngBytes \(pngData.count)")
+      print("[BackgroundRemoval][Native] cacheURL \(cacheURL.path)")
+      print("[BackgroundRemoval][Native] cacheWritten \(cacheWritten)")
+      print("[BackgroundRemoval][Native] success widget=\(widgetType)")
       #endif
-      return FileManager.default.fileExists(atPath: cacheURL.path) ? cacheURL.absoluteString : nil
+      return cacheWritten ? cacheURL.absoluteString : destination.absoluteString
     }
 
     AsyncFunction("saveWidgetPhotoCutout") { (uri: String, widgetType: String) throws -> Bool in
@@ -174,11 +199,19 @@ public final class RhythmWidgetModule: Module {
         throw NSError(domain: "RhythmWidget", code: 13, userInfo: [NSLocalizedDescriptionKey: "Invalid widget cutout target"])
       }
       let sourceURL = Self.resolvedFileURL(uri)
-      guard FileManager.default.fileExists(atPath: sourceURL.path) else {
+      let sourceExists = FileManager.default.fileExists(atPath: sourceURL.path)
+      #if DEBUG
+      print("[BackgroundRemoval][Native] appGroupSourcePath \(sourceURL.path)")
+      print("[BackgroundRemoval][Native] appGroupSourceExists \(sourceExists)")
+      #endif
+      guard sourceExists else {
         throw NSError(domain: "RhythmWidget", code: 14, userInfo: [NSLocalizedDescriptionKey: "Widget cutout file is unavailable"])
       }
       let destination = container.appendingPathComponent("\(self.widgetCutoutPrefix)\(widgetType).png")
       try Self.atomicCopy(from: sourceURL, to: destination)
+      #if DEBUG
+      print("[BackgroundRemoval][Native] appGroupCopy widget=\(widgetType) success=true")
+      #endif
       return true
     }
 
@@ -287,15 +320,18 @@ private extension RhythmWidgetModule {
     let request = VNGenerateForegroundInstanceMaskRequest()
     try handler.perform([request])
     #if DEBUG
-    print("[BackgroundRemoval] instances \(request.results?.first?.allInstances.count ?? 0)")
+    print("[BackgroundRemoval][Native] instances \(request.results?.first?.allInstances.count ?? 0)")
     #endif
     guard let observation = request.results?.first, !observation.allInstances.isEmpty else {
       #if DEBUG
-      print("[BackgroundRemoval] no-foreground")
+      print("[BackgroundRemoval][Native] no-foreground")
       #endif
       throw NSError(domain: "RhythmWidget", code: 16, userInfo: [NSLocalizedDescriptionKey: "No foreground subject detected"])
     }
     let maskedBuffer = try observation.generateMaskedImage(ofInstances: observation.allInstances, from: handler, croppedToInstancesExtent: false)
+    #if DEBUG
+    print("[BackgroundRemoval][Native] maskedBuffer \(CVPixelBufferGetWidth(maskedBuffer))x\(CVPixelBufferGetHeight(maskedBuffer))")
+    #endif
     let ciImage = CIImage(cvPixelBuffer: maskedBuffer)
     let context = CIContext(options: nil)
     guard let output = context.createCGImage(ciImage, from: ciImage.extent) else {
@@ -304,6 +340,9 @@ private extension RhythmWidgetModule {
     guard let png = UIImage(cgImage: output, scale: 1, orientation: .up).pngData() else {
       throw NSError(domain: "RhythmWidget", code: 18, userInfo: [NSLocalizedDescriptionKey: "Foreground mask could not be encoded"])
     }
+    #if DEBUG
+    print("[BackgroundRemoval][Native] pngBytes \(png.count)")
+    #endif
     return png
   }
 }
@@ -326,6 +365,15 @@ private extension RhythmWidgetModule {
     guard let data = payload.data(using: .utf8),
           let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return nil }
     let mode = RhythmLiveActivityAttributes.ContentState.Mode(rawValue: object["mode"] as? String ?? "normal") ?? .normal
+    let tier = RhythmLiveActivityAttributes.ContentState.Tier(rawValue: object["tier"] as? String ?? "free") ?? .free
+    let displayObject = object["displayOptions"] as? [String: Any]
+    let displayOptions = RhythmLiveActivityAttributes.ContentState.DisplayOptions(
+      currentTask: displayObject?["currentTask"] as? Bool ?? true,
+      nextSchedule: displayObject?["nextSchedule"] as? Bool ?? true,
+      departureCountdown: displayObject?["departureCountdown"] as? Bool ?? true,
+      focusRemaining: displayObject?["focusRemaining"] as? Bool ?? true,
+      affirmation: displayObject?["affirmation"] as? Bool ?? true
+    )
     let date = { (key: String) -> Date? in
       guard let value = object[key] as? String else { return nil }
       return liveActivityDateFormatter.date(from: value) ?? ISO8601DateFormatter().date(from: value)
@@ -337,13 +385,16 @@ private extension RhythmWidgetModule {
     }
     return RhythmLiveActivityAttributes.ContentState(
       mode: mode,
+      tier: tier,
       currentTaskTitle: text("currentTaskTitle"),
       nextScheduleTitle: text("nextScheduleTitle"),
       nextScheduleAt: date("nextScheduleAt"),
       departureAt: date("departureAt"),
       focusTaskTitle: text("focusTaskTitle"),
       focusEndsAt: date("focusEndsAt"),
-      accentHex: text("accentHex") ?? "#7559E8"
+      affirmationText: text("affirmationText"),
+      accentHex: text("accentHex") ?? "#7559E8",
+      displayOptions: displayOptions
     )
   }
 

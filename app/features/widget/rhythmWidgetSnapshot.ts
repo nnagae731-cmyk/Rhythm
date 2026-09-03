@@ -386,15 +386,32 @@ export async function saveRhythmWidgetPhotoForWidget(uri: string, widgetType: Wi
 export async function generateRhythmWidgetPhotoCutout(uri: string, widgetType: WidgetType) {
   if (Platform.OS !== 'ios') return false as const;
   const module = requireOptionalNativeModule<RhythmWidgetNativeModule>('RhythmWidget');
-  if (!module?.removeWidgetPhotoBackground) return false as const;
-  return (await module.removeWidgetPhotoBackground(uri, widgetType)) ?? false;
+  if (__DEV__) console.log('[BackgroundRemoval][JS] start', { widgetType });
+  if (__DEV__) console.log('[BackgroundRemoval][JS] sourceUri', uri);
+  if (!module?.removeWidgetPhotoBackground) {
+    if (__DEV__) console.log('[BackgroundRemoval][JS] nativeResult', { available: false, reason: 'module unavailable' });
+    return false as const;
+  }
+  try {
+    const result = (await module.removeWidgetPhotoBackground(uri, widgetType)) ?? false;
+    if (__DEV__) console.log('[BackgroundRemoval][JS] nativeResult', { available: true, success: Boolean(result) });
+    return result;
+  } catch (error) {
+    if (__DEV__) console.log('[BackgroundRemoval][JS] nativeResult', { available: true, success: false, error: error instanceof Error ? error.message : String(error) });
+    throw error;
+  }
 }
 
 export async function isRhythmWidgetPhotoBackgroundRemovalAvailable() {
   if (Platform.OS !== 'ios') return false;
   const module = requireOptionalNativeModule<RhythmWidgetNativeModule>('RhythmWidget');
-  if (!module?.isWidgetPhotoBackgroundRemovalAvailable) return false;
-  return module.isWidgetPhotoBackgroundRemovalAvailable();
+  if (!module?.isWidgetPhotoBackgroundRemovalAvailable) {
+    if (__DEV__) console.log('[BackgroundRemoval][JS] nativeAvailable', false);
+    return false;
+  }
+  const available = await module.isWidgetPhotoBackgroundRemovalAvailable();
+  if (__DEV__) console.log('[BackgroundRemoval][JS] nativeAvailable', available);
+  return available;
 }
 
 /** Copies the cached foreground PNG into the stable App Group filename. */
@@ -402,7 +419,9 @@ export async function saveRhythmWidgetPhotoCutout(uri: string, widgetType: Widge
   if (Platform.OS !== 'ios') return false;
   const module = requireOptionalNativeModule<RhythmWidgetNativeModule>('RhythmWidget');
   if (!module?.saveWidgetPhotoCutout) return false;
-  return module.saveWidgetPhotoCutout(uri, widgetType);
+  const copied = await module.saveWidgetPhotoCutout(uri, widgetType);
+  if (__DEV__) console.log('[BackgroundRemoval][JS] appGroupCopy', { widgetType, success: copied });
+  return copied;
 }
 
 export async function saveRhythmAffirmationPhoto(uri: string, slot: number) {

@@ -18,6 +18,14 @@ const WIDGET_DESIGN_ASSETS = [
   { fileName: 'vintage-bloom.jpg', source: path.join('assets', 'themes', 'floral', 'vintage-bloom.jpg'), lastKnownFileType: 'image.jpeg' },
   { fileName: 'botanical-line.jpg', source: path.join('assets', 'themes', 'floral', 'botanical-line.jpg'), lastKnownFileType: 'image.jpeg' },
   { fileName: 'sheer-floral.jpg', source: path.join('assets', 'themes', 'floral', 'sheer-floral.jpg'), lastKnownFileType: 'image.jpeg' },
+  // Finished transparent floral artwork is supplied independently. Keep the
+  // filename contract here so adding/replacing PNGs never requires Swift
+  // changes; absent files are intentionally skipped during prebuild.
+  ...['1', '2', '3'].flatMap((pattern) => ['small', 'medium', 'large'].map((family) => ({
+    fileName: `widget-floral${pattern}-${family}.png`,
+    source: path.join('assets', 'themes', 'floral', `widget-floral${pattern}-${family}.png`),
+    lastKnownFileType: 'image.png',
+  }))),
 ];
 
 const RESOURCE_BUNDLE_SIGNING_MARKER = '# @rhythm-widget-resource-bundle-signing';
@@ -132,7 +140,8 @@ function copyWidgetTemplate(iosRoot) {
   fs.mkdirSync(destinationRoot, { recursive: true });
   TEMPLATE_FILES.forEach((file) => fs.copyFileSync(path.join(templateRoot, file), path.join(destinationRoot, file)));
   WIDGET_DESIGN_ASSETS.forEach(({ fileName, source }) => {
-    fs.copyFileSync(path.join(__dirname, '..', source), path.join(destinationRoot, fileName));
+    const sourcePath = path.join(__dirname, '..', source);
+    if (fs.existsSync(sourcePath)) fs.copyFileSync(sourcePath, path.join(destinationRoot, fileName));
   });
 }
 
@@ -322,9 +331,8 @@ function ensureWidgetSourceFiles(project, target) {
 }
 
 function ensureWidgetResourceFiles(project, target) {
-  const resourceFiles = [
-    ...WIDGET_DESIGN_ASSETS,
-  ];
+  const sourceRoot = path.join(__dirname, '..');
+  const resourceFiles = WIDGET_DESIGN_ASSETS.filter(({ source }) => fs.existsSync(path.join(sourceRoot, source)));
   const { group } = ensureWidgetSourceGroup(project);
   const fileReferences = project.getPBXObject('PBXFileReference') ?? {};
   const buildFiles = project.pbxBuildFileSection();

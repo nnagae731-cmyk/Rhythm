@@ -15,6 +15,7 @@ import {
 } from '../features/widget/widgetSettings';
 import type { WidgetEntitlementOverride } from '../features/widget/widgetSettings';
 import { deleteManagedPhotoUri } from '../features/photo/persistentPhoto';
+import { getWidgetFloralAssetSource } from '../features/widget/widgetFloralAssets';
 
 type WidgetSettingsCardProps = {
   settings: WidgetSettings;
@@ -83,6 +84,8 @@ function WidgetTypePreview({ type, style, photoUri, cutoutUri, photoLayout = 'ba
   const photoCardHeight = compact ? 70 : previewSize === 'large' ? 116 : 88;
   const photoCircleSize = compact ? 50 : previewSize === 'large' ? 86 : 64;
   const photoSourceUri = photoLayout === 'cutout' ? cutoutUri ?? photoUri : photoUri;
+  const floralPattern = designPattern === 'floral' ? 'vintageBloom' : designPattern === 'floralSoft' ? 'botanicalLine' : designPattern === 'floralSeasonal' || designPattern === 'floralDark' ? 'sheerFloral' : undefined;
+  const floralAssetSource = floralPattern ? getWidgetFloralAssetSource(floralPattern, previewSize ?? 'medium') : undefined;
   return <View style={[{ padding: 12, borderRadius: 12, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.screenBackground, overflow: 'hidden' }, previewSizeStyle]}>
     {style === 'photo' && photoSourceUri && photoLayout === 'background' && <Image source={{ uri: photoSourceUri }} resizeMode="cover" style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, opacity: 0.72 }} />}
     {style === 'photo' && photoSourceUri && photoLayout === 'right' && <Image source={{ uri: photoSourceUri }} resizeMode="cover" style={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: compact ? '34%' : previewSize === 'large' ? '42%' : '38%', opacity: 0.9 }} />}
@@ -91,7 +94,8 @@ function WidgetTypePreview({ type, style, photoUri, cutoutUri, photoLayout = 'ba
     {style === 'photo' && photoSourceUri && photoLayout === 'circle' && <Image source={{ uri: photoSourceUri }} resizeMode="cover" style={{ position: 'absolute', right: 12, top: isCalendarType ? undefined : 18, bottom: isCalendarType ? 12 : undefined, width: photoCircleSize, height: photoCircleSize, borderRadius: photoCircleSize / 2, borderWidth: 3, borderColor: '#FFFFFF', opacity: 0.95 }} />}
     {style === 'photo' && photoSourceUri && photoLayout === 'cutout' && <Image source={{ uri: photoSourceUri }} resizeMode="contain" style={{ position: 'absolute', right: compact ? 12 : previewSize === 'large' ? 20 : 16, top: compact ? '16%' : '10%', width: compact ? '48%' : previewSize === 'large' ? '52%' : '46%', height: compact ? '68%' : '80%' }} />}
     {style === 'photo' && photoSourceUri && <View pointerEvents="none" style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, backgroundColor: photoLayout === 'background' ? 'rgba(255,255,255,0.3)' : 'transparent' }} />}
-    {style !== 'photo' && PatternDecor && designPattern && designPattern !== 'plain' && <View pointerEvents="none" style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, opacity: 0.32 }}><PatternDecor pattern={designPattern} accent={colors.primaryAccent} warm={colors.softAccent} checkColor={designCheckColor} preview /></View>}
+    {floralAssetSource && <View pointerEvents="none" style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0 }}><Image source={floralAssetSource} resizeMode="contain" style={{ width: '100%', height: '100%' }} /></View>}
+    {style !== 'photo' && PatternDecor && designPattern && designPattern !== 'plain' && !floralPattern && <View pointerEvents="none" style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, opacity: 0.32 }}><PatternDecor pattern={designPattern} accent={colors.primaryAccent} warm={colors.softAccent} checkColor={designCheckColor} preview /></View>}
     <View style={{ gap: 7 }}>
       {type === 'current' && <><Text style={{ color: colors.secondaryText, fontSize: 10, fontWeight: '700' }}>今はこれ</Text><Text style={{ color: colors.primaryText, fontSize: 16, fontWeight: '900' }}>資料をまとめる</Text><Text style={{ color: colors.secondaryText, fontSize: 10 }}>15:10開始</Text></>}
       {type === 'next' && <><Text style={{ color: colors.secondaryText, fontSize: 10, fontWeight: '700' }}>次の予定</Text><Text style={{ color: colors.primaryText, fontSize: 18, fontWeight: '900' }}>18:00　美容院</Text><Text style={{ color: colors.primaryAccent, fontSize: 11, fontWeight: '800' }}>出発まで 1時間42分</Text></>}

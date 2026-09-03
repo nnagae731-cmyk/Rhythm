@@ -1,0 +1,17 @@
+{
+  "vintageBloom": {
+    "small": "widget-floral1-small.png",
+    "medium": "widget-floral1-medium.png",
+    "large": "widget-floral1-large.png"
+  },
+  "botanicalLine": {
+    "small": "widget-floral2-small.png",
+    "medium": "widget-floral2-medium.png",
+    "large": "widget-floral2-large.png"
+  },
+  "sheerFloral": {
+    "small": "widget-floral3-small.png",
+    "medium": "widget-floral3-medium.png",
+    "large": "widget-floral3-large.png"
+  }
+}

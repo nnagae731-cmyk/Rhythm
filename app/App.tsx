@@ -41,7 +41,7 @@ import { RecoveryModal } from './components/RecoveryModal';
 import { DesignCustomizeModal } from './components/DesignCustomizeModal';
 import { TravelAppsSettingsCard } from './components/TravelAppsSettingsCard';
 import { styles } from './styles/appStyles';
-import { Affirmation, AffirmationCustomText, CalendarMarks, Category, DeparturePlan, DeparturePreparationStatus, DevDesignCustomizeOverride, MonthlyReflectionCard, MonthlyReview, MonthlyWishState, NudgeMode, PersistedState, PhotoThemePhotoTarget, PhotoThemeSettings, Priority, RepeatRule, Screen, SharedEvent, SharedParticipantPrefs, Subtask, Task, TaskBucket, TaskListItem, ThemeMode, TimeTab, UrgencyStatus, WidgetSettings, WidgetSize, WidgetType, WishAction, WishMonthMap } from './types';
+import { Affirmation, AffirmationCustomText, CalendarMarks, Category, DeparturePlan, DeparturePreparationStatus, DevDesignCustomizeOverride, LiveActivityDisplayOptions, MonthlyReflectionCard, MonthlyReview, MonthlyWishState, NudgeMode, PersistedState, PhotoThemePhotoTarget, PhotoThemeSettings, Priority, RepeatRule, Screen, SharedEvent, SharedParticipantPrefs, Subtask, Task, TaskBucket, TaskListItem, ThemeMode, TimeTab, UrgencyStatus, WidgetSettings, WidgetSize, WidgetType, WishAction, WishMonthMap } from './types';
 import { initialPlan } from './storage/rhythmState';
 import { DEFAULT_TRAVEL_APP_SETTINGS, normalizeTravelAppSettings, TravelAppSettings } from './features/travel/travelApps';
 import { loadRhythmState, saveRhythmState } from './storage/rhythmStorage';
@@ -55,7 +55,7 @@ import { getMonthlyWishState, normalizeWishMonthsForSave, wishMonthKey } from '.
 import { cancelPendingTaskNotifications } from './features/tasks/taskNotifications';
 import { cancelPendingDepartureNotifications } from './features/departure/departureNotifications';
 import { getDeparturePlanMode, getPlanScheduledTime, isArrivalReversePlan, isDepartureReminderPlan, normalizeDeparturePlanForSave } from './features/departure/departurePlanMode';
-import { endRhythmLiveActivity, startOrUpdateRhythmLiveActivity, type RhythmLiveActivityPayload } from './features/widget/rhythmLiveActivity';
+import { DEFAULT_LIVE_ACTIVITY_DISPLAY_OPTIONS, endRhythmLiveActivity, normalizeRhythmLiveActivityDisplayOptions, startOrUpdateRhythmLiveActivity, type RhythmLiveActivityPayload } from './features/widget/rhythmLiveActivity';
 import { WishScreen } from './WishScreen';
 import { VoiceInputModal } from './components/VoiceInputModal';
 import { VoiceParseResult } from './features/voiceParser';
@@ -66,7 +66,7 @@ import type { RoutineArchive } from './types';
 import { SharedEventScreen } from './SharedEventScreen';
 import { TopImageCropModal } from './components/TopImageCropModal';
 import { cropRectToPixels, displayToNormalizedRect, getContainBounds, getInitialCropRect, NormalizedCropRect } from './features/photo/topImageCrop';
-import { deleteManagedPhotoUri, persistPhotoUri } from './features/photo/persistentPhoto';
+import { deleteManagedPhotoUri, isPersistedPhotoAvailable, persistPhotoUri } from './features/photo/persistentPhoto';
 import { canUseNotifications, getNotificationPermissionAction, getNotificationPermissionStatus, requestRhythmNotificationPermission } from './features/notifications/notificationPermission';
 import { addHours, canCreateWish, canCreateWishAction, canImportCalendar, canStartPremiumDesignTrial, isPremiumDesignTrialActive, isPremiumDesignUnlocked, isWidgetPhotoUnlockActive } from './features/ads/rewardedAccessLogic';
 import { getRequiredAds, REWARDED_AD_RULES, RewardedFeatureId } from './features/ads/rewardedAccess';
@@ -524,6 +524,7 @@ export default function App() {
   const [focusTimerActive, setFocusTimerActive] = useState(false);
   const [focusActivity, setFocusActivity] = useState<{ taskTitle?: string; endsAt?: string }>();
   const [liveActivityEnabled, setLiveActivityEnabled] = useState(false);
+  const [liveActivityDisplayOptions, setLiveActivityDisplayOptions] = useState<LiveActivityDisplayOptions>(() => ({ ...DEFAULT_LIVE_ACTIVITY_DISPLAY_OPTIONS }));
   const liveActivitySerializedRef = React.useRef<string | undefined>(undefined);
   const [voiceFocusRequest, setVoiceFocusRequest] = useState<{ durationMinutes: number; id: number }>();
   const [rewardedAccess, setRewardedAccess] = useState<RewardedAccessState>(DEFAULT_REWARDED_ACCESS_STATE);
@@ -1384,6 +1385,7 @@ export default function App() {
     const effectiveDesignAccess = overrideDesign || ((override == null || override === 'actual') && hasDesignCustomizeAccess);
     const unlockActive = isWidgetPhotoUnlockActive(rewardedAccess, widgetType, new Date());
     if (effectivePlanTier !== 'premium' && !effectiveDesignAccess && !unlockActive) return false;
+    if (__DEV__) console.log('[BackgroundRemoval][JS] start', { widgetType });
     try {
       const available = await isRhythmWidgetPhotoBackgroundRemovalAvailable();
       if (!available) {
@@ -1396,6 +1398,10 @@ export default function App() {
         return false;
       }
       const persistentUri = persistPhotoUri(generated, `widget-cutout-${widgetType}`);
+      if (__DEV__) {
+        console.log('[BackgroundRemoval][JS] persistentUri', persistentUri);
+        console.log('[BackgroundRemoval][JS] persistentExists', isPersistedPhotoAvailable(persistentUri));
+      }
       const previous = widgetSettings.widgetCustomizations?.[widgetType]?.cutoutUri;
       if (previous && previous !== persistentUri) deleteManagedPhotoUri(previous, [persistentUri]);
       setWidgetSettings((current) => {
@@ -1409,6 +1415,7 @@ export default function App() {
           },
         };
       });
+      if (__DEV__) console.log('[BackgroundRemoval][JS] stateSaved', { widgetType });
       return true;
     } catch (error) {
       const message = error instanceof Error ? error.message : '';
@@ -1997,6 +2004,7 @@ export default function App() {
         if (!hapticsPreferenceTouchedRef.current && typeof saved.hapticsEnabled === 'boolean') setHapticsEnabled(saved.hapticsEnabled);
         setPremiumTrialReminderEnabled(saved.premiumTrialReminderEnabled !== false);
         setLiveActivityEnabled(saved.liveActivityEnabled === true);
+        setLiveActivityDisplayOptions(normalizeRhythmLiveActivityDisplayOptions(saved.liveActivityDisplayOptions));
         if (saved.reviewPromptedAt) setReviewPromptedAt(saved.reviewPromptedAt);
         if (saved.designMode === 'minimal' || saved.designMode === 'dark' || saved.designMode === 'chic' || saved.designMode === 'photo') {
           setDesignMode(saved.designMode);
@@ -2209,7 +2217,7 @@ export default function App() {
 
   useEffect(() => {
     if (!hydrated) return;
-    const state: PersistedState = { tasks, plan, departurePlans, widgetSize, widgetSettings, showCompleted, completionIcon, designMode, monoAppearance, hapticsEnabled, premiumTrialReminderEnabled, liveActivityEnabled, reviewPromptedAt, taskTemplates, savedTaskTemplates, chicPattern, chicCheckColor, recoveryHistory, focusSessions, focusCustomDurationMinutes, departureCheckIns, behaviorEvents, wishMonths: normalizeWishMonthsForSave(wishMonths), calendarMarks, calendarImportCalendarIds, calendarImportKnownCalendarIds, sharedEvents, sharedParticipantIdsByToken, sharedParticipantPrefsByToken, departurePreparationStatuses, affirmations, affirmationCustomTexts, photoTheme, travelApps, designCustomizePurchased, routineArchives: pruneRoutineArchives(routineArchives), voiceUsage: normalizeVoiceUsage(voiceUsage, dateKey()) };
+    const state: PersistedState = { tasks, plan, departurePlans, widgetSize, widgetSettings, showCompleted, completionIcon, designMode, monoAppearance, hapticsEnabled, premiumTrialReminderEnabled, liveActivityEnabled, liveActivityDisplayOptions, reviewPromptedAt, taskTemplates, savedTaskTemplates, chicPattern, chicCheckColor, recoveryHistory, focusSessions, focusCustomDurationMinutes, departureCheckIns, behaviorEvents, wishMonths: normalizeWishMonthsForSave(wishMonths), calendarMarks, calendarImportCalendarIds, calendarImportKnownCalendarIds, sharedEvents, sharedParticipantIdsByToken, sharedParticipantPrefsByToken, departurePreparationStatuses, affirmations, affirmationCustomTexts, photoTheme, travelApps, designCustomizePurchased, routineArchives: pruneRoutineArchives(routineArchives), voiceUsage: normalizeVoiceUsage(voiceUsage, dateKey()) };
     latestPersistedStateRef.current = state;
     if (persistenceDisabledRef.current) return;
     if (persistenceTimerRef.current) clearTimeout(persistenceTimerRef.current);
@@ -2225,7 +2233,7 @@ export default function App() {
     return () => {
       if (persistenceTimerRef.current) clearTimeout(persistenceTimerRef.current);
     };
-  }, [tasks, plan, departurePlans, widgetSize, widgetSettings, showCompleted, completionIcon, designMode, monoAppearance, hapticsEnabled, premiumTrialReminderEnabled, liveActivityEnabled, reviewPromptedAt, taskTemplates, savedTaskTemplates, chicPattern, chicCheckColor, recoveryHistory, focusSessions, focusCustomDurationMinutes, departureCheckIns, behaviorEvents, wishMonths, calendarMarks, calendarImportCalendarIds, calendarImportKnownCalendarIds, sharedEvents, sharedParticipantIdsByToken, sharedParticipantPrefsByToken, departurePreparationStatuses, affirmations, affirmationCustomTexts, photoTheme, travelApps, designCustomizePurchased, routineArchives, voiceUsage, hydrated]);
+  }, [tasks, plan, departurePlans, widgetSize, widgetSettings, showCompleted, completionIcon, designMode, monoAppearance, hapticsEnabled, premiumTrialReminderEnabled, liveActivityEnabled, liveActivityDisplayOptions, reviewPromptedAt, taskTemplates, savedTaskTemplates, chicPattern, chicCheckColor, recoveryHistory, focusSessions, focusCustomDurationMinutes, departureCheckIns, behaviorEvents, wishMonths, calendarMarks, calendarImportCalendarIds, calendarImportKnownCalendarIds, sharedEvents, sharedParticipantIdsByToken, sharedParticipantPrefsByToken, departurePreparationStatuses, affirmations, affirmationCustomTexts, photoTheme, travelApps, designCustomizePurchased, routineArchives, voiceUsage, hydrated]);
 
   useEffect(() => {
     if (!hydrated) return;
@@ -2320,31 +2328,50 @@ export default function App() {
     .sort((a, b) => getPlanCountdownAt(a).getTime() - getPlanCountdownAt(b).getTime())[0], [departurePlans, now, planTier]);
 
   const liveActivityPayload = useMemo<RhythmLiveActivityPayload | undefined>(() => {
-    if (!hydrated || !liveActivityEnabled || planTier !== 'premium') return undefined;
-    if (focusTimerActive) {
+    if (!hydrated || !liveActivityEnabled) return undefined;
+    // The existing DEV widget entitlement switch is also useful for exercising
+    // the three Live Activity tiers without touching StoreKit transactions.
+    const tier: RhythmLiveActivityPayload['tier'] = __DEV__ && widgetEntitlementOverride !== 'actual'
+      ? widgetEntitlementOverride === 'premium' ? 'premium' : widgetEntitlementOverride === 'design' ? 'design' : 'free'
+      : planTier === 'premium' ? 'premium' : hasDesignCustomizeAccess ? 'design' : 'free';
+    const displayOptions = normalizeRhythmLiveActivityDisplayOptions(liveActivityDisplayOptions);
+    const accentHex = tier === 'free' ? '#7559E8' : getWidgetAccentHex(widgetSettings.accentColor);
+    const affirmationText = tier === 'premium' && displayOptions.affirmation
+      ? ([...affirmations.filter((item) => item.enabled), ...affirmationCustomTexts]
+        .map((item) => item.text.trim())
+        .find(Boolean) || undefined)
+      : undefined;
+    const focusDataAvailable = Boolean(focusActivity?.taskTitle?.trim() || focusActivity?.endsAt);
+    if (tier === 'premium' && displayOptions.focusRemaining && focusTimerActive && focusDataAvailable) {
       return {
+        tier,
         mode: 'focus',
         focusTaskTitle: focusActivity?.taskTitle,
         focusEndsAt: focusActivity?.endsAt,
-        accentHex: getWidgetAccentHex(widgetSettings.accentColor),
+        affirmationText,
+        displayOptions,
+        accentHex,
       };
     }
     const today = dateKey(now);
     const candidates = tasks
       .filter((task) => !task.done && task.status !== 'skipped' && (task.bucket ?? 'now') === 'now')
       .filter((task) => !task.scheduledDate || task.scheduledDate <= today);
-    const current = selectCurrentTask(candidates, now);
-    const next = nextDeparturePlan;
-    if (!current && !next) return undefined;
+    const current = tier !== 'premium' || displayOptions.currentTask ? selectCurrentTask(candidates, now) : undefined;
+    const next = tier === 'premium' && (displayOptions.nextSchedule || displayOptions.departureCountdown) ? nextDeparturePlan : undefined;
+    if (!current && !next && !affirmationText) return undefined;
     return {
+      tier,
       mode: 'normal',
       currentTaskTitle: current?.title,
-      nextScheduleTitle: next?.title,
-      nextScheduleAt: next ? getPlanCountdownAt(next).toISOString() : undefined,
-      departureAt: next && getPlanCountdownAt(next).getTime() > now.getTime() ? getPlanCountdownAt(next).toISOString() : undefined,
-      accentHex: getWidgetAccentHex(widgetSettings.accentColor),
+      nextScheduleTitle: tier === 'premium' && (displayOptions.nextSchedule || displayOptions.departureCountdown) ? next?.title : undefined,
+      nextScheduleAt: tier === 'premium' && displayOptions.nextSchedule && next ? getPlanCountdownAt(next).toISOString() : undefined,
+      departureAt: tier === 'premium' && displayOptions.departureCountdown && next && getPlanCountdownAt(next).getTime() > now.getTime() ? getPlanCountdownAt(next).toISOString() : undefined,
+      affirmationText,
+      displayOptions: tier === 'premium' ? displayOptions : undefined,
+      accentHex,
     };
-  }, [focusActivity, focusTimerActive, hydrated, liveActivityEnabled, nextDeparturePlan, now, planTier, tasks, widgetSettings.accentColor]);
+  }, [affirmationCustomTexts, affirmations, focusActivity, focusTimerActive, hasDesignCustomizeAccess, hydrated, liveActivityDisplayOptions, liveActivityEnabled, nextDeparturePlan, now, planTier, tasks, widgetEntitlementOverride, widgetSettings.accentColor]);
 
   useEffect(() => {
     if (!hydrated) return;
@@ -2408,7 +2435,12 @@ export default function App() {
       if (storedCustomization?.cutoutUri) {
         const previousCutoutUri = widgetCustomCutoutSyncedUrisRef.current[id];
         let copied = previousCutoutUri === storedCustomization.cutoutUri;
-        if (!copied) copied = await saveRhythmWidgetPhotoCutout(storedCustomization.cutoutUri, id).catch(() => false);
+        if (!copied) {
+          copied = await saveRhythmWidgetPhotoCutout(storedCustomization.cutoutUri, id).catch((error) => {
+            if (__DEV__) console.log('[BackgroundRemoval][JS] appGroupCopy', { widgetType: id, success: false, error: error instanceof Error ? error.message : String(error) });
+            return false;
+          });
+        }
         if (copied) {
           widgetCustomCutoutSyncedUrisRef.current[id] = storedCustomization.cutoutUri;
           widgetCutoutFileName = `rhythm-widget-cutout-${id}.png`;
@@ -2482,6 +2514,12 @@ export default function App() {
       affirmationPhotoFileNames,
     });
     const serialized = JSON.stringify(snapshot);
+    if (__DEV__) {
+      const cutoutFileNames = Object.entries(widgetCustomizations)
+        .filter(([, customization]) => Boolean(customization.cutoutFileName))
+        .map(([id, customization]) => ({ id, fileName: customization.cutoutFileName }));
+      if (cutoutFileNames.length > 0) console.log('[BackgroundRemoval][JS] snapshotCutoutFileName', cutoutFileNames);
+    }
     if (!photoWasCopied && (serialized === widgetSnapshotSerializedRef.current || serialized === widgetSnapshotInFlightRef.current)) return;
     widgetSnapshotInFlightRef.current = serialized;
     try {
@@ -4344,9 +4382,10 @@ export default function App() {
                onPremiumTrialReminderEnabled={setPremiumTrialReminderEnabled}
                liveActivityEnabled={liveActivityEnabled}
                onLiveActivityEnabled={(value) => {
-                 if (planTier !== 'premium') { openPremiumFeature('widget'); return; }
                  setLiveActivityEnabled(value);
                }}
+               liveActivityDisplayOptions={liveActivityDisplayOptions}
+               onLiveActivityDisplayOptionsChange={setLiveActivityDisplayOptions}
                chicPattern={effectiveChicPattern}
                chicCheckColor={chicCheckColor}
                chicPalette={chicPalette}

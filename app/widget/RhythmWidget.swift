@@ -51,17 +51,17 @@ private enum WidgetPendingActionStore {
       let remainingIndex = remaining.firstIndex { ($0["id"] as? String) == taskId }
       guard currentId == taskId || remainingIndex != nil else { return }
       if currentId == taskId {
-        if let next = remaining.first { object["currentTask"] = next }
-        else { object.removeValue(forKey: "currentTask") }
-        remaining = Array(remaining.dropFirst())
+        // Keep the completed task in place for the next timeline render. The
+        // app's regular snapshot reconciliation will remove it and promote the
+        // next candidate; doing that immediately here made a successful tap
+        // look like a missed interaction.
+        var completed = (object["currentTask"] as? [String: Any]) ?? [:]
+        completed["status"] = "completed"
+        object["currentTask"] = completed
       } else if let remainingIndex = remainingIndex {
-        remaining.remove(at: remainingIndex)
+        remaining[remainingIndex]["status"] = "completed"
       }
-      if remaining.isEmpty { object.removeValue(forKey: "todayNowTasks") }
-      else { object["todayNowTasks"] = remaining }
-      if let count = object["todayNowTaskCount"] as? Int {
-        object["todayNowTaskCount"] = max(0, count - 1)
-      }
+      object["todayNowTasks"] = remaining
     }
   }
 
@@ -484,7 +484,8 @@ struct RhythmWidgetProvider: IntentTimelineProvider {
     }()
     let layout: String? = {
       switch configuration.photoLayout {
-      case .unknown, .background: return "background"
+      case .unknown, .appDefault: return nil
+      case .background: return "background"
       case .right: return "right"
       case .top: return "top"
       case .card: return "card"
@@ -525,7 +526,10 @@ struct RhythmWidgetProvider: IntentTimelineProvider {
     let customization = customizationKey.flatMap { snapshot.widgetCustomizations?[$0] }
     let resolvedPhotoFileName = customization?.photoFileName ?? stored.photoFileName
     let resolvedCutoutFileName = customization?.cutoutFileName ?? stored.cutoutFileName
-    let resolvedPhotoLayout = customization?.photoLayout ?? layout
+    // An explicit native selection wins. The appDefault/unknown sentinel
+    // falls through to the per-widget app setting, then the shared legacy
+    // setting, and finally the safe background default.
+    let resolvedPhotoLayout = layout ?? customization?.photoLayout ?? stored.photoLayout ?? "background"
     let resolvedMonoTemplate: String? = {
       switch configuration.designPattern {
       case .clean: return "clean"
@@ -636,10 +640,10 @@ private struct DesignPatternColors {
 
   func background(for pattern: String) -> Color {
     switch pattern {
-    case "floral": return Color(hex: "F8F1EC")
-    case "floralSoft": return Color(hex: "F4F5EF")
-    case "floralSeasonal", "floralDark": return Color(hex: "FCF3F5")
-    case "plain": return background
+    // Floral PNGs are transparent overlays; preserve the user's selected
+    // nine-colour palette beneath every pattern instead of baking a fixed
+    // legacy floral background into the widget.
+    case "floral", "floralSoft", "floralSeasonal", "floralDark", "plain": return background
     default: return background
     }
   }
@@ -647,18 +651,37 @@ private struct DesignPatternColors {
 
 private func loadWidgetPhoto(_ fileName: String?) -> Image? {
   guard let fileName, !fileName.isEmpty, fileName == URL(fileURLWithPath: fileName).lastPathComponent,
-        let container = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: appGroup) else { return nil }
+        let container = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: appGroup) else {
+    #if DEBUG
+    if fileName?.hasPrefix("rhythm-widget-cutout-") == true { print("[BackgroundRemoval][Widget] loadCutout failure invalid filename") }
+    #endif
+    return nil
+  }
   let url = container.appendingPathComponent(fileName)
-  guard let image = UIImage(contentsOfFile: url.path) else { return nil }
+  guard let image = UIImage(contentsOfFile: url.path) else {
+    #if DEBUG
+    if fileName.hasPrefix("rhythm-widget-cutout-") { print("[BackgroundRemoval][Widget] loadCutout failure file=\(fileName)") }
+    #endif
+    return nil
+  }
+  #if DEBUG
+  if fileName.hasPrefix("rhythm-widget-cutout-") { print("[BackgroundRemoval][Widget] loadCutout success file=\(fileName)") }
+  #endif
   return Image(uiImage: image)
 }
 
-/// Reuses the app's persisted Design identifiers. The geometry mirrors the
-/// existing React Native decoration (dot spacing and check band proportions)
-/// and stays a low-opacity layer so widget content remains readable.
+/// Family-specific generated floral PNGs are transparent overlays. Keeping
+/// the filename mapping here means replacing the artwork never requires a
+/// Swift source change, and missing artwork safely falls back to the selected
+/// palette background.
 private struct DesignPatternLayer: View {
   let pattern: String
   let colors: DesignPatternColors
+  @Environment(\.widgetFamily) private var family
+
+  private var floralResourceName: String? {
+    widgetFloralResourceName(pattern: pattern, family: family)
+  }
 
   @ViewBuilder
   var body: some View {
@@ -696,28 +719,13 @@ private struct DesignPatternLayer: View {
             Rectangle().fill(colors.stripe.opacity(0.46)).frame(width: band, height: band).offset(x: CGFloat(column) * cell + (cell - band) / 2, y: CGFloat(row) * cell + (cell - band) / 2)
           }
         }
-      case "floral":
-        // These are loose JPG resources copied into the Widget target by the
-        // config plugin, not asset-catalog names. Load them explicitly from
-        // the extension bundle so EAS builds render the actual pattern.
-        if let image = loadBundledDesignImage("vintage-bloom") {
-          image.resizable().scaledToFit().opacity(0.36).frame(width: proxy.size.width, height: proxy.size.height)
+      case "floral", "floralSoft", "floralSeasonal", "floralDark":
+        if let resourceName = floralResourceName, let image = loadBundledFloralImage(resourceName) {
+          image.resizable().scaledToFit().frame(width: proxy.size.width, height: proxy.size.height)
         } else {
+          // PNG artwork is optional until the final asset bundle is supplied;
+          // never resurrect legacy JPG or procedural floral rendering.
           Color.clear
-        }
-      case "floralSoft":
-        ZStack {
-          if let image = loadBundledDesignImage("botanical-line") {
-            image.resizable().scaledToFit().opacity(0.16).frame(width: proxy.size.width, height: proxy.size.height)
-          }
-          BotanicalLineLayer(colors: colors)
-        }
-      case "floralSeasonal", "floralDark":
-        ZStack {
-          if let image = loadBundledDesignImage("sheer-floral") {
-            image.resizable().scaledToFit().opacity(0.14).frame(width: proxy.size.width, height: proxy.size.height)
-          }
-          SheerFloralLayer(colors: colors)
         }
       case "pinNote":
         Circle().fill(colors.accent.opacity(0.75)).frame(width: 9, height: 9).position(x: proxy.size.width * 0.5, y: 8)
@@ -735,65 +743,27 @@ private struct DesignPatternLayer: View {
   }
 }
 
-private func loadBundledDesignImage(_ resourceName: String) -> Image? {
-  guard let url = Bundle.main.url(forResource: resourceName, withExtension: "jpg"),
-        let image = UIImage(contentsOfFile: url.path) else { return nil }
-  return Image(uiImage: image)
-}
-
-/// Deterministic SwiftUI fallback for the tall botanical resources. Drawing
-/// these two patterns avoids a blank-looking centre crop on Small/Medium
-/// widgets while keeping the same restrained palette as the app Design.
-private struct BotanicalLineLayer: View {
-  let colors: DesignPatternColors
-
-  var body: some View {
-    GeometryReader { proxy in
-      ZStack {
-        Path { path in
-          path.move(to: CGPoint(x: proxy.size.width * 0.10, y: proxy.size.height * 0.92))
-          path.addCurve(to: CGPoint(x: proxy.size.width * 0.34, y: proxy.size.height * 0.18), control1: CGPoint(x: proxy.size.width * 0.05, y: proxy.size.height * 0.62), control2: CGPoint(x: proxy.size.width * 0.40, y: proxy.size.height * 0.42))
-          path.addCurve(to: CGPoint(x: proxy.size.width * 0.78, y: proxy.size.height * 0.08), control1: CGPoint(x: proxy.size.width * 0.50, y: proxy.size.height * 0.10), control2: CGPoint(x: proxy.size.width * 0.64, y: proxy.size.height * 0.05))
-        }
-        .stroke(colors.accent.opacity(0.52), lineWidth: 1.3)
-        Ellipse().fill(colors.accent.opacity(0.34)).frame(width: 16, height: 7).rotationEffect(.degrees(-34)).position(x: proxy.size.width * 0.22, y: proxy.size.height * 0.57)
-        Ellipse().fill(colors.accent.opacity(0.30)).frame(width: 18, height: 8).rotationEffect(.degrees(26)).position(x: proxy.size.width * 0.41, y: proxy.size.height * 0.34)
-        Ellipse().fill(colors.accent.opacity(0.28)).frame(width: 16, height: 7).rotationEffect(.degrees(-18)).position(x: proxy.size.width * 0.60, y: proxy.size.height * 0.16)
-        Path { path in
-          path.move(to: CGPoint(x: proxy.size.width * 0.92, y: proxy.size.height * 0.96))
-          path.addCurve(to: CGPoint(x: proxy.size.width * 0.68, y: proxy.size.height * 0.60), control1: CGPoint(x: proxy.size.width * 0.94, y: proxy.size.height * 0.77), control2: CGPoint(x: proxy.size.width * 0.74, y: proxy.size.height * 0.72))
-        }.stroke(colors.stripe.opacity(0.60), lineWidth: 1.1)
-      }
-    }
+private func loadBundledFloralImage(_ resourceName: String) -> Image? {
+  guard let url = Bundle.main.url(forResource: resourceName, withExtension: "png"),
+       let image = UIImage(contentsOfFile: url.path) {
+    return Image(uiImage: image)
   }
+  return nil
 }
 
-private struct SheerFloralLayer: View {
-  let colors: DesignPatternColors
-
-  var body: some View {
-    GeometryReader { proxy in
-      ZStack {
-        ForEach(0..<3, id: \.self) { index in
-          let centers: [CGPoint] = [
-            CGPoint(x: proxy.size.width * 0.18, y: proxy.size.height * 0.22),
-            CGPoint(x: proxy.size.width * 0.80, y: proxy.size.height * 0.38),
-            CGPoint(x: proxy.size.width * 0.42, y: proxy.size.height * 0.86),
-          ]
-          let center = centers[index]
-          ZStack {
-            ForEach(0..<5, id: \.self) { petal in
-              Ellipse()
-                .fill((petal % 2 == 0 ? colors.accent : colors.stripe).opacity(0.24))
-                .frame(width: min(proxy.size.width * 0.24, 56), height: min(proxy.size.height * 0.15, 40))
-                .rotationEffect(.degrees(Double(petal) * 72))
-            }
-            Circle().fill(colors.accent.opacity(0.36)).frame(width: 10, height: 10)
-          }
-          .position(center)
-        }
-      }
-    }
+private func widgetFloralResourceName(pattern: String, family: WidgetFamily) -> String? {
+  let suffix: String
+  switch family {
+  case .systemSmall: suffix = "small"
+  case .systemMedium: suffix = "medium"
+  case .systemLarge: suffix = "large"
+  @unknown default: suffix = "medium"
+  }
+  switch pattern {
+  case "floral": return "widget-floral1-\(suffix)"
+  case "floralSoft": return "widget-floral2-\(suffix)"
+  case "floralSeasonal", "floralDark": return "widget-floral3-\(suffix)"
+  default: return nil
   }
 }
 
@@ -835,6 +805,27 @@ private struct WidgetSurface<Content: View>: View {
     widgetKind == "RhythmMonthlyCalendarWidget" || widgetKind == "RhythmWeeklyCalendarWidget" || widgetKind == "RhythmTodayScheduleWidget"
   }
 
+  private func photoTrailingInset(layout: String, size: CGSize) -> CGFloat {
+    let extra: CGFloat = family == .systemSmall ? 10 : family == .systemLarge ? 18 : 14
+    switch layout {
+    case "right", "side":
+      let width = size.width * (family == .systemLarge ? 0.30 : 0.34)
+      return width + extra
+    case "card":
+      let width = min(size.width * (family == .systemLarge ? 0.38 : 0.5), family == .systemLarge ? 210 : 150)
+      return width + extra + 10
+    case "circle":
+      let fraction: CGFloat = family == .systemSmall ? 0.36 : family == .systemLarge ? 0.27 : 0.24
+      let cap: CGFloat = family == .systemSmall ? 70 : family == .systemLarge ? 150 : 78
+      return min(size.width * fraction, cap) + extra + 10
+    case "cutout":
+      let width = family == .systemSmall ? size.width * 0.50 : family == .systemLarge ? size.width * 0.54 : size.width * 0.46
+      return width + extra
+    default:
+      return 0
+    }
+  }
+
   @ViewBuilder
   private func photoLayer(_ image: Image, layout: String, size: CGSize) -> some View {
     switch layout {
@@ -859,8 +850,11 @@ private struct WidgetSurface<Content: View>: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: calendarPhotoLayout ? .bottomTrailing : .topTrailing)
         .padding(10)
     case "circle":
+      let fraction: CGFloat = family == .systemSmall ? 0.36 : family == .systemLarge ? 0.27 : 0.24
+      let cap: CGFloat = family == .systemSmall ? 70 : family == .systemLarge ? 150 : 78
+      let circleSize = min(size.width * fraction, cap)
       image.resizable().scaledToFill()
-        .frame(width: min(size.width * (family == .systemLarge ? 0.27 : 0.42), family == .systemLarge ? 150 : 100), height: min(size.width * (family == .systemLarge ? 0.27 : 0.42), family == .systemLarge ? 150 : 100))
+        .frame(width: circleSize, height: circleSize)
         .clipShape(Circle())
         .overlay(Circle().stroke(Color.white.opacity(0.95), lineWidth: 3))
         .shadow(color: .black.opacity(0.18), radius: 4, y: 2)
@@ -886,14 +880,14 @@ private struct WidgetSurface<Content: View>: View {
       let cutout = configuredPhotoLayout == "cutout" ? loadWidgetPhoto(appearance?.cutoutFileName) : nil
       let photo = appearance?.style == .color ? nil : (cutout ?? loadWidgetPhoto(appearance?.photoFileName))
       let photoLayout = configuredPhotoLayout == "cutout" && cutout == nil ? "background" : configuredPhotoLayout
+      let floralContentVeil: Bool = {
+        guard let pattern = appearance?.designPattern,
+              let resourceName = widgetFloralResourceName(pattern: pattern, family: family) else { return false }
+        return loadBundledFloralImage(resourceName) != nil
+      }()
       let trailingInset: CGFloat = {
         guard photo != nil else { return 0 }
-        switch photoLayout {
-        case "side": return proxy.size.width * 0.30
-        case "card", "circle": return proxy.size.width * 0.16
-        case "cutout": return proxy.size.width * (family == .systemSmall ? 0.18 : 0.30)
-        default: return 0
-        }
+        return photoTrailingInset(layout: photoLayout, size: proxy.size)
       }()
       ZStack {
         palette.background
@@ -915,6 +909,15 @@ private struct WidgetSurface<Content: View>: View {
           .padding(.trailing, trailingInset)
           .padding(.top, photo != nil && photoLayout == "top" && !calendarPhotoLayout ? proxy.size.height * (family == .systemLarge ? 0.23 : 0.27) : 0)
           .padding(.bottom, photo != nil && photoLayout == "top" && calendarPhotoLayout ? proxy.size.height * (family == .systemLarge ? 0.23 : 0.27) : 0)
+          // Keep floral motifs visible while softly reducing visual noise
+          // only behind the intrinsic content area (never as a hard card).
+          .background(
+            LinearGradient(
+              colors: floralContentVeil ? [palette.background.opacity(0.54), palette.background.opacity(0.18), Color.clear] : [Color.clear, Color.clear, Color.clear],
+              startPoint: .topLeading,
+              endPoint: .bottomTrailing
+            )
+          )
           .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
           .background(photo != nil && photoLayout == "background" ? Color.black.opacity(0.16) : Color.clear)
       }
@@ -968,8 +971,24 @@ private func widgetStatusText(_ status: String) -> String {
   }
 }
 
+private func widgetTaskIsCompleted(_ task: WidgetSnapshot.Task) -> Bool {
+  guard let status = task.status?.lowercased() else { return false }
+  return status == "completed" || status == "done"
+}
+
+private func timerRingDiameter(for appearance: WidgetSnapshot.Appearance?, family: WidgetFamily) -> CGFloat {
+  guard appearance?.style != .color,
+        let layout = appearance?.photoLayout else { return 68 }
+  switch layout {
+  case "right", "side", "card", "circle", "cutout":
+    return family == .systemSmall ? 50 : family == .systemLarge ? 60 : 54
+  default: return 68
+  }
+}
+
 struct RhythmWidgetView: View {
   let entry: RhythmWidgetEntry
+  @Environment(\.widgetFamily) private var family
 
   var body: some View {
     let palette = WidgetPalette.forAppearance(entry.snapshot?.appearance)
@@ -993,12 +1012,12 @@ struct RhythmWidgetView: View {
             .foregroundStyle(palette.foreground)
           if showCurrent, let task = snapshot.currentTask {
             HStack(alignment: .center, spacing: 8) {
-              TaskCompletionButton(taskId: task.id, palette: palette)
+              TaskCompletionButton(taskId: task.id, palette: palette, completed: widgetTaskIsCompleted(task))
               Link(destination: URL(string: "rhythm://todo")!) {
                 HStack(alignment: .center, spacing: 8) {
                   WidgetTaskRow(task: task, palette: palette)
                   Spacer(minLength: 4)
-                  if snapshot.isDisplayOptionEnabled("remainingTime") { TaskTimerRing(task: task, palette: palette) }
+                  if snapshot.isDisplayOptionEnabled("remainingTime") { TaskTimerRing(task: task, palette: palette, diameter: timerRingDiameter(for: snapshot.appearance, family: family)) }
                 }
               }
             }
@@ -1047,24 +1066,25 @@ private struct CurrentTaskWidgetView: View {
         if family == .systemMedium {
           VStack(alignment: .leading, spacing: 7) {
             HStack(alignment: .center, spacing: 8) {
-              TaskCompletionButton(taskId: task.id, palette: palette)
+              TaskCompletionButton(taskId: task.id, palette: palette, completed: widgetTaskIsCompleted(task))
               Link(destination: URL(string: "rhythm://todo")!) {
                 HStack(alignment: .center, spacing: 10) {
                   TaskInformation(task: task, snapshot: snapshot, palette: palette)
                   Spacer(minLength: 4)
-                  if snapshot.isDisplayOptionEnabled("remainingTime") { TaskTimerRing(task: task, palette: palette) }
+                  if snapshot.isDisplayOptionEnabled("remainingTime") { TaskTimerRing(task: task, palette: palette, diameter: timerRingDiameter(for: snapshot.appearance, family: family)) }
                 }
               }
             }
             if let more = snapshot.todayNowTasks, !more.isEmpty {
               Divider().overlay(palette.divider)
               ForEach(Array(more.prefix(3)), id: \.id) { item in
+                let completed = widgetTaskIsCompleted(item)
                 HStack(spacing: 6) {
-                  TaskCompletionButton(taskId: item.id, palette: palette)
+                  TaskCompletionButton(taskId: item.id, palette: palette, completed: completed)
                   Link(destination: URL(string: "rhythm://todo")!) {
-                    Text(item.title).font(.caption).foregroundStyle(palette.foreground).lineLimit(1)
+                    Text(item.title).font(.caption).foregroundStyle(palette.foreground).lineLimit(1).opacity(completed ? 0.52 : 1).strikethrough(completed, color: palette.secondary)
                     Spacer(minLength: 2)
-                    if let startAt = item.startAt { Text(startAt, style: .time).font(.caption2).foregroundStyle(palette.secondary) }
+                    if let startAt = item.startAt { Text(startAt, style: .time).font(.caption2).foregroundStyle(palette.secondary).opacity(completed ? 0.52 : 1) }
                   }
                 }
               }
@@ -1079,15 +1099,16 @@ private struct CurrentTaskWidgetView: View {
           }
           .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         } else {
+          let completed = widgetTaskIsCompleted(task)
           HStack(alignment: .top, spacing: 6) {
-            TaskCompletionButton(taskId: task.id, palette: palette)
+            TaskCompletionButton(taskId: task.id, palette: palette, completed: widgetTaskIsCompleted(task))
             Link(destination: URL(string: "rhythm://todo")!) {
               VStack(alignment: .leading, spacing: 7) {
               Text("今はこれ").font(.caption.weight(.semibold)).foregroundStyle(palette.accent)
-              Text(task.title).font(.title3.weight(.semibold)).foregroundStyle(palette.foreground).lineLimit(3)
-              if snapshot.isDisplayOptionEnabled("remainingTime") { TaskTimerRing(task: task, palette: palette).frame(maxWidth: .infinity, alignment: .center) }
-              if snapshot.isDisplayOptionEnabled("startTime"), let startAt = task.startAt { Text(startAt.formatted(date: .omitted, time: .shortened)).font(.caption2).foregroundStyle(palette.secondary) }
-              if snapshot.isDisplayOptionEnabled("status"), let status = task.status, !status.isEmpty { Text(widgetStatusText(status)).font(.caption2).foregroundStyle(palette.secondary) }
+              Text(task.title).font(.title3.weight(.semibold)).foregroundStyle(palette.foreground).lineLimit(3).opacity(completed ? 0.52 : 1).strikethrough(completed, color: palette.secondary)
+              if snapshot.isDisplayOptionEnabled("remainingTime") { TaskTimerRing(task: task, palette: palette, diameter: timerRingDiameter(for: snapshot.appearance, family: family)).frame(maxWidth: .infinity, alignment: .center) }
+              if snapshot.isDisplayOptionEnabled("startTime"), let startAt = task.startAt { Text(startAt.formatted(date: .omitted, time: .shortened)).font(.caption2).foregroundStyle(palette.secondary).opacity(completed ? 0.52 : 1) }
+              if snapshot.isDisplayOptionEnabled("status"), let status = task.status, !status.isEmpty { Text(widgetStatusText(status)).font(.caption2).foregroundStyle(palette.secondary).opacity(completed ? 0.52 : 1) }
               }
               .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             }
@@ -1115,15 +1136,16 @@ private struct TaskInformation: View {
   let palette: WidgetPalette
 
   var body: some View {
+    let completed = widgetTaskIsCompleted(task)
     VStack(alignment: .leading, spacing: 6) {
       Text("今はこれ").font(.caption.weight(.semibold)).foregroundStyle(palette.accent)
-      Text(task.title).font(.title3.weight(.semibold)).foregroundStyle(palette.foreground).lineLimit(3)
+      Text(task.title).font(.title3.weight(.semibold)).foregroundStyle(palette.foreground).lineLimit(3).opacity(completed ? 0.52 : 1).strikethrough(completed, color: palette.secondary)
       if snapshot.isDisplayOptionEnabled("startTime"), let startAt = task.startAt {
         Label(startAt.formatted(date: .omitted, time: .shortened), systemImage: "clock")
-          .font(.caption).foregroundStyle(palette.secondary)
+          .font(.caption).foregroundStyle(palette.secondary).opacity(completed ? 0.52 : 1)
       }
       if snapshot.isDisplayOptionEnabled("status"), let status = task.status, !status.isEmpty {
-        Text(widgetStatusText(status)).font(.caption2).foregroundStyle(palette.secondary)
+        Text(widgetStatusText(status)).font(.caption2).foregroundStyle(palette.secondary).opacity(completed ? 0.52 : 1)
       }
     }
   }
@@ -1132,10 +1154,17 @@ private struct TaskInformation: View {
 private struct TaskCompletionButton: View {
   let taskId: String
   let palette: WidgetPalette
+  let completed: Bool
   @Environment(\.widgetFamily) private var family
 
   private var tapSize: CGFloat {
     family == .systemSmall ? 40 : family == .systemLarge ? 44 : 42
+  }
+
+  init(taskId: String, palette: WidgetPalette, completed: Bool = false) {
+    self.taskId = taskId
+    self.palette = palette
+    self.completed = completed
   }
 
   private var iconSize: CGFloat {
@@ -1146,18 +1175,18 @@ private struct TaskCompletionButton: View {
   var body: some View {
     if #available(iOSApplicationExtension 17.0, *) {
       Button(intent: RhythmCompleteTaskIntent(taskId: taskId)) {
-        Image(systemName: "circle")
+        Image(systemName: completed ? "checkmark.circle.fill" : "circle")
           .font(.system(size: iconSize, weight: .medium))
-          .foregroundStyle(palette.accent)
+          .foregroundStyle(completed ? palette.secondary : palette.accent)
           .frame(width: tapSize, height: tapSize, alignment: .center)
           .accessibilityLabel("タスクを完了")
       }
       .buttonStyle(.plain)
       .contentShape(Rectangle())
     } else {
-      Image(systemName: "circle")
+      Image(systemName: completed ? "checkmark.circle.fill" : "circle")
         .font(.system(size: iconSize, weight: .medium))
-        .foregroundStyle(palette.secondary)
+        .foregroundStyle(completed ? palette.accent : palette.secondary)
         .frame(width: tapSize, height: tapSize, alignment: .center)
         .accessibilityHidden(true)
     }
@@ -1202,6 +1231,13 @@ private struct ListItemToggleButton: View {
 private struct TaskTimerRing: View {
   let task: WidgetSnapshot.Task
   let palette: WidgetPalette
+  let diameter: CGFloat
+
+  init(task: WidgetSnapshot.Task, palette: WidgetPalette, diameter: CGFloat = 68) {
+    self.task = task
+    self.palette = palette
+    self.diameter = diameter
+  }
 
   private var progress: Double {
     guard let duration = task.estimatedMinutes, duration > 0, let remaining = task.remainingMinutes else { return 0 }
@@ -1210,14 +1246,14 @@ private struct TaskTimerRing: View {
 
   var body: some View {
     ZStack {
-      Circle().stroke(palette.divider, lineWidth: 5)
-      Circle().trim(from: 0, to: progress).stroke(palette.accent, style: StrokeStyle(lineWidth: 5, lineCap: .round)).rotationEffect(.degrees(-90))
+      Circle().stroke(palette.divider, lineWidth: max(3, diameter * 0.074))
+      Circle().trim(from: 0, to: progress).stroke(palette.accent, style: StrokeStyle(lineWidth: max(3, diameter * 0.074), lineCap: .round)).rotationEffect(.degrees(-90))
       VStack(spacing: 0) {
-        Text(task.remainingMinutes.map { "\($0)" } ?? "—").font(.headline.weight(.semibold)).foregroundStyle(palette.foreground)
-        Text("min").font(.caption2).foregroundStyle(palette.secondary)
+        Text(task.remainingMinutes.map { "\($0)" } ?? "—").font(.system(size: max(15, diameter * 0.25), weight: .semibold)).foregroundStyle(palette.foreground)
+        Text("min").font(.system(size: max(8, diameter * 0.13))).foregroundStyle(palette.secondary)
       }
     }
-    .frame(width: 68, height: 68)
+    .frame(width: diameter, height: diameter)
     .accessibilityHidden(true)
   }
 }
@@ -1286,6 +1322,7 @@ private struct WidgetTaskRow: View {
   let palette: WidgetPalette
 
   var body: some View {
+    let completed = widgetTaskIsCompleted(task)
     VStack(alignment: .leading, spacing: 2) {
       Text("今はこれ")
         .font(.caption)
@@ -1293,11 +1330,14 @@ private struct WidgetTaskRow: View {
       Text(task.title)
         .font(.subheadline.weight(.medium))
         .foregroundStyle(palette.foreground)
+        .opacity(completed ? 0.52 : 1)
+        .strikethrough(completed, color: palette.secondary)
         .lineLimit(1)
       if let startAt = task.startAt {
         Text(startAt, style: .time)
           .font(.caption2)
           .foregroundStyle(palette.secondary)
+          .opacity(completed ? 0.52 : 1)
       }
     }
   }
