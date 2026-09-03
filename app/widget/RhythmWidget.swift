@@ -76,8 +76,8 @@ private enum WidgetPendingActionStore {
   }
 }
 
-@available(iOS 17.0, *)
-private struct RhythmCompleteTaskIntent: AppIntent {
+@available(iOSApplicationExtension 17.0, *)
+struct RhythmCompleteTaskIntent: AppIntent {
   static var title: LocalizedStringResource = "タスクを完了"
   static var openAppWhenRun: Bool { false }
   @Parameter(title: "Task ID") var taskId: String
@@ -91,8 +91,8 @@ private struct RhythmCompleteTaskIntent: AppIntent {
   }
 }
 
-@available(iOS 17.0, *)
-private struct RhythmToggleListItemIntent: AppIntent {
+@available(iOSApplicationExtension 17.0, *)
+struct RhythmToggleListItemIntent: AppIntent {
   static var title: LocalizedStringResource = "リスト項目を切り替え"
   static var openAppWhenRun: Bool { false }
   @Parameter(title: "Task ID") var taskId: String
@@ -123,6 +123,7 @@ struct WidgetSnapshot: Codable {
     let monoTemplate: String?
     let accentHex: String?
     let photoFileName: String?
+    let cutoutFileName: String?
     let photoLayout: String?
     let designPattern: String?
     let designCheckColor: String?
@@ -132,6 +133,7 @@ struct WidgetSnapshot: Codable {
 
   struct WidgetCustomization: Codable {
     let photoFileName: String?
+    let cutoutFileName: String?
     let photoLayout: String?
     let monoTemplate: String?
   }
@@ -369,9 +371,11 @@ private func gallerySampleSnapshot(now: Date = Date()) -> WidgetSnapshot {
     updatedAt: now,
     isPremium: true,
     designCustomizePurchased: true,
-    appearance: WidgetSnapshot.Appearance(style: .color, monoTemplate: "clean", accentHex: "#8EA6FF", photoFileName: nil, photoLayout: nil, designPattern: "dot", designCheckColor: "cool", designPatternUnlocked: true, affirmationBackgrounds: ["floral", "dot", "check"]),
+    appearance: WidgetSnapshot.Appearance(style: .color, monoTemplate: "clean", accentHex: "#8EA6FF", photoFileName: nil, cutoutFileName: nil, photoLayout: nil, designPattern: "dot", designCheckColor: "cool", designPatternUnlocked: true, affirmationBackgrounds: ["floral", "dot", "check"]),
     widgetCustomizations: nil,
-    displayOptions: nil,
+    // Gallery keeps the task preview focused on the task itself; the timer
+    // ring belongs to the live widget and is intentionally omitted here.
+    displayOptions: ["remainingTime": false],
     currentTask: WidgetSnapshot.Task(id: "gallery-task", title: "資料をまとめる", startAt: taskStart, estimatedMinutes: 45, remainingMinutes: 25, status: "active", priority: "中"),
     todayNowTasks: [
       WidgetSnapshot.Task(id: "gallery-task-2", title: "メールを確認", startAt: dateAt(today, 16, 0), estimatedMinutes: nil, remainingMinutes: nil, status: "active", priority: "低"),
@@ -459,8 +463,11 @@ struct RhythmWidgetProvider: IntentTimelineProvider {
     let pattern: String? = {
       guard stored.designPatternUnlocked == true else { return stored.designPattern }
       switch configuration.designPattern {
-      case .unknown: return "dot"
-      case .floral: return "floral"
+      // `floral` was the legacy standard-floral identifier. It is no longer
+      // offered in the edit UI, but an older snapshot/configuration can still
+      // carry it; keep that value rendering as Flower 1 instead of dropping
+      // to an unrelated pattern.
+      case .unknown: return stored.designPattern == "floral" ? "floral" : "dot"
       case .dot: return "dot"
       case .checkLavenderSatin: return "checkLavenderSatin"
       case .checkBeigeNoir: return "checkBeigeNoir"
@@ -471,6 +478,7 @@ struct RhythmWidgetProvider: IntentTimelineProvider {
       case .vintageBloom: return "floral"
       case .botanicalLine: return "floralSoft"
       case .sheerFloral: return "floralSeasonal"
+      case .plain: return "plain"
       @unknown default: return "dot"
       }
     }()
@@ -481,6 +489,7 @@ struct RhythmWidgetProvider: IntentTimelineProvider {
       case .top: return "top"
       case .card: return "card"
       case .circle: return "circle"
+      case .cutout: return "cutout"
       @unknown default: return "background"
       }
     }()
@@ -490,6 +499,11 @@ struct RhythmWidgetProvider: IntentTimelineProvider {
       case .cool: return "cool"
       case .warm: return "warm"
       case .green: return "green"
+      case .orange: return "orange"
+      case .yellow: return "yellow"
+      case .blue: return "blue"
+      case .lightBlue: return "lightBlue"
+      case .pink: return "pink"
       @unknown default: return "monochrome"
       }
     }()
@@ -510,16 +524,19 @@ struct RhythmWidgetProvider: IntentTimelineProvider {
     }()
     let customization = customizationKey.flatMap { snapshot.widgetCustomizations?[$0] }
     let resolvedPhotoFileName = customization?.photoFileName ?? stored.photoFileName
+    let resolvedCutoutFileName = customization?.cutoutFileName ?? stored.cutoutFileName
     let resolvedPhotoLayout = customization?.photoLayout ?? layout
     let resolvedMonoTemplate: String? = {
       switch configuration.designPattern {
       case .clean: return "clean"
       case .pinNote: return "pinNote"
       case .ruledNote: return "ruledNote"
+      case .unknown, .dot, .checkLavenderSatin, .checkBeigeNoir, .checkMauveFrame, .vintageBloom, .botanicalLine, .sheerFloral, .plain:
+        return customization?.monoTemplate ?? stored.monoTemplate
       @unknown default: return customization?.monoTemplate ?? stored.monoTemplate
       }
     }()
-    let appearance = WidgetSnapshot.Appearance(style: style, monoTemplate: resolvedMonoTemplate, accentHex: stored.accentHex, photoFileName: resolvedPhotoFileName, photoLayout: resolvedPhotoLayout, designPattern: pattern, designCheckColor: designCheckColor, designPatternUnlocked: stored.designPatternUnlocked, affirmationBackgrounds: stored.affirmationBackgrounds)
+    let appearance = WidgetSnapshot.Appearance(style: style, monoTemplate: resolvedMonoTemplate, accentHex: stored.accentHex, photoFileName: resolvedPhotoFileName, cutoutFileName: resolvedCutoutFileName, photoLayout: resolvedPhotoLayout, designPattern: pattern, designCheckColor: designCheckColor, designPatternUnlocked: stored.designPatternUnlocked, affirmationBackgrounds: stored.affirmationBackgrounds)
     return WidgetSnapshot(updatedAt: snapshot.updatedAt, isPremium: snapshot.isPremium, designCustomizePurchased: snapshot.designCustomizePurchased, appearance: appearance, widgetCustomizations: snapshot.widgetCustomizations, displayOptions: snapshot.displayOptions, currentTask: snapshot.currentTask, todayNowTasks: snapshot.todayNowTasks, todayNowTaskCount: snapshot.todayNowTaskCount, nextPlan: snapshot.nextPlan, calendarMonth: snapshot.calendarMonth, calendarWeek: snapshot.calendarWeek, todaySchedules: snapshot.todaySchedules, todayScheduleCount: snapshot.todayScheduleCount, checklist: snapshot.checklist, goal: snapshot.goal, affirmations: snapshot.affirmations, affirmationPhotoFileNames: snapshot.affirmationPhotoFileNames)
   }
 
@@ -564,24 +581,27 @@ private struct WidgetPalette {
 
   static func forAppearance(_ appearance: WidgetSnapshot.Appearance?) -> WidgetPalette {
     let style = appearance?.style ?? .mono
-    let accent = appearance?.accentHex.map(Color.init(hex:)) ?? Color.accentColor
-    let photoAvailable = appearance?.photoFileName.map { loadWidgetPhoto($0) != nil } ?? false
-    let photoBackground = appearance?.photoLayout == "background" && photoAvailable
+    let colors = DesignPatternColors(checkColor: appearance?.designCheckColor)
+    let accent = colors.accent
+    // A stored photo may intentionally be combined with Mono (paper
+    // treatment + a non-background photo). Design is the only style that
+    // must always suppress stale photo references after a style switch.
+    let photoAvailable = style != .color && ((appearance?.photoFileName.map { loadWidgetPhoto($0) != nil } ?? false) || (appearance?.cutoutFileName.map { loadWidgetPhoto($0) != nil } ?? false))
+    let photoBackground = style != .color && appearance?.photoLayout == "background" && photoAvailable
     if photoBackground {
-      return WidgetPalette(foreground: .white, secondary: .white.opacity(0.80), accent: .white, background: .black, divider: .white.opacity(0.34), monoTemplate: nil, designPattern: nil, designCheckColor: nil)
+      return WidgetPalette(foreground: .white, secondary: .white.opacity(0.82), accent: accent, background: .black, divider: .white.opacity(0.34), monoTemplate: nil, designPattern: nil, designCheckColor: appearance?.designCheckColor)
     }
     switch style {
     case .mono:
       return WidgetPalette(foreground: Color.primary, secondary: Color.secondary, accent: Color.primary, background: Color(uiColor: .systemBackground), divider: Color.primary.opacity(0.12), monoTemplate: appearance?.monoTemplate, designPattern: nil, designCheckColor: nil)
     case .color:
       let pattern = appearance?.designPattern
-      let colors = DesignPatternColors(checkColor: appearance?.designCheckColor)
-      let background = pattern.map { colors.background(for: $0) } ?? accent.opacity(0.07)
-      return WidgetPalette(foreground: Color.primary, secondary: Color.secondary, accent: accent, background: background, divider: accent.opacity(0.22), monoTemplate: nil, designPattern: pattern, designCheckColor: appearance?.designCheckColor)
+      let background = pattern.map { colors.background(for: $0) } ?? colors.background
+      return WidgetPalette(foreground: Color(hex: "302D33"), secondary: Color(hex: "6E6872"), accent: accent, background: background, divider: accent.opacity(0.28), monoTemplate: nil, designPattern: pattern, designCheckColor: appearance?.designCheckColor)
     case .photo:
       // The photo layer is applied by WidgetSurface. Keep a readable Mono
       // palette underneath it so missing or stale images fall back safely.
-      return WidgetPalette(foreground: photoBackground ? .white : Color.primary, secondary: photoBackground ? .white.opacity(0.78) : Color.secondary, accent: accent, background: Color(uiColor: .systemBackground), divider: photoBackground ? .white.opacity(0.3) : Color.primary.opacity(0.12), monoTemplate: appearance?.monoTemplate, designPattern: nil, designCheckColor: nil)
+      return WidgetPalette(foreground: photoBackground ? .white : Color(hex: "302D33"), secondary: photoBackground ? .white.opacity(0.78) : Color(hex: "6E6872"), accent: accent, background: photoBackground ? .black : colors.background, divider: photoBackground ? .white.opacity(0.3) : accent.opacity(0.28), monoTemplate: appearance?.monoTemplate, designPattern: nil, designCheckColor: appearance?.designCheckColor)
     }
   }
 }
@@ -599,6 +619,16 @@ private struct DesignPatternColors {
       background = Color(hex: "FBF1F3"); stripe = Color(hex: "EBCFD7"); accent = Color(hex: "B66E86")
     case "green":
       background = Color(hex: "F2F6F0"); stripe = Color(hex: "D3E0D4"); accent = Color(hex: "758D7B")
+    case "orange":
+      background = Color(hex: "FCF1E7"); stripe = Color(hex: "EAC8AA"); accent = Color(hex: "B8774C")
+    case "yellow":
+      background = Color(hex: "FBF7DE"); stripe = Color(hex: "E7D99A"); accent = Color(hex: "9B8530")
+    case "blue":
+      background = Color(hex: "EEF3FC"); stripe = Color(hex: "C4D4ED"); accent = Color(hex: "5577AE")
+    case "lightBlue":
+      background = Color(hex: "EDF8FA"); stripe = Color(hex: "C5E4E8"); accent = Color(hex: "4D8C95")
+    case "pink":
+      background = Color(hex: "FCF0F5"); stripe = Color(hex: "E8C4D3"); accent = Color(hex: "A65E79")
     default:
       background = Color(hex: "F4F3FA"); stripe = Color(hex: "D8D6EA"); accent = Color(hex: "9C91C4")
     }
@@ -607,8 +637,9 @@ private struct DesignPatternColors {
   func background(for pattern: String) -> Color {
     switch pattern {
     case "floral": return Color(hex: "F8F1EC")
-    case "floralSoft": return Color(hex: "FBFAF7")
+    case "floralSoft": return Color(hex: "F4F5EF")
     case "floralSeasonal", "floralDark": return Color(hex: "FCF3F5")
+    case "plain": return background
     default: return background
     }
   }
@@ -665,14 +696,28 @@ private struct DesignPatternLayer: View {
             Rectangle().fill(colors.stripe.opacity(0.46)).frame(width: band, height: band).offset(x: CGFloat(column) * cell + (cell - band) / 2, y: CGFloat(row) * cell + (cell - band) / 2)
           }
         }
-      case "floral", "floralSoft", "floralSeasonal", "floralDark":
+      case "floral":
         // These are loose JPG resources copied into the Widget target by the
         // config plugin, not asset-catalog names. Load them explicitly from
         // the extension bundle so EAS builds render the actual pattern.
-        if let image = loadBundledDesignImage(pattern == "floralSoft" ? "botanical-line" : pattern == "floral" ? "vintage-bloom" : "sheer-floral") {
-          image.resizable().scaledToFill().opacity(0.20).frame(width: proxy.size.width, height: proxy.size.height).clipped()
+        if let image = loadBundledDesignImage("vintage-bloom") {
+          image.resizable().scaledToFit().opacity(0.36).frame(width: proxy.size.width, height: proxy.size.height)
         } else {
           Color.clear
+        }
+      case "floralSoft":
+        ZStack {
+          if let image = loadBundledDesignImage("botanical-line") {
+            image.resizable().scaledToFit().opacity(0.16).frame(width: proxy.size.width, height: proxy.size.height)
+          }
+          BotanicalLineLayer(colors: colors)
+        }
+      case "floralSeasonal", "floralDark":
+        ZStack {
+          if let image = loadBundledDesignImage("sheer-floral") {
+            image.resizable().scaledToFit().opacity(0.14).frame(width: proxy.size.width, height: proxy.size.height)
+          }
+          SheerFloralLayer(colors: colors)
         }
       case "pinNote":
         Circle().fill(colors.accent.opacity(0.75)).frame(width: 9, height: 9).position(x: proxy.size.width * 0.5, y: 8)
@@ -696,6 +741,62 @@ private func loadBundledDesignImage(_ resourceName: String) -> Image? {
   return Image(uiImage: image)
 }
 
+/// Deterministic SwiftUI fallback for the tall botanical resources. Drawing
+/// these two patterns avoids a blank-looking centre crop on Small/Medium
+/// widgets while keeping the same restrained palette as the app Design.
+private struct BotanicalLineLayer: View {
+  let colors: DesignPatternColors
+
+  var body: some View {
+    GeometryReader { proxy in
+      ZStack {
+        Path { path in
+          path.move(to: CGPoint(x: proxy.size.width * 0.10, y: proxy.size.height * 0.92))
+          path.addCurve(to: CGPoint(x: proxy.size.width * 0.34, y: proxy.size.height * 0.18), control1: CGPoint(x: proxy.size.width * 0.05, y: proxy.size.height * 0.62), control2: CGPoint(x: proxy.size.width * 0.40, y: proxy.size.height * 0.42))
+          path.addCurve(to: CGPoint(x: proxy.size.width * 0.78, y: proxy.size.height * 0.08), control1: CGPoint(x: proxy.size.width * 0.50, y: proxy.size.height * 0.10), control2: CGPoint(x: proxy.size.width * 0.64, y: proxy.size.height * 0.05))
+        }
+        .stroke(colors.accent.opacity(0.52), lineWidth: 1.3)
+        Ellipse().fill(colors.accent.opacity(0.34)).frame(width: 16, height: 7).rotationEffect(.degrees(-34)).position(x: proxy.size.width * 0.22, y: proxy.size.height * 0.57)
+        Ellipse().fill(colors.accent.opacity(0.30)).frame(width: 18, height: 8).rotationEffect(.degrees(26)).position(x: proxy.size.width * 0.41, y: proxy.size.height * 0.34)
+        Ellipse().fill(colors.accent.opacity(0.28)).frame(width: 16, height: 7).rotationEffect(.degrees(-18)).position(x: proxy.size.width * 0.60, y: proxy.size.height * 0.16)
+        Path { path in
+          path.move(to: CGPoint(x: proxy.size.width * 0.92, y: proxy.size.height * 0.96))
+          path.addCurve(to: CGPoint(x: proxy.size.width * 0.68, y: proxy.size.height * 0.60), control1: CGPoint(x: proxy.size.width * 0.94, y: proxy.size.height * 0.77), control2: CGPoint(x: proxy.size.width * 0.74, y: proxy.size.height * 0.72))
+        }.stroke(colors.stripe.opacity(0.60), lineWidth: 1.1)
+      }
+    }
+  }
+}
+
+private struct SheerFloralLayer: View {
+  let colors: DesignPatternColors
+
+  var body: some View {
+    GeometryReader { proxy in
+      ZStack {
+        ForEach(0..<3, id: \.self) { index in
+          let centers: [CGPoint] = [
+            CGPoint(x: proxy.size.width * 0.18, y: proxy.size.height * 0.22),
+            CGPoint(x: proxy.size.width * 0.80, y: proxy.size.height * 0.38),
+            CGPoint(x: proxy.size.width * 0.42, y: proxy.size.height * 0.86),
+          ]
+          let center = centers[index]
+          ZStack {
+            ForEach(0..<5, id: \.self) { petal in
+              Ellipse()
+                .fill((petal % 2 == 0 ? colors.accent : colors.stripe).opacity(0.24))
+                .frame(width: min(proxy.size.width * 0.24, 56), height: min(proxy.size.height * 0.15, 40))
+                .rotationEffect(.degrees(Double(petal) * 72))
+            }
+            Circle().fill(colors.accent.opacity(0.36)).frame(width: 10, height: 10)
+          }
+          .position(center)
+        }
+      }
+    }
+  }
+}
+
 /// A small corner ribbon shared by the existing check/dot treatments. It is
 /// decorative only, stays outside the text's leading area, and scales with
 /// the widget family instead of becoming a separate theme.
@@ -710,7 +811,7 @@ private struct DesignRibbonLayer: View {
         .fill(color.opacity(0.78))
         .frame(width: width, height: 10)
         .rotationEffect(.degrees(32))
-        .position(x: proxy.size.width - width * 0.12, y: 9)
+        .position(x: proxy.size.width - width * 0.52, y: max(8, min(14, proxy.size.height * 0.12)))
     }
     .allowsHitTesting(false)
   }
@@ -765,6 +866,12 @@ private struct WidgetSurface<Content: View>: View {
         .shadow(color: .black.opacity(0.18), radius: 4, y: 2)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: calendarPhotoLayout ? .bottomTrailing : .topTrailing)
         .padding(11)
+    case "cutout":
+      image.resizable().scaledToFit()
+        .frame(width: family == .systemSmall ? size.width * 0.50 : family == .systemLarge ? size.width * 0.54 : size.width * 0.46,
+               height: family == .systemSmall ? size.height * 0.70 : size.height * 0.80)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .trailing)
+        .padding(.trailing, family == .systemSmall ? 8 : 12)
     default:
       ZStack {
         image.resizable().scaledToFill().frame(width: size.width, height: size.height).clipped()
@@ -775,13 +882,16 @@ private struct WidgetSurface<Content: View>: View {
 
   var body: some View {
     GeometryReader { proxy in
-      let photo = loadWidgetPhoto(appearance?.photoFileName)
-      let photoLayout = appearance?.photoLayout ?? "background"
+      let configuredPhotoLayout = appearance?.photoLayout ?? "background"
+      let cutout = configuredPhotoLayout == "cutout" ? loadWidgetPhoto(appearance?.cutoutFileName) : nil
+      let photo = appearance?.style == .color ? nil : (cutout ?? loadWidgetPhoto(appearance?.photoFileName))
+      let photoLayout = configuredPhotoLayout == "cutout" && cutout == nil ? "background" : configuredPhotoLayout
       let trailingInset: CGFloat = {
         guard photo != nil else { return 0 }
         switch photoLayout {
         case "side": return proxy.size.width * 0.30
         case "card", "circle": return proxy.size.width * 0.16
+        case "cutout": return proxy.size.width * (family == .systemSmall ? 0.18 : 0.30)
         default: return 0
         }
       }()
@@ -958,7 +1068,8 @@ private struct CurrentTaskWidgetView: View {
                   }
                 }
               }
-              let remainingCount = max(0, (snapshot.todayNowTaskCount ?? more.count) - more.count)
+              let displayedCount = min(3, more.count)
+              let remainingCount = max(0, (snapshot.todayNowTaskCount ?? more.count) - displayedCount)
               if remainingCount > 0 {
                 Text("ほか\(remainingCount)件")
                   .font(.caption.weight(.medium))
@@ -1021,18 +1132,34 @@ private struct TaskInformation: View {
 private struct TaskCompletionButton: View {
   let taskId: String
   let palette: WidgetPalette
+  @Environment(\.widgetFamily) private var family
+
+  private var tapSize: CGFloat {
+    family == .systemSmall ? 40 : family == .systemLarge ? 44 : 42
+  }
+
+  private var iconSize: CGFloat {
+    family == .systemSmall ? 21 : family == .systemLarge ? 27 : 24
+  }
 
   @ViewBuilder
   var body: some View {
     if #available(iOSApplicationExtension 17.0, *) {
       Button(intent: RhythmCompleteTaskIntent(taskId: taskId)) {
         Image(systemName: "circle")
+          .font(.system(size: iconSize, weight: .medium))
           .foregroundStyle(palette.accent)
+          .frame(width: tapSize, height: tapSize, alignment: .center)
           .accessibilityLabel("タスクを完了")
       }
       .buttonStyle(.plain)
+      .contentShape(Rectangle())
     } else {
-      Image(systemName: "circle").foregroundStyle(palette.secondary).accessibilityHidden(true)
+      Image(systemName: "circle")
+        .font(.system(size: iconSize, weight: .medium))
+        .foregroundStyle(palette.secondary)
+        .frame(width: tapSize, height: tapSize, alignment: .center)
+        .accessibilityHidden(true)
     }
   }
 }
@@ -1040,19 +1167,33 @@ private struct TaskCompletionButton: View {
 private struct ListItemToggleButton: View {
   let item: WidgetSnapshot.ChecklistItem
   let palette: WidgetPalette
+  @Environment(\.widgetFamily) private var family
+
+  private var tapSize: CGFloat {
+    family == .systemSmall ? 40 : family == .systemLarge ? 44 : 42
+  }
+
+  private var iconSize: CGFloat {
+    family == .systemSmall ? 21 : family == .systemLarge ? 27 : 24
+  }
 
   @ViewBuilder
   var body: some View {
     if #available(iOSApplicationExtension 17.0, *), let taskId = item.taskId, let listItemId = item.listItemId {
       Button(intent: RhythmToggleListItemIntent(taskId: taskId, listItemId: listItemId, completed: !item.done)) {
         Image(systemName: item.done ? "checkmark.circle.fill" : "circle")
+          .font(.system(size: iconSize, weight: .medium))
           .foregroundStyle(item.done ? palette.accent : palette.secondary)
+          .frame(width: tapSize, height: tapSize, alignment: .center)
           .accessibilityLabel(item.done ? "完了済み" : "未完了")
       }
       .buttonStyle(.plain)
+      .contentShape(Rectangle())
     } else {
       Image(systemName: item.done ? "checkmark.circle.fill" : "circle")
+        .font(.system(size: iconSize, weight: .medium))
         .foregroundStyle(item.done ? palette.accent : palette.secondary)
+        .frame(width: tapSize, height: tapSize, alignment: .center)
         .accessibilityHidden(true)
     }
   }
@@ -1223,7 +1364,7 @@ private struct MonthlyCalendarWidgetView: View {
             .foregroundStyle(palette.foreground)
           LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: isLarge ? 3 : 1), count: 7), spacing: isLarge ? 5 : 3) {
             ForEach(["日", "月", "火", "水", "木", "金", "土"], id: \.self) { label in
-              Text(label).font(isLarge ? .caption : .caption2).foregroundStyle(palette.secondary)
+              Text(label).font(isLarge ? .subheadline : .caption2).foregroundStyle(palette.secondary)
             }
             ForEach(0..<max(0, month.leadingEmptyCount), id: \.self) { _ in
               Color.clear.frame(height: isLarge ? 26 : 20)
@@ -1249,10 +1390,10 @@ private struct MonthlyCalendarWidgetView: View {
                   HStack(spacing: 5) {
                     Circle().fill(palette.accent).frame(width: 4, height: 4)
                     Text("\(day.day)日")
-                      .font(.caption2.weight(.semibold))
+                      .font(.caption.weight(.semibold))
                       .foregroundStyle(palette.accent)
                     Text(day.scheduleTitle ?? "予定")
-                      .font(.caption2)
+                      .font(.caption)
                       .foregroundStyle(palette.foreground)
                       .lineLimit(1)
                   }
@@ -1284,11 +1425,11 @@ private struct WeeklyCalendarWidgetView: View {
               ForEach(Array(week.days.enumerated()), id: \.offset) { _, day in
                 HStack(alignment: .top, spacing: 8) {
                   Text("\(day.weekday) \(day.day)").font(.caption.weight(day.isToday ? .bold : .regular)).foregroundStyle(day.isToday ? palette.accent : palette.secondary).frame(width: 44, alignment: .leading)
-                  if day.schedules.isEmpty { Text("—").font(.caption2).foregroundStyle(palette.secondary) }
+                  if day.schedules.isEmpty { Text("—").font(.caption).foregroundStyle(palette.secondary) }
                   else {
                     VStack(alignment: .leading, spacing: 1) {
-                      Text(day.schedules.first?.title ?? "予定").font(.caption2).foregroundStyle(palette.foreground).lineLimit(1)
-                      if day.schedules.count > 1 { Text("ほか\(day.schedules.count - 1)件").font(.caption2).foregroundStyle(palette.secondary) }
+                      Text(day.schedules.first?.title ?? "予定").font(.caption).foregroundStyle(palette.foreground).lineLimit(1)
+                      if day.schedules.count > 1 { Text("ほか\(day.schedules.count - 1)件").font(.caption).foregroundStyle(palette.secondary) }
                     }
                   }
                 }
@@ -1446,13 +1587,13 @@ private struct AffirmationWidgetView: View {
         let index = (Calendar.current.component(.hour, from: entry.date) / 6) % max(1, backgrounds.count)
         let selectedBackground = backgrounds[index]
         if selectedBackground == "photo", let selectedPhoto {
-          return WidgetSnapshot.Appearance(style: .photo, monoTemplate: baseAppearance.monoTemplate, accentHex: baseAppearance.accentHex, photoFileName: selectedPhoto, photoLayout: baseAppearance.photoLayout ?? "background", designPattern: nil, designCheckColor: baseAppearance.designCheckColor, designPatternUnlocked: baseAppearance.designPatternUnlocked, affirmationBackgrounds: baseAppearance.affirmationBackgrounds)
+          return WidgetSnapshot.Appearance(style: .photo, monoTemplate: baseAppearance.monoTemplate, accentHex: baseAppearance.accentHex, photoFileName: selectedPhoto, cutoutFileName: baseAppearance.cutoutFileName, photoLayout: baseAppearance.photoLayout ?? "background", designPattern: nil, designCheckColor: baseAppearance.designCheckColor, designPatternUnlocked: baseAppearance.designPatternUnlocked, affirmationBackgrounds: baseAppearance.affirmationBackgrounds)
         }
         if baseAppearance.designPatternUnlocked != true {
-          return WidgetSnapshot.Appearance(style: .mono, monoTemplate: baseAppearance.monoTemplate, accentHex: baseAppearance.accentHex, photoFileName: nil, photoLayout: baseAppearance.photoLayout, designPattern: nil, designCheckColor: baseAppearance.designCheckColor, designPatternUnlocked: false, affirmationBackgrounds: baseAppearance.affirmationBackgrounds)
+          return WidgetSnapshot.Appearance(style: .mono, monoTemplate: baseAppearance.monoTemplate, accentHex: baseAppearance.accentHex, photoFileName: nil, cutoutFileName: nil, photoLayout: baseAppearance.photoLayout, designPattern: nil, designCheckColor: baseAppearance.designCheckColor, designPatternUnlocked: false, affirmationBackgrounds: baseAppearance.affirmationBackgrounds)
         }
         let pattern = selectedBackground == "dot" ? "dot" : selectedBackground == "check" ? "checkLavenderSatin" : "floral"
-        return WidgetSnapshot.Appearance(style: .color, monoTemplate: baseAppearance.monoTemplate, accentHex: baseAppearance.accentHex, photoFileName: nil, photoLayout: baseAppearance.photoLayout, designPattern: pattern, designCheckColor: baseAppearance.designCheckColor, designPatternUnlocked: baseAppearance.designPatternUnlocked, affirmationBackgrounds: baseAppearance.affirmationBackgrounds)
+        return WidgetSnapshot.Appearance(style: .color, monoTemplate: baseAppearance.monoTemplate, accentHex: baseAppearance.accentHex, photoFileName: nil, cutoutFileName: nil, photoLayout: baseAppearance.photoLayout, designPattern: pattern, designCheckColor: baseAppearance.designCheckColor, designPatternUnlocked: baseAppearance.designPatternUnlocked, affirmationBackgrounds: baseAppearance.affirmationBackgrounds)
       }
       return baseAppearance
     }()

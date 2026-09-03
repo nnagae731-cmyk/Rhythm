@@ -48,6 +48,7 @@ export function HomeScreen({
   onSaveTemplate,
   onPostpone,
   departurePlans = [],
+  canShowArrivalReverseCountdown = true,
   onBucket,
   styles,
   renderTodayWinStrip,
@@ -92,6 +93,7 @@ export function HomeScreen({
   onSaveTemplate: (task: Task) => void;
   onPostpone: (id: string, targetDate?: string) => void;
   departurePlans?: import('../types').DeparturePlan[];
+  canShowArrivalReverseCountdown?: boolean;
   onBucket: (id: string, bucket: TaskBucket) => void;
   styles: any;
   renderTodayWinStrip: (tasks: Task[], onOpenFocus?: () => void, onToggleNowTask?: (id: string) => void, onOpenTaskActions?: (task: Task) => void, selectionMode?: boolean, selectedTaskIds?: string[]) => React.ReactNode;
@@ -170,8 +172,13 @@ export function HomeScreen({
   const weekendKey = dateKey(weekendDate);
   const tomorrowTasks = allTasks.filter((task) => task.scheduledDate === tomorrowKey).sort((a, b) => (a.scheduledTime ?? '99:99').localeCompare(b.scheduledTime ?? '99:99'));
   const todayKey = dateKey(now);
-  const nextUpcoming = selectNextUpcomingItem(allTasks, departurePlans, now);
-  const nextScheduledLabel = nextUpcoming ? `${String(nextUpcoming.scheduledAt.getHours()).padStart(2, '0')}:${String(nextUpcoming.scheduledAt.getMinutes()).padStart(2, '0')}` : '';
+  const nextUpcoming = selectNextUpcomingItem(allTasks, departurePlans, now, canShowArrivalReverseCountdown);
+  const nextTimeLabel = (value: Date) => `${String(value.getHours()).padStart(2, '0')}:${String(value.getMinutes()).padStart(2, '0')}`;
+  const nextScheduledLabel = nextUpcoming ? nextTimeLabel(nextUpcoming.displayAt) : '';
+  const nextArrivalLabel = nextUpcoming?.arrivalAt ? nextTimeLabel(nextUpcoming.arrivalAt) : '';
+  const nextPlanTimeCopy = nextUpcoming?.sourceType === 'departurePlan' && nextUpcoming.leaveAt && nextUpcoming.arrivalAt
+    ? `${nextScheduledLabel} 出発 / ${nextArrivalLabel} 到着`
+    : nextScheduledLabel;
   const nowTasks = tasks.filter((task) => (task.bucket ?? 'now') === 'now');
   const featuredNowTask = selectCurrentTask(nowTasks.filter((task) => !task.done && (!task.scheduledDate || task.scheduledDate <= todayKey)), now);
   const remainingNowTasks = nowTasks.filter((task) => !task.done && task.id !== featuredNowTask?.id);
@@ -216,7 +223,7 @@ export function HomeScreen({
       <TaskListItemsSection groups={nowMemoTasks} completedGroups={completedNowMemoTasks} textColor={focusShortcutText} mutedColor={focusShortcutMuted} accentColor={focusShortcutAccent} borderColor={focusShortcutBorder} isDark={isDark} designMode={designMode} chicPalette={chicPalette} onToggle={(taskId, itemId) => { const task = tasks.find((item) => item.id === taskId); const items = task?.listItems ?? []; onUpdateTaskList(taskId, items.map((item) => item.id === itemId ? { ...item, checked: !item.checked } : item)); }} />
       <View style={{ minHeight: 58, paddingHorizontal: 14, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: focusShortcutBorder }}>
         <Text style={{ color: focusShortcutMuted, fontSize: 11, fontWeight: '800' }}>次の予定</Text>
-        {nextUpcoming ? <Pressable onPress={onOpenSchedule} style={{ flexDirection: 'row', alignItems: 'center', marginTop: 5 }}><Text numberOfLines={1} style={{ color: focusShortcutText, fontSize: 14, fontWeight: '800', flex: 1 }}>{nextScheduledLabel}　{nextUpcoming.title}</Text><Text style={{ marginLeft: 'auto', color: focusShortcutAccent, fontSize: 20 }}>›</Text></Pressable> : <Text style={{ color: focusShortcutMuted, fontSize: 13, marginTop: 5 }}>今日の次の予定はありません</Text>}
+        {nextUpcoming ? <Pressable onPress={onOpenSchedule} style={{ flexDirection: 'row', alignItems: 'center', marginTop: 5 }}><Text numberOfLines={2} style={{ color: focusShortcutText, fontSize: 14, fontWeight: '800', flex: 1 }}>{nextPlanTimeCopy}　{nextUpcoming.title}</Text><Text style={{ marginLeft: 'auto', color: focusShortcutAccent, fontSize: 20 }}>›</Text></Pressable> : <Text style={{ color: focusShortcutMuted, fontSize: 13, marginTop: 5 }}>今日の次の予定はありません</Text>}
       </View>
       <Pressable onPress={() => setTomorrowOpen(true)} style={{ minHeight: 44, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 4, marginTop: 8 }}><Text style={{ color: focusShortcutText, fontSize: 13, fontWeight: '800' }}>明日の予定を見る</Text><Text style={{ color: focusShortcutAccent, fontSize: 20 }}>›</Text></Pressable>
       <Pressable disabled={!onOpenTodayRecord} onPress={onOpenTodayRecord} style={{ minHeight: 48, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 4, marginTop: 8, borderTopWidth: 1, borderTopColor: focusShortcutBorder }}>

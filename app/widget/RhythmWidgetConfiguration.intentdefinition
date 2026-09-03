@@ -37,7 +37,6 @@
       <key>INEnumValues</key>
       <array>
         <dict><key>INEnumValueDisplayName</key><string>unknown</string><key>INEnumValueName</key><string>unknown</string></dict>
-        <dict><key>INEnumValueDisplayName</key><string>花柄（標準）</string><key>INEnumValueName</key><string>floral</string><key>INEnumValueIndex</key><integer>1</integer></dict>
         <dict><key>INEnumValueDisplayName</key><string>ドット</string><key>INEnumValueName</key><string>dot</string><key>INEnumValueIndex</key><integer>2</integer></dict>
         <dict><key>INEnumValueDisplayName</key><string>チェック1</string><key>INEnumValueName</key><string>checkLavenderSatin</string><key>INEnumValueIndex</key><integer>3</integer></dict>
         <dict><key>INEnumValueDisplayName</key><string>チェック2</string><key>INEnumValueName</key><string>checkBeigeNoir</string><key>INEnumValueIndex</key><integer>4</integer></dict>
@@ -48,6 +47,7 @@
         <dict><key>INEnumValueDisplayName</key><string>花柄1</string><key>INEnumValueName</key><string>vintageBloom</string><key>INEnumValueIndex</key><integer>9</integer></dict>
         <dict><key>INEnumValueDisplayName</key><string>花柄2</string><key>INEnumValueName</key><string>botanicalLine</string><key>INEnumValueIndex</key><integer>10</integer></dict>
         <dict><key>INEnumValueDisplayName</key><string>花柄3</string><key>INEnumValueName</key><string>sheerFloral</string><key>INEnumValueIndex</key><integer>11</integer></dict>
+        <dict><key>INEnumValueDisplayName</key><string>無地</string><key>INEnumValueName</key><string>plain</string><key>INEnumValueIndex</key><integer>12</integer></dict>
       </array>
     </dict>
     <dict>
@@ -62,6 +62,11 @@
         <dict><key>INEnumValueDisplayName</key><string>寒色系</string><key>INEnumValueName</key><string>cool</string><key>INEnumValueIndex</key><integer>2</integer></dict>
         <dict><key>INEnumValueDisplayName</key><string>暖色系</string><key>INEnumValueName</key><string>warm</string><key>INEnumValueIndex</key><integer>3</integer></dict>
         <dict><key>INEnumValueDisplayName</key><string>緑系</string><key>INEnumValueName</key><string>green</string><key>INEnumValueIndex</key><integer>4</integer></dict>
+        <dict><key>INEnumValueDisplayName</key><string>オレンジ</string><key>INEnumValueName</key><string>orange</string><key>INEnumValueIndex</key><integer>5</integer></dict>
+        <dict><key>INEnumValueDisplayName</key><string>黄色</string><key>INEnumValueName</key><string>yellow</string><key>INEnumValueIndex</key><integer>6</integer></dict>
+        <dict><key>INEnumValueDisplayName</key><string>青</string><key>INEnumValueName</key><string>blue</string><key>INEnumValueIndex</key><integer>7</integer></dict>
+        <dict><key>INEnumValueDisplayName</key><string>水色</string><key>INEnumValueName</key><string>lightBlue</string><key>INEnumValueIndex</key><integer>8</integer></dict>
+        <dict><key>INEnumValueDisplayName</key><string>ピンク</string><key>INEnumValueName</key><string>pink</string><key>INEnumValueIndex</key><integer>9</integer></dict>
       </array>
     </dict>
     <dict>
@@ -77,6 +82,7 @@
         <dict><key>INEnumValueDisplayName</key><string>上部</string><key>INEnumValueName</key><string>top</string><key>INEnumValueIndex</key><integer>3</integer></dict>
         <dict><key>INEnumValueDisplayName</key><string>カード</string><key>INEnumValueName</key><string>card</string><key>INEnumValueIndex</key><integer>4</integer></dict>
         <dict><key>INEnumValueDisplayName</key><string>丸型</string><key>INEnumValueName</key><string>circle</string><key>INEnumValueIndex</key><integer>5</integer></dict>
+        <dict><key>INEnumValueDisplayName</key><string>切り抜き</string><key>INEnumValueName</key><string>cutout</string><key>INEnumValueIndex</key><integer>6</integer></dict>
       </array>
     </dict>
   </array>

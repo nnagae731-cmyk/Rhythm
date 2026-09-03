@@ -11,6 +11,8 @@ const TEMPLATE_FILES = [
   'RhythmWidget-Info.plist',
   'RhythmWidget.entitlements',
   'RhythmWidgetConfiguration.intentdefinition',
+  'RhythmLiveActivity.swift',
+  'RhythmLiveActivityAttributes.swift',
 ];
 const WIDGET_DESIGN_ASSETS = [
   { fileName: 'vintage-bloom.jpg', source: path.join('assets', 'themes', 'floral', 'vintage-bloom.jpg'), lastKnownFileType: 'image.jpeg' },
@@ -244,6 +246,8 @@ function ensureWidgetSourceFiles(project, target) {
     'RhythmWidget.swift',
     'RhythmWidgetBundle.swift',
     'RhythmWidgetConfiguration.intentdefinition',
+    'RhythmLiveActivity.swift',
+    'RhythmLiveActivityAttributes.swift',
   ];
   const { group } = ensureWidgetSourceGroup(project);
   const fileReferences = project.getPBXObject('PBXFileReference') ?? {};

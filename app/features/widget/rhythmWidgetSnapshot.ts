@@ -16,7 +16,9 @@ export type RhythmWidgetAppearance = {
   accentHex?: string;
   /** Filename in the App Group container; the image itself is never in the snapshot. */
   photoFileName?: string;
-  photoLayout?: 'background' | 'right' | 'top' | 'card' | 'circle';
+  photoLayout?: 'background' | 'right' | 'top' | 'card' | 'circle' | 'cutout';
+  /** Filename of the transparent foreground PNG in the App Group container. */
+  cutoutFileName?: string;
   /** Existing app Design identifiers. These are decoration hints only; the
    * native renderer keeps Mono/Photo fallbacks when they are absent. */
   designPattern?: string;
@@ -29,6 +31,7 @@ export type RhythmWidgetAppearance = {
 /** Per-widget photo references. Image bytes remain in the App Group container. */
 export type RhythmWidgetCustomization = {
   photoFileName?: string;
+  cutoutFileName?: string;
   photoLayout?: WidgetPhotoLayout;
   monoTemplate?: WidgetMonoTemplate;
 };
@@ -347,6 +350,9 @@ type RhythmWidgetNativeModule = {
   saveSnapshot(snapshot: string): Promise<boolean>;
   savePhoto?(uri: string): Promise<boolean>;
   saveWidgetPhoto?(uri: string, widgetType: WidgetType): Promise<boolean>;
+  saveWidgetPhotoCutout?(uri: string, widgetType: WidgetType): Promise<boolean>;
+  removeWidgetPhotoBackground?(uri: string, widgetType: WidgetType): Promise<string | null>;
+  isWidgetPhotoBackgroundRemovalAvailable?(): Promise<boolean>;
   saveAffirmationPhoto?(uri: string, slot: number): Promise<boolean>;
   getPendingWidgetActions?(): Promise<string>;
   acknowledgePendingWidgetActions?(actionIds: string[]): Promise<boolean>;
@@ -374,6 +380,29 @@ export async function saveRhythmWidgetPhotoForWidget(uri: string, widgetType: Wi
   const module = requireOptionalNativeModule<RhythmWidgetNativeModule>('RhythmWidget');
   if (!module?.saveWidgetPhoto) return false;
   return module.saveWidgetPhoto(uri, widgetType);
+}
+
+/** Generates and caches a transparent foreground PNG using the iOS Vision module. */
+export async function generateRhythmWidgetPhotoCutout(uri: string, widgetType: WidgetType) {
+  if (Platform.OS !== 'ios') return false as const;
+  const module = requireOptionalNativeModule<RhythmWidgetNativeModule>('RhythmWidget');
+  if (!module?.removeWidgetPhotoBackground) return false as const;
+  return (await module.removeWidgetPhotoBackground(uri, widgetType)) ?? false;
+}
+
+export async function isRhythmWidgetPhotoBackgroundRemovalAvailable() {
+  if (Platform.OS !== 'ios') return false;
+  const module = requireOptionalNativeModule<RhythmWidgetNativeModule>('RhythmWidget');
+  if (!module?.isWidgetPhotoBackgroundRemovalAvailable) return false;
+  return module.isWidgetPhotoBackgroundRemovalAvailable();
+}
+
+/** Copies the cached foreground PNG into the stable App Group filename. */
+export async function saveRhythmWidgetPhotoCutout(uri: string, widgetType: WidgetType) {
+  if (Platform.OS !== 'ios') return false;
+  const module = requireOptionalNativeModule<RhythmWidgetNativeModule>('RhythmWidget');
+  if (!module?.saveWidgetPhotoCutout) return false;
+  return module.saveWidgetPhotoCutout(uri, widgetType);
 }
 
 export async function saveRhythmAffirmationPhoto(uri: string, slot: number) {

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ActivityIndicator, Modal, Pressable, Text, View } from 'react-native';
+import { ActivityIndicator, InteractionManager, Modal, Pressable, Text, View } from 'react-native';
 import { ChicThemePalette, DesignMode, getThemeTokens } from '../theme';
 
 export type RewardedAccessResult = {
@@ -23,6 +23,7 @@ type Props = {
 
 export function RewardedAccessModal({ visible, title, description, current = 0, required = 1, designMode, chicPalette, onReward, onClose, onPremium }: Props) {
   const [busy, setBusy] = useState(false);
+  const [adActive, setAdActive] = useState(false);
   const [message, setMessage] = useState('');
   const theme = getThemeTokens(designMode, chicPalette?.id ?? 'cool');
   const colors = designMode === 'chic' && chicPalette ? {
@@ -47,8 +48,16 @@ export function RewardedAccessModal({ visible, title, description, current = 0, 
     if (busy) return;
     setBusy(true);
     setMessage('');
+    setAdActive(true);
     try {
+      // Do not present Google Mobile Ads above this React Native Modal. Hide
+      // the confirmation sheet first, then allow its dismissal animation to
+      // finish before the native SDK presents its own view controller.
+      await new Promise<void>((resolve) => {
+        InteractionManager.runAfterInteractions(() => setTimeout(resolve, 250));
+      });
       const result = await onReward();
+      setAdActive(false);
       if (result.success && result.completed) {
         setMessage(result.message ?? '取得しました');
         setTimeout(onClose, 350);
@@ -58,11 +67,12 @@ export function RewardedAccessModal({ visible, title, description, current = 0, 
         setMessage(result.message ?? '広告を読み込めませんでした。もう一度お試しください。');
       }
     } finally {
+      setAdActive(false);
       setBusy(false);
     }
   };
 
-  return <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+  return <Modal visible={visible && !adActive} transparent animationType="fade" onRequestClose={onClose}>
     <Pressable onPress={onClose} style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.35)', justifyContent: 'center', padding: 20 }}>
       <Pressable onPress={(event) => event.stopPropagation()} style={{ borderRadius: 20, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface, padding: 20 }}>
         <Text style={{ color: colors.text, fontSize: 18, fontWeight: '900' }}>{title}</Text>

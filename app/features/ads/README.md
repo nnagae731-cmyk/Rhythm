@@ -172,32 +172,7 @@ Freeユーザー：
 
 ---
 
-# 6. Wish 月の目標
-
-Rewarded Feature：
-
-`wishMonthlyGoal`
-
-必要広告：
-
-**5回**
-
-5回目の
-`EARNED_REWARD`
-取得時点から、
-
-**1か月**
-
-解放する。
-
-期限切れ後は
-再び0/5から開始。
-
-Premiumユーザーは広告不要。
-
----
-
-# 7. 月の目標と今月のテーマ
+# 6. 月の目標と今月のテーマ
 
 重要。
 
@@ -209,11 +184,7 @@ Premiumユーザーは広告不要。
 
 が存在する。
 
-Rewarded広告5回対象の
-
-`月の目標`
-
-は、
+`月の目標` は、
 
 **既存の「今月のテーマ」と別機能。**
 
@@ -224,7 +195,7 @@ Rewarded広告5回対象の
 
 ---
 
-# 8. 叶えたいこと追加
+# 7. 叶えたいこと追加
 
 Rewarded Feature：
 
@@ -614,7 +585,7 @@ Storage Key：
 
 現在保存している主な状態：
 
-- wishMonthlyGoal progress / unlockedUntil
+- legacy wishMonthlyGoal progress / unlockedUntil (decode compatibility only)
 - wishCreateProgress
 - wishActionCreateProgress
 - premiumDesign unlockedUntil
@@ -635,7 +606,6 @@ UI接続のためだけに全面変更しない。
 
 既存logicには、
 
-- isWishMonthlyGoalUnlocked()
 - isPremiumDesignUnlocked()
 - canCreateWish()
 - canCreateWishAction()

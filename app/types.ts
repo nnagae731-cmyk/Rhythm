@@ -14,10 +14,12 @@ export type WidgetType = 'current' | 'next' | 'combined' | 'monthly' | 'weekly' 
 export type WidgetStyle = 'mono' | 'color' | 'photo';
 export type WidgetAccentColor = 'blue' | 'purple' | 'pink' | 'green' | 'orange' | 'gray';
 export type WidgetPhotoSource = 'widget' | 'wish';
-export type WidgetPhotoLayout = 'background' | 'right' | 'top' | 'card' | 'circle';
+export type WidgetPhotoLayout = 'background' | 'right' | 'top' | 'card' | 'circle' | 'cutout';
 export type WidgetMonoTemplate = 'clean' | 'pinNote' | 'ruledNote';
 export type WidgetCustomization = {
   photoUri?: string;
+  /** Derived transparent foreground image kept app-local; the original photo remains intact. */
+  cutoutUri?: string;
   photoLayout?: WidgetPhotoLayout;
   /** Optional per-widget Mono paper treatment; native falls back to the shared value. */
   monoTemplate?: WidgetMonoTemplate;
@@ -276,6 +278,8 @@ export type PersistedState = {
   hapticsEnabled?: boolean;
   /** Whether to schedule the local reminder before a StoreKit free trial ends. */
   premiumTrialReminderEnabled?: boolean;
+  /** Premium-only Live Activity preference; optional for older saves. */
+  liveActivityEnabled?: boolean;
   reviewPromptedAt?: string;
   taskTemplates?: string[];
   chicPattern?: ChicPattern;
@@ -309,3 +313,6 @@ export type PersistedState = {
   /** Local daily voice recognition usage; optional for older saves. */
   voiceUsage?: { date: string; count: number; rewardedCount?: number; bonusUses?: number };
 };
+
+/** Development-only app-level Design Customize entitlement override. */
+export type DevDesignCustomizeOverride = 'actual' | 'free' | 'purchased';

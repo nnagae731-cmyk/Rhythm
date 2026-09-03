@@ -14,5 +14,8 @@ struct RhythmWidgetBundle: WidgetBundle {
     RhythmGoalWidget()
     RhythmVoiceWidget()
     RhythmAffirmationWidget()
+    if #available(iOS 16.1, *) {
+      RhythmLiveActivityWidget()
+    }
   }
 }

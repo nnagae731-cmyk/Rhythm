@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ActivityIndicator, Modal, Pressable, Text, View } from 'react-native';
+import { ActivityIndicator, InteractionManager, Modal, Pressable, Text, View } from 'react-native';
 import { ChicThemePalette, DesignMode, getThemeTokens } from '../theme';
 
 type Props = {
@@ -14,6 +14,7 @@ type Props = {
 
 export function VoiceUsageLimitModal({ visible, designMode, chicPalette, canWatchReward, onReward, onPremium, onClose }: Props) {
   const [busy, setBusy] = useState(false);
+  const [adActive, setAdActive] = useState(false);
   const [error, setError] = useState('');
   const theme = getThemeTokens(designMode, chicPalette?.id ?? 'cool');
   const colors = designMode === 'chic' && chicPalette
@@ -23,13 +24,18 @@ export function VoiceUsageLimitModal({ visible, designMode, chicPalette, canWatc
     if (busy) return;
     setBusy(true);
     setError('');
+    setAdActive(true);
     try {
+      await new Promise<void>((resolve) => {
+        InteractionManager.runAfterInteractions(() => setTimeout(resolve, 250));
+      });
       if (!await onReward()) setError('広告を完了できませんでした。もう一度お試しください。');
     } finally {
+      setAdActive(false);
       setBusy(false);
     }
   };
-  return <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+  return <Modal visible={visible && !adActive} transparent animationType="fade" onRequestClose={onClose}>
     <Pressable onPress={onClose} style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.35)', justifyContent: 'center', padding: 20 }}>
       <Pressable onPress={(event) => event.stopPropagation()} style={{ borderRadius: 20, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface, padding: 20 }}>
         <Text style={{ color: colors.text, fontSize: 18, fontWeight: '900' }}>今日の無料音声入力を使い切りました</Text>

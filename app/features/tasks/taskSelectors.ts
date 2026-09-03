@@ -9,6 +9,11 @@ export type UpcomingItem = {
   sourceType: 'task' | 'departurePlan';
   scheduledAt: Date;
   actionableAt?: Date;
+  /** Primary time shown to the user; Premium arrival-reverse plans use leaveAt. */
+  displayAt: Date;
+  /** Arrival time retained so the Home UI can explain an arrival-reverse choice. */
+  arrivalAt?: Date;
+  leaveAt?: Date;
   source: Task | DeparturePlan;
 };
 
@@ -25,12 +30,12 @@ function taskStart(task: Task) {
 function taskActionableAt(task: Task) {
   const start = taskStart(task);
   const deadline = taskDeadline(task);
-  const riskAt = deadline
+  const actionableDeadline = task.navigationEnabled === true && deadline
     ? new Date(deadline.getTime() - ((task.preparationMinutes ?? 30) + (task.travelMinutes ?? 30) + (task.bufferMinutes ?? 10)) * 60_000)
-    : undefined;
-  if (!start) return riskAt;
-  if (!riskAt) return start;
-  return start.getTime() < riskAt.getTime() ? start : riskAt;
+    : deadline;
+  if (!start) return actionableDeadline;
+  if (!actionableDeadline) return start;
+  return start.getTime() < actionableDeadline.getTime() ? start : actionableDeadline;
 }
 
 /** Sorts an already-filtered "now" candidate list using the shared Home/Widget ranking. */
@@ -49,9 +54,9 @@ export function selectCurrentTasks(candidates: Task[], now = new Date()) {
       return { task, index, temporalRank, targetTime, registrationTime };
     })
     .sort((a, b) => a.temporalRank - b.temporalRank
-      || priorityRank[a.task.priority] - priorityRank[b.task.priority]
       || a.targetTime - b.targetTime
-    || (a.registrationTime - b.registrationTime)
+      || priorityRank[a.task.priority] - priorityRank[b.task.priority]
+      || (a.registrationTime - b.registrationTime)
       || a.index - b.index).map(({ task }) => task);
 }
 
@@ -60,52 +65,63 @@ export function selectCurrentTask(candidates: Task[], now = new Date()) {
   return selectCurrentTasks(candidates, now)[0];
 }
 
-function planScheduledAt(plan: DeparturePlan) {
+export function planScheduledAt(plan: DeparturePlan) {
   return dateForReminder(plan.date, plan.allDay ? '00:00' : getPlanScheduledTime(plan) || '00:00');
 }
 
+function planComparisonAt(plan: DeparturePlan, canShowArrivalReverseCountdown: boolean) {
+  const mode = getDeparturePlanMode(plan);
+  if (mode === 'arrival_reverse' && canShowArrivalReverseCountdown && !plan.allDay) return getDepartureMoments(plan).leave;
+  return planScheduledAt(plan);
+}
+
+function planDisplayTimes(plan: DeparturePlan, canShowArrivalReverseCountdown: boolean) {
+  const arrivalAt = !plan.allDay && getDeparturePlanMode(plan) === 'arrival_reverse' ? dateForReminder(plan.date, plan.arrival) : undefined;
+  const leaveAt = arrivalAt && canShowArrivalReverseCountdown ? getDepartureMoments(plan).leave : undefined;
+  return {
+    displayAt: leaveAt ?? planScheduledAt(plan),
+    ...(arrivalAt ? { arrivalAt } : {}),
+    ...(leaveAt ? { leaveAt } : {}),
+  };
+}
+
 /** Normalizes task and departure-plan times so Home and Widget use the same comparison. */
-export function normalizeUpcomingItems(tasks: Task[], plans: DeparturePlan[], now = new Date()): UpcomingItem[] {
+export function normalizeUpcomingItems(tasks: Task[], plans: DeparturePlan[], now = new Date(), canShowArrivalReverseCountdown = true): UpcomingItem[] {
   const taskItems = tasks
     .filter((task) => !task.done && task.status !== 'skipped' && task.scheduledDate && task.scheduledTime)
     .map((task) => {
       const scheduledAt = taskStart(task)!;
-      return { id: task.id, title: task.title, sourceType: 'task' as const, scheduledAt, actionableAt: taskActionableAt(task), source: task };
+      return { id: task.id, title: task.title, sourceType: 'task' as const, scheduledAt, actionableAt: taskActionableAt(task), displayAt: scheduledAt, source: task };
     });
   const planItems = plans
-    .filter((plan) => Boolean(plan.date))
+    // All-day plans remain available to calendar/today views, but they do not
+    // have a meaningful clock time for the "next" timed item.
+    .filter((plan) => Boolean(plan.date) && !plan.allDay)
     .map((plan) => {
       const scheduledAt = planScheduledAt(plan);
       const mode = getDeparturePlanMode(plan);
-      const actionableAt = !plan.allDay && (isDepartureReminderPlan(plan) || mode === 'arrival_reverse')
+      const actionableAt = isDepartureReminderPlan(plan) || (mode === 'arrival_reverse' && canShowArrivalReverseCountdown)
         ? (isDepartureReminderPlan(plan) ? scheduledAt : getDepartureMoments(plan).leave)
         : undefined;
-      return { id: plan.id ?? `plan-${plan.date}-${plan.title}`, title: plan.title, sourceType: 'departurePlan' as const, scheduledAt, actionableAt, source: plan };
+      const displayTimes = planDisplayTimes(plan, canShowArrivalReverseCountdown);
+      return { id: plan.id ?? `plan-${plan.date}-${plan.title}`, title: plan.title, sourceType: 'departurePlan' as const, scheduledAt, actionableAt, ...displayTimes, source: plan };
     });
   return [...taskItems, ...planItems].filter((item) => {
-    if (item.sourceType === 'departurePlan' && (item.source as DeparturePlan).allDay) return (item.source as DeparturePlan).date >= dateKey(now);
     const at = item.actionableAt ?? item.scheduledAt;
     return at.getTime() >= now.getTime();
   });
 }
 
-export function selectNextUpcomingItem(tasks: Task[], plans: DeparturePlan[], now = new Date()) {
-  return normalizeUpcomingItems(tasks, plans, now)
+export function selectNextUpcomingItem(tasks: Task[], plans: DeparturePlan[], now = new Date(), canShowArrivalReverseCountdown = true) {
+  return normalizeUpcomingItems(tasks, plans, now, canShowArrivalReverseCountdown)
     .sort((a, b) => (a.actionableAt ?? a.scheduledAt).getTime() - (b.actionableAt ?? b.scheduledAt).getTime())[0];
 }
 
 export function selectNextUpcomingPlan(plans: DeparturePlan[], now = new Date(), canShowArrivalReverseCountdown = true) {
   return plans
-    .filter((plan) => {
-      const mode = getDeparturePlanMode(plan);
-      if (mode === 'arrival_reverse' && !canShowArrivalReverseCountdown) return false;
-      if (plan.allDay) return plan.date >= dateKey(now);
-      const at = mode === 'arrival_reverse' && !plan.allDay ? getDepartureMoments(plan).leave : planScheduledAt(plan);
-      return at.getTime() >= now.getTime();
-    })
+    .filter((plan) => !plan.allDay)
+    .filter((plan) => planComparisonAt(plan, canShowArrivalReverseCountdown).getTime() >= now.getTime())
     .sort((a, b) => {
-      const aAt = (getDeparturePlanMode(a) === 'arrival_reverse' && !a.allDay) ? getDepartureMoments(a).leave : planScheduledAt(a);
-      const bAt = (getDeparturePlanMode(b) === 'arrival_reverse' && !b.allDay) ? getDepartureMoments(b).leave : planScheduledAt(b);
-      return aAt.getTime() - bAt.getTime();
+      return planComparisonAt(a, canShowArrivalReverseCountdown).getTime() - planComparisonAt(b, canShowArrivalReverseCountdown).getTime();
     })[0];
 }

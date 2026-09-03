@@ -1,10 +1,4 @@
 export const REWARDED_AD_RULES = {
-  wishMonthlyGoal: {
-    label: '「叶えたいこと」内の月の目標',
-    adsRequired: 5,
-    unlockDurationMonths: 1,
-  },
-
   wishCreate: {
     label: '叶えたいこと',
     adsRequired: 2,

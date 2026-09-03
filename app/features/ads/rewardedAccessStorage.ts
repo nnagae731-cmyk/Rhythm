@@ -7,6 +7,7 @@ export const REWARDED_ACCESS_STORAGE_KEY =
 export type RewardedAccessState = {
   version: 1;
 
+  /** @deprecated Legacy storage kept only so older saved state remains decodable. */
   wishMonthlyGoal: {
     progress: number;
     monthKey: string | null;
@@ -58,6 +59,8 @@ export type RewardedAccessState = {
 export const DEFAULT_REWARDED_ACCESS_STATE: RewardedAccessState = {
   version: 1,
 
+  // Legacy field: monthly goals are no longer gated by Rewarded ads, but this
+  // shape must remain for backward-compatible decoding of existing state.
   wishMonthlyGoal: {
     progress: 0,
     monthKey: null,

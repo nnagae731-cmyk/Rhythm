@@ -14,7 +14,8 @@
         "NSCalendarsUsageDescription": "カレンダーの予定をRhythmの出発プランへ変換するために使用します。",
         "NSRemindersUsageDescription": "リマインダーの情報をRhythmで利用するために使用します。",
         "NSMicrophoneUsageDescription": "音声入力で話した内容を文字に変換するためにマイクを使用します。",
-        "NSSpeechRecognitionUsageDescription": "音声入力で話した内容を文字に変換するために音声認識を使用します。"
+        "NSSpeechRecognitionUsageDescription": "音声入力で話した内容を文字に変換するために音声認識を使用します。",
+        "NSSupportsLiveActivities": true
       },
       "buildNumber": "3",
       "entitlements": {

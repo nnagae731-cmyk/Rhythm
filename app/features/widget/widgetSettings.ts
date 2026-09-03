@@ -57,6 +57,7 @@ export const WIDGET_PHOTO_LAYOUT_OPTIONS: ReadonlyArray<{ id: WidgetPhotoLayout;
   { id: 'top', label: '上部' },
   { id: 'card', label: 'カード' },
   { id: 'circle', label: '丸型' },
+  { id: 'cutout', label: '切り抜き' },
 ];
 
 export const WIDGET_MONO_TEMPLATE_OPTIONS: ReadonlyArray<{ id: WidgetMonoTemplate; label: string }> = [
@@ -121,9 +122,10 @@ export function normalizeWidgetSettings(value: unknown): WidgetSettings {
     const raw = isRecord(rawCustomizations[id]) ? rawCustomizations[id] : undefined;
     if (!raw) return;
     const customPhotoUri = typeof raw.photoUri === 'string' && raw.photoUri.trim() ? raw.photoUri : undefined;
+    const customCutoutUri = typeof raw.cutoutUri === 'string' && raw.cutoutUri.trim() ? raw.cutoutUri : undefined;
     const customPhotoLayout = photoLayoutIds.has(raw.photoLayout as WidgetPhotoLayout) ? raw.photoLayout as WidgetPhotoLayout : undefined;
     const customMonoTemplate = monoTemplateIds.has(raw.monoTemplate as WidgetMonoTemplate) ? raw.monoTemplate as WidgetMonoTemplate : undefined;
-    if (customPhotoUri || customPhotoLayout || customMonoTemplate) widgetCustomizations[id] = { photoUri: customPhotoUri, photoLayout: customPhotoLayout, monoTemplate: customMonoTemplate };
+    if (customPhotoUri || customCutoutUri || customPhotoLayout || customMonoTemplate) widgetCustomizations[id] = { photoUri: customPhotoUri, cutoutUri: customCutoutUri, photoLayout: customPhotoLayout, monoTemplate: customMonoTemplate };
   });
   const affirmationRotationMode = source.affirmationRotationMode === 'automatic' ? 'automatic' : 'fixed';
   const allowedBackgrounds = new Set(['floral', 'dot', 'check', 'photo']);
@@ -141,6 +143,7 @@ export function getWidgetCustomization(settings: WidgetSettings, widgetType: Wid
   const customization = settings.widgetCustomizations?.[widgetType];
   return {
     photoUri: customization?.photoUri ?? settings.photoUri,
+    cutoutUri: customization?.cutoutUri,
     photoLayout: customization?.photoLayout ?? settings.photoLayout,
     monoTemplate: customization?.monoTemplate ?? settings.monoTemplate,
   };
