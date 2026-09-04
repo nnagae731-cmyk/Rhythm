@@ -46,10 +46,10 @@ import { initialPlan } from './storage/rhythmState';
 import { DEFAULT_TRAVEL_APP_SETTINGS, normalizeTravelAppSettings, TravelAppSettings } from './features/travel/travelApps';
 import { loadRhythmState, saveRhythmState } from './storage/rhythmStorage';
 import { acknowledgeRhythmWidgetPendingActions, buildRhythmWidgetSnapshot, generateRhythmWidgetPhotoCutout, getRhythmWidgetPendingActions, isRhythmWidgetPhotoBackgroundRemovalAvailable, saveRhythmAffirmationPhoto, saveRhythmWidgetPhoto, saveRhythmWidgetPhotoCutout, saveRhythmWidgetPhotoForWidget, saveRhythmWidgetSnapshot } from './features/widget/rhythmWidgetSnapshot';
-import { DEFAULT_WIDGET_SETTINGS, getWidgetAccentHex, getWidgetCustomization, normalizeWidgetSettings, WIDGET_TYPE_OPTIONS } from './features/widget/widgetSettings';
+import { DEFAULT_WIDGET_SETTINGS, getWidgetCustomization, normalizeWidgetSettings, WIDGET_TYPE_OPTIONS } from './features/widget/widgetSettings';
 import type { WidgetEntitlementOverride } from './features/widget/widgetSettings';
 import { categories, priorities, completionIcons, categoryColors as baseCategoryColors, designModes, getLateRiskMessage, getNextBestAction, getUrgencyStatus, urgencyLevel } from './features/tasks/taskUtils';
-import { selectCurrentTask } from './features/tasks/taskSelectors';
+import { planScheduledAt, selectCurrentTask } from './features/tasks/taskSelectors';
 import { createSharedEventPacket, createSharedEventToken, encodeSharedEventLink, normalizeSharedEvent, parseSharedEventLink, upsertSharedEvent } from './features/shared/sharedUtils';
 import { getMonthlyWishState, normalizeWishMonthsForSave, wishMonthKey } from './features/wish/wishUtils';
 import { cancelPendingTaskNotifications } from './features/tasks/taskNotifications';
@@ -275,7 +275,13 @@ function todayInputValue(offset = 0) {
 
 function advanceDateValue(value: string | undefined, rule: RepeatRule) {
   const base = value ? dateForReminder(value, '12:00') : new Date();
-  if (rule === 'monthly') base.setMonth(base.getMonth() + 1);
+  if (rule === 'monthly') {
+    const day = base.getDate();
+    const nextMonth = new Date(base.getFullYear(), base.getMonth() + 1, 1, base.getHours(), base.getMinutes(), base.getSeconds(), base.getMilliseconds());
+    const lastDay = new Date(nextMonth.getFullYear(), nextMonth.getMonth() + 1, 0).getDate();
+    nextMonth.setDate(Math.min(day, lastDay));
+    return dateKey(nextMonth);
+  }
   else base.setDate(base.getDate() + (rule === 'weekly' ? 7 : 1));
   if (rule === 'weekdays') {
     while (base.getDay() === 0 || base.getDay() === 6) base.setDate(base.getDate() + 1);
@@ -536,6 +542,7 @@ export default function App() {
   const rewardedDesignBusyRef = React.useRef(false);
   const tasksRef = React.useRef<Task[]>([]);
   const scheduleTaskNotificationsRef = React.useRef<(task: Task) => Promise<void>>(async () => undefined);
+  const navigateWithinAppRef = React.useRef<(nextScreen: Screen) => void>(() => undefined);
   const hydratedRef = React.useRef(false);
   useEffect(() => {
     let active = true;
@@ -738,8 +745,12 @@ export default function App() {
     onDesignCustomizeEntitlement: handleStoreDesignEntitlement,
     onPremiumTrialStarted: handlePremiumTrialStarted,
   });
+  const storeKitEntitlementsResolved = !storeKit.configured || storeKit.entitlementsResolved;
+  const premiumTrialReminderAvailable = planTier === 'premium'
+    && typeof storeKit.premiumTrialEndAt === 'number'
+    && storeKit.premiumTrialEndAt > now.getTime();
   useEffect(() => {
-    if (!hydrated) return;
+    if (!hydrated || !storeKitEntitlementsResolved) return;
     const trialEndAt = storeKit.premiumTrialEndAt;
     const trialKey = trialEndAt ? `${STORE_PRODUCT_IDS.premiumMonthly}:${trialEndAt}` : undefined;
     if (trialKey && pendingPremiumTrialChoiceRef.current === trialKey) return;
@@ -758,13 +769,13 @@ export default function App() {
     })().catch((error) => {
       if (__DEV__) console.log('[Notifications] Premium trial reminder unavailable', error);
     });
-  }, [hydrated, premiumTrialReminderEnabled, storeKit.premiumTrialEndAt]);
+  }, [hydrated, premiumTrialReminderEnabled, storeKit.premiumTrialEndAt, storeKitEntitlementsResolved]);
   // Keep StoreKit/persisted values as the actual entitlement source, then
   // apply the DEV-only QA override at this single effective-access boundary.
   // Premium always includes Design Customize, even while another DEV plan is
   // selected. The override is session-only and never persisted.
   const actualDesignCustomizeAccess = planTier === 'premium'
-    || (storeKit.designConfigured ? storeKit.entitlementsResolved && storeDesignCustomizeAccess : __DEV__ && designCustomizePurchased);
+    || (storeKit.designConfigured ? storeKit.designEntitlementResolved && storeDesignCustomizeAccess : __DEV__ && designCustomizePurchased);
   const hasDesignCustomizeAccess = !__DEV__ || devDesignCustomizeOverride === 'actual'
     ? actualDesignCustomizeAccess
     : planTier === 'premium' || devDesignCustomizeOverride === 'purchased';
@@ -1098,9 +1109,9 @@ export default function App() {
   }, []);
   const purchaseDesignCustomize = React.useCallback(async () => {
     if (storeKit.designConfigured) {
-      const success = await storeKit.purchaseDesignCustomize();
-      if (success) setDesignCustomizePurchased(true);
-      else if (storeKit.errorMessage) Alert.alert('購入を完了できませんでした', 'App Storeの商品情報を取得できませんでした。時間をおいてもう一度お試しください。');
+      const result = await storeKit.purchaseDesignCustomize();
+      if (result.success) setDesignCustomizePurchased(true);
+      else if (result.error) Alert.alert('購入を完了できませんでした', 'App Storeの商品情報を取得できませんでした。時間をおいてもう一度お試しください。');
       return;
     }
     if (!__DEV__) {
@@ -1118,7 +1129,7 @@ export default function App() {
       if (restored.designCustomize) {
         setDesignCustomizePurchased(true);
         Alert.alert('購入を復元しました', 'Design Customizeを利用できます。');
-      } else if (storeKit.errorMessage) {
+      } else if (restored.error) {
         Alert.alert('購入を復元できませんでした', 'App Storeの商品情報を取得できませんでした。時間をおいてもう一度お試しください。');
       } else {
         Alert.alert('復元できる購入はありません', '同じApple IDで購入した履歴が見つかりませんでした。');
@@ -1142,7 +1153,7 @@ export default function App() {
     }
     const restored = await storeKit.restore();
     if (restored.premium) Alert.alert('購入を復元しました', 'Premiumを利用できます。');
-    else if (storeKit.errorMessage) Alert.alert('購入を復元できませんでした', 'App Storeの商品情報を取得できませんでした。時間をおいてもう一度お試しください。');
+    else if (restored.error) Alert.alert('購入を復元できませんでした', 'App Storeの商品情報を取得できませんでした。時間をおいてもう一度お試しください。');
     else Alert.alert('復元できる購入はありません', '同じApple IDで購入した履歴が見つかりませんでした。');
   }, [storeKit]);
   const markDesignNoticeSeen = React.useCallback((expiry: string) => {
@@ -1602,17 +1613,17 @@ export default function App() {
       const parsed = new URL(url);
       if (parsed.protocol !== 'rhythm:') return false;
       if (parsed.hostname === 'todo') {
-        setScreen('home');
+        navigateWithinAppRef.current('home');
         return true;
       }
       if (parsed.hostname === 'schedule') {
         setTimelineInitialTab('departure');
-        setScreen('timeline');
+        navigateWithinAppRef.current('timeline');
         return true;
       }
       if (parsed.hostname === 'focus') {
         setTimelineInitialTab('focus');
-        setScreen('timeline');
+        navigateWithinAppRef.current('timeline');
         return true;
       }
       if (parsed.hostname === 'voice') {
@@ -1620,7 +1631,7 @@ export default function App() {
         return true;
       }
       if (parsed.hostname === 'affirmation') {
-        setScreen('settings');
+        navigateWithinAppRef.current('settings');
         return true;
       }
       if (parsed.hostname === 'premium') {
@@ -2162,11 +2173,11 @@ export default function App() {
       if (action === Notifications.DEFAULT_ACTION_IDENTIFIER) {
         if (typeof departurePlanId === 'string') {
           setTimelineInitialTab('departure');
-          setScreen('timeline');
+          navigateWithinAppRef.current('timeline');
           return;
         }
         if (typeof taskId === 'string') {
-          setScreen('home');
+          navigateWithinAppRef.current('home');
           return;
         }
       }
@@ -2187,6 +2198,11 @@ export default function App() {
       if (action === 'SNOOZE' || action === 'LATER') {
         const seconds = action === 'SNOOZE' ? 600 : 3600;
         void (async () => {
+          // Notification actions can arrive after a task was deleted or
+          // completed. Validate the latest state before creating any new
+          // notification so stale actions cannot resurrect a task.
+          const task = tasksRef.current.find((item) => item.id === taskId);
+          if (!task || task.done || task.status === 'skipped') return;
           const scheduledAt = new Date(Date.now() + seconds * 1000);
           const nextNotificationInstanceId = `task:${taskId}:${scheduledAt.toISOString()}:${action.toLowerCase()}`;
           await Notifications.scheduleNotificationAsync({
@@ -2199,8 +2215,7 @@ export default function App() {
             },
             trigger: { type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL, seconds },
           });
-          const task = tasksRef.current.find((item) => item.id === taskId);
-          if (task && hasPremiumAccess(planTierRef.current, 'time_analysis')) {
+          if (hasPremiumAccess(planTierRef.current, 'time_analysis')) {
             recordBehaviorEvent(createNotificationScheduledEvent({ notificationInstanceId: nextNotificationInstanceId, taskId, taskTitle: task.title, scheduledAt, occurredAt: new Date() }));
           }
         })();
@@ -2287,20 +2302,20 @@ export default function App() {
   }, [hydrated, tasks, focusSessions, reviewPromptedAt, requestAppReview]);
 
   useEffect(() => {
-    if (!hydrated || planTier === 'premium') return;
+    if (!hydrated || !storeKitEntitlementsResolved || planTier === 'premium') return;
     affirmations.forEach((affirmation) => {
       void Notifications.cancelScheduledNotificationAsync(affirmation.notificationId ?? `affirmation:${affirmation.id}`).catch(() => undefined);
     });
-  }, [affirmations, hydrated, planTier]);
+  }, [affirmations, hydrated, planTier, storeKitEntitlementsResolved]);
 
   // Premiumから無料版へ開き直した場合、以前の段階通知だけは安全に停止する。
   // 予定データや過去の行動履歴は消さない。
   useEffect(() => {
-    if (!hydrated || planTier === 'premium') return;
+    if (!hydrated || !storeKitEntitlementsResolved || planTier === 'premium') return;
     departurePlans.forEach((item) => {
       if (item.id && isArrivalReversePlan(item)) void cancelPendingDepartureNotifications(item.id);
     });
-  }, [departurePlans, hydrated, planTier]);
+  }, [departurePlans, hydrated, planTier, storeKitEntitlementsResolved]);
 
   useEffect(() => {
     const openFromUrl = (url: string) => {
@@ -2328,14 +2343,14 @@ export default function App() {
     .sort((a, b) => getPlanCountdownAt(a).getTime() - getPlanCountdownAt(b).getTime())[0], [departurePlans, now, planTier]);
 
   const liveActivityPayload = useMemo<RhythmLiveActivityPayload | undefined>(() => {
-    if (!hydrated || !liveActivityEnabled) return undefined;
+    if (!hydrated || !liveActivityEnabled || !storeKitEntitlementsResolved) return undefined;
     // The existing DEV widget entitlement switch is also useful for exercising
     // the three Live Activity tiers without touching StoreKit transactions.
     const tier: RhythmLiveActivityPayload['tier'] = __DEV__ && widgetEntitlementOverride !== 'actual'
       ? widgetEntitlementOverride === 'premium' ? 'premium' : widgetEntitlementOverride === 'design' ? 'design' : 'free'
       : planTier === 'premium' ? 'premium' : hasDesignCustomizeAccess ? 'design' : 'free';
     const displayOptions = normalizeRhythmLiveActivityDisplayOptions(liveActivityDisplayOptions);
-    const accentHex = tier === 'free' ? '#7559E8' : getWidgetAccentHex(widgetSettings.accentColor);
+    const accentHex = tier === 'free' ? '#FFFFFF' : chicPalette.accent;
     const affirmationText = tier === 'premium' && displayOptions.affirmation
       ? ([...affirmations.filter((item) => item.enabled), ...affirmationCustomTexts]
         .map((item) => item.text.trim())
@@ -2365,16 +2380,16 @@ export default function App() {
       mode: 'normal',
       currentTaskTitle: current?.title,
       nextScheduleTitle: tier === 'premium' && (displayOptions.nextSchedule || displayOptions.departureCountdown) ? next?.title : undefined,
-      nextScheduleAt: tier === 'premium' && displayOptions.nextSchedule && next ? getPlanCountdownAt(next).toISOString() : undefined,
+      nextScheduleAt: tier === 'premium' && displayOptions.nextSchedule && next ? planScheduledAt(next).toISOString() : undefined,
       departureAt: tier === 'premium' && displayOptions.departureCountdown && next && getPlanCountdownAt(next).getTime() > now.getTime() ? getPlanCountdownAt(next).toISOString() : undefined,
       affirmationText,
       displayOptions: tier === 'premium' ? displayOptions : undefined,
       accentHex,
     };
-  }, [affirmationCustomTexts, affirmations, focusActivity, focusTimerActive, hasDesignCustomizeAccess, hydrated, liveActivityDisplayOptions, liveActivityEnabled, nextDeparturePlan, now, planTier, tasks, widgetEntitlementOverride, widgetSettings.accentColor]);
+  }, [affirmationCustomTexts, affirmations, chicPalette.accent, focusActivity, focusTimerActive, hasDesignCustomizeAccess, hydrated, liveActivityDisplayOptions, liveActivityEnabled, nextDeparturePlan, now, planTier, storeKitEntitlementsResolved, tasks, widgetEntitlementOverride]);
 
   useEffect(() => {
-    if (!hydrated) return;
+    if (!hydrated || !storeKitEntitlementsResolved) return;
     const serialized = liveActivityPayload ? JSON.stringify(liveActivityPayload) : undefined;
     if (serialized === liveActivitySerializedRef.current) return;
     liveActivitySerializedRef.current = serialized;
@@ -2383,12 +2398,12 @@ export default function App() {
       return;
     }
     void startOrUpdateRhythmLiveActivity(liveActivityPayload!).catch(() => undefined);
-  }, [hydrated, liveActivityPayload]);
+  }, [hydrated, liveActivityPayload, storeKitEntitlementsResolved]);
 
   const syncRhythmWidgetSnapshot = React.useCallback(async () => {
     // The first-run tour is deliberately read-only; its temporary data must
     // never escape to the user's home-screen widget.
-    if (!hydrated || onboarding.state.firstRunStage === 'demo') return;
+    if (!hydrated || !storeKitEntitlementsResolved || onboarding.state.firstRunStage === 'demo') return;
     const selectedPhotoUri = widgetSettings.style === 'photo'
       ? widgetSettings.photoSource === 'widget' ? widgetSettings.photoUri : wishTopImageUri
       : undefined;
@@ -2491,7 +2506,7 @@ export default function App() {
       appearance: {
         style: widgetSettings.style,
         monoTemplate: widgetSettings.monoTemplate,
-        accentHex: getWidgetAccentHex(widgetSettings.accentColor),
+        accentHex: chicPalette.accent,
         // Keep the existing Design selection available to each widget's
         // IntentConfiguration even when the app's current screen mode is
         // Mono or Photo. The native widget still gates patterns using this
@@ -2505,6 +2520,7 @@ export default function App() {
       },
       widgetCustomizations,
       displayOptions: widgetSettings.displayOptions,
+      widgetPhotoUnlock: rewardedAccess.widgetPhotoCustomization,
       wishMonths,
       affirmations,
       affirmationCustomTexts,
@@ -2531,7 +2547,7 @@ export default function App() {
     } finally {
       if (widgetSnapshotInFlightRef.current === serialized) widgetSnapshotInFlightRef.current = undefined;
     }
-  }, [affirmationCustomTexts, affirmations, chicCheckColor, designMode, departureCheckIns, departurePlans, effectiveChicPattern, hasDesignCustomizeAccess, hydrated, onboarding.state.firstRunStage, planTier, tasks, widgetPhotoSyncedUriRef, widgetCustomCutoutSyncedUrisRef, widgetCustomPhotoSyncedUrisRef, widgetSettings, wishMonths, wishTopImageUri]);
+  }, [affirmationCustomTexts, affirmations, chicCheckColor, designMode, departureCheckIns, departurePlans, effectiveChicPattern, hasDesignCustomizeAccess, hydrated, onboarding.state.firstRunStage, planTier, rewardedAccess.widgetPhotoCustomization, storeKitEntitlementsResolved, tasks, widgetPhotoSyncedUriRef, widgetCustomCutoutSyncedUrisRef, widgetCustomPhotoSyncedUrisRef, widgetSettings, wishMonths, wishTopImageUri]);
 
   const openWidgetGuide = React.useCallback(() => {
     setWidgetGuideVisible(true);
@@ -2886,7 +2902,7 @@ export default function App() {
     if (!options?.silent) Alert.alert('出発サポートを設定しました', `${formatLiveTime(moments.prepare)}から${count}段階でお知らせします。`);
   };
   useEffect(() => {
-    if (!hydrated || planTier !== 'premium') return;
+    if (!hydrated || !storeKitEntitlementsResolved || planTier !== 'premium') return;
     let active = true;
     void (async () => {
       const pending = await Notifications.getAllScheduledNotificationsAsync().catch(() => []);
@@ -2904,7 +2920,7 @@ export default function App() {
       }
     })();
     return () => { active = false; };
-  }, [hydrated, planTier]);
+  }, [hydrated, planTier, storeKitEntitlementsResolved]);
   scheduleTaskNotificationsRef.current = scheduleAllTaskNotifications;
 
   const createTaskFromWishAction = (action: WishAction) => {
@@ -3178,9 +3194,14 @@ export default function App() {
       setOpenTodayReview(false);
       setAnalysisInitialTab('records');
     }
+    // TimelineScreen mirrors initialTab into its local tab state. Keep the
+    // Focus tab selected while a session is running so a schedule/deep-link
+    // request cannot unmount FocusMode and trigger its cleanup.
+    if (focusTimerActive && nextScreen === 'timeline') setTimelineInitialTab('focus');
     if (nextScreen === 'wish') openWish();
     else setScreen(nextScreen);
   }, [focusTimerActive, openWish, screen]);
+  navigateWithinAppRef.current = navigateWithinApp;
 
   // Premium previews reuse the production screens with fixed, read-only demo
   // data.  The parent preview surface disables pointer events, so these
@@ -3651,7 +3672,7 @@ export default function App() {
       captureDesignOnly
       styles={styles}
       helpers={{ colors: themedColors, getThemeTokens: getThemedThemeTokens, getChicPatternVisual, hasPremiumAccess, getChicCheckColor, chicCheckColorChoices, countdownToClock, getUrgencyStatus, getNextBestAction, designModes, completionIcons, summarizePremiumTaskTemplate }}
-      components={{ BThemeRibbonDecoration, CThemeRibbonDecoration, ChicPatternDecor, ChicPatternSelector, SettingsDisclosure, NotificationManagerCard }}
+      components={{ BThemeRibbonDecoration, CThemeRibbonDecoration, ChicPatternDecor, ChicPatternSelector, ThemeColorSelector, SettingsDisclosure, NotificationManagerCard }}
     />;
     return undefined;
   };
@@ -4379,7 +4400,7 @@ export default function App() {
                monoAppearance={monoAppearance}
                hapticsEnabled={hapticsEnabled}
                premiumTrialReminderEnabled={premiumTrialReminderEnabled}
-               onPremiumTrialReminderEnabled={setPremiumTrialReminderEnabled}
+               onPremiumTrialReminderEnabled={premiumTrialReminderAvailable ? setPremiumTrialReminderEnabled : undefined}
                liveActivityEnabled={liveActivityEnabled}
                onLiveActivityEnabled={(value) => {
                  setLiveActivityEnabled(value);
@@ -4503,7 +4524,7 @@ export default function App() {
                initialAppearanceOpen={onboardingDesignSelectionPending}
                           styles={styles}
               helpers={{ colors: themedColors, getThemeTokens: getThemedThemeTokens, getChicPatternVisual, hasPremiumAccess, getChicCheckColor, chicCheckColorChoices, countdownToClock, getUrgencyStatus, getNextBestAction, designModes, completionIcons, summarizePremiumTaskTemplate }}
-              components={{ BThemeRibbonDecoration, CThemeRibbonDecoration, ChicPatternDecor, ChicPatternSelector, SettingsDisclosure, NotificationManagerCard }}
+              components={{ BThemeRibbonDecoration, CThemeRibbonDecoration, ChicPatternDecor, ChicPatternSelector, ThemeColorSelector, SettingsDisclosure, NotificationManagerCard }}
             />
           )}
 
@@ -4676,7 +4697,7 @@ export default function App() {
         helpers={{ getThemeTokens: getThemedThemeTokens, todayInputValue, hasPremiumAccess, dateForReminder, dateKey, formatLiveTime, colors: themedColors, summarizePremiumTaskTemplate }}
         components={{ CompactNumberSetting }}
       />}
-      <PremiumModal visible={premiumOpen} initialFeatureId={premiumTargetFeature} designMode={uiDesignMode} chicPalette={chicPalette} planTier={planTier} isDevelopment={__DEV__} onMockPlanTier={handleMockPlanTier} onClose={() => setPremiumOpen(false)} styles={styles} helpers={{ getThemeTokens: getThemedThemeTokens }} renderReadOnlyPreview={renderPremiumReadOnlyPreview} products={storeKit.products} productStatus={storeKit.status} purchaseError={storeKit.errorMessage} onPurchasePlan={storeKit.purchasePremium} onRestorePurchase={() => { void restorePremiumPurchase(); }} />
+      <PremiumModal visible={premiumOpen} initialFeatureId={premiumTargetFeature} designMode={uiDesignMode} chicPalette={chicPalette} planTier={planTier} isDevelopment={__DEV__} onMockPlanTier={handleMockPlanTier} onClose={() => setPremiumOpen(false)} styles={styles} helpers={{ getThemeTokens: getThemedThemeTokens }} renderReadOnlyPreview={renderPremiumReadOnlyPreview} products={storeKit.products} productStatus={storeKit.status} purchaseError={storeKit.errorMessage} onPurchasePlan={async (plan) => (await storeKit.purchasePremium(plan)).success} onRestorePurchase={() => { void restorePremiumPurchase(); }} />
       <VoiceUsageLimitModal
         visible={voiceUsageLimitOpen}
         designMode={uiDesignMode}
@@ -5097,9 +5118,13 @@ function FocusMode({ tasks, designMode, chicPalette, backgroundImageUri, planTie
         pausedSecondsRef.current = remaining;
         setSecondsLeft(remaining);
       }
-      stopActiveSession();
+      // Pause is not a session end: retain the same session id and startedAt
+      // so Resume continues the original focus session without emitting a
+      // second focus_started or a premature focus_stopped event.
+      endAtRef.current = undefined;
       setRunning(false);
       onFocusRunningChange?.(false);
+      onFocusActivityChange?.({ taskTitle: sessionRef.current?.taskTitle });
       void cancelFocusNotification();
       return;
     }
@@ -5627,15 +5652,32 @@ function ChicPatternSelector({ designMode, chicPattern, chicCheckColor, planTier
         </Pressable>;
       })}
     </View>
-    <>
-      <Text style={[styles.fieldLabel, { marginTop: 12 }, designMode === 'dark' && styles.darkAccentText, { color: designMode === 'dark' ? '#B4C0D4' : selectedPalette.textPrimary }]}>テーマカラー</Text>
-      <View style={styles.themeColorChoices}>
-        {chicCheckColorChoices.map((choice) => <Pressable key={choice.id} accessibilityLabel={getDesignCheckColorLabel(choice.id)} style={[styles.themeColorChoice, { backgroundColor: choice.cardSurface, borderColor: chicCheckColor === choice.id ? choice.accent : choice.border }, chicCheckColor === choice.id && { borderWidth: 2 }]} onPress={() => onCheckColor(choice.id)}>
-          <View style={[styles.themeColorSwatch, { backgroundColor: choice.background, borderColor: choice.border }]} />
-          <Text numberOfLines={2} ellipsizeMode="clip" style={[styles.themeColorText, { color: chicCheckColor === choice.id ? choice.accentStrong : choice.textSecondary }]}>{getDesignCheckColorLabel(choice.id)}</Text>
-        </Pressable>)}
-      </View>
-    </>
+  </View>;
+}
+
+/** Compact shared palette picker. It is intentionally independent of the
+ * Design pattern picker so Mono, Design and Photo all use the same source of
+ * truth without showing a large nine-card palette by default. */
+function ThemeColorSelector({ color, onChange, designMode }: { color: ChicCheckColor; onChange: (color: ChicCheckColor) => void; designMode: DesignMode }) {
+  const [expanded, setExpanded] = useState(false);
+  const selected = getChicCheckColor(color);
+  const selectedLabel = getDesignCheckColorLabel(color);
+  const textColor = designMode === 'dark' ? '#F4F7FC' : selected.textPrimary;
+  return <View style={[styles.themeColorSelector, { borderColor: selected.border, backgroundColor: designMode === 'dark' ? '#181F2E' : selected.cardSurface }]}>
+    <Pressable accessibilityRole="button" accessibilityState={{ expanded }} onPress={() => setExpanded((value) => !value)} style={styles.themeColorSelectorHeader}>
+      <View style={[styles.themeColorSelectorSwatch, { backgroundColor: selected.accent, borderColor: selected.border }]} />
+      <Text style={[styles.themeColorSelectorLabel, { color: textColor }]} numberOfLines={1}>{selectedLabel}</Text>
+      <Text style={[styles.themeColorSelectorChevron, { color: selected.accent }]}>{expanded ? '⌃' : '⌄'}</Text>
+    </Pressable>
+    {expanded && <View style={[styles.themeColorGrid, { borderTopColor: selected.border }]}>
+      {chicCheckColorChoices.map((choice) => {
+        const active = choice.id === color;
+        return <Pressable key={choice.id} accessibilityRole="button" accessibilityLabel={getDesignCheckColorLabel(choice.id)} accessibilityState={{ selected: active }} onPress={() => { onChange(choice.id); setExpanded(false); }} style={[styles.themeColorGridItem, { backgroundColor: designMode === 'dark' ? '#20293A' : choice.cardSurface, borderColor: active ? choice.accent : choice.border }, active && { borderWidth: 2 }]}>
+          <View style={[styles.themeColorGridSwatch, { backgroundColor: choice.accent, borderColor: choice.border }]} />
+          <Text style={[styles.themeColorGridText, { color: active ? choice.accent : (designMode === 'dark' ? '#D7DEEA' : choice.textSecondary) }]} numberOfLines={1}>{getDesignCheckColorLabel(choice.id)}</Text>
+        </Pressable>;
+      })}
+    </View>}
   </View>;
 }
 

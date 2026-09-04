@@ -42,7 +42,7 @@ struct RhythmLiveActivityAttributes: ActivityAttributes {
     var accentHex: String
     var displayOptions: DisplayOptions
 
-    init(mode: Mode, tier: Tier = .free, currentTaskTitle: String? = nil, nextScheduleTitle: String? = nil, nextScheduleAt: Date? = nil, departureAt: Date? = nil, focusTaskTitle: String? = nil, focusEndsAt: Date? = nil, affirmationText: String? = nil, accentHex: String = "#7559E8", displayOptions: DisplayOptions = .all) {
+    init(mode: Mode, tier: Tier = .free, currentTaskTitle: String? = nil, nextScheduleTitle: String? = nil, nextScheduleAt: Date? = nil, departureAt: Date? = nil, focusTaskTitle: String? = nil, focusEndsAt: Date? = nil, affirmationText: String? = nil, accentHex: String = "#FFFFFF", displayOptions: DisplayOptions = .all) {
       self.mode = mode
       self.tier = tier
       self.currentTaskTitle = currentTaskTitle
@@ -73,7 +73,7 @@ struct RhythmLiveActivityAttributes: ActivityAttributes {
       focusTaskTitle = try container.decodeIfPresent(String.self, forKey: .focusTaskTitle)
       focusEndsAt = try container.decodeIfPresent(Date.self, forKey: .focusEndsAt)
       affirmationText = try container.decodeIfPresent(String.self, forKey: .affirmationText)
-      accentHex = try container.decodeIfPresent(String.self, forKey: .accentHex) ?? "#7559E8"
+      accentHex = try container.decodeIfPresent(String.self, forKey: .accentHex) ?? "#FFFFFF"
       displayOptions = try container.decodeIfPresent(DisplayOptions.self, forKey: .displayOptions) ?? .all
     }
 

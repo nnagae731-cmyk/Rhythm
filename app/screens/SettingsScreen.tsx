@@ -26,7 +26,7 @@ function LiveActivityDisplayOptionsCard({ options, onChange, colors, isDark }: {
     ['currentTask', '今はこれ'],
     ['nextSchedule', '次の予定'],
     ['departureCountdown', '出発カウントダウン'],
-    ['focusRemaining', 'Focus残り時間'],
+    ['focusRemaining', '集中の残り時間'],
     ['affirmation', 'アファメーション'],
   ];
   const toggle = (key: keyof LiveActivityDisplayOptions) => {
@@ -230,8 +230,8 @@ export function SettingsScreen({
   helpers: any;
   components: any;
 }) {
-  const { getChicPatternVisual, hasPremiumAccess, getChicCheckColor, chicCheckColorChoices, countdownToClock, getUrgencyStatus, getNextBestAction, designModes, completionIcons, summarizePremiumTaskTemplate } = helpers;
-  const { BThemeRibbonDecoration, CThemeRibbonDecoration, ChicPatternDecor, ChicPatternSelector, SettingsDisclosure, NotificationManagerCard } = components;
+  const { getChicPatternVisual, hasPremiumAccess, getChicCheckColor, countdownToClock, getUrgencyStatus, getNextBestAction, designModes, completionIcons, summarizePremiumTaskTemplate } = helpers;
+  const { BThemeRibbonDecoration, CThemeRibbonDecoration, ChicPatternDecor, ChicPatternSelector, ThemeColorSelector, SettingsDisclosure, NotificationManagerCard } = components;
   const [newTemplate, setNewTemplate] = useState('');
   const selectedMode = selectedDesignMode ?? designMode;
   const isDark = designMode === 'dark';
@@ -317,6 +317,10 @@ export function SettingsScreen({
               </View>}
             </Pressable>
           ))}
+        </View>
+        <View style={{ marginTop: 12 }}>
+          <Text style={[styles.fieldLabel, designMode === 'dark' && styles.darkAccentText, { color: designMode === 'dark' ? '#B4C0D4' : getChicCheckColor(chicCheckColor).textPrimary }]}>テーマカラー</Text>
+          <ThemeColorSelector color={chicCheckColor} onChange={onChicCheckColor} designMode={designMode} />
         </View>
         <Pressable style={[styles.savedTemplateLocked, selectedMode === 'photo' && styles.patternChoiceActive]} onPress={() => onDesignMode('photo')}>
           {photoTheme.imageUri ? <Image source={{ uri: photoTheme.imageUri }} style={{ width: 54, height: 42, borderRadius: 9, marginRight: 10 }} /> : <View style={{ width: 54, height: 42, borderRadius: 9, marginRight: 10, backgroundColor: '#F2DDE5', alignItems: 'center', justifyContent: 'center' }}><Text style={{ color: '#9C5D79', fontSize: 17 }}>▧</Text></View>}

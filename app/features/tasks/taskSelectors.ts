@@ -19,7 +19,7 @@ export type UpcomingItem = {
 
 const priorityRank: Record<Task['priority'], number> = { 高: 0, 中: 1, 低: 2 };
 
-function taskDeadline(task: Task) {
+export function taskDeadlineAt(task: Task) {
   return task.deadlineDate ? dateForReminder(task.deadlineDate, task.deadlineTime ?? '23:59') : undefined;
 }
 
@@ -27,9 +27,9 @@ function taskStart(task: Task) {
   return task.scheduledDate && task.scheduledTime ? dateForReminder(task.scheduledDate, task.scheduledTime) : undefined;
 }
 
-function taskActionableAt(task: Task) {
+export function taskActionableAt(task: Task) {
   const start = taskStart(task);
-  const deadline = taskDeadline(task);
+  const deadline = taskDeadlineAt(task);
   const actionableDeadline = task.navigationEnabled === true && deadline
     ? new Date(deadline.getTime() - ((task.preparationMinutes ?? 30) + (task.travelMinutes ?? 30) + (task.bufferMinutes ?? 10)) * 60_000)
     : deadline;
@@ -42,7 +42,7 @@ function taskActionableAt(task: Task) {
 export function selectCurrentTasks(candidates: Task[], now = new Date()) {
   return candidates
     .map((task, index) => {
-      const deadline = taskDeadline(task);
+      const deadline = taskDeadlineAt(task);
       const start = taskStart(task);
       const actionable = taskActionableAt(task);
       const overdue = Boolean((deadline && deadline.getTime() < now.getTime()) || (actionable && actionable.getTime() <= now.getTime()));

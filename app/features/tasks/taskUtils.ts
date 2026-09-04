@@ -86,7 +86,15 @@ export function todayInputValue(offset = 0) {
 
 export function advanceDateValue(value: string | undefined, rule: RepeatRule) {
   const base = value ? dateForReminder(value, '12:00') : new Date();
-  if (rule === 'monthly') base.setMonth(base.getMonth() + 1);
+  if (rule === 'monthly') {
+    // Keep the day when it exists in the next month; otherwise clamp to that
+    // month's final day (31st -> 28/29/30 instead of overflowing forward).
+    const day = base.getDate();
+    const nextMonth = new Date(base.getFullYear(), base.getMonth() + 1, 1, base.getHours(), base.getMinutes(), base.getSeconds(), base.getMilliseconds());
+    const lastDay = new Date(nextMonth.getFullYear(), nextMonth.getMonth() + 1, 0).getDate();
+    nextMonth.setDate(Math.min(day, lastDay));
+    return dateKey(nextMonth);
+  }
   else base.setDate(base.getDate() + (rule === 'weekly' ? 7 : 1));
   if (rule === 'weekdays') {
     while (base.getDay() === 0 || base.getDay() === 6) base.setDate(base.getDate() + 1);

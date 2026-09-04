@@ -5,7 +5,7 @@ import { DepartureCheckIn } from '../../departureCheckIn';
 import { getDeparturePlanMode, getPlanScheduledTime, isDepartureReminderPlan } from '../departure/departurePlanMode';
 import { getDepartureMoments } from '../departure/departureUtils';
 import { dateForReminder, dateKey } from '../tasks/taskUtils';
-import { selectCurrentTask, selectCurrentTasks, selectNextUpcomingPlan } from '../tasks/taskSelectors';
+import { selectCurrentTask, selectCurrentTasks, selectNextUpcomingPlan, taskActionableAt, taskDeadlineAt } from '../tasks/taskSelectors';
 
 export const RHYTHM_WIDGET_APP_GROUP = 'group.app.rhythm.daily';
 
@@ -55,7 +55,14 @@ export type RhythmWidgetSnapshot = {
     remainingMinutes?: number;
     status?: string;
     priority?: Task['priority'];
+    /** Derived ranking timestamps so the Widget can re-evaluate time changes. */
+    actionableAt?: string;
+    deadlineAt?: string;
+    createdAt?: string;
+    scheduledDate?: string;
   };
+  /** Bounded candidates used by WidgetKit timeline entries after the app closes. */
+  currentTaskCandidates?: Array<NonNullable<RhythmWidgetSnapshot['currentTask']>>;
   /** Additional actionable tasks for the Medium current-task widget. */
   todayNowTasks?: Array<NonNullable<RhythmWidgetSnapshot['currentTask']>>;
   /** Total actionable tasks after the featured current task, before the
@@ -72,6 +79,10 @@ export type RhythmWidgetSnapshot = {
     /** Kept for compatibility with the first snapshot schema. */
     departureAt?: string;
   };
+  /** Bounded future plans used to switch the next-plan display without JS. */
+  nextPlans?: Array<NonNullable<RhythmWidgetSnapshot['nextPlan']>>;
+  /** Bounded schedule source used to rebuild date-based widgets at boundaries. */
+  calendarPlans?: WidgetScheduleItem[];
   calendarMonth?: {
     year: number;
     month: number;
@@ -86,6 +97,8 @@ export type RhythmWidgetSnapshot = {
   todayScheduleCount?: number;
   checklist?: Array<{ id: string; title: string; done: boolean }>;
   goal?: { id: string; title: string; progress: number; completedActions: number; actionCount: number };
+  goalMonths?: Record<string, NonNullable<RhythmWidgetSnapshot['goal']>>;
+  widgetPhotoUnlock?: { widgetType: WidgetType | null; expiresAt: string | null };
   /** Bounded affirmation data; text only, never image bytes. */
   affirmations?: Array<{ id: string; text: string }>;
   affirmationPhotoFileNames?: string[];
@@ -115,6 +128,7 @@ type SnapshotInput = {
   affirmations?: Affirmation[];
   affirmationCustomTexts?: AffirmationCustomText[];
   affirmationPhotoFileNames?: string[];
+  widgetPhotoUnlock?: { widgetType: WidgetType | null; expiresAt: string | null };
   now?: Date;
 };
 
@@ -233,6 +247,7 @@ export function buildRhythmWidgetSnapshot({
   affirmations = [],
   affirmationCustomTexts = [],
   affirmationPhotoFileNames = [],
+  widgetPhotoUnlock,
   now = new Date(),
 }: SnapshotInput): RhythmWidgetSnapshot {
   const today = dateKey(now);
@@ -243,6 +258,37 @@ export function buildRhythmWidgetSnapshot({
   const rankedCurrentTasks = selectCurrentTasks(currentCandidates, now);
   const remainingCurrentTasks = rankedCurrentTasks.filter((task) => task.id !== currentTask?.id);
   const todayNowTasks = remainingCurrentTasks.slice(0, 3);
+
+  // Keep enough future/current candidates for WidgetKit to re-evaluate the
+  // same ranking when the app is not running. The bound prevents snapshots
+  // from growing with the full task history.
+  const futureCandidates = tasks
+    .filter((task) => !task.done && task.status !== 'skipped' && (task.bucket ?? 'now') === 'now')
+    .filter((task) => Boolean(task.scheduledDate && task.scheduledDate > today))
+    .sort((a, b) => (taskActionableAt(a)?.getTime() ?? Number.MAX_SAFE_INTEGER) - (taskActionableAt(b)?.getTime() ?? Number.MAX_SAFE_INTEGER));
+  const timelineTaskCandidates = [...rankedCurrentTasks, ...futureCandidates]
+    .filter((task, index, all) => all.findIndex((candidate) => candidate.id === task.id) === index)
+    .slice(0, 16);
+
+  const serializeTask = (task: Task) => {
+    const taskStart = taskStartAt(task);
+    const estimated = taskEstimatedMinutes(task);
+    const actionable = taskActionableAt(task);
+    const deadline = taskDeadlineAt(task);
+    return {
+      id: task.id,
+      title: task.title,
+      ...(taskStart ? { startAt: taskStart.toISOString() } : {}),
+      ...(estimated ? { estimatedMinutes: estimated } : {}),
+      ...(taskStart && taskStart.getTime() > now.getTime() ? { remainingMinutes: Math.max(0, Math.ceil((taskStart.getTime() - now.getTime()) / 60000)) } : {}),
+      ...(actionable ? { actionableAt: actionable.toISOString() } : {}),
+      ...(deadline ? { deadlineAt: deadline.toISOString() } : {}),
+      ...(task.createdAt ? { createdAt: task.createdAt } : {}),
+      ...(task.scheduledDate ? { scheduledDate: task.scheduledDate } : {}),
+      status: task.status ?? 'active',
+      priority: task.priority,
+    };
+  };
 
   const nextPlanValue = selectNextUpcomingPlan(departurePlans, now, canShowArrivalReverseCountdown);
   const nextPlan = nextPlanValue ? { plan: nextPlanValue, scheduledAt: planScheduledAt(nextPlanValue) } : undefined;
@@ -262,26 +308,47 @@ export function buildRhythmWidgetSnapshot({
     .filter((plan) => plan.date === today)
     .sort((a, b) => planScheduledAt(a).getTime() - planScheduledAt(b).getTime())
   const todaySchedules = allTodaySchedules.slice(0, 8).map((plan) => scheduleWidgetItem(plan, departureCheckIns, canShowArrivalReverseCountdown));
-  const currentMonthState = wishMonths?.[`${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`];
-  const selectedWish = currentMonthState?.wishes.find((wish) => wish.id === currentMonthState.topWishId)
-    ?? currentMonthState?.wishes.find((wish) => !wish.completed)
-    ?? currentMonthState?.wishes[0];
-  const goalActions = selectedWish ? (currentMonthState?.actions ?? []).filter((action) => action.wishId === selectedWish.id) : [];
-  const goal = selectedWish
-    ? {
-      id: selectedWish.id,
-      title: selectedWish.title,
-      progress: selectedWish.completed ? 100 : goalActions.length ? Math.round((goalActions.filter((action) => action.completed).length / goalActions.length) * 100) : 0,
-      completedActions: goalActions.filter((action) => action.completed).length,
-      actionCount: goalActions.length,
-    }
-    : currentMonthState?.monthlyGoal?.trim()
-      ? { id: `monthly-goal-${today.slice(0, 7)}`, title: currentMonthState.monthlyGoal.trim(), progress: 0, completedActions: 0, actionCount: 0 }
-      : undefined;
+  const goalForMonth = (monthKey: string) => {
+    const monthState = wishMonths?.[monthKey];
+    const selectedWish = monthState?.wishes.find((wish) => wish.id === monthState.topWishId)
+      ?? monthState?.wishes.find((wish) => !wish.completed)
+      ?? monthState?.wishes[0];
+    const goalActions = selectedWish ? (monthState?.actions ?? []).filter((action) => action.wishId === selectedWish.id) : [];
+    return selectedWish
+      ? { id: selectedWish.id, title: selectedWish.title, progress: selectedWish.completed ? 100 : goalActions.length ? Math.round((goalActions.filter((action) => action.completed).length / goalActions.length) * 100) : 0, completedActions: goalActions.filter((action) => action.completed).length, actionCount: goalActions.length }
+      : monthState?.monthlyGoal?.trim()
+        ? { id: `monthly-goal-${monthKey}`, title: monthState.monthlyGoal.trim(), progress: 0, completedActions: 0, actionCount: 0 }
+        : undefined;
+  };
+  const currentMonthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  const nextMonthDate = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+  const nextMonthKey = `${nextMonthDate.getFullYear()}-${String(nextMonthDate.getMonth() + 1).padStart(2, '0')}`;
+  const goal = goalForMonth(currentMonthKey);
+  const goalMonths = [currentMonthKey, nextMonthKey].reduce<Record<string, NonNullable<RhythmWidgetSnapshot['goal']>>>((result, key) => {
+    const value = goalForMonth(key); if (value) result[key] = value; return result;
+  }, {});
   const affirmationPool = [
     ...affirmations.filter((item) => item.enabled).map((item) => ({ id: item.id, text: item.text.trim() })),
     ...affirmationCustomTexts.map((item) => ({ id: item.id, text: item.text.trim() })),
   ].filter((item) => item.text.length > 0).slice(0, 8);
+
+  const nextPlans = departurePlans
+    .filter((plan) => !plan.allDay)
+    .map((plan) => ({ plan, scheduledAt: planScheduledAt(plan) }))
+    .map(({ plan, scheduledAt }) => ({ plan, scheduledAt, comparisonAt: departureAtForWidget(plan, departureCheckIns, canShowArrivalReverseCountdown) ?? scheduledAt }))
+    .filter(({ comparisonAt }) => comparisonAt.getTime() >= now.getTime())
+    .sort((a, b) => a.comparisonAt.getTime() - b.comparisonAt.getTime())
+    .slice(0, 8)
+    .map(({ plan, scheduledAt }) => {
+      const leave = departureAtForWidget(plan, departureCheckIns, canShowArrivalReverseCountdown);
+      return {
+        id: plan.id,
+        title: plan.title,
+        scheduledAt: scheduledAt.toISOString(),
+        ...(plan.destination?.trim() ? { location: plan.destination.trim() } : {}),
+        ...(leave && leave.getTime() > now.getTime() ? { leaveAt: leave.toISOString(), departureAt: leave.toISOString(), remainingToLeave: Math.max(0, Math.ceil((leave.getTime() - now.getTime()) / 60000)) } : {}),
+      };
+    });
 
   return {
     updatedAt: now.toISOString(),
@@ -290,17 +357,8 @@ export function buildRhythmWidgetSnapshot({
     ...(appearance ? { appearance } : {}),
     ...(widgetCustomizations && Object.keys(widgetCustomizations).length ? { widgetCustomizations } : {}),
     ...(displayOptions ? { displayOptions } : {}),
-    ...(currentTask ? {
-      currentTask: {
-        id: currentTask.id,
-        title: currentTask.title,
-        ...(startAt ? { startAt: startAt.toISOString() } : {}),
-        ...(estimatedMinutes ? { estimatedMinutes } : {}),
-        ...(remainingMinutes !== undefined ? { remainingMinutes } : {}),
-        status: currentTask.status ?? (currentTask.done ? 'completed' : 'active'),
-        priority: currentTask.priority,
-      },
-    } : {}),
+    ...(currentTask ? { currentTask: serializeTask(currentTask) } : {}),
+    ...(timelineTaskCandidates.length ? { currentTaskCandidates: timelineTaskCandidates.map(serializeTask) } : {}),
     ...(todayNowTasks.length ? {
       todayNowTasks: todayNowTasks.map((task) => {
         const taskStart = taskStartAt(task);
@@ -332,6 +390,13 @@ export function buildRhythmWidgetSnapshot({
           : {}),
       },
     } : {}),
+    ...(nextPlans.length ? { nextPlans } : {}),
+    calendarPlans: departurePlans
+      .slice()
+      .sort((a, b) => planScheduledAt(a).getTime() - planScheduledAt(b).getTime())
+      .filter((plan) => plan.date >= localDateKey(new Date(now.getFullYear(), now.getMonth(), now.getDate() - 7)))
+      .slice(0, 96)
+      .map((plan) => scheduleWidgetItem(plan, departureCheckIns, canShowArrivalReverseCountdown)),
     calendarMonth: buildCalendarMonth(departurePlans, now),
     calendarWeek: buildCalendarWeek(departurePlans, departureCheckIns, canShowArrivalReverseCountdown, now),
     ...(todaySchedules.length ? { todaySchedules } : {}),
@@ -341,6 +406,8 @@ export function buildRhythmWidgetSnapshot({
       .filter((item) => item.title.trim().length > 0)
       .slice(0, 8),
     ...(goal ? { goal } : {}),
+    ...(Object.keys(goalMonths).length ? { goalMonths } : {}),
+    ...(widgetPhotoUnlock ? { widgetPhotoUnlock } : {}),
     ...(affirmationPool.length ? { affirmations: affirmationPool } : {}),
     ...(affirmationPhotoFileNames.length ? { affirmationPhotoFileNames: affirmationPhotoFileNames.slice(0, 3) } : {}),
   };

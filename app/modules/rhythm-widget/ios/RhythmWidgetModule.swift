@@ -1,5 +1,6 @@
 import ExpoModulesCore
 import Foundation
+import Darwin
 import CoreImage
 import ImageIO
 import UIKit
@@ -17,6 +18,7 @@ public final class RhythmWidgetModule: Module {
   private let widgetCutoutPrefix = "rhythm-widget-cutout-"
   private let affirmationPhotoPrefix = "rhythm-affirmation-photo-"
   private let pendingActionsKey = "rhythmWidgetPendingActions"
+  private let pendingActionsLockFile = ".rhythmWidgetPendingActions.lock"
   private let widgetPhotoKinds: Set<String> = [
     "current", "next", "combined", "monthly", "weekly", "today", "checklist", "goal", "voice", "affirmation",
   ]
@@ -243,7 +245,21 @@ public final class RhythmWidgetModule: Module {
     }
 
     AsyncFunction("acknowledgePendingWidgetActions") { (actionIds: [String]) -> Bool in
-      guard let defaults = UserDefaults(suiteName: self.appGroup), !actionIds.isEmpty,
+      guard !actionIds.isEmpty,
+            let container = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: self.appGroup) else { return false }
+      let lockURL = container.appendingPathComponent(self.pendingActionsLockFile)
+      let descriptor = open(lockURL.path, O_CREAT | O_RDWR, S_IRUSR | S_IWUSR)
+      guard descriptor >= 0 else { return false }
+      let deadline = Date().addingTimeInterval(2)
+      while flock(descriptor, LOCK_EX | LOCK_NB) != 0 {
+        if (errno != EWOULDBLOCK && errno != EAGAIN && errno != EINTR) || Date() >= deadline {
+          close(descriptor)
+          return false
+        }
+        usleep(20_000)
+      }
+      defer { flock(descriptor, LOCK_UN); close(descriptor) }
+      guard let defaults = UserDefaults(suiteName: self.appGroup),
             let raw = defaults.string(forKey: self.pendingActionsKey),
             let data = raw.data(using: .utf8),
             let decodedObject = try? JSONSerialization.jsonObject(with: data),
@@ -393,14 +409,27 @@ private extension RhythmWidgetModule {
       focusTaskTitle: text("focusTaskTitle"),
       focusEndsAt: date("focusEndsAt"),
       affirmationText: text("affirmationText"),
-      accentHex: text("accentHex") ?? "#7559E8",
+      accentHex: text("accentHex") ?? "#FFFFFF",
       displayOptions: displayOptions
     )
   }
 
   @available(iOS 16.2, *)
   static func activityContent(_ state: RhythmLiveActivityAttributes.ContentState) -> ActivityContent<RhythmLiveActivityAttributes.ContentState> {
-    let staleDate = [state.focusEndsAt, state.departureAt, state.nextScheduleAt].compactMap { $0 }.max()
+    let now = Date()
+    let staleDate: Date?
+    if state.tier == .premium, state.mode == .focus, state.displayOptions.focusRemaining,
+       let ends = state.focusEndsAt, ends > now {
+      staleDate = ends
+    } else if state.tier == .premium, state.displayOptions.departureCountdown,
+              let departure = state.departureAt, departure > now {
+      staleDate = departure
+    } else if state.tier == .premium, state.displayOptions.nextSchedule,
+              let next = state.nextScheduleAt, next > now {
+      staleDate = next
+    } else {
+      staleDate = nil
+    }
     return ActivityContent(state: state, staleDate: staleDate)
   }
 

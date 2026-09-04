@@ -3,7 +3,7 @@ export type DesignMode = 'minimal' | 'dark' | 'chic' | 'photo';
 // Legacy floral/check ids remain accepted for saved settings. New Design choices
 // continue to use the persisted `chic` key for backwards compatibility.
 export type ChicPattern = 'plain' | 'floral' | 'floralSoft' | 'floralSeasonal' | 'floralDark' | 'dot' | 'checkLavenderSatin' | 'checkBeigeNoir' | 'checkMauveFrame';
-export type ChicCheckColor = 'monochrome' | 'cool' | 'warm' | 'green';
+export type ChicCheckColor = 'monochrome' | 'cool' | 'warm' | 'green' | 'orange' | 'yellow' | 'blue' | 'lightBlue' | 'pink';
 /** Design palette ids include the legacy floral pattern ids so shared theme
  * helpers can resolve a single palette for every Design screen. */
 export type DesignPaletteId = ChicCheckColor | 'floral' | 'floralSoft' | 'floralSeasonal' | 'floralDark';
@@ -71,29 +71,74 @@ const designPalettes: Record<ChicCheckColor, ChicThemePalette> = {
   cool: {
     id: 'cool', background: '#F4F3FA', patternBase: '#F4F3FA', patternStripe: '#D8D6EA',
     surface: '#FFFFFF', cardSurface: '#FCFBFF', cardTint: '#EEEBF7', surfaceSubtle: '#EEEBF7',
-    accent: '#9C91C4', accentStrong: '#6D619C', accentSoft: '#E4E0F2', border: '#D5D1E6',
+    accent: '#8278B8', accentStrong: '#625A96', accentSoft: '#E4E0F2', border: '#D5D1E6',
     textPrimary: '#2D2A35', textSecondary: '#6D6878', textMuted: '#9691A1', onAccent: '#FFFFFF',
     success: '#5E7D77', warning: '#8C744A', danger: '#A96874', focusBackground: '#F4F3FA',
     focusSurface: '#FCFBFF', calendarBackground: '#F4F3FA', taskBackground: '#FCFBFF', taskMeta: '#9691A1',
     statusAccent: '#5E7D77', warm: '#D8D6EA',
   },
   warm: {
-    id: 'warm', background: '#FBF1F3', patternBase: '#FBF1F3', patternStripe: '#EBCFD7',
-    surface: '#FFFFFF', cardSurface: '#FFF9FA', cardTint: '#F7E7EC', surfaceSubtle: '#F7E7EC',
-    accent: '#B66E86', accentStrong: '#8E4F65', accentSoft: '#F3DDE3', border: '#E5C7D0',
-    textPrimary: '#342A2E', textSecondary: '#765E66', textMuted: '#A38C94', onAccent: '#FFFFFF',
-    success: '#5E7A67', warning: '#9B7246', danger: '#9E5367', focusBackground: '#FBF1F3',
-    focusSurface: '#FFF9FA', calendarBackground: '#FBF1F3', taskBackground: '#FFF9FA', taskMeta: '#A38C94',
-    statusAccent: '#5E7A67', warm: '#EBCFD7',
+    id: 'warm', background: '#FCF0F0', patternBase: '#FCF0F0', patternStripe: '#E9C4C4',
+    surface: '#FFFFFF', cardSurface: '#FFF9F9', cardTint: '#F8E3E3', surfaceSubtle: '#F8E3E3',
+    accent: '#B85D5D', accentStrong: '#8E4141', accentSoft: '#F3D7D7', border: '#E4C1C1',
+    textPrimary: '#342829', textSecondary: '#76595A', textMuted: '#A38989', onAccent: '#FFFFFF',
+    success: '#5E7A67', warning: '#9B7246', danger: '#9E5367', focusBackground: '#FCF0F0',
+    focusSurface: '#FFF9F9', calendarBackground: '#FCF0F0', taskBackground: '#FFF9F9', taskMeta: '#A38989',
+    statusAccent: '#5E7A67', warm: '#E9C4C4',
   },
   green: {
-    id: 'green', background: '#F2F6F0', patternBase: '#F2F6F0', patternStripe: '#D3E0D4',
-    surface: '#FFFFFF', cardSurface: '#FAFCF9', cardTint: '#E8F0E8', surfaceSubtle: '#E8F0E8',
-    accent: '#758D7B', accentStrong: '#526A59', accentSoft: '#DDE9DE', border: '#CBD9CB',
-    textPrimary: '#2C332E', textSecondary: '#667267', textMuted: '#929D94', onAccent: '#FFFFFF',
-    success: '#56735E', warning: '#8C744A', danger: '#9D5E66', focusBackground: '#F2F6F0',
-    focusSurface: '#FAFCF9', calendarBackground: '#F2F6F0', taskBackground: '#FAFCF9', taskMeta: '#929D94',
-    statusAccent: '#56735E', warm: '#D3E0D4',
+    id: 'green', background: '#F0F7F2', patternBase: '#F0F7F2', patternStripe: '#C9DDCE',
+    surface: '#FFFFFF', cardSurface: '#FAFCFA', cardTint: '#E5F0E7', surfaceSubtle: '#E5F0E7',
+    accent: '#5F8A6D', accentStrong: '#426B50', accentSoft: '#D8E8DC', border: '#C5D9C9',
+    textPrimary: '#29352D', textSecondary: '#617366', textMuted: '#8D9D91', onAccent: '#FFFFFF',
+    success: '#4F795D', warning: '#8C744A', danger: '#9D5E66', focusBackground: '#F0F7F2',
+    focusSurface: '#FAFCFA', calendarBackground: '#F0F7F2', taskBackground: '#FAFCFA', taskMeta: '#8D9D91',
+    statusAccent: '#4F795D', warm: '#C9DDCE',
+  },
+  orange: {
+    id: 'orange', background: '#FCF1E7', patternBase: '#FCF1E7', patternStripe: '#EAC8AA',
+    surface: '#FFFFFF', cardSurface: '#FFFBF7', cardTint: '#F8E7D5', surfaceSubtle: '#F8E7D5',
+    accent: '#B8774C', accentStrong: '#8E5935', accentSoft: '#F3D7BD', border: '#E4C5A8',
+    textPrimary: '#3B3028', textSecondary: '#78675A', textMuted: '#A18F82', onAccent: '#FFFFFF',
+    success: '#5D7A64', warning: '#9B7246', danger: '#A45E5E', focusBackground: '#FCF1E7',
+    focusSurface: '#FFFBF7', calendarBackground: '#FCF1E7', taskBackground: '#FFFBF7', taskMeta: '#A18F82',
+    statusAccent: '#5D7A64', warm: '#EAC8AA',
+  },
+  yellow: {
+    id: 'yellow', background: '#FFF9D9', patternBase: '#FFF9D9', patternStripe: '#F0DE82',
+    surface: '#FFFFFF', cardSurface: '#FFFDF1', cardTint: '#F8F0C8', surfaceSubtle: '#F8F0C8',
+    accent: '#A48616', accentStrong: '#75600B', accentSoft: '#F3E8A8', border: '#E4D68A',
+    textPrimary: '#3B3520', textSecondary: '#746A43', textMuted: '#9C9164', onAccent: '#FFFFFF',
+    success: '#5E7A62', warning: '#9A721B', danger: '#A45E5E', focusBackground: '#FFF9D9',
+    focusSurface: '#FFFDF1', calendarBackground: '#FFF9D9', taskBackground: '#FFFDF1', taskMeta: '#9C9164',
+    statusAccent: '#5E7A62', warm: '#F0DE82',
+  },
+  blue: {
+    id: 'blue', background: '#EEF3FC', patternBase: '#EEF3FC', patternStripe: '#C4D4ED',
+    surface: '#FFFFFF', cardSurface: '#F9FBFF', cardTint: '#E5EDFA', surfaceSubtle: '#E5EDFA',
+    accent: '#5577AE', accentStrong: '#3C5D91', accentSoft: '#D9E5F7', border: '#C2D1E8',
+    textPrimary: '#283348', textSecondary: '#5F6E86', textMuted: '#8D9AB0', onAccent: '#FFFFFF',
+    success: '#527B6A', warning: '#8C744A', danger: '#A45E6A', focusBackground: '#EEF3FC',
+    focusSurface: '#F9FBFF', calendarBackground: '#EEF3FC', taskBackground: '#F9FBFF', taskMeta: '#8D9AB0',
+    statusAccent: '#527B6A', warm: '#C4D4ED',
+  },
+  lightBlue: {
+    id: 'lightBlue', background: '#EAF9FE', patternBase: '#EAF9FE', patternStripe: '#BCE7F2',
+    surface: '#FFFFFF', cardSurface: '#F7FDFF', cardTint: '#DDF3F8', surfaceSubtle: '#DDF3F8',
+    accent: '#3F91AA', accentStrong: '#2D7188', accentSoft: '#CDEDF4', border: '#B7DCE5',
+    textPrimary: '#24383E', textSecondary: '#58757D', textMuted: '#849BA1', onAccent: '#FFFFFF',
+    success: '#4E806D', warning: '#8C744A', danger: '#A45E6A', focusBackground: '#EAF9FE',
+    focusSurface: '#F7FDFF', calendarBackground: '#EAF9FE', taskBackground: '#F7FDFF', taskMeta: '#849BA1',
+    statusAccent: '#4E806D', warm: '#BCE7F2',
+  },
+  pink: {
+    id: 'pink', background: '#FCF0F5', patternBase: '#FCF0F5', patternStripe: '#E8C4D3',
+    surface: '#FFFFFF', cardSurface: '#FFF9FC', cardTint: '#F7E3EC', surfaceSubtle: '#F7E3EC',
+    accent: '#A65E79', accentStrong: '#7D415A', accentSoft: '#F0D6E1', border: '#E3C2D1',
+    textPrimary: '#392A32', textSecondary: '#765C68', textMuted: '#A18B96', onAccent: '#FFFFFF',
+    success: '#5E7A67', warning: '#9B7246', danger: '#9E5367', focusBackground: '#FCF0F5',
+    focusSurface: '#FFF9FC', calendarBackground: '#FCF0F5', taskBackground: '#FFF9FC', taskMeta: '#A18B96',
+    statusAccent: '#5E7A67', warm: '#E8C4D3',
   },
 };
 
@@ -141,8 +186,13 @@ const floralPalettes: Record<'floral' | 'floralSoft' | 'floralSeasonal' | 'flora
 export const chicCheckColorChoices = [
   { ...designPalettes.monochrome, label: 'モノトーン' },
   { ...designPalettes.cool, label: '寒色系' },
-  { ...designPalettes.warm, label: '暖色系' },
+  { ...designPalettes.warm, label: '赤系' },
   { ...designPalettes.green, label: '緑系' },
+  { ...designPalettes.orange, label: 'オレンジ' },
+  { ...designPalettes.yellow, label: '黄色' },
+  { ...designPalettes.blue, label: '青' },
+  { ...designPalettes.lightBlue, label: '水色' },
+  { ...designPalettes.pink, label: 'ピンク' },
 ] as (Omit<ChicThemePalette, 'id'> & { id: ChicCheckColor; label: string })[];
 
 // Keep the persisted choice ids stable while presenting readable Japanese labels.
@@ -150,13 +200,18 @@ export function getDesignCheckColorLabel(color: ChicCheckColor): string {
   switch (color) {
     case 'monochrome': return '\u30e2\u30ce\u30c8\u30fc\u30f3';
     case 'cool': return '\u5bd2\u8272\u7cfb';
-    case 'warm': return '\u6696\u8272\u7cfb';
+    case 'warm': return '\u8d64\u7cfb';
     case 'green': return '\u7dd1\u7cfb';
+    case 'orange': return '\u30aa\u30ec\u30f3\u30b8';
+    case 'yellow': return '\u9ec4\u8272';
+    case 'blue': return '\u9752';
+    case 'lightBlue': return '\u6c34\u8272';
+    case 'pink': return '\u30d4\u30f3\u30af';
   }
 }
 
 export function normalizeChicCheckColor(color: unknown): ChicCheckColor {
-  return color === 'monochrome' || color === 'cool' || color === 'warm' || color === 'green' ? color : 'cool';
+  return color === 'monochrome' || color === 'cool' || color === 'warm' || color === 'green' || color === 'orange' || color === 'yellow' || color === 'blue' || color === 'lightBlue' || color === 'pink' ? color : 'cool';
 }
 
 export function getChicCheckColor(color: ChicCheckColor) {

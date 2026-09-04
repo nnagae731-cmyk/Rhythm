@@ -8,6 +8,7 @@ import mobileAds, {
 let initialized = false;
 let rewardedRequestActive = false;
 const REWARDED_OPERATION_TIMEOUT_MS = 15_000;
+const REWARDED_SHOW_WATCHDOG_TIMEOUT_MS = 120_000;
 
 function describeAdError(error: unknown) {
   if (typeof error === 'object' && error !== null) {
@@ -92,11 +93,13 @@ export function showTestRewardedAd(): Promise<boolean> {
       let unsubscribeReward: () => void = () => undefined;
       let unsubscribeClosed: () => void = () => undefined;
       let unsubscribeError: () => void = () => undefined;
-      let timeoutId: ReturnType<typeof setTimeout> | undefined;
+      let loadTimeoutId: ReturnType<typeof setTimeout> | undefined;
+      let showWatchdogId: ReturnType<typeof setTimeout> | undefined;
       const finish = (value: boolean) => {
         if (settled) return;
         settled = true;
-        if (timeoutId) clearTimeout(timeoutId);
+        if (loadTimeoutId) clearTimeout(loadTimeoutId);
+        if (showWatchdogId) clearTimeout(showWatchdogId);
         unsubscribeLoaded();
         unsubscribeReward();
         unsubscribeClosed();
@@ -107,7 +110,12 @@ export function showTestRewardedAd(): Promise<boolean> {
       try {
         unsubscribeLoaded = rewardedAd.addAdEventListener(RewardedAdEventType.LOADED, () => {
           if (__DEV__) console.log('[Ads] loaded');
+          if (loadTimeoutId) clearTimeout(loadTimeoutId);
           if (__DEV__) console.log('[Ads] show:start');
+          showWatchdogId = setTimeout(() => {
+            if (__DEV__) console.log('[Ads] timeout');
+            finish(false);
+          }, REWARDED_SHOW_WATCHDOG_TIMEOUT_MS);
           try {
             void rewardedAd.show().catch((error) => {
               if (__DEV__) console.log('[Ads] show:error', describeAdError(error));
@@ -130,8 +138,10 @@ export function showTestRewardedAd(): Promise<boolean> {
           if (__DEV__) console.log('[Ads] show:error', describeAdError(error));
           finish(false);
         });
-        // A missing native callback must never leave the RN modal blocked.
-        timeoutId = setTimeout(() => {
+        // Bound only the loading phase. Once LOADED fires, a separate
+        // generous watchdog covers a stalled presentation without cutting off
+        // a normal-length rewarded video.
+        loadTimeoutId = setTimeout(() => {
           if (__DEV__) console.log('[Ads] timeout');
           finish(false);
         }, REWARDED_OPERATION_TIMEOUT_MS);

@@ -12,8 +12,13 @@ export type StoreProduct = {
 
 export type StoreKitStatus = 'loading' | 'ready' | 'unavailable';
 
+export type StorePurchaseResult = {
+  success: boolean;
+  error?: string;
+};
+
 type PendingPurchase = {
-  resolve: (success: boolean) => void;
+  resolve: (result: StorePurchaseResult) => void;
 };
 
 export type PremiumTrialStarted = {
@@ -72,6 +77,8 @@ export function useRhythmStoreKit({
   const [status, setStatus] = useState<StoreKitStatus>('loading');
   const [errorMessage, setErrorMessage] = useState<string>();
   const [entitlementsResolved, setEntitlementsResolved] = useState(false);
+  const [premiumEntitlementResolved, setPremiumEntitlementResolved] = useState(false);
+  const [designEntitlementResolved, setDesignEntitlementResolved] = useState(false);
   const [premiumTrialEndAt, setPremiumTrialEndAt] = useState<number>();
   const pendingPurchaseRef = useRef<PendingPurchase | undefined>(undefined);
   const subscriptionsRef = useRef<ProductSubscription[]>([]);
@@ -116,10 +123,11 @@ export function useRhythmStoreKit({
         });
         if (__DEV__) console.log('[StoreKit] premium free trial', { productId, trialEndAt: new Date(trialEndAt).toISOString(), offer: (purchase as Purchase & { offerIOS?: unknown }).offerIOS });
       }
-      pendingPurchaseRef.current?.resolve(isPremium || isDesign);
+      pendingPurchaseRef.current?.resolve({ success: isPremium || isDesign });
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : '購入を完了できませんでした。');
-      pendingPurchaseRef.current?.resolve(false);
+      const message = error instanceof Error ? error.message : '購入を完了できませんでした。';
+      setErrorMessage(message);
+      pendingPurchaseRef.current?.resolve({ success: false, error: message });
     } finally {
       pendingPurchaseRef.current = undefined;
     }
@@ -131,7 +139,7 @@ export function useRhythmStoreKit({
     if (error.code !== ErrorCode.UserCancelled) {
       setErrorMessage(error.message || '購入を完了できませんでした。');
     }
-    pendingPurchaseRef.current?.resolve(false);
+    pendingPurchaseRef.current?.resolve({ success: false, error: error.message || '購入を完了できませんでした。' });
     pendingPurchaseRef.current = undefined;
   }, []);
 
@@ -155,6 +163,23 @@ export function useRhythmStoreKit({
   useEffect(() => {
     productsRef.current = products;
   }, [products]);
+
+  // Available purchases are the StoreKit-backed source for restored/current
+  // transactions. Keep the trial end derived from the monthly transaction so
+  // the Settings reminder is also correct after relaunch, while paid or
+  // restored non-trial subscriptions resolve to no active trial.
+  useEffect(() => {
+    if (Platform.OS !== 'ios') {
+      setPremiumTrialEndAt(undefined);
+      return;
+    }
+    const trialEndAt = availablePurchases
+      .filter((purchase) => purchase.productId === STORE_PRODUCT_IDS.premiumMonthly && isSuccessfulPurchase(purchase))
+      .map(getFreeTrialEndAt)
+      .filter((endAt): endAt is number => typeof endAt === 'number' && endAt > Date.now())
+      .sort((left, right) => right - left)[0];
+    setPremiumTrialEndAt(trialEndAt);
+  }, [availablePurchases]);
 
   useEffect(() => {
     if (!__DEV__) return;
@@ -195,53 +220,69 @@ export function useRhythmStoreKit({
 
   useEffect(() => {
     if (!connected) return;
-    if (premiumIds.length === 0 && designIds.length === 0) {
-      setStatus('unavailable');
-      setEntitlementsResolved(true);
-      return;
-    }
     let cancelled = false;
     setStatus('loading');
+    setEntitlementsResolved(false);
+    setPremiumEntitlementResolved(premiumIds.length === 0);
+    setDesignEntitlementResolved(designIds.length === 0);
     if (__DEV__) {
       console.log('[StoreKit] requesting products', {
         subscriptions: premiumIds,
         inAppProducts: designIds,
       });
     }
-    const productQueries = [
-      ...(premiumIds.length > 0 ? [fetchProducts({ skus: premiumIds, type: 'subs' })] : []),
-      ...(designIds.length > 0 ? [fetchProducts({ skus: designIds, type: 'in-app' })] : []),
-      refreshAvailablePurchases(),
-      ...(premiumIds.length > 0 ? [refreshActiveSubscriptions(premiumIds)] : []),
-    ];
-    void Promise.all(productQueries).then(() => {
+    const loadStoreData = async () => {
+      const productResults = await Promise.allSettled([
+        ...(premiumIds.length > 0 ? [fetchProducts({ skus: premiumIds, type: 'subs' })] : []),
+        ...(designIds.length > 0 ? [fetchProducts({ skus: designIds, type: 'in-app' })] : []),
+      ]);
+      const productFailed = productResults.some((result) => result.status === 'rejected');
+      if (__DEV__ && productFailed) console.log('[StoreKit] product fetch partially failed', productResults.filter((result) => result.status === 'rejected'));
       if (!cancelled) {
-        setStatus('ready');
-        setEntitlementsResolved(true);
+        setStatus(productResults.some((result) => result.status === 'fulfilled') ? 'ready' : 'unavailable');
+        if (productFailed && productResults.every((result) => result.status === 'rejected')) {
+          setErrorMessage('App Storeの商品情報を取得できませんでした。');
+        }
       }
-    }).catch((error) => {
+
+      const [designResult, premiumResult] = await Promise.all([
+        designIds.length > 0 ? refreshAvailablePurchases().then(() => true, (error) => {
+          if (__DEV__) console.log('[StoreKit] Design entitlement fetch failed', error);
+          return false;
+        }) : Promise.resolve(true),
+        premiumIds.length > 0 ? refreshActiveSubscriptions(premiumIds).then(() => true, (error) => {
+          if (__DEV__) console.log('[StoreKit] Premium entitlement fetch failed', error);
+          return false;
+        }) : Promise.resolve(true),
+      ]);
       if (!cancelled) {
-        if (__DEV__) console.log('[StoreKit] product fetch failed', error);
-        setStatus('unavailable');
-        setEntitlementsResolved(true);
-        setErrorMessage(error instanceof Error ? error.message : 'App Storeの商品情報を取得できませんでした。');
+        setDesignEntitlementResolved(designResult);
+        setPremiumEntitlementResolved(premiumResult);
+        setEntitlementsResolved(designResult && premiumResult);
       }
-    });
+    };
+    void loadStoreData();
     return () => { cancelled = true; };
   }, [connected, designIds, fetchProducts, premiumIds, refreshActiveSubscriptions, refreshAvailablePurchases]);
 
   useEffect(() => {
+    if (!premiumEntitlementResolved) return;
     const activePremium = activeSubscriptions.some((item) => premiumIds.includes(item.productId) && item.isActive);
-    const restoredDesign = availablePurchases.some((item) => item.productId === STORE_PRODUCT_IDS.designCustomize && isSuccessfulPurchase(item));
     onPremiumEntitlement(activePremium);
-    onDesignCustomizeEntitlement(restoredDesign);
-  }, [activeSubscriptions, availablePurchases, onDesignCustomizeEntitlement, onPremiumEntitlement, premiumIds]);
+  }, [activeSubscriptions, onPremiumEntitlement, premiumEntitlementResolved, premiumIds]);
 
-  const purchasePremium = useCallback((plan: PremiumPlan): Promise<boolean> => {
+  useEffect(() => {
+    if (!designEntitlementResolved) return;
+    const restoredDesign = availablePurchases.some((item) => item.productId === STORE_PRODUCT_IDS.designCustomize && isSuccessfulPurchase(item));
+    onDesignCustomizeEntitlement(restoredDesign);
+  }, [availablePurchases, designEntitlementResolved, onDesignCustomizeEntitlement]);
+
+  const purchasePremium = useCallback((plan: PremiumPlan): Promise<StorePurchaseResult> => {
     const productId = plan === 'annual' ? STORE_PRODUCT_IDS.premiumAnnual : STORE_PRODUCT_IDS.premiumMonthly;
     if (!productId || !connected) {
-      setErrorMessage('App Storeの商品情報を取得できませんでした。');
-      return Promise.resolve(false);
+      const error = 'App Storeの商品情報を取得できませんでした。';
+      setErrorMessage(error);
+      return Promise.resolve({ success: false, error });
     }
     setErrorMessage(undefined);
     return new Promise((resolve) => {
@@ -253,11 +294,12 @@ export function useRhythmStoreKit({
     });
   }, [connected, handlePurchaseError, requestPurchase]);
 
-  const purchaseDesignCustomize = useCallback(async (): Promise<boolean> => {
+  const purchaseDesignCustomize = useCallback(async (): Promise<StorePurchaseResult> => {
     const productId = STORE_PRODUCT_IDS.designCustomize;
     if (!productId || !connected) {
-      setErrorMessage('App Storeの商品情報を取得できませんでした。');
-      return false;
+      const error = 'App Storeの商品情報を取得できませんでした。';
+      setErrorMessage(error);
+      return { success: false, error };
     }
     // Do not send a purchase request with an unverified SKU. Re-query the
     // in-app product first when the modal was opened before StoreKit finished
@@ -283,7 +325,7 @@ export function useRhythmStoreKit({
       if (!returnedProduct && !productsRef.current.some((product) => product.id === productId)) {
         setStatus('unavailable');
         setErrorMessage('App Storeの商品情報を取得できませんでした。');
-        return false;
+        return { success: false, error: 'App Storeの商品情報を取得できませんでした。' };
       }
       setStatus('ready');
     }
@@ -298,8 +340,8 @@ export function useRhythmStoreKit({
     });
   }, [connected, fetchProducts, handlePurchaseError, requestPurchase]);
 
-  const restore = useCallback(async (): Promise<{ premium: boolean; designCustomize: boolean }> => {
-    if (!connected) return { premium: false, designCustomize: false };
+  const restore = useCallback(async (): Promise<{ success: boolean; premium: boolean; designCustomize: boolean; error?: string }> => {
+    if (!connected) return { success: false, premium: false, designCustomize: false, error: 'App Storeに接続できませんでした。' };
     setErrorMessage(undefined);
     try {
       const [available, active] = await Promise.all([
@@ -312,10 +354,11 @@ export function useRhythmStoreKit({
       const designCustomize = available.some((item) => item.productId === STORE_PRODUCT_IDS.designCustomize && isSuccessfulPurchase(item));
       onPremiumEntitlement(premium);
       onDesignCustomizeEntitlement(designCustomize);
-      return { premium, designCustomize };
+      return { success: true, premium, designCustomize };
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : '購入を復元できませんでした。');
-      return { premium: false, designCustomize: false };
+      const message = error instanceof Error ? error.message : '購入を復元できませんでした。';
+      setErrorMessage(message);
+      return { success: false, premium: false, designCustomize: false, error: message };
     }
   }, [connected, onDesignCustomizeEntitlement, onPremiumEntitlement, premiumIds, refreshActiveSubscriptions, refreshAvailablePurchases]);
 
@@ -331,6 +374,8 @@ export function useRhythmStoreKit({
   return {
     status,
     entitlementsResolved,
+    premiumEntitlementResolved,
+    designEntitlementResolved,
     products: mappedProducts,
     designProduct,
     premiumTrialEndAt,

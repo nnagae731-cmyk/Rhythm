@@ -107,11 +107,27 @@ export function encodeSharedEventLink(shareToken: string, baseUrl?: string) {
 }
 
 export function parseSharedEventLink(url: string) {
-  const match = url.match(/shared-event\/([^/?#]+)/);
-  if (!match?.[1]) return null;
-  const payloadMatch = url.match(/[?&]payload=([^&#]+)/);
-  const packet = payloadMatch?.[1] ? normalizeSharedEvent(JSON.parse(decodeURIComponent(payloadMatch[1])) as Partial<SharedEvent>) : undefined;
-  return { shareToken: match[1], packet };
+  try {
+    if (typeof url !== 'string' || !url.trim()) return null;
+    // Validate the URL before extracting data so arbitrary malformed input
+    // from an external deep-link cannot reach the parser below.
+    new URL(url);
+    const match = url.match(/shared-event\/([^/?#]+)/);
+    if (!match?.[1]) return null;
+    const payloadMatch = url.match(/[?&]payload=([^&#]+)/);
+    if (!payloadMatch?.[1]) return { shareToken: match[1] };
+    try {
+      const decoded = decodeURIComponent(payloadMatch[1]);
+      const parsed = JSON.parse(decoded) as Partial<SharedEvent>;
+      if (!parsed || typeof parsed !== 'object') return { shareToken: match[1] };
+      return { shareToken: match[1], packet: normalizeSharedEvent(parsed) };
+    } catch {
+      // A valid token remains useful even when an optional packet is corrupt.
+      return { shareToken: match[1] };
+    }
+  } catch {
+    return null;
+  }
 }
 
 export function getOrCreateParticipantId(map: Record<string, string>, token: string) {

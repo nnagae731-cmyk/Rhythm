@@ -48,6 +48,7 @@
         <dict><key>INEnumValueDisplayName</key><string>花柄2</string><key>INEnumValueName</key><string>botanicalLine</string><key>INEnumValueIndex</key><integer>10</integer></dict>
         <dict><key>INEnumValueDisplayName</key><string>花柄3</string><key>INEnumValueName</key><string>sheerFloral</string><key>INEnumValueIndex</key><integer>11</integer></dict>
         <dict><key>INEnumValueDisplayName</key><string>無地</string><key>INEnumValueName</key><string>plain</string><key>INEnumValueIndex</key><integer>12</integer></dict>
+        <dict><key>INEnumValueDisplayName</key><string>アプリ設定を使用</string><key>INEnumValueName</key><string>appDefault</string><key>INEnumValueIndex</key><integer>13</integer></dict>
       </array>
     </dict>
     <dict>
@@ -60,13 +61,14 @@
         <dict><key>INEnumValueDisplayName</key><string>unknown</string><key>INEnumValueName</key><string>unknown</string></dict>
         <dict><key>INEnumValueDisplayName</key><string>モノトーン</string><key>INEnumValueName</key><string>monochrome</string><key>INEnumValueIndex</key><integer>1</integer></dict>
         <dict><key>INEnumValueDisplayName</key><string>寒色系</string><key>INEnumValueName</key><string>cool</string><key>INEnumValueIndex</key><integer>2</integer></dict>
-        <dict><key>INEnumValueDisplayName</key><string>暖色系</string><key>INEnumValueName</key><string>warm</string><key>INEnumValueIndex</key><integer>3</integer></dict>
+        <dict><key>INEnumValueDisplayName</key><string>赤系</string><key>INEnumValueName</key><string>warm</string><key>INEnumValueIndex</key><integer>3</integer></dict>
         <dict><key>INEnumValueDisplayName</key><string>緑系</string><key>INEnumValueName</key><string>green</string><key>INEnumValueIndex</key><integer>4</integer></dict>
         <dict><key>INEnumValueDisplayName</key><string>オレンジ</string><key>INEnumValueName</key><string>orange</string><key>INEnumValueIndex</key><integer>5</integer></dict>
         <dict><key>INEnumValueDisplayName</key><string>黄色</string><key>INEnumValueName</key><string>yellow</string><key>INEnumValueIndex</key><integer>6</integer></dict>
         <dict><key>INEnumValueDisplayName</key><string>青</string><key>INEnumValueName</key><string>blue</string><key>INEnumValueIndex</key><integer>7</integer></dict>
         <dict><key>INEnumValueDisplayName</key><string>水色</string><key>INEnumValueName</key><string>lightBlue</string><key>INEnumValueIndex</key><integer>8</integer></dict>
         <dict><key>INEnumValueDisplayName</key><string>ピンク</string><key>INEnumValueName</key><string>pink</string><key>INEnumValueIndex</key><integer>9</integer></dict>
+        <dict><key>INEnumValueDisplayName</key><string>アプリ設定を使用</string><key>INEnumValueName</key><string>appDefault</string><key>INEnumValueIndex</key><integer>10</integer></dict>
       </array>
     </dict>
     <dict>
@@ -102,8 +104,8 @@
       <key>INIntentParameters</key>
       <array>
         <dict><key>INIntentParameterConfigurable</key><true/><key>INIntentParameterDisplayName</key><string>スタイル</string><key>INIntentParameterDisplayPriority</key><integer>1</integer><key>INIntentParameterEnumType</key><string>RhythmWidgetAppearance</string><key>INIntentParameterEnumTypeNamespace</key><string>RhythmPace</string><key>INIntentParameterName</key><string>appearance</string><key>INIntentParameterTag</key><integer>1</integer><key>INIntentParameterMetadata</key><dict><key>INIntentParameterMetadataDefaultValue</key><string>mono</string></dict></dict>
-        <dict><key>INIntentParameterConfigurable</key><true/><key>INIntentParameterDisplayName</key><string>柄</string><key>INIntentParameterDisplayPriority</key><integer>2</integer><key>INIntentParameterEnumType</key><string>RhythmWidgetDesignPattern</string><key>INIntentParameterEnumTypeNamespace</key><string>RhythmPace</string><key>INIntentParameterName</key><string>designPattern</string><key>INIntentParameterTag</key><integer>2</integer><key>INIntentParameterMetadata</key><dict><key>INIntentParameterMetadataDefaultValue</key><string>dot</string></dict></dict>
-        <dict><key>INIntentParameterConfigurable</key><true/><key>INIntentParameterDisplayName</key><string>色</string><key>INIntentParameterDisplayPriority</key><integer>3</integer><key>INIntentParameterEnumType</key><string>RhythmWidgetDesignColor</string><key>INIntentParameterEnumTypeNamespace</key><string>RhythmPace</string><key>INIntentParameterName</key><string>designColor</string><key>INIntentParameterTag</key><integer>3</integer><key>INIntentParameterMetadata</key><dict><key>INIntentParameterMetadataDefaultValue</key><string>cool</string></dict></dict>
+        <dict><key>INIntentParameterConfigurable</key><true/><key>INIntentParameterDisplayName</key><string>柄</string><key>INIntentParameterDisplayPriority</key><integer>2</integer><key>INIntentParameterEnumType</key><string>RhythmWidgetDesignPattern</string><key>INIntentParameterEnumTypeNamespace</key><string>RhythmPace</string><key>INIntentParameterName</key><string>designPattern</string><key>INIntentParameterTag</key><integer>2</integer><key>INIntentParameterMetadata</key><dict><key>INIntentParameterMetadataDefaultValue</key><string>appDefault</string></dict></dict>
+        <dict><key>INIntentParameterConfigurable</key><true/><key>INIntentParameterDisplayName</key><string>色</string><key>INIntentParameterDisplayPriority</key><integer>3</integer><key>INIntentParameterEnumType</key><string>RhythmWidgetDesignColor</string><key>INIntentParameterEnumTypeNamespace</key><string>RhythmPace</string><key>INIntentParameterName</key><string>designColor</string><key>INIntentParameterTag</key><integer>3</integer><key>INIntentParameterMetadata</key><dict><key>INIntentParameterMetadataDefaultValue</key><string>appDefault</string></dict></dict>
         <dict><key>INIntentParameterConfigurable</key><true/><key>INIntentParameterDisplayName</key><string>写真レイアウト</string><key>INIntentParameterDisplayPriority</key><integer>4</integer><key>INIntentParameterEnumType</key><string>RhythmWidgetPhotoLayout</string><key>INIntentParameterEnumTypeNamespace</key><string>RhythmPace</string><key>INIntentParameterName</key><string>photoLayout</string><key>INIntentParameterTag</key><integer>4</integer><key>INIntentParameterMetadata</key><dict><key>INIntentParameterMetadataDefaultValue</key><string>appDefault</string></dict></dict>
         <dict><key>INIntentParameterConfigurable</key><true/><key>INIntentParameterDisplayName</key><string>アファメーション表示</string><key>INIntentParameterDisplayPriority</key><integer>5</integer><key>INIntentParameterEnumType</key><string>RhythmWidgetAffirmationMode</string><key>INIntentParameterEnumTypeNamespace</key><string>RhythmPace</string><key>INIntentParameterName</key><string>affirmationMode</string><key>INIntentParameterTag</key><integer>5</integer><key>INIntentParameterMetadata</key><dict><key>INIntentParameterMetadataDefaultValue</key><string>fixed</string></dict></dict>
       </array>

@@ -1,4 +1,5 @@
 import Foundation
+import Darwin
 import SwiftUI
 import UIKit
 import WidgetKit
@@ -10,38 +11,71 @@ import AppIntents
 private let appGroup = "group.app.rhythm.daily"
 private let snapshotKey = "rhythmWidgetSnapshot"
 private let pendingActionsKey = "rhythmWidgetPendingActions"
+private let pendingActionsLockFile = ".rhythmWidgetPendingActions.lock"
+
+private func widgetISO8601String(_ date: Date) -> String {
+  let formatter = ISO8601DateFormatter()
+  formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+  return formatter.string(from: date)
+}
 
 #if canImport(AppIntents)
 @available(iOS 17.0, *)
 private enum WidgetPendingActionStore {
+  /// AppIntents may run concurrently (and the app process may acknowledge
+  /// actions at the same time).  Guard the App Group read/modify/write with a
+  /// shared file lock so one writer cannot overwrite another writer's action.
+  private static func withSharedLock<T>(_ body: () -> T) -> T? {
+    guard let container = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: appGroup) else { return nil }
+    let lockURL = container.appendingPathComponent(pendingActionsLockFile)
+    let descriptor = open(lockURL.path, O_CREAT | O_RDWR, S_IRUSR | S_IWUSR)
+    guard descriptor >= 0 else { return nil }
+    let deadline = Date().addingTimeInterval(2)
+    while flock(descriptor, LOCK_EX | LOCK_NB) != 0 {
+      if errno != EWOULDBLOCK && errno != EAGAIN && errno != EINTR || Date() >= deadline {
+        close(descriptor)
+        return nil
+      }
+      usleep(20_000)
+    }
+    defer { flock(descriptor, LOCK_UN); close(descriptor) }
+    return body()
+  }
+
   static func append(_ action: [String: Any]) {
-    guard let defaults = UserDefaults(suiteName: appGroup),
-          let data = try? JSONSerialization.data(withJSONObject: action),
-          let decoded = try? JSONSerialization.jsonObject(with: data),
-          let object = decoded as? [String: Any] else { return }
-    var actions: [[String: Any]] = []
-    if let raw = defaults.string(forKey: pendingActionsKey), let rawData = raw.data(using: .utf8),
-       let existing = try? JSONSerialization.jsonObject(with: rawData) as? [[String: Any]] { actions = existing }
-    if let id = object["id"] as? String { actions.removeAll { ($0["id"] as? String) == id } }
-    actions.append(object)
-    if actions.count > 20 { actions = Array(actions.suffix(20)) }
-    if let encoded = try? JSONSerialization.data(withJSONObject: actions), let text = String(data: encoded, encoding: .utf8) {
-      defaults.set(text, forKey: pendingActionsKey)
+    _ = withSharedLock {
+      guard let defaults = UserDefaults(suiteName: appGroup),
+            let data = try? JSONSerialization.data(withJSONObject: action),
+            let decoded = try? JSONSerialization.jsonObject(with: data),
+            let object = decoded as? [String: Any] else { return }
+      var actions: [[String: Any]] = []
+      if let raw = defaults.string(forKey: pendingActionsKey), let rawData = raw.data(using: .utf8),
+         let existing = try? JSONSerialization.jsonObject(with: rawData) as? [[String: Any]] { actions = existing }
+      if let id = object["id"] as? String { actions.removeAll { ($0["id"] as? String) == id } }
+      actions.append(object)
+      // Each action id is de-duplicated above. Leave unacknowledged actions in
+      // the App Group until the containing app confirms reconciliation; silently
+      // truncating the queue could lose a user's widget tap before launch.
+      if let encoded = try? JSONSerialization.data(withJSONObject: actions), let text = String(data: encoded, encoding: .utf8) {
+        defaults.set(text, forKey: pendingActionsKey)
+      }
     }
   }
 
   /// Optimistically update the cached snapshot while retaining the pending
   /// action for the main app to reconcile when it next becomes active.
   private static func updateSnapshot(_ update: (inout [String: Any]) -> Void) {
-    guard let defaults = UserDefaults(suiteName: appGroup),
-          let raw = defaults.string(forKey: snapshotKey),
-          let data = raw.data(using: .utf8),
-          var object = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else { return }
-    update(&object)
-    guard JSONSerialization.isValidJSONObject(object),
-          let encoded = try? JSONSerialization.data(withJSONObject: object),
-          let text = String(data: encoded, encoding: .utf8) else { return }
-    defaults.set(text, forKey: snapshotKey)
+    _ = withSharedLock {
+      guard let defaults = UserDefaults(suiteName: appGroup),
+            let raw = defaults.string(forKey: snapshotKey),
+            let data = raw.data(using: .utf8),
+            var object = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else { return }
+      update(&object)
+      guard JSONSerialization.isValidJSONObject(object),
+            let encoded = try? JSONSerialization.data(withJSONObject: object),
+            let text = String(data: encoded, encoding: .utf8) else { return }
+      defaults.set(text, forKey: snapshotKey)
+    }
   }
 
   static func completeTaskInSnapshot(_ taskId: String) {
@@ -57,11 +91,20 @@ private enum WidgetPendingActionStore {
         // look like a missed interaction.
         var completed = (object["currentTask"] as? [String: Any]) ?? [:]
         completed["status"] = "completed"
+        completed["optimisticCompletedAt"] = widgetISO8601String(Date())
         object["currentTask"] = completed
       } else if let remainingIndex = remainingIndex {
         remaining[remainingIndex]["status"] = "completed"
+        remaining[remainingIndex]["optimisticCompletedAt"] = widgetISO8601String(Date())
       }
       object["todayNowTasks"] = remaining
+      if var candidates = object["currentTaskCandidates"] as? [[String: Any]] {
+        for index in candidates.indices where (candidates[index]["id"] as? String) == taskId {
+          candidates[index]["status"] = "completed"
+          candidates[index]["optimisticCompletedAt"] = widgetISO8601String(Date())
+        }
+        object["currentTaskCandidates"] = candidates
+      }
     }
   }
 
@@ -138,6 +181,11 @@ struct WidgetSnapshot: Codable {
     let monoTemplate: String?
   }
 
+  struct WidgetPhotoUnlock: Codable {
+    let widgetType: String?
+    let expiresAt: Date?
+  }
+
   struct Task: Codable {
     let id: String
     let title: String
@@ -146,6 +194,11 @@ struct WidgetSnapshot: Codable {
     let remainingMinutes: Int?
     let status: String?
     let priority: String?
+    let actionableAt: Date?
+    let deadlineAt: Date?
+    let createdAt: Date?
+    let scheduledDate: String?
+    let optimisticCompletedAt: Date?
   }
 
   struct Plan: Codable {
@@ -154,10 +207,10 @@ struct WidgetSnapshot: Codable {
     let scheduledAt: Date
     let location: String?
     let allDay: Bool?
-    let leaveAt: Date?
-    let remainingToLeave: Int?
+    var leaveAt: Date?
+    var remainingToLeave: Int?
     /// Kept for snapshots written before the expanded `leaveAt` field.
-    let departureAt: Date?
+    var departureAt: Date?
   }
 
   struct ScheduleItem: Codable {
@@ -229,15 +282,20 @@ struct WidgetSnapshot: Codable {
   let widgetCustomizations: [String: WidgetCustomization]?
   let displayOptions: [String: Bool]?
   let currentTask: Task?
+  let currentTaskCandidates: [Task]?
   let todayNowTasks: [Task]?
   let todayNowTaskCount: Int?
   let nextPlan: Plan?
+  let nextPlans: [Plan]?
+  let calendarPlans: [ScheduleItem]?
   let calendarMonth: CalendarMonth?
   let calendarWeek: CalendarWeek?
   let todaySchedules: [ScheduleItem]?
   let todayScheduleCount: Int?
   let checklist: [ChecklistItem]?
   let goal: Goal?
+  let goalMonths: [String: Goal]?
+  let widgetPhotoUnlock: WidgetPhotoUnlock?
   let affirmations: [AffirmationItem]?
   let affirmationPhotoFileNames: [String]?
 
@@ -258,10 +316,145 @@ struct WidgetSnapshot: Codable {
     }
   }
 
+  func canDisplayPhoto(kind: String?, at date: Date) -> Bool {
+    if isPremium == true || designCustomizePurchased == true { return true }
+    guard let unlock = widgetPhotoUnlock, let widgetType = unlock.widgetType,
+          widgetType == WidgetSnapshot.widgetTypeKey(for: kind),
+          let expiresAt = unlock.expiresAt else { return false }
+    return expiresAt > date
+  }
+
+  private static func widgetTypeKey(for kind: String?) -> String? {
+    switch kind {
+    case "RhythmCurrentTaskWidget": return "current"
+    case "RhythmNextScheduleWidget": return "next"
+    case "RhythmWidget": return "combined"
+    case "RhythmMonthlyCalendarWidget": return "monthly"
+    case "RhythmWeeklyCalendarWidget": return "weekly"
+    case "RhythmTodayScheduleWidget": return "today"
+    case "RhythmChecklistWidget": return "checklist"
+    case "RhythmGoalWidget": return "goal"
+    case "RhythmVoiceWidget": return "voice"
+    case "RhythmAffirmationWidget": return "affirmation"
+    default: return nil
+    }
+  }
+
   /// Older snapshots do not contain displayOptions. Treat missing or malformed
   /// entries as enabled so an upgrade never hides existing widget content.
   func isDisplayOptionEnabled(_ key: String) -> Bool {
     displayOptions?[key] ?? true
+  }
+
+  /// Re-evaluates the bounded candidate payload at the timeline entry time.
+  /// The ranking mirrors the JS task selector (overdue, near, today, then
+  /// target time/priority/registration order) without requiring the app to run.
+  func resolved(at date: Date, kind: String? = nil) -> WidgetSnapshot {
+    let hasCandidatePayload = currentTaskCandidates != nil
+    let candidates = currentTaskCandidates ?? (currentTask.map { [$0] } ?? [])
+    let calendar = Calendar.current
+    let dayFormatter = DateFormatter()
+    dayFormatter.calendar = calendar
+    dayFormatter.dateFormat = "yyyy-MM-dd"
+    let currentDay = dayFormatter.string(from: date)
+    let eligible = candidates.filter { task in
+      if let scheduledDate = task.scheduledDate, scheduledDate > currentDay { return false }
+      guard let start = task.startAt else { return true }
+      return calendar.isDate(start, inSameDayAs: date) || start < date
+    }
+    let priorityRank: [String: Int] = ["高": 0, "中": 1, "低": 2]
+    let ranked = eligible.enumerated().sorted { left, right in
+      let a = left.element
+      let b = right.element
+      let aOverdue = (a.deadlineAt?.timeIntervalSince(date) ?? 1) < 0 || (a.actionableAt?.timeIntervalSince(date) ?? 1) <= 0
+      let bOverdue = (b.deadlineAt?.timeIntervalSince(date) ?? 1) < 0 || (b.actionableAt?.timeIntervalSince(date) ?? 1) <= 0
+      let aNear = !aOverdue && (a.actionableAt.map { $0 > date && $0 <= date.addingTimeInterval(2 * 60 * 60) } ?? false)
+      let bNear = !bOverdue && (b.actionableAt.map { $0 > date && $0 <= date.addingTimeInterval(2 * 60 * 60) } ?? false)
+      let aToday = !aOverdue && !aNear && (a.actionableAt.map { calendar.isDate($0, inSameDayAs: date) } ?? false)
+      let bToday = !bOverdue && !bNear && (b.actionableAt.map { calendar.isDate($0, inSameDayAs: date) } ?? false)
+      let aRank = aOverdue ? 0 : aNear ? 1 : aToday ? 2 : 3
+      let bRank = bOverdue ? 0 : bNear ? 1 : bToday ? 2 : 3
+      let aTarget = a.actionableAt ?? a.startAt ?? a.deadlineAt ?? .distantFuture
+      let bTarget = b.actionableAt ?? b.startAt ?? b.deadlineAt ?? .distantFuture
+      let aCreated = a.createdAt ?? .distantFuture
+      let bCreated = b.createdAt ?? .distantFuture
+      if aRank != bRank { return aRank < bRank }
+      if aTarget != bTarget { return aTarget < bTarget }
+      let aPriority = priorityRank[a.priority ?? ""] ?? 1
+      let bPriority = priorityRank[b.priority ?? ""] ?? 1
+      if aPriority != bPriority { return aPriority < bPriority }
+      if aCreated != bCreated { return aCreated < bCreated }
+      return left.offset < right.offset
+    }.map(\.element).filter { task in
+      guard task.status != "skipped" else { return false }
+      if task.status != "completed" { return true }
+      return task.optimisticCompletedAt.map { $0.addingTimeInterval(1.2) > date } ?? false
+    }
+    let selected = hasCandidatePayload ? ranked.first : currentTask
+    let remaining = hasCandidatePayload ? Array(ranked.dropFirst().prefix(3)) : (todayNowTasks ?? [])
+    // The next appointment is selected by its scheduled time. Departure is
+    // supplementary state and must not make a future appointment disappear
+    // merely because its leave time has already passed.
+    let plans = (nextPlans ?? (nextPlan.map { [$0] } ?? []))
+      .filter { $0.scheduledAt >= date }
+      .sorted { $0.scheduledAt < $1.scheduledAt }
+    var selectedPlan = plans.first
+    if var plan = selectedPlan {
+      if let leave = plan.leaveAt ?? plan.departureAt, leave > date {
+        plan.remainingToLeave = max(0, Int(ceil(leave.timeIntervalSince(date) / 60)))
+      } else {
+        plan.leaveAt = nil
+        plan.departureAt = nil
+        plan.remainingToLeave = nil
+      }
+      selectedPlan = plan
+    }
+    let resolvedAppearance: Appearance? = {
+      guard let appearance, appearance.style == .photo, !canDisplayPhoto(kind: kind, at: date) else { return appearance }
+      let fallbackStyle: Style = appearance.designPatternUnlocked == true ? .color : .mono
+      return Appearance(style: fallbackStyle, monoTemplate: appearance.monoTemplate, accentHex: appearance.accentHex, photoFileName: nil, cutoutFileName: nil, photoLayout: appearance.photoLayout, designPattern: fallbackStyle == .color ? (appearance.designPattern ?? "plain") : nil, designCheckColor: appearance.designCheckColor, designPatternUnlocked: appearance.designPatternUnlocked, affirmationBackgrounds: appearance.affirmationBackgrounds)
+    }()
+    let legacyPeriodChanged = calendarPlans == nil && isoDay(updatedAt) != isoDay(date)
+    let resolvedMonth = calendarPlans.map { buildCalendarMonth($0, at: date) } ?? (legacyPeriodChanged ? nil : calendarMonth)
+    let resolvedWeek = calendarPlans.map { buildCalendarWeek($0, at: date) } ?? (legacyPeriodChanged ? nil : calendarWeek)
+    let resolvedToday: [ScheduleItem]? = {
+      guard let calendarPlans else { return legacyPeriodChanged ? nil : todaySchedules }
+      return Array(calendarPlans.filter { Calendar.current.isDate($0.scheduledAt, inSameDayAs: date) }.sorted { $0.scheduledAt < $1.scheduledAt }.prefix(8))
+    }()
+    let monthKey = monthKey(for: date)
+    let resolvedGoal = goalMonths?[monthKey] ?? (goalMonths == nil && !legacyPeriodChanged ? goal : nil)
+    let resolvedTodayCount = calendarPlans?.filter { Calendar.current.isDate($0.scheduledAt, inSameDayAs: date) }.count ?? todayScheduleCount
+    return WidgetSnapshot(updatedAt: updatedAt, isPremium: isPremium, designCustomizePurchased: designCustomizePurchased, appearance: resolvedAppearance, widgetCustomizations: widgetCustomizations, displayOptions: displayOptions, currentTask: selected, currentTaskCandidates: currentTaskCandidates, todayNowTasks: remaining, todayNowTaskCount: hasCandidatePayload ? (ranked.count > 1 ? ranked.count - 1 : nil) : todayNowTaskCount, nextPlan: selectedPlan, nextPlans: nextPlans, calendarPlans: calendarPlans, calendarMonth: resolvedMonth, calendarWeek: resolvedWeek, todaySchedules: resolvedToday, todayScheduleCount: resolvedTodayCount, checklist: checklist, goal: resolvedGoal, goalMonths: goalMonths, widgetPhotoUnlock: widgetPhotoUnlock, affirmations: affirmations, affirmationPhotoFileNames: affirmationPhotoFileNames)
+  }
+
+  private func monthKey(for date: Date) -> String {
+    let c = Calendar.current; return String(format: "%04d-%02d", c.component(.year, from: date), c.component(.month, from: date))
+  }
+
+  private func isoDay(_ date: Date) -> String {
+    let f = DateFormatter(); f.calendar = Calendar.current; f.dateFormat = "yyyy-MM-dd"; return f.string(from: date)
+  }
+
+  private func buildCalendarMonth(_ plans: [ScheduleItem], at date: Date) -> CalendarMonth {
+    let calendar = Calendar.current; let year = calendar.component(.year, from: date); let month = calendar.component(.month, from: date)
+    let start = calendar.date(from: DateComponents(year: year, month: month, day: 1)) ?? date
+    let count = calendar.range(of: .day, in: .month, for: start)?.count ?? 30
+    let counts = Dictionary(grouping: plans.filter { calendar.component(.year, from: $0.scheduledAt) == year && calendar.component(.month, from: $0.scheduledAt) == month }, by: { calendar.component(.day, from: $0.scheduledAt) })
+    let days = (1...count).map { day -> MonthDay in
+      let d = calendar.date(byAdding: .day, value: day - 1, to: start) ?? start; let items = counts[day] ?? []
+      return MonthDay(date: isoDay(d), day: day, weekdayIndex: calendar.component(.weekday, from: d) - 1, hasSchedule: !items.isEmpty, scheduleCount: items.count, scheduleTitle: items.first?.title, isToday: calendar.isDate(d, inSameDayAs: date))
+    }
+    return CalendarMonth(year: year, month: month, leadingEmptyCount: calendar.component(.weekday, from: start) - 1, days: days)
+  }
+
+  private func buildCalendarWeek(_ plans: [ScheduleItem], at date: Date) -> CalendarWeek {
+    let calendar = Calendar.current; let start = calendar.date(byAdding: .day, value: -(calendar.component(.weekday, from: date) - 1), to: calendar.startOfDay(for: date)) ?? date
+    let days = (0..<7).map { offset -> WeekDay in
+      let d = calendar.date(byAdding: .day, value: offset, to: start) ?? start
+      let items = plans.filter { calendar.isDate($0.scheduledAt, inSameDayAs: d) }.sorted { $0.scheduledAt < $1.scheduledAt }.prefix(3)
+      return WeekDay(date: isoDay(d), day: calendar.component(.day, from: d), weekday: ["日", "月", "火", "水", "木", "金", "土"][calendar.component(.weekday, from: d) - 1], isToday: calendar.isDate(d, inSameDayAs: date), schedules: Array(items))
+    }
+    return CalendarWeek(startDate: isoDay(start), days: days)
   }
 }
 
@@ -376,13 +569,16 @@ private func gallerySampleSnapshot(now: Date = Date()) -> WidgetSnapshot {
     // Gallery keeps the task preview focused on the task itself; the timer
     // ring belongs to the live widget and is intentionally omitted here.
     displayOptions: ["remainingTime": false],
-    currentTask: WidgetSnapshot.Task(id: "gallery-task", title: "資料をまとめる", startAt: taskStart, estimatedMinutes: 45, remainingMinutes: 25, status: "active", priority: "中"),
+    currentTask: WidgetSnapshot.Task(id: "gallery-task", title: "資料をまとめる", startAt: taskStart, estimatedMinutes: 45, remainingMinutes: 25, status: "active", priority: "中", actionableAt: taskStart, deadlineAt: nil, createdAt: now.addingTimeInterval(-3600), scheduledDate: isoDay(today), optimisticCompletedAt: nil),
+    currentTaskCandidates: nil,
     todayNowTasks: [
-      WidgetSnapshot.Task(id: "gallery-task-2", title: "メールを確認", startAt: dateAt(today, 16, 0), estimatedMinutes: nil, remainingMinutes: nil, status: "active", priority: "低"),
-      WidgetSnapshot.Task(id: "gallery-task-3", title: "資料を送る", startAt: dateAt(today, 17, 0), estimatedMinutes: nil, remainingMinutes: nil, status: "active", priority: "中"),
+      WidgetSnapshot.Task(id: "gallery-task-2", title: "メールを確認", startAt: dateAt(today, 16, 0), estimatedMinutes: nil, remainingMinutes: nil, status: "active", priority: "低", actionableAt: dateAt(today, 16, 0), deadlineAt: nil, createdAt: now, scheduledDate: isoDay(today), optimisticCompletedAt: nil),
+      WidgetSnapshot.Task(id: "gallery-task-3", title: "資料を送る", startAt: dateAt(today, 17, 0), estimatedMinutes: nil, remainingMinutes: nil, status: "active", priority: "中", actionableAt: dateAt(today, 17, 0), deadlineAt: nil, createdAt: now, scheduledDate: isoDay(today), optimisticCompletedAt: nil),
     ],
     todayNowTaskCount: 2,
     nextPlan: WidgetSnapshot.Plan(id: "gallery-plan", title: "美容院", scheduledAt: nextSchedule, location: "駅前", allDay: false, leaveAt: leaveAt, remainingToLeave: 102, departureAt: leaveAt),
+    nextPlans: nil,
+    calendarPlans: nil,
     calendarMonth: WidgetSnapshot.CalendarMonth(year: monthComponents.year ?? calendar.component(.year, from: today), month: monthComponents.month ?? calendar.component(.month, from: today), leadingEmptyCount: calendar.component(.weekday, from: monthStart) - 1, days: monthDays),
     calendarWeek: WidgetSnapshot.CalendarWeek(startDate: isoDay(weekStart), days: weekDays),
     todaySchedules: todayItems,
@@ -393,7 +589,9 @@ private func gallerySampleSnapshot(now: Date = Date()) -> WidgetSnapshot {
       WidgetSnapshot.ChecklistItem(id: "gallery-charger", taskId: nil, listItemId: nil, title: "充電器", done: false),
       WidgetSnapshot.ChecklistItem(id: "gallery-medicine", taskId: nil, listItemId: nil, title: "薬", done: false),
     ],
-    goal: WidgetSnapshot.Goal(id: "gallery-goal", title: "アプリ完成", progress: 60, completedActions: 1, actionCount: 2),
+    goal: WidgetSnapshot.Goal(id: "gallery-goal", title: "旅行のために貯金", progress: 60, completedActions: 1, actionCount: 2),
+    goalMonths: nil,
+    widgetPhotoUnlock: nil,
     affirmations: [
       WidgetSnapshot.AffirmationItem(id: "gallery-affirmation-1", text: "私は私のペースで進めばいい"),
       WidgetSnapshot.AffirmationItem(id: "gallery-affirmation-2", text: "小さくても、今日も前に進んでいる"),
@@ -416,7 +614,7 @@ struct RhythmWidgetProvider: IntentTimelineProvider {
 
   func getSnapshot(for configuration: RhythmWidgetIntent, in context: Context, completion: @escaping (RhythmWidgetEntry) -> Void) {
     let snapshot = context.isPreview ? gallerySampleSnapshot() : loadSnapshot().map { applying(configuration, to: $0) }
-    completion(RhythmWidgetEntry(date: .now, snapshot: snapshot, widgetKind: widgetKind))
+    completion(RhythmWidgetEntry(date: .now, snapshot: snapshot?.resolved(at: .now, kind: widgetKind), widgetKind: widgetKind))
   }
 
   func getTimeline(for configuration: RhythmWidgetIntent, in context: Context, completion: @escaping (Timeline<RhythmWidgetEntry>) -> Void) {
@@ -432,20 +630,27 @@ struct RhythmWidgetProvider: IntentTimelineProvider {
         guard let date = calendar.date(bySettingHour: hour, minute: 0, second: 0, of: startOfDay), date > now else { return nil }
         let text = affirmations[index % affirmations.count].text
         let photo = photoNames.isEmpty ? nil : photoNames[index % photoNames.count]
-        return RhythmWidgetEntry(date: date, snapshot: snapshot, affirmationTextOverride: text, affirmationPhotoFileNameOverride: photo, widgetKind: widgetKind)
+        return RhythmWidgetEntry(date: date, snapshot: snapshot.resolved(at: date, kind: widgetKind), affirmationTextOverride: text, affirmationPhotoFileNameOverride: photo, widgetKind: widgetKind)
       }
       let tomorrow = calendar.date(byAdding: .day, value: 1, to: startOfDay) ?? startOfDay
       let nextEntries = hours.enumerated().compactMap { index, hour -> RhythmWidgetEntry? in
         guard let date = calendar.date(bySettingHour: hour, minute: 0, second: 0, of: tomorrow) else { return nil }
         let text = affirmations[(index + entries.count) % affirmations.count].text
         let photo = photoNames.isEmpty ? nil : photoNames[(index + entries.count) % photoNames.count]
-        return RhythmWidgetEntry(date: date, snapshot: snapshot, affirmationTextOverride: text, affirmationPhotoFileNameOverride: photo, widgetKind: widgetKind)
+        return RhythmWidgetEntry(date: date, snapshot: snapshot.resolved(at: date, kind: widgetKind), affirmationTextOverride: text, affirmationPhotoFileNameOverride: photo, widgetKind: widgetKind)
       }
       completion(Timeline(entries: entries + nextEntries, policy: .atEnd))
       return
     }
-    let refresh = nextRefreshDate(snapshot: snapshot, from: now)
-    completion(Timeline(entries: [RhythmWidgetEntry(date: now, snapshot: snapshot, widgetKind: widgetKind)], policy: .after(refresh)))
+    guard let snapshot else {
+      completion(Timeline(entries: [RhythmWidgetEntry(date: now, snapshot: nil, widgetKind: widgetKind)], policy: .after(now.addingTimeInterval(30 * 60))))
+      return
+    }
+    let transitionDates = timelineTransitionDates(snapshot: snapshot, from: now)
+    let dates = [now] + transitionDates
+    let entries = dates.map { RhythmWidgetEntry(date: $0, snapshot: snapshot.resolved(at: $0, kind: widgetKind), widgetKind: widgetKind) }
+    let refresh = transitionDates.last?.addingTimeInterval(60) ?? now.addingTimeInterval(30 * 60)
+    completion(Timeline(entries: entries, policy: .after(refresh)))
   }
 
   private func applying(_ configuration: RhythmWidgetIntent, to snapshot: WidgetSnapshot) -> WidgetSnapshot {
@@ -467,7 +672,7 @@ struct RhythmWidgetProvider: IntentTimelineProvider {
       // offered in the edit UI, but an older snapshot/configuration can still
       // carry it; keep that value rendering as Flower 1 instead of dropping
       // to an unrelated pattern.
-      case .unknown: return stored.designPattern == "floral" ? "floral" : "dot"
+      case .unknown, .appDefault: return stored.designPattern ?? "dot"
       case .dot: return "dot"
       case .checkLavenderSatin: return "checkLavenderSatin"
       case .checkBeigeNoir: return "checkBeigeNoir"
@@ -479,7 +684,7 @@ struct RhythmWidgetProvider: IntentTimelineProvider {
       case .botanicalLine: return "floralSoft"
       case .sheerFloral: return "floralSeasonal"
       case .plain: return "plain"
-      @unknown default: return "dot"
+      @unknown default: return stored.designPattern ?? "dot"
       }
     }()
     let layout: String? = {
@@ -496,7 +701,8 @@ struct RhythmWidgetProvider: IntentTimelineProvider {
     }()
     let designCheckColor: String? = {
       switch configuration.designColor {
-      case .unknown, .monochrome: return "monochrome"
+      case .unknown, .appDefault: return nil
+      case .monochrome: return "monochrome"
       case .cool: return "cool"
       case .warm: return "warm"
       case .green: return "green"
@@ -508,6 +714,9 @@ struct RhythmWidgetProvider: IntentTimelineProvider {
       @unknown default: return "monochrome"
       }
     }()
+    // `appDefault`/unknown inherit the app's shared theme color carried in
+    // the snapshot. An explicit native color remains a per-widget override.
+    let resolvedDesignCheckColor = designCheckColor ?? stored.designCheckColor ?? "cool"
     let customizationKey: String? = {
       switch widgetKind {
       case "RhythmCurrentTaskWidget": return "current"
@@ -535,13 +744,13 @@ struct RhythmWidgetProvider: IntentTimelineProvider {
       case .clean: return "clean"
       case .pinNote: return "pinNote"
       case .ruledNote: return "ruledNote"
-      case .unknown, .dot, .checkLavenderSatin, .checkBeigeNoir, .checkMauveFrame, .vintageBloom, .botanicalLine, .sheerFloral, .plain:
+      case .unknown, .appDefault, .dot, .checkLavenderSatin, .checkBeigeNoir, .checkMauveFrame, .vintageBloom, .botanicalLine, .sheerFloral, .plain:
         return customization?.monoTemplate ?? stored.monoTemplate
       @unknown default: return customization?.monoTemplate ?? stored.monoTemplate
       }
     }()
-    let appearance = WidgetSnapshot.Appearance(style: style, monoTemplate: resolvedMonoTemplate, accentHex: stored.accentHex, photoFileName: resolvedPhotoFileName, cutoutFileName: resolvedCutoutFileName, photoLayout: resolvedPhotoLayout, designPattern: pattern, designCheckColor: designCheckColor, designPatternUnlocked: stored.designPatternUnlocked, affirmationBackgrounds: stored.affirmationBackgrounds)
-    return WidgetSnapshot(updatedAt: snapshot.updatedAt, isPremium: snapshot.isPremium, designCustomizePurchased: snapshot.designCustomizePurchased, appearance: appearance, widgetCustomizations: snapshot.widgetCustomizations, displayOptions: snapshot.displayOptions, currentTask: snapshot.currentTask, todayNowTasks: snapshot.todayNowTasks, todayNowTaskCount: snapshot.todayNowTaskCount, nextPlan: snapshot.nextPlan, calendarMonth: snapshot.calendarMonth, calendarWeek: snapshot.calendarWeek, todaySchedules: snapshot.todaySchedules, todayScheduleCount: snapshot.todayScheduleCount, checklist: snapshot.checklist, goal: snapshot.goal, affirmations: snapshot.affirmations, affirmationPhotoFileNames: snapshot.affirmationPhotoFileNames)
+    let appearance = WidgetSnapshot.Appearance(style: style, monoTemplate: resolvedMonoTemplate, accentHex: stored.accentHex, photoFileName: resolvedPhotoFileName, cutoutFileName: resolvedCutoutFileName, photoLayout: resolvedPhotoLayout, designPattern: pattern, designCheckColor: resolvedDesignCheckColor, designPatternUnlocked: stored.designPatternUnlocked, affirmationBackgrounds: stored.affirmationBackgrounds)
+    return WidgetSnapshot(updatedAt: snapshot.updatedAt, isPremium: snapshot.isPremium, designCustomizePurchased: snapshot.designCustomizePurchased, appearance: appearance, widgetCustomizations: snapshot.widgetCustomizations, displayOptions: snapshot.displayOptions, currentTask: snapshot.currentTask, currentTaskCandidates: snapshot.currentTaskCandidates, todayNowTasks: snapshot.todayNowTasks, todayNowTaskCount: snapshot.todayNowTaskCount, nextPlan: snapshot.nextPlan, nextPlans: snapshot.nextPlans, calendarPlans: snapshot.calendarPlans, calendarMonth: snapshot.calendarMonth, calendarWeek: snapshot.calendarWeek, todaySchedules: snapshot.todaySchedules, todayScheduleCount: snapshot.todayScheduleCount, checklist: snapshot.checklist, goal: snapshot.goal, goalMonths: snapshot.goalMonths, widgetPhotoUnlock: snapshot.widgetPhotoUnlock, affirmations: snapshot.affirmations, affirmationPhotoFileNames: snapshot.affirmationPhotoFileNames)
   }
 
   private func loadSnapshot() -> WidgetSnapshot? {
@@ -557,19 +766,41 @@ struct RhythmWidgetProvider: IntentTimelineProvider {
       if let date = formatter.date(from: value) {
         return date
       }
+      // Older snapshots and a few native producers omit fractional seconds.
+      // Accept both ISO-8601 forms so one legacy date cannot invalidate the
+      // entire Codable snapshot.
+      formatter.formatOptions = [.withInternetDateTime]
+      if let date = formatter.date(from: value) {
+        return date
+      }
       throw DecodingError.dataCorruptedError(in: container, debugDescription: "Invalid widget snapshot date")
     }
     return try? decoder.decode(WidgetSnapshot.self, from: data)
   }
 
-  private func nextRefreshDate(snapshot: WidgetSnapshot?, from now: Date) -> Date {
-    // SwiftUI's relative date label changes itself. This is only a low-frequency
-    // safety refresh for passed departure times or a new app snapshot.
-    let departureAt = snapshot?.nextPlan?.leaveAt ?? snapshot?.nextPlan?.departureAt
-    if let departureAt, departureAt > now {
-      return min(departureAt.addingTimeInterval(60), now.addingTimeInterval(30 * 60))
+  private func timelineTransitionDates(snapshot: WidgetSnapshot, from now: Date) -> [Date] {
+    // Calendar/month transitions can be several weeks away; keep the source
+    // bounded while still scheduling the next meaningful boundary.
+    let horizon = now.addingTimeInterval(40 * 24 * 60 * 60)
+    let calendar = Calendar.current
+    let taskDates = (snapshot.currentTaskCandidates ?? []).flatMap { task -> [Date] in
+      var dates = [task.startAt, task.actionableAt, task.deadlineAt].compactMap { $0 }
+      if let start = task.startAt {
+        let dayStart = calendar.startOfDay(for: start)
+        if dayStart > now { dates.append(dayStart) }
+      }
+      return dates
     }
-    return now.addingTimeInterval(30 * 60)
+    let planDates = (snapshot.nextPlans ?? []).flatMap { [$0.scheduledAt, $0.leaveAt ?? $0.departureAt] }.compactMap { $0 }
+    var boundaryDates: [Date] = []
+    let startOfToday = calendar.startOfDay(for: now)
+    if let tomorrow = calendar.date(byAdding: .day, value: 1, to: startOfToday) { boundaryDates.append(tomorrow) }
+    if let nextWeek = calendar.date(byAdding: .day, value: 8 - calendar.component(.weekday, from: now), to: startOfToday) { boundaryDates.append(nextWeek) }
+    if let nextMonth = calendar.date(from: DateComponents(year: calendar.component(.year, from: now), month: calendar.component(.month, from: now) + 1, day: 1)) { boundaryDates.append(nextMonth) }
+    let optimisticDates = (snapshot.currentTaskCandidates ?? []).compactMap { $0.optimisticCompletedAt?.addingTimeInterval(1.3) }
+    let unlockDates = [snapshot.widgetPhotoUnlock?.expiresAt].compactMap { $0 }
+    let unique = Set((taskDates + planDates + boundaryDates + optimisticDates + unlockDates).filter { $0 > now && $0 <= horizon }.map { Int($0.timeIntervalSince1970) })
+    return unique.sorted().map { Date(timeIntervalSince1970: TimeInterval($0)) }
   }
 }
 
@@ -593,7 +824,7 @@ private struct WidgetPalette {
     let photoAvailable = style != .color && ((appearance?.photoFileName.map { loadWidgetPhoto($0) != nil } ?? false) || (appearance?.cutoutFileName.map { loadWidgetPhoto($0) != nil } ?? false))
     let photoBackground = style != .color && appearance?.photoLayout == "background" && photoAvailable
     if photoBackground {
-      return WidgetPalette(foreground: .white, secondary: .white.opacity(0.82), accent: accent, background: .black, divider: .white.opacity(0.34), monoTemplate: nil, designPattern: nil, designCheckColor: appearance?.designCheckColor)
+      return WidgetPalette(foreground: .white, secondary: .white.opacity(0.82), accent: accent, background: colors.background, divider: colors.background.opacity(0.34), monoTemplate: nil, designPattern: nil, designCheckColor: appearance?.designCheckColor)
     }
     switch style {
     case .mono:
@@ -605,7 +836,7 @@ private struct WidgetPalette {
     case .photo:
       // The photo layer is applied by WidgetSurface. Keep a readable Mono
       // palette underneath it so missing or stale images fall back safely.
-      return WidgetPalette(foreground: photoBackground ? .white : Color(hex: "302D33"), secondary: photoBackground ? .white.opacity(0.78) : Color(hex: "6E6872"), accent: accent, background: photoBackground ? .black : colors.background, divider: photoBackground ? .white.opacity(0.3) : accent.opacity(0.28), monoTemplate: appearance?.monoTemplate, designPattern: nil, designCheckColor: appearance?.designCheckColor)
+      return WidgetPalette(foreground: photoBackground ? .white : Color(hex: "302D33"), secondary: photoBackground ? .white.opacity(0.78) : Color(hex: "6E6872"), accent: accent, background: colors.background, divider: photoBackground ? .white.opacity(0.3) : accent.opacity(0.28), monoTemplate: appearance?.monoTemplate, designPattern: nil, designCheckColor: appearance?.designCheckColor)
     }
   }
 }
@@ -619,22 +850,24 @@ private struct DesignPatternColors {
     switch checkColor {
     case "monochrome":
       background = Color(hex: "F4F1EE"); stripe = Color(hex: "D8D3D6"); accent = Color(hex: "343237")
+    case "cool":
+      background = Color(hex: "F4F3FA"); stripe = Color(hex: "D8D6EA"); accent = Color(hex: "8278B8")
     case "warm":
-      background = Color(hex: "FBF1F3"); stripe = Color(hex: "EBCFD7"); accent = Color(hex: "B66E86")
+      background = Color(hex: "FCF0F0"); stripe = Color(hex: "E9C4C4"); accent = Color(hex: "B85D5D")
     case "green":
-      background = Color(hex: "F2F6F0"); stripe = Color(hex: "D3E0D4"); accent = Color(hex: "758D7B")
+      background = Color(hex: "F0F7F2"); stripe = Color(hex: "C9DDCE"); accent = Color(hex: "5F8A6D")
     case "orange":
       background = Color(hex: "FCF1E7"); stripe = Color(hex: "EAC8AA"); accent = Color(hex: "B8774C")
     case "yellow":
-      background = Color(hex: "FBF7DE"); stripe = Color(hex: "E7D99A"); accent = Color(hex: "9B8530")
+      background = Color(hex: "FFF9D9"); stripe = Color(hex: "F0DE82"); accent = Color(hex: "A48616")
     case "blue":
       background = Color(hex: "EEF3FC"); stripe = Color(hex: "C4D4ED"); accent = Color(hex: "5577AE")
     case "lightBlue":
-      background = Color(hex: "EDF8FA"); stripe = Color(hex: "C5E4E8"); accent = Color(hex: "4D8C95")
+      background = Color(hex: "EAF9FE"); stripe = Color(hex: "BCE7F2"); accent = Color(hex: "3F91AA")
     case "pink":
       background = Color(hex: "FCF0F5"); stripe = Color(hex: "E8C4D3"); accent = Color(hex: "A65E79")
     default:
-      background = Color(hex: "F4F3FA"); stripe = Color(hex: "D8D6EA"); accent = Color(hex: "9C91C4")
+      background = Color(hex: "F4F3FA"); stripe = Color(hex: "D8D6EA"); accent = Color(hex: "8278B8")
     }
   }
 
@@ -745,10 +978,10 @@ private struct DesignPatternLayer: View {
 
 private func loadBundledFloralImage(_ resourceName: String) -> Image? {
   guard let url = Bundle.main.url(forResource: resourceName, withExtension: "png"),
-       let image = UIImage(contentsOfFile: url.path) {
-    return Image(uiImage: image)
+       let image = UIImage(contentsOfFile: url.path) else {
+    return nil
   }
-  return nil
+  return Image(uiImage: image)
 }
 
 private func widgetFloralResourceName(pattern: String, family: WidgetFamily) -> String? {
@@ -805,34 +1038,13 @@ private struct WidgetSurface<Content: View>: View {
     widgetKind == "RhythmMonthlyCalendarWidget" || widgetKind == "RhythmWeeklyCalendarWidget" || widgetKind == "RhythmTodayScheduleWidget"
   }
 
-  private func photoTrailingInset(layout: String, size: CGSize) -> CGFloat {
-    let extra: CGFloat = family == .systemSmall ? 10 : family == .systemLarge ? 18 : 14
-    switch layout {
-    case "right", "side":
-      let width = size.width * (family == .systemLarge ? 0.30 : 0.34)
-      return width + extra
-    case "card":
-      let width = min(size.width * (family == .systemLarge ? 0.38 : 0.5), family == .systemLarge ? 210 : 150)
-      return width + extra + 10
-    case "circle":
-      let fraction: CGFloat = family == .systemSmall ? 0.36 : family == .systemLarge ? 0.27 : 0.24
-      let cap: CGFloat = family == .systemSmall ? 70 : family == .systemLarge ? 150 : 78
-      return min(size.width * fraction, cap) + extra + 10
-    case "cutout":
-      let width = family == .systemSmall ? size.width * 0.50 : family == .systemLarge ? size.width * 0.54 : size.width * 0.46
-      return width + extra
-    default:
-      return 0
-    }
-  }
-
   @ViewBuilder
-  private func photoLayer(_ image: Image, layout: String, size: CGSize) -> some View {
+  private func photoLayer(_ image: Image, layout: String, size: CGSize, palette: WidgetPalette) -> some View {
     switch layout {
     case "right", "side":
       HStack(spacing: 0) {
         Spacer(minLength: 0)
-        image.resizable().scaledToFill().frame(width: size.width * (family == .systemLarge ? 0.30 : 0.34), height: size.height).clipped()
+        image.resizable().scaledToFill().frame(width: size.width * (family == .systemSmall ? 0.22 : family == .systemLarge ? 0.26 : 0.24), height: size.height).clipped()
       }
     case "top":
       VStack(spacing: 0) {
@@ -841,35 +1053,37 @@ private struct WidgetSurface<Content: View>: View {
         if !calendarPhotoLayout { Spacer(minLength: 0) }
       }
     case "card":
+      let widthFraction: CGFloat = family == .systemSmall ? 0.28 : family == .systemLarge ? 0.34 : 0.32
+      let heightFraction: CGFloat = family == .systemSmall ? 0.28 : family == .systemLarge ? 0.30 : 0.28
       image.resizable().scaledToFill()
-        .frame(width: min(size.width * (family == .systemLarge ? 0.38 : 0.5), family == .systemLarge ? 210 : 150), height: min(size.height * (family == .systemLarge ? 0.34 : 0.46), family == .systemLarge ? 150 : 92))
+        .frame(width: min(size.width * widthFraction, family == .systemLarge ? 210 : 120), height: min(size.height * heightFraction, family == .systemLarge ? 150 : 78))
         .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 9, style: .continuous).stroke(Color.white.opacity(0.9), lineWidth: 4))
         .shadow(color: .black.opacity(0.18), radius: 5, y: 2)
         .rotationEffect(.degrees(2))
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: calendarPhotoLayout ? .bottomTrailing : .topTrailing)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
         .padding(10)
     case "circle":
-      let fraction: CGFloat = family == .systemSmall ? 0.36 : family == .systemLarge ? 0.27 : 0.24
-      let cap: CGFloat = family == .systemSmall ? 70 : family == .systemLarge ? 150 : 78
+      let fraction: CGFloat = family == .systemSmall ? 0.22 : family == .systemLarge ? 0.23 : 0.20
+      let cap: CGFloat = family == .systemSmall ? 48 : family == .systemLarge ? 120 : 64
       let circleSize = min(size.width * fraction, cap)
       image.resizable().scaledToFill()
         .frame(width: circleSize, height: circleSize)
         .clipShape(Circle())
         .overlay(Circle().stroke(Color.white.opacity(0.95), lineWidth: 3))
         .shadow(color: .black.opacity(0.18), radius: 4, y: 2)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: calendarPhotoLayout ? .bottomTrailing : .topTrailing)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
         .padding(11)
     case "cutout":
       image.resizable().scaledToFit()
-        .frame(width: family == .systemSmall ? size.width * 0.50 : family == .systemLarge ? size.width * 0.54 : size.width * 0.46,
-               height: family == .systemSmall ? size.height * 0.70 : size.height * 0.80)
+        .frame(width: family == .systemSmall ? size.width * 0.28 : family == .systemLarge ? size.width * 0.34 : size.width * 0.30,
+               height: family == .systemSmall ? size.height * 0.48 : family == .systemLarge ? size.height * 0.62 : size.height * 0.54)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .trailing)
         .padding(.trailing, family == .systemSmall ? 8 : 12)
     default:
       ZStack {
         image.resizable().scaledToFill().frame(width: size.width, height: size.height).clipped()
-        LinearGradient(colors: [Color.black.opacity(0.38), Color.black.opacity(0.08), Color.black.opacity(0.32)], startPoint: .topLeading, endPoint: .bottomTrailing)
+        LinearGradient(colors: [palette.background.opacity(0.18), Color.clear, palette.background.opacity(0.14)], startPoint: .topLeading, endPoint: .bottomTrailing)
       }
     }
   }
@@ -878,16 +1092,14 @@ private struct WidgetSurface<Content: View>: View {
     GeometryReader { proxy in
       let configuredPhotoLayout = appearance?.photoLayout ?? "background"
       let cutout = configuredPhotoLayout == "cutout" ? loadWidgetPhoto(appearance?.cutoutFileName) : nil
-      let photo = appearance?.style == .color ? nil : (cutout ?? loadWidgetPhoto(appearance?.photoFileName))
-      let photoLayout = configuredPhotoLayout == "cutout" && cutout == nil ? "background" : configuredPhotoLayout
+      // A failed cutout must never silently turn into a full-bleed photo.
+      // Suppressing the decorative photo keeps the widget's information intact.
+      let photo = appearance?.style == .color ? nil : (configuredPhotoLayout == "cutout" ? cutout : loadWidgetPhoto(appearance?.photoFileName))
+      let photoLayout = configuredPhotoLayout
       let floralContentVeil: Bool = {
         guard let pattern = appearance?.designPattern,
               let resourceName = widgetFloralResourceName(pattern: pattern, family: family) else { return false }
         return loadBundledFloralImage(resourceName) != nil
-      }()
-      let trailingInset: CGFloat = {
-        guard photo != nil else { return 0 }
-        return photoTrailingInset(layout: photoLayout, size: proxy.size)
       }()
       ZStack {
         palette.background
@@ -902,24 +1114,23 @@ private struct WidgetSurface<Content: View>: View {
           }
         }
         if let photo = photo {
-          photoLayer(photo, layout: photoLayout, size: proxy.size)
+          photoLayer(photo, layout: photoLayout, size: proxy.size, palette: palette)
         }
         content
           .padding(family == .systemSmall ? 10 : family == .systemLarge ? 16 : 12)
-          .padding(.trailing, trailingInset)
           .padding(.top, photo != nil && photoLayout == "top" && !calendarPhotoLayout ? proxy.size.height * (family == .systemLarge ? 0.23 : 0.27) : 0)
           .padding(.bottom, photo != nil && photoLayout == "top" && calendarPhotoLayout ? proxy.size.height * (family == .systemLarge ? 0.23 : 0.27) : 0)
           // Keep floral motifs visible while softly reducing visual noise
           // only behind the intrinsic content area (never as a hard card).
           .background(
             LinearGradient(
-              colors: floralContentVeil ? [palette.background.opacity(0.54), palette.background.opacity(0.18), Color.clear] : [Color.clear, Color.clear, Color.clear],
+              colors: floralContentVeil ? [palette.background.opacity(0.08), palette.background.opacity(0.02), Color.clear] : [Color.clear, Color.clear, Color.clear],
               startPoint: .topLeading,
               endPoint: .bottomTrailing
             )
           )
           .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-          .background(photo != nil && photoLayout == "background" ? Color.black.opacity(0.16) : Color.clear)
+          .background(photo != nil && photoLayout == "background" ? palette.background.opacity(0.12) : Color.clear)
       }
       .clipped()
     }
@@ -986,6 +1197,12 @@ private func timerRingDiameter(for appearance: WidgetSnapshot.Appearance?, famil
   }
 }
 
+private func shouldShowTimerRing(snapshot: WidgetSnapshot, task: WidgetSnapshot.Task) -> Bool {
+  snapshot.isDisplayOptionEnabled("remainingTime")
+    && (task.estimatedMinutes ?? 0) > 0
+    && task.remainingMinutes != nil
+}
+
 struct RhythmWidgetView: View {
   let entry: RhythmWidgetEntry
   @Environment(\.widgetFamily) private var family
@@ -1017,7 +1234,7 @@ struct RhythmWidgetView: View {
                 HStack(alignment: .center, spacing: 8) {
                   WidgetTaskRow(task: task, palette: palette)
                   Spacer(minLength: 4)
-                  if snapshot.isDisplayOptionEnabled("remainingTime") { TaskTimerRing(task: task, palette: palette, diameter: timerRingDiameter(for: snapshot.appearance, family: family)) }
+                  if shouldShowTimerRing(snapshot: snapshot, task: task) { TaskTimerRing(task: task, palette: palette, diameter: timerRingDiameter(for: snapshot.appearance, family: family)) }
                 }
               }
             }
@@ -1070,8 +1287,9 @@ private struct CurrentTaskWidgetView: View {
               Link(destination: URL(string: "rhythm://todo")!) {
                 HStack(alignment: .center, spacing: 10) {
                   TaskInformation(task: task, snapshot: snapshot, palette: palette)
+                    .layoutPriority(2)
                   Spacer(minLength: 4)
-                  if snapshot.isDisplayOptionEnabled("remainingTime") { TaskTimerRing(task: task, palette: palette, diameter: timerRingDiameter(for: snapshot.appearance, family: family)) }
+                  if shouldShowTimerRing(snapshot: snapshot, task: task) { TaskTimerRing(task: task, palette: palette, diameter: timerRingDiameter(for: snapshot.appearance, family: family)).layoutPriority(0) }
                 }
               }
             }
@@ -1082,7 +1300,7 @@ private struct CurrentTaskWidgetView: View {
                 HStack(spacing: 6) {
                   TaskCompletionButton(taskId: item.id, palette: palette, completed: completed)
                   Link(destination: URL(string: "rhythm://todo")!) {
-                    Text(item.title).font(.caption).foregroundStyle(palette.foreground).lineLimit(1).opacity(completed ? 0.52 : 1).strikethrough(completed, color: palette.secondary)
+                    Text(item.title).strikethrough(completed, color: palette.secondary).font(.caption).foregroundStyle(palette.foreground).lineLimit(1).opacity(completed ? 0.52 : 1)
                     Spacer(minLength: 2)
                     if let startAt = item.startAt { Text(startAt, style: .time).font(.caption2).foregroundStyle(palette.secondary).opacity(completed ? 0.52 : 1) }
                   }
@@ -1100,16 +1318,19 @@ private struct CurrentTaskWidgetView: View {
           .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         } else {
           let completed = widgetTaskIsCompleted(task)
+          let sectionFont: Font = family == .systemLarge ? .headline.weight(.semibold) : .caption.weight(.semibold)
+          let titleFont: Font = family == .systemLarge ? .title2.weight(.semibold) : .title3.weight(.semibold)
           HStack(alignment: .top, spacing: 6) {
             TaskCompletionButton(taskId: task.id, palette: palette, completed: widgetTaskIsCompleted(task))
             Link(destination: URL(string: "rhythm://todo")!) {
               VStack(alignment: .leading, spacing: 7) {
-              Text("今はこれ").font(.caption.weight(.semibold)).foregroundStyle(palette.accent)
-              Text(task.title).font(.title3.weight(.semibold)).foregroundStyle(palette.foreground).lineLimit(3).opacity(completed ? 0.52 : 1).strikethrough(completed, color: palette.secondary)
-              if snapshot.isDisplayOptionEnabled("remainingTime") { TaskTimerRing(task: task, palette: palette, diameter: timerRingDiameter(for: snapshot.appearance, family: family)).frame(maxWidth: .infinity, alignment: .center) }
-              if snapshot.isDisplayOptionEnabled("startTime"), let startAt = task.startAt { Text(startAt.formatted(date: .omitted, time: .shortened)).font(.caption2).foregroundStyle(palette.secondary).opacity(completed ? 0.52 : 1) }
-              if snapshot.isDisplayOptionEnabled("status"), let status = task.status, !status.isEmpty { Text(widgetStatusText(status)).font(.caption2).foregroundStyle(palette.secondary).opacity(completed ? 0.52 : 1) }
+              Text("今はこれ").font(sectionFont).foregroundStyle(palette.accent)
+              Text(task.title).strikethrough(completed, color: palette.secondary).font(titleFont).foregroundStyle(palette.foreground).lineLimit(3).opacity(completed ? 0.52 : 1)
+              if shouldShowTimerRing(snapshot: snapshot, task: task) { TaskTimerRing(task: task, palette: palette, diameter: timerRingDiameter(for: snapshot.appearance, family: family)).frame(maxWidth: .infinity, alignment: .center) }
+              if snapshot.isDisplayOptionEnabled("startTime"), let startAt = task.startAt { Text(startAt.formatted(date: .omitted, time: .shortened)).font(family == .systemLarge ? .subheadline : .caption2).foregroundStyle(palette.secondary).opacity(completed ? 0.52 : 1) }
+              if snapshot.isDisplayOptionEnabled("status"), let status = task.status, !status.isEmpty { Text(widgetStatusText(status)).font(family == .systemLarge ? .subheadline : .caption2).foregroundStyle(palette.secondary).opacity(completed ? 0.52 : 1) }
               }
+              .layoutPriority(2)
               .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             }
           }
@@ -1139,7 +1360,7 @@ private struct TaskInformation: View {
     let completed = widgetTaskIsCompleted(task)
     VStack(alignment: .leading, spacing: 6) {
       Text("今はこれ").font(.caption.weight(.semibold)).foregroundStyle(palette.accent)
-      Text(task.title).font(.title3.weight(.semibold)).foregroundStyle(palette.foreground).lineLimit(3).opacity(completed ? 0.52 : 1).strikethrough(completed, color: palette.secondary)
+      Text(task.title).strikethrough(completed, color: palette.secondary).font(.title3.weight(.semibold)).foregroundStyle(palette.foreground).lineLimit(3).opacity(completed ? 0.52 : 1)
       if snapshot.isDisplayOptionEnabled("startTime"), let startAt = task.startAt {
         Label(startAt.formatted(date: .omitted, time: .shortened), systemImage: "clock")
           .font(.caption).foregroundStyle(palette.secondary).opacity(completed ? 0.52 : 1)
@@ -1249,7 +1470,7 @@ private struct TaskTimerRing: View {
       Circle().stroke(palette.divider, lineWidth: max(3, diameter * 0.074))
       Circle().trim(from: 0, to: progress).stroke(palette.accent, style: StrokeStyle(lineWidth: max(3, diameter * 0.074), lineCap: .round)).rotationEffect(.degrees(-90))
       VStack(spacing: 0) {
-        Text(task.remainingMinutes.map { "\($0)" } ?? "—").font(.system(size: max(15, diameter * 0.25), weight: .semibold)).foregroundStyle(palette.foreground)
+        Text("\(task.remainingMinutes ?? 0)").font(.system(size: max(15, diameter * 0.25), weight: .semibold)).foregroundStyle(palette.foreground)
         Text("min").font(.system(size: max(8, diameter * 0.13))).foregroundStyle(palette.secondary)
       }
     }
@@ -1328,10 +1549,10 @@ private struct WidgetTaskRow: View {
         .font(.caption)
         .foregroundStyle(palette.secondary)
       Text(task.title)
+        .strikethrough(completed, color: palette.secondary)
         .font(.subheadline.weight(.medium))
         .foregroundStyle(palette.foreground)
         .opacity(completed ? 0.52 : 1)
-        .strikethrough(completed, color: palette.secondary)
         .lineLimit(1)
       if let startAt = task.startAt {
         Text(startAt, style: .time)
@@ -1414,6 +1635,8 @@ private struct MonthlyCalendarWidgetView: View {
                 Text("\(day.day)")
                   .font((isLarge ? Font.caption : Font.caption2).weight(day.isToday ? .bold : .regular))
                   .foregroundStyle(day.isToday ? Color.white : palette.foreground)
+                  .lineLimit(1)
+                  .minimumScaleFactor(0.7)
                   .frame(maxWidth: .infinity, minHeight: isLarge ? 24 : 19)
                   .background(day.isToday ? palette.accent : Color.clear, in: Circle())
                 Circle()
@@ -1464,7 +1687,7 @@ private struct WeeklyCalendarWidgetView: View {
             VStack(spacing: 4) {
               ForEach(Array(week.days.enumerated()), id: \.offset) { _, day in
                 HStack(alignment: .top, spacing: 8) {
-                  Text("\(day.weekday) \(day.day)").font(.caption.weight(day.isToday ? .bold : .regular)).foregroundStyle(day.isToday ? palette.accent : palette.secondary).frame(width: 44, alignment: .leading)
+                  Text("\(day.weekday) \(day.day)").font(.caption.weight(day.isToday ? .bold : .regular)).foregroundStyle(day.isToday ? palette.accent : palette.secondary).lineLimit(1).minimumScaleFactor(0.7).frame(width: 44, alignment: .leading)
                   if day.schedules.isEmpty { Text("—").font(.caption).foregroundStyle(palette.secondary) }
                   else {
                     VStack(alignment: .leading, spacing: 1) {
@@ -1774,7 +1997,7 @@ struct RhythmCurrentTaskWidget: Widget {
     }
     .configurationDisplayName("今はこれ")
     .description("今やることをすぐ確認できます。")
-    .supportedFamilies([.systemSmall, .systemMedium])
+    .supportedFamilies([.systemMedium, .systemLarge])
   }
 }
 
@@ -1787,7 +2010,7 @@ struct RhythmNextScheduleWidget: Widget {
     }
     .configurationDisplayName("次の予定")
     .description("次の予定と出発時刻を確認できます。")
-    .supportedFamilies([.systemSmall, .systemMedium])
+    .supportedFamilies([.systemMedium])
   }
 }
 
@@ -1839,7 +2062,7 @@ struct RhythmChecklistWidget: Widget {
     }
     .configurationDisplayName("ToDoメモ")
     .description("待機中の項目を確認できます。")
-    .supportedFamilies([.systemSmall, .systemMedium])
+    .supportedFamilies([.systemMedium])
   }
 }
 
@@ -1878,6 +2101,6 @@ struct RhythmAffirmationWidget: Widget {
     }
     .configurationDisplayName("アファメーション")
     .description("言葉と背景で気持ちを整えます。")
-    .supportedFamilies([.systemSmall, .systemMedium])
+    .supportedFamilies([.systemMedium])
   }
 }

@@ -17,16 +17,16 @@ export type WidgetAccessTier = 'free' | 'design' | 'premium';
 export type WidgetEntitlementOverride = 'actual' | 'free' | 'design' | 'premium';
 
 export const WIDGET_TYPE_OPTIONS: ReadonlyArray<{ id: WidgetType; label: string; description: string; sizes: string; access: WidgetAccessTier }> = [
-  { id: 'current', label: '今はこれ', description: 'いま取り組むタスクを表示', sizes: 'S / M', access: 'free' },
-  { id: 'next', label: '次の予定', description: '次に控えている予定を表示', sizes: 'S / M', access: 'free' },
+  { id: 'current', label: '今はこれ', description: 'いま取り組むタスクを表示', sizes: 'M / L', access: 'free' },
+  { id: 'next', label: '次の予定', description: '次に控えている予定を表示', sizes: 'M', access: 'free' },
   { id: 'combined', label: '今はこれ＋次の予定', description: 'タスクと予定をまとめて表示', sizes: 'M', access: 'design' },
   { id: 'monthly', label: '月間カレンダー', description: '予定のある日を月ごとに確認', sizes: 'M / L', access: 'design' },
   { id: 'weekly', label: '週間カレンダー', description: '今週の予定を一覧で確認', sizes: 'M / L', access: 'design' },
   { id: 'today', label: '今日の予定', description: '今日の予定を時刻順に表示', sizes: 'M', access: 'design' },
-  { id: 'checklist', label: 'ToDoメモ', description: '持ち物やメモを確認', sizes: 'S / M', access: 'design' },
+  { id: 'checklist', label: 'ToDoメモ', description: '持ち物やメモを確認', sizes: 'M', access: 'design' },
   { id: 'goal', label: '叶えたいこと', description: '目標と進捗を表示', sizes: 'M', access: 'premium' },
   { id: 'voice', label: '音声入力', description: 'ホーム画面から音声入力を開始', sizes: 'S / M', access: 'free' },
-  { id: 'affirmation', label: 'アファメーション', description: '言葉と背景で気持ちを整える', sizes: 'S / M', access: 'premium' },
+  { id: 'affirmation', label: 'アファメーション', description: '言葉と背景で気持ちを整える', sizes: 'M', access: 'premium' },
 ];
 
 export const WIDGET_STYLE_OPTIONS: ReadonlyArray<{ id: WidgetStyle; label: string; description: string }> = [
@@ -37,6 +37,9 @@ export const WIDGET_STYLE_OPTIONS: ReadonlyArray<{ id: WidgetStyle; label: strin
   { id: 'photo', label: 'Photo', description: '写真と組み合わせる' },
 ];
 
+// Legacy widget-only accent values are retained solely to decode existing
+// WidgetSettings records. New snapshots and Live Activity payloads use the
+// shared `chicCheckColor` palette instead.
 export const WIDGET_ACCENT_OPTIONS: ReadonlyArray<{ id: WidgetAccentColor; label: string; hex: string }> = [
   { id: 'blue', label: 'Blue', hex: '#4F6FED' },
   { id: 'purple', label: 'Purple', hex: '#786EAF' },
@@ -147,8 +150,4 @@ export function getWidgetCustomization(settings: WidgetSettings, widgetType: Wid
     photoLayout: customization?.photoLayout ?? settings.photoLayout,
     monoTemplate: customization?.monoTemplate ?? settings.monoTemplate,
   };
-}
-
-export function getWidgetAccentHex(accentColor: WidgetAccentColor) {
-  return WIDGET_ACCENT_OPTIONS.find((item) => item.id === accentColor)?.hex ?? WIDGET_ACCENT_OPTIONS[0]!.hex;
 }

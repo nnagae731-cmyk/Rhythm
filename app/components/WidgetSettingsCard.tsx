@@ -83,7 +83,9 @@ function WidgetTypePreview({ type, style, photoUri, cutoutUri, photoLayout = 'ba
   const photoCardWidth = compact ? 54 : previewSize === 'large' ? 92 : 68;
   const photoCardHeight = compact ? 70 : previewSize === 'large' ? 116 : 88;
   const photoCircleSize = compact ? 50 : previewSize === 'large' ? 86 : 64;
-  const photoSourceUri = photoLayout === 'cutout' ? cutoutUri ?? photoUri : photoUri;
+  // A cutout layout is only a cutout when Vision produced the managed PNG;
+  // never present the original photo as a misleading full/opaque cutout.
+  const photoSourceUri = photoLayout === 'cutout' ? cutoutUri : photoUri;
   const floralPattern = designPattern === 'floral' ? 'vintageBloom' : designPattern === 'floralSoft' ? 'botanicalLine' : designPattern === 'floralSeasonal' || designPattern === 'floralDark' ? 'sheerFloral' : undefined;
   const floralAssetSource = floralPattern ? getWidgetFloralAssetSource(floralPattern, previewSize ?? 'medium') : undefined;
   return <View style={[{ padding: 12, borderRadius: 12, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.screenBackground, overflow: 'hidden' }, previewSizeStyle]}>
@@ -104,7 +106,7 @@ function WidgetTypePreview({ type, style, photoUri, cutoutUri, photoLayout = 'ba
       {type === 'weekly' && <><Text style={{ color: colors.primaryText, fontSize: 12, fontWeight: '900' }}>今週の予定</Text>{line('月', '09:00 会議')}{line('火', '10:30 資料提出')}{line('水', '15:00 打ち合わせ')}{line('金', '18:00 美容院')}</>}
       {type === 'today' && <><Text style={{ color: colors.primaryText, fontSize: 12, fontWeight: '900' }}>今日  6月24日（火）</Text>{line('09:00', '会議')}{line('10:30', '資料提出')}{line('18:00', '美容院')}</>}
       {type === 'checklist' && <><Text style={{ color: colors.primaryText, fontSize: 12, fontWeight: '900' }}>ToDoメモ</Text>{line('✓', '財布')}{line('□', '鍵')}{line('□', '充電器')}</>}
-      {type === 'goal' && <><Text style={{ color: colors.secondaryText, fontSize: 10, fontWeight: '700' }}>叶えたいこと</Text><Text style={{ color: colors.primaryText, fontSize: 17, fontWeight: '900' }}>アプリ完成</Text><View style={{ height: 6, borderRadius: 3, backgroundColor: colors.border, overflow: 'hidden' }}><View style={{ width: '60%', height: '100%', borderRadius: 3, backgroundColor: colors.primaryAccent }} /></View><Text style={{ color: colors.primaryAccent, fontSize: 11, fontWeight: '800' }}>進捗 60%</Text></>}
+      {type === 'goal' && <><Text style={{ color: colors.secondaryText, fontSize: 10, fontWeight: '700' }}>叶えたいこと</Text><Text style={{ color: colors.primaryText, fontSize: 17, fontWeight: '900' }}>旅行のために貯金</Text><View style={{ height: 6, borderRadius: 3, backgroundColor: colors.border, overflow: 'hidden' }}><View style={{ width: '60%', height: '100%', borderRadius: 3, backgroundColor: colors.primaryAccent }} /></View><Text style={{ color: colors.primaryAccent, fontSize: 11, fontWeight: '800' }}>進捗 60%</Text></>}
       {type === 'voice' && <><View style={{ alignItems: 'center', gap: 4 }}><View style={{ width: 42, height: 42, borderRadius: 21, backgroundColor: colors.softAccent, borderWidth: 1, borderColor: colors.primaryAccent, alignItems: 'center', justifyContent: 'center' }}><Text style={{ color: colors.primaryAccent, fontSize: 21 }}>♩</Text></View><Text style={{ color: colors.primaryText, fontSize: 14, fontWeight: '900' }}>音声入力</Text><Text style={{ color: colors.secondaryText, fontSize: 10 }}>タップして話す</Text></View></>}
       {type === 'affirmation' && <><Text style={{ color: colors.secondaryText, fontSize: 10, fontWeight: '700' }}>今日の言葉</Text><Text style={{ color: colors.primaryText, fontSize: 15, lineHeight: 22, fontWeight: '800' }}>「私は私のペースで進めばいい」</Text></>}
     </View>
