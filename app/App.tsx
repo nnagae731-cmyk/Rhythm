@@ -41,7 +41,7 @@ import { RecoveryModal } from './components/RecoveryModal';
 import { DesignCustomizeModal } from './components/DesignCustomizeModal';
 import { TravelAppsSettingsCard } from './components/TravelAppsSettingsCard';
 import { styles } from './styles/appStyles';
-import { Affirmation, AffirmationCustomText, CalendarMarks, Category, DeparturePlan, DeparturePreparationStatus, DevDesignCustomizeOverride, LiveActivityDisplayOptions, MonthlyReflectionCard, MonthlyReview, MonthlyWishState, NudgeMode, PersistedState, PhotoThemePhotoTarget, PhotoThemeSettings, Priority, RepeatRule, Screen, SharedEvent, SharedParticipantPrefs, Subtask, Task, TaskBucket, TaskListItem, ThemeMode, TimeTab, UrgencyStatus, WidgetSettings, WidgetSize, WidgetType, WishAction, WishMonthMap } from './types';
+import { Affirmation, AffirmationCustomText, CalendarMarks, Category, DeparturePlan, DeparturePreparationStatus, DevDesignCustomizeOverride, LiveActivityDisplayOptions, MonthlyReflectionCard, MonthlyReview, MonthlyWishState, MonoPattern, NudgeMode, PersistedState, PhotoThemePhotoTarget, PhotoThemeSettings, Priority, RepeatRule, Screen, SharedEvent, SharedParticipantPrefs, Subtask, Task, TaskBucket, TaskListItem, ThemeMode, TimeTab, UrgencyStatus, WidgetSettings, WidgetSize, WidgetType, WishAction, WishMonthMap } from './types';
 import { initialPlan } from './storage/rhythmState';
 import { DEFAULT_TRAVEL_APP_SETTINGS, normalizeTravelAppSettings, TravelAppSettings } from './features/travel/travelApps';
 import { loadRhythmState, saveRhythmState } from './storage/rhythmStorage';
@@ -52,8 +52,9 @@ import { categories, priorities, completionIcons, categoryColors as baseCategory
 import { planScheduledAt, selectCurrentTask } from './features/tasks/taskSelectors';
 import { createSharedEventPacket, createSharedEventToken, encodeSharedEventLink, normalizeSharedEvent, parseSharedEventLink, upsertSharedEvent } from './features/shared/sharedUtils';
 import { getMonthlyWishState, normalizeWishMonthsForSave, wishMonthKey } from './features/wish/wishUtils';
-import { cancelPendingTaskNotifications } from './features/tasks/taskNotifications';
-import { cancelPendingDepartureNotifications } from './features/departure/departureNotifications';
+import { cancelPendingTaskNotifications, cancelPendingTaskNotificationsUnsafe } from './features/tasks/taskNotifications';
+import { cancelPendingDepartureNotifications, cancelPendingDepartureNotificationsUnsafe } from './features/departure/departureNotifications';
+import { enqueueNotificationOperation } from './features/notifications/notificationOperationQueue';
 import { getDeparturePlanMode, getPlanScheduledTime, isArrivalReversePlan, isDepartureReminderPlan, normalizeDeparturePlanForSave } from './features/departure/departurePlanMode';
 import { DEFAULT_LIVE_ACTIVITY_DISPLAY_OPTIONS, endRhythmLiveActivity, normalizeRhythmLiveActivityDisplayOptions, startOrUpdateRhythmLiveActivity, type RhythmLiveActivityPayload } from './features/widget/rhythmLiveActivity';
 import { WishScreen } from './WishScreen';
@@ -73,6 +74,7 @@ import { getRequiredAds, REWARDED_AD_RULES, RewardedFeatureId } from './features
 import { DEFAULT_REWARDED_ACCESS_STATE, loadRewardedAccessState, RewardedAccessState, saveRewardedAccessState } from './features/ads/rewardedAccessStorage';
 import { cancelFocusCompletionNotification, cancelPendingFocusCompletionNotifications, scheduleFocusCompletionNotification } from './features/focus/focusNotifications';
 import { cancelPremiumTrialReminder, schedulePremiumTrialReminder } from './features/notifications/premiumTrialReminder';
+import { cancelPendingAffirmationNotifications, cancelPendingAffirmationNotificationsUnsafe } from './features/notifications/affirmationNotifications';
 import { FOCUS_NAVIGATION_GUARD_COPY, getFocusNavigationDecision } from './features/focus/focusUsagePolicy';
 import {
   Alert,
@@ -158,6 +160,24 @@ const designFloralAssets: Record<FloralPatternId, { source: number; label: strin
   // as the third floral preview and is not shown as a separate option.
   floralDark: { source: require('./assets/themes/floral/sheer-floral.jpg'), thumbnailSource: require('./assets/themes/floral/sheer-floral-preview.jpg'), label: '花柄3' },
 };
+
+type ImageDesignPattern = 'stationery' | 'botanicalBackground' | 'ocean' | 'nightSky';
+
+// These are completed background illustrations supplied for the app's Design
+// mode. They are deliberately kept outside the palette/decor renderer so the
+// pixels are never tinted or overlaid by the selected nine-color theme. The
+// smaller previewSource is used only by settings/preview swatches so opening
+// those surfaces does not decode every full-screen original at once.
+const designBackgroundAssets: Record<ImageDesignPattern, { source: number; previewSource: number; background: string }> = {
+  stationery: { source: require('./assets/themes/design-backgrounds/design-stationery-background.jpg'), previewSource: require('./assets/themes/design-backgrounds/design-stationery-preview.jpg'), background: '#F8F7F2' },
+  botanicalBackground: { source: require('./assets/themes/design-backgrounds/design-botanical-background.jpg'), previewSource: require('./assets/themes/design-backgrounds/design-botanical-preview.jpg'), background: '#F8F8F4' },
+  ocean: { source: require('./assets/themes/design-backgrounds/design-ocean-background.jpg'), previewSource: require('./assets/themes/design-backgrounds/design-ocean-preview.jpg'), background: '#EAF8FA' },
+  nightSky: { source: require('./assets/themes/design-backgrounds/design-night-sky-background.jpg'), previewSource: require('./assets/themes/design-backgrounds/design-night-sky-preview.jpg'), background: '#101722' },
+};
+
+function isImageDesignPattern(pattern: ChicPattern): pattern is ImageDesignPattern {
+  return pattern === 'stationery' || pattern === 'botanicalBackground' || pattern === 'ocean' || pattern === 'nightSky';
+}
 
 // PREPARED is retained only to safely receive actions from notifications that
 // were scheduled by earlier app versions.
@@ -439,6 +459,26 @@ function getChicPatternVisual(pattern: ChicPattern, palette: ChicThemePalette = 
   return { background: palette.background, accent: palette.accent, warm: palette.accentSoft };
 }
 
+// Night Sky is a finished dark artwork, so its foreground must remain stable
+// regardless of the user's saved nine-color Design selection.
+function getNightSkyPalette(base: ChicThemePalette): ChicThemePalette {
+  return {
+    ...base,
+    id: 'nightSky',
+    background: '#101722', patternBase: '#101722', patternStripe: 'rgba(214,182,111,0.34)',
+    surface: 'rgba(16,24,36,0.94)', cardSurface: 'rgba(18,28,42,0.92)', cardTint: 'rgba(214,182,111,0.16)', surfaceSubtle: 'rgba(24,35,50,0.92)',
+    border: 'rgba(220,225,230,0.42)', accent: '#D6B66F', accentStrong: '#E4CA8B', accentSoft: 'rgba(214,182,111,0.22)',
+    textPrimary: '#F4F2EC', textSecondary: '#D8D9D7', textMuted: '#AEB4B5', onAccent: '#101722',
+    success: '#A8C9BB', warning: '#D6B66F', danger: '#E1A0A0', focusBackground: '#101722',
+    focusSurface: 'rgba(18,28,42,0.94)', calendarBackground: '#101722', taskBackground: 'rgba(18,28,42,0.92)', taskMeta: '#AEB4B5',
+    statusAccent: '#D6B66F', warm: 'rgba(214,182,111,0.34)',
+  };
+}
+
+function getNightSkyThemeTokens() {
+  return getThemeTokens('chic', 'nightSky');
+}
+
 function getInitialNormalizedCrop(sourceWidth: number, sourceHeight: number): NormalizedCropRect {
   const bounds = getContainBounds(sourceWidth, sourceHeight, sourceWidth, sourceHeight);
   const rect = getInitialCropRect(bounds);
@@ -573,13 +613,16 @@ export default function App() {
   const widgetCustomCutoutSyncedUrisRef = React.useRef<Record<string, string>>({});
   const widgetAffirmationPhotoSyncedUrisRef = React.useRef<Record<number, string>>({});
   const widgetSnapshotSerializedRef = React.useRef<string | undefined>(undefined);
-  const widgetSnapshotInFlightRef = React.useRef<string | undefined>(undefined);
+  const widgetSnapshotInFlightRef = React.useRef<{ requestId: number; serialized: string } | undefined>(undefined);
+  const widgetSnapshotRequestRef = React.useRef(0);
+  const widgetSnapshotSaveChainRef = React.useRef<Promise<void>>(Promise.resolve());
   const [showCompleted, setShowCompleted] = useState(false);
   const [completionIcon, setCompletionIcon] = useState('✓');
   // Mono is available to every plan. Keep the persisted design mode stable and
   // resolve the actual Light/Dark rendering from this preference and the OS.
   const [designMode, setDesignMode] = useState<DesignMode>('minimal');
   const [monoAppearance, setMonoAppearance] = useState<'auto' | 'light' | 'dark'>('auto');
+  const [monoPattern, setMonoPattern] = useState<MonoPattern>('plain');
   const [hapticsEnabled, setHapticsEnabled] = useState(true);
   const [premiumTrialReminderEnabled, setPremiumTrialReminderEnabled] = useState(true);
   const premiumTrialNoticeShownRef = React.useRef<string | undefined>(undefined);
@@ -595,6 +638,7 @@ export default function App() {
   const [affirmations, setAffirmations] = useState<Affirmation[]>([]);
   const [affirmationCustomTexts, setAffirmationCustomTexts] = useState<AffirmationCustomText[]>([]);
   const affirmationsRef = React.useRef<Affirmation[]>([]);
+  const affirmationOperationGenerationRef = React.useRef<Record<string, number>>({});
   const completeTaskIdsRef = React.useRef<(ids: string[], source?: 'manual' | 'notification') => void>(() => undefined);
   const [completionAffirmation, setCompletionAffirmation] = useState<string>();
   const completionAffirmationTimerRef = React.useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -641,7 +685,6 @@ export default function App() {
     : monoAppearance === 'light'
       ? 'minimal'
       : systemColorScheme === 'dark' ? 'dark' : 'minimal';
-  const theme = useMemo(() => getThemeTokens(isMonoDesign ? resolvedMonoMode : designMode, appDesignPaletteId), [designMode, isMonoDesign, resolvedMonoMode, appDesignPaletteId]);
   const [addOpen, setAddOpen] = useState(false);
   const [bulkAddOpen, setBulkAddOpen] = useState(false);
   const [voiceOpen, setVoiceOpen] = useState(false);
@@ -779,6 +822,9 @@ export default function App() {
   const hasDesignCustomizeAccess = !__DEV__ || devDesignCustomizeOverride === 'actual'
     ? actualDesignCustomizeAccess
     : planTier === 'premium' || devDesignCustomizeOverride === 'purchased';
+  // Keep a saved Loose Leaf preference intact for future entitlement changes,
+  // but never render the paid pattern while the current user lacks access.
+  const effectiveMonoPattern: MonoPattern = (monoPattern === 'looseLeaf' || monoPattern === 'chic') && hasDesignCustomizeAccess ? monoPattern : 'plain';
   const resetDesignCustomizeForDevelopment = React.useCallback(() => {
     if (!__DEV__) return;
     Alert.alert(
@@ -859,15 +905,26 @@ export default function App() {
   // A temporary trial is an explicit, time-bounded override. Persisted free
   // users still fall back to plain when no trial is active.
   const effectiveChicPattern = (activeDesignTrial ?? getEffectiveChicPattern(planTier, chicPattern, hasDesignCustomizeAccess)) as ChicPattern;
-  // Keep decorative pattern and UI color independent. Floral/check/dot
-  // backgrounds are selected by `chicPattern`; all Design UI surfaces use the
-  // chosen `chicCheckColor` tokens.
-  const chicPalette = getDesignCheckThemeTokens(chicCheckColor);
-  const getThemedThemeTokens = React.useCallback((mode: DesignMode) => getThemeTokens(mode, mode === 'chic' ? chicPalette.id : chicCheckColor), [chicCheckColor, chicPalette]);
+  // Keep decorative pattern and UI color independent. Night Sky is the one
+  // exception: its completed artwork has a fixed foreground palette, while
+  // the selected color remains persisted and is restored on exit.
+  const selectedChicPalette = getDesignCheckThemeTokens(chicCheckColor);
+  const chicPalette = effectiveChicPattern === 'nightSky' ? getNightSkyPalette(selectedChicPalette) : selectedChicPalette;
+  const getThemedThemeTokens = React.useCallback((mode: DesignMode) => mode === 'chic' && effectiveChicPattern === 'nightSky'
+    ? getNightSkyThemeTokens()
+    : getThemeTokens(mode, mode === 'chic' ? selectedChicPalette.id : chicCheckColor), [chicCheckColor, effectiveChicPattern, selectedChicPalette.id]);
+  // Resolve the app's shared ThemeTokens from the same effective palette used
+  // by the foreground components. In particular, nightSky must not render a
+  // normal nine-color frame before its fixed palette is applied. Photo keeps
+  // its existing photo tokens while the dedicated Design palette applies to
+  // Mono/Design UI.
+  const theme = useMemo(() => designMode === 'photo'
+    ? getThemeTokens('photo', appDesignPaletteId)
+    : getThemedThemeTokens(uiDesignMode), [appDesignPaletteId, designMode, getThemedThemeTokens, uiDesignMode]);
   // Design uses one palette for every surface. Keep the legacy color shape for
   // components that still consume the shared app colors object.
   const themedColors = useMemo(() => {
-    const tokens = getThemeTokens(uiDesignMode, uiDesignMode === 'chic' ? chicPalette.id : chicCheckColor).colors;
+    const tokens = getThemedThemeTokens(uiDesignMode).colors;
     return {
       ...colors,
       background: tokens.screenBackground,
@@ -881,7 +938,7 @@ export default function App() {
       mint: tokens.success,
       line: tokens.border,
     };
-  }, [chicCheckColor, chicPalette.id, uiDesignMode]);
+  }, [chicCheckColor, getThemedThemeTokens, uiDesignMode]);
   const currentWishMonthKey = wishMonthKey(now);
   const getRewardedPromptProgress = React.useCallback((featureId: RewardedFeatureId) => {
     const required = getRequiredAds(featureId);
@@ -1303,17 +1360,35 @@ export default function App() {
       Alert.alert('同じ時刻の通知があります', '別の時刻を選択してください。');
       return;
     }
-    await Notifications.cancelScheduledNotificationAsync(existing?.notificationId ?? `affirmation:${draft.id}`).catch(() => undefined);
+    const generation = (affirmationOperationGenerationRef.current[draft.id] ?? 0) + 1;
+    affirmationOperationGenerationRef.current[draft.id] = generation;
     const next: Affirmation = { ...draft, notificationId: undefined };
-    if (next.enabled) {
-      const allowed = await ensureNotifications();
-      if (!allowed) {
-        next.enabled = false;
-        Alert.alert('通知を許可すると、指定した時間に言葉を届けられます。');
-      } else {
-        next.notificationId = await scheduleAffirmationNotification(next).catch(() => undefined);
-      }
+    try {
+      await enqueueNotificationOperation(`affirmation:${draft.id}`, async () => {
+        await cancelPendingAffirmationNotificationsUnsafe(draft.id, existing?.notificationId);
+        if (next.enabled) {
+          let allowed = false;
+          try {
+            allowed = await ensureNotifications();
+          } catch (error) {
+            // Permission APIs can reject while Settings/background transitions
+            // are in flight. Keep the preference saved as disabled instead of
+            // leaking an unhandled rejection from the settings sheet.
+            if (__DEV__) console.warn('[Notifications] affirmation permission check failed', error);
+          }
+          if (!allowed) {
+            next.enabled = false;
+            Alert.alert('通知を許可すると、指定した時間に言葉を届けられます。');
+          } else {
+            next.notificationId = await scheduleAffirmationNotification(next).catch(() => undefined);
+          }
+        }
+      });
+    } catch (error) {
+      if (__DEV__) console.warn('[Notifications] affirmation save transaction failed', error);
+      return;
     }
+    if (affirmationOperationGenerationRef.current[draft.id] !== generation) return;
     setAffirmations((current) => current.some((item) => item.id === next.id) ? current.map((item) => item.id === next.id ? next : item) : [next, ...current]);
     void onboarding.complete('affirmation');
   }, [affirmations, onboarding, openPremiumFeature, planTier]);
@@ -1329,7 +1404,15 @@ export default function App() {
     setAffirmationCustomTexts((current) => current.filter((item) => item.id !== id));
   }, []);
   const deleteAffirmation = React.useCallback(async (affirmation: Affirmation) => {
-    await Notifications.cancelScheduledNotificationAsync(affirmation.notificationId ?? `affirmation:${affirmation.id}`).catch(() => undefined);
+    const generation = (affirmationOperationGenerationRef.current[affirmation.id] ?? 0) + 1;
+    affirmationOperationGenerationRef.current[affirmation.id] = generation;
+    try {
+      await cancelPendingAffirmationNotifications(affirmation.id, affirmation.notificationId);
+    } catch (error) {
+      if (__DEV__) console.warn('[Notifications] affirmation delete transaction failed', error);
+      return;
+    }
+    if (affirmationOperationGenerationRef.current[affirmation.id] !== generation) return;
     setAffirmations((current) => current.filter((item) => item.id !== affirmation.id));
   }, []);
   const pickPhotoForDesignPreview = React.useCallback(async () => {
@@ -1385,6 +1468,7 @@ export default function App() {
     }
   }, [hasDesignCustomizeAccess, planTier, requestWidgetPhotoUnlock, rewardedAccess]);
   const removeWidgetPhotoBackground = React.useCallback(async (widgetType: WidgetType, override?: WidgetEntitlementOverride) => {
+    const showCutoutFailure = () => Alert.alert('切り抜けませんでした', 'この写真はうまく切り抜けませんでした。別の写真を試してください。');
     const customization = getWidgetCustomization(widgetSettings, widgetType);
     if (!customization.photoUri) {
       Alert.alert('写真を選択してください', '先にWidget用の写真を選んでください。');
@@ -1405,13 +1489,17 @@ export default function App() {
       }
       const generated = await generateRhythmWidgetPhotoCutout(customization.photoUri, widgetType);
       if (!generated) {
-        Alert.alert('背景削除を利用できません', '背景削除はiOS 17以降で利用できます。');
+        showCutoutFailure();
         return false;
       }
       const persistentUri = persistPhotoUri(generated, `widget-cutout-${widgetType}`);
       if (__DEV__) {
         console.log('[BackgroundRemoval][JS] persistentUri', persistentUri);
         console.log('[BackgroundRemoval][JS] persistentExists', isPersistedPhotoAvailable(persistentUri));
+      }
+      if (!isPersistedPhotoAvailable(persistentUri)) {
+        showCutoutFailure();
+        return false;
       }
       const previous = widgetSettings.widgetCustomizations?.[widgetType]?.cutoutUri;
       if (previous && previous !== persistentUri) deleteManagedPhotoUri(previous, [persistentUri]);
@@ -1429,12 +1517,8 @@ export default function App() {
       if (__DEV__) console.log('[BackgroundRemoval][JS] stateSaved', { widgetType });
       return true;
     } catch (error) {
-      const message = error instanceof Error ? error.message : '';
-      if (/No foreground|subject detected|被写体/i.test(message)) {
-        Alert.alert('切り抜けませんでした', '切り抜ける被写体を検出できませんでした。元の写真はそのまま利用できます。');
-      } else {
-        Alert.alert('背景を削除できませんでした', '元の写真はそのまま利用できます。もう一度お試しください。');
-      }
+      if (__DEV__) console.warn('[BackgroundRemoval][JS] failed', error);
+      showCutoutFailure();
       return false;
     }
   }, [hasDesignCustomizeAccess, planTier, rewardedAccess, widgetSettings]);
@@ -1782,8 +1866,13 @@ export default function App() {
     Alert.alert('親タスクを完了しますか？', '未完了のサブタスクもすべて完了にします。', [
       { text: 'キャンセル', style: 'cancel' },
       { text: '完了にする', onPress: () => {
+        // The confirmation can remain open while another operation updates
+        // the same task. Re-read the ref instead of applying the stale
+        // snapshot captured when the alert was presented.
+        const latest = tasksRef.current.find((task) => task.id === taskId);
+        if (!latest || latest.done || !latest.subtasks?.some((item) => !item.done)) return;
         const completedAt = new Date().toISOString();
-        const updated = { ...current, done: true, status: 'completed' as const, skippedAt: undefined, completedAt, subtasks: current.subtasks?.map((item) => ({ ...item, done: true })) };
+        const updated = { ...latest, done: true, status: 'completed' as const, skippedAt: undefined, completedAt, subtasks: latest.subtasks?.map((item) => ({ ...item, done: true })) };
         const next = tasksRef.current.map((task) => task.id === taskId ? updated : task);
         tasksRef.current = next;
         setTasks(next);
@@ -1824,35 +1913,37 @@ export default function App() {
 
   const scheduleDepartureFollowUp = React.useCallback(async (target: DeparturePlan, phase: 'preparation' | 'departure', body?: string, delaySeconds?: number) => {
     if (!target.id || !isArrivalReversePlan(target) || !hasPremiumAccess(planTierRef.current, 'late_recovery')) return;
-    const key = `${target.id}:${phase}`;
-    if (pendingDepartureFollowUpsRef.current.has(key)) return;
-    pendingDepartureFollowUpsRef.current.add(key);
-    try {
-      if (!await ensureNotifications()) return;
-      const pending = await Notifications.getAllScheduledNotificationsAsync();
-      const stage = `follow_up_${phase}`;
-      await Promise.all(pending
-        .filter((request) => request.content.data?.departurePlanId === target.id && request.content.data?.departureStage === stage)
-        .map((request) => Notifications.cancelScheduledNotificationAsync(request.identifier)));
-      const seconds = delaySeconds ?? (phase === 'preparation' ? 600 : 300);
-      const notificationDate = new Date(Date.now() + seconds * 1000);
-      await Notifications.scheduleNotificationAsync({
-        identifier: `departure:${target.id}:${stage}:${notificationDate.toISOString()}`,
-        content: {
-          title: phase === 'preparation' ? '準備、始められそう？' : '出発、できそう？',
-          body: body ?? target.title,
-          categoryIdentifier: phase === 'preparation' ? 'PREPARATION_ACTIONS' : 'DEPARTURE_ACTIONS',
-          data: { departurePlanId: target.id, departureDate: target.date, departureStage: stage },
-          sound: 'default',
-          interruptionLevel: 'timeSensitive' as const,
-        },
-        trigger: { type: Notifications.SchedulableTriggerInputTypes.DATE, date: notificationDate },
-      });
-    } catch {
-      // 通知が利用できない状態でも、画面上の予定・行動状態は維持する。
-    } finally {
-      pendingDepartureFollowUpsRef.current.delete(key);
-    }
+    return enqueueNotificationOperation(`departure:${target.id}`, async () => {
+      const key = `${target.id}:${phase}`;
+      if (pendingDepartureFollowUpsRef.current.has(key)) return;
+      pendingDepartureFollowUpsRef.current.add(key);
+      try {
+        if (!await ensureNotifications()) return;
+        const pending = await Notifications.getAllScheduledNotificationsAsync();
+        const stage = `follow_up_${phase}`;
+        await Promise.all(pending
+          .filter((request) => request.content.data?.departurePlanId === target.id && request.content.data?.departureStage === stage)
+          .map((request) => Notifications.cancelScheduledNotificationAsync(request.identifier)));
+        const seconds = delaySeconds ?? (phase === 'preparation' ? 600 : 300);
+        const notificationDate = new Date(Date.now() + seconds * 1000);
+        await Notifications.scheduleNotificationAsync({
+          identifier: `departure:${target.id}:${stage}:${notificationDate.toISOString()}`,
+          content: {
+            title: phase === 'preparation' ? '準備、始められそう？' : '出発、できそう？',
+            body: body ?? target.title,
+            categoryIdentifier: phase === 'preparation' ? 'PREPARATION_ACTIONS' : 'DEPARTURE_ACTIONS',
+            data: { departurePlanId: target.id, departureDate: target.date, departureStage: stage },
+            sound: 'default',
+            interruptionLevel: 'timeSensitive' as const,
+          },
+          trigger: { type: Notifications.SchedulableTriggerInputTypes.DATE, date: notificationDate },
+        });
+      } catch {
+        // 通知が利用できない状態でも、画面上の予定・行動状態は維持する。
+      } finally {
+        pendingDepartureFollowUpsRef.current.delete(key);
+      }
+    });
   }, []);
 
   const handleDepartureStill = React.useCallback((target: DeparturePlan, phase: 'preparation' | 'departure', notificationInstanceId?: string) => {
@@ -2008,7 +2099,7 @@ export default function App() {
         departureCheckInsRef.current = loadedDepartureCheckIns;
         setDepartureCheckIns(loadedDepartureCheckIns);
         setDeparturePreparationStatuses(saved.departurePreparationStatuses ?? {});
-        if (saved.widgetSize) setWidgetSize(saved.widgetSize);
+        if (saved.widgetSize === 'small' || saved.widgetSize === 'medium') setWidgetSize(saved.widgetSize);
         setWidgetSettings(normalizeWidgetSettings(saved.widgetSettings));
         if (typeof saved.showCompleted === 'boolean') setShowCompleted(saved.showCompleted);
         if (saved.completionIcon) setCompletionIcon(saved.completionIcon);
@@ -2017,15 +2108,21 @@ export default function App() {
         setLiveActivityEnabled(saved.liveActivityEnabled === true);
         setLiveActivityDisplayOptions(normalizeRhythmLiveActivityDisplayOptions(saved.liveActivityDisplayOptions));
         if (saved.reviewPromptedAt) setReviewPromptedAt(saved.reviewPromptedAt);
+        const legacyAppearance = saved.designMode === 'dark' ? 'dark' : saved.designMode === 'minimal' ? 'light' : undefined;
+        const loadedMonoAppearance = saved.monoAppearance === 'auto' || saved.monoAppearance === 'light' || saved.monoAppearance === 'dark'
+          ? saved.monoAppearance
+          : legacyAppearance ?? 'auto';
+        const loadedMonoPattern: MonoPattern = saved.monoPattern === 'looseLeaf' || saved.monoPattern === 'chic' ? saved.monoPattern : 'plain';
         if (saved.designMode === 'minimal' || saved.designMode === 'dark' || saved.designMode === 'chic' || saved.designMode === 'photo') {
           setDesignMode(saved.designMode);
           // Older saves encoded Mono Light/Dark in designMode. Treat those as
           // explicit manual choices; only new/updated Mono saves can be auto.
-          const legacyAppearance = saved.designMode === 'dark' ? 'dark' : saved.designMode === 'minimal' ? 'light' : undefined;
-          setMonoAppearance(saved.monoAppearance ?? legacyAppearance ?? 'auto');
+          setMonoAppearance(loadedMonoAppearance);
+          setMonoPattern(loadedMonoPattern);
         } else {
           setDesignMode('minimal');
-          setMonoAppearance(saved.monoAppearance ?? 'auto');
+          setMonoAppearance(loadedMonoAppearance);
+          setMonoPattern(loadedMonoPattern);
         }
         setChicPattern(saved.chicPattern ? normalizeChicPattern(saved.chicPattern) : 'plain');
         setChicCheckColor(normalizeChicCheckColor(saved.chicCheckColor));
@@ -2197,7 +2294,7 @@ export default function App() {
 
       if (action === 'SNOOZE' || action === 'LATER') {
         const seconds = action === 'SNOOZE' ? 600 : 3600;
-        void (async () => {
+        void enqueueNotificationOperation(`task:${taskId}`, async () => {
           // Notification actions can arrive after a task was deleted or
           // completed. Validate the latest state before creating any new
           // notification so stale actions cannot resurrect a task.
@@ -2218,7 +2315,9 @@ export default function App() {
           if (hasPremiumAccess(planTierRef.current, 'time_analysis')) {
             recordBehaviorEvent(createNotificationScheduledEvent({ notificationInstanceId: nextNotificationInstanceId, taskId, taskTitle: task.title, scheduledAt, occurredAt: new Date() }));
           }
-        })();
+        }).catch((error) => {
+          if (__DEV__) console.warn('[Notifications] task action scheduling failed', error);
+        });
       }
     });
 
@@ -2232,7 +2331,7 @@ export default function App() {
 
   useEffect(() => {
     if (!hydrated) return;
-    const state: PersistedState = { tasks, plan, departurePlans, widgetSize, widgetSettings, showCompleted, completionIcon, designMode, monoAppearance, hapticsEnabled, premiumTrialReminderEnabled, liveActivityEnabled, liveActivityDisplayOptions, reviewPromptedAt, taskTemplates, savedTaskTemplates, chicPattern, chicCheckColor, recoveryHistory, focusSessions, focusCustomDurationMinutes, departureCheckIns, behaviorEvents, wishMonths: normalizeWishMonthsForSave(wishMonths), calendarMarks, calendarImportCalendarIds, calendarImportKnownCalendarIds, sharedEvents, sharedParticipantIdsByToken, sharedParticipantPrefsByToken, departurePreparationStatuses, affirmations, affirmationCustomTexts, photoTheme, travelApps, designCustomizePurchased, routineArchives: pruneRoutineArchives(routineArchives), voiceUsage: normalizeVoiceUsage(voiceUsage, dateKey()) };
+    const state: PersistedState = { tasks, plan, departurePlans, widgetSize, widgetSettings, showCompleted, completionIcon, designMode, monoAppearance, monoPattern, hapticsEnabled, premiumTrialReminderEnabled, liveActivityEnabled, liveActivityDisplayOptions, reviewPromptedAt, taskTemplates, savedTaskTemplates, chicPattern, chicCheckColor, recoveryHistory, focusSessions, focusCustomDurationMinutes, departureCheckIns, behaviorEvents, wishMonths: normalizeWishMonthsForSave(wishMonths), calendarMarks, calendarImportCalendarIds, calendarImportKnownCalendarIds, sharedEvents, sharedParticipantIdsByToken, sharedParticipantPrefsByToken, departurePreparationStatuses, affirmations, affirmationCustomTexts, photoTheme, travelApps, designCustomizePurchased, routineArchives: pruneRoutineArchives(routineArchives), voiceUsage: normalizeVoiceUsage(voiceUsage, dateKey()) };
     latestPersistedStateRef.current = state;
     if (persistenceDisabledRef.current) return;
     if (persistenceTimerRef.current) clearTimeout(persistenceTimerRef.current);
@@ -2248,7 +2347,7 @@ export default function App() {
     return () => {
       if (persistenceTimerRef.current) clearTimeout(persistenceTimerRef.current);
     };
-  }, [tasks, plan, departurePlans, widgetSize, widgetSettings, showCompleted, completionIcon, designMode, monoAppearance, hapticsEnabled, premiumTrialReminderEnabled, liveActivityEnabled, liveActivityDisplayOptions, reviewPromptedAt, taskTemplates, savedTaskTemplates, chicPattern, chicCheckColor, recoveryHistory, focusSessions, focusCustomDurationMinutes, departureCheckIns, behaviorEvents, wishMonths, calendarMarks, calendarImportCalendarIds, calendarImportKnownCalendarIds, sharedEvents, sharedParticipantIdsByToken, sharedParticipantPrefsByToken, departurePreparationStatuses, affirmations, affirmationCustomTexts, photoTheme, travelApps, designCustomizePurchased, routineArchives, voiceUsage, hydrated]);
+  }, [tasks, plan, departurePlans, widgetSize, widgetSettings, showCompleted, completionIcon, designMode, monoAppearance, monoPattern, hapticsEnabled, premiumTrialReminderEnabled, liveActivityEnabled, liveActivityDisplayOptions, reviewPromptedAt, taskTemplates, savedTaskTemplates, chicPattern, chicCheckColor, recoveryHistory, focusSessions, focusCustomDurationMinutes, departureCheckIns, behaviorEvents, wishMonths, calendarMarks, calendarImportCalendarIds, calendarImportKnownCalendarIds, sharedEvents, sharedParticipantIdsByToken, sharedParticipantPrefsByToken, departurePreparationStatuses, affirmations, affirmationCustomTexts, photoTheme, travelApps, designCustomizePurchased, routineArchives, voiceUsage, hydrated]);
 
   useEffect(() => {
     if (!hydrated) return;
@@ -2301,12 +2400,48 @@ export default function App() {
     void requestAppReview();
   }, [hydrated, tasks, focusSessions, reviewPromptedAt, requestAppReview]);
 
+  // Reconcile only the affirmation namespace after entitlement/permission or
+  // app lifecycle changes. Each item remains serialized with edits/deletes,
+  // and a generation check prevents an older foreground pass from restoring
+  // stale text or time.
+  const syncAffirmationNotifications = React.useCallback(async () => {
+    if (!hydrated || !storeKitEntitlementsResolved) return;
+    let permissionGranted = false;
+    if (hasPremiumAccess(planTier, 'affirmations')) {
+      try {
+        permissionGranted = canUseNotifications(await getNotificationPermissionStatus());
+      } catch (error) {
+        if (__DEV__) console.warn('[Notifications] affirmation permission refresh failed', error);
+      }
+    }
+    const snapshot = [...affirmationsRef.current];
+    for (const affirmation of snapshot) {
+      const generation = affirmationOperationGenerationRef.current[affirmation.id] ?? 0;
+      await enqueueNotificationOperation(`affirmation:${affirmation.id}`, async () => {
+        await cancelPendingAffirmationNotificationsUnsafe(affirmation.id, affirmation.notificationId);
+        if (affirmationOperationGenerationRef.current[affirmation.id] !== generation) return;
+        const latest = affirmationsRef.current.find((item) => item.id === affirmation.id);
+        if (!permissionGranted || !latest?.enabled) return;
+        await scheduleAffirmationNotification(latest).catch((error) => {
+          if (__DEV__) console.warn('[Notifications] affirmation reschedule failed', error);
+        });
+      }).catch((error) => {
+        if (__DEV__) console.warn('[Notifications] affirmation reconciliation failed', error);
+      });
+    }
+  }, [hydrated, planTier, storeKitEntitlementsResolved]);
+
   useEffect(() => {
-    if (!hydrated || !storeKitEntitlementsResolved || planTier === 'premium') return;
-    affirmations.forEach((affirmation) => {
-      void Notifications.cancelScheduledNotificationAsync(affirmation.notificationId ?? `affirmation:${affirmation.id}`).catch(() => undefined);
+    void syncAffirmationNotifications();
+  }, [syncAffirmationNotifications]);
+
+  useEffect(() => {
+    if (!hydrated) return;
+    const subscription = AppState.addEventListener('change', (nextState) => {
+      if (nextState === 'active') void syncAffirmationNotifications();
     });
-  }, [affirmations, hydrated, planTier, storeKitEntitlementsResolved]);
+    return () => subscription.remove();
+  }, [hydrated, syncAffirmationNotifications]);
 
   // Premiumから無料版へ開き直した場合、以前の段階通知だけは安全に停止する。
   // 予定データや過去の行動履歴は消さない。
@@ -2404,6 +2539,8 @@ export default function App() {
     // The first-run tour is deliberately read-only; its temporary data must
     // never escape to the user's home-screen widget.
     if (!hydrated || !storeKitEntitlementsResolved || onboarding.state.firstRunStage === 'demo') return;
+    const requestId = widgetSnapshotRequestRef.current + 1;
+    widgetSnapshotRequestRef.current = requestId;
     const selectedPhotoUri = widgetSettings.style === 'photo'
       ? widgetSettings.photoSource === 'widget' ? widgetSettings.photoUri : wishTopImageUri
       : undefined;
@@ -2508,11 +2645,16 @@ export default function App() {
         monoTemplate: widgetSettings.monoTemplate,
         accentHex: chicPalette.accent,
         // Keep the existing Design selection available to each widget's
-        // IntentConfiguration even when the app's current screen mode is
+        // AppIntent configuration even when the app's current screen mode is
         // Mono or Photo. The native widget still gates patterns using this
         // persisted entitlement flag; carrying the values does not unlock
         // Design for users who do not own it.
-        designPattern: effectiveChicPattern,
+        // The heart pattern is supported by the app and Widget renderer; keep
+        // the same persisted identifier so both previews stay in sync.
+        // The four completed image backgrounds are app-only. Never pass their
+        // ids to the native Widget renderer, whose pattern enum intentionally
+        // remains unchanged; it falls back to the existing plain design.
+        designPattern: isImageDesignPattern(effectiveChicPattern) ? 'plain' : effectiveChicPattern,
         designCheckColor: chicCheckColor,
         designPatternUnlocked: hasDesignCustomizeAccess,
         affirmationBackgrounds: widgetSettings.affirmationBackgrounds,
@@ -2536,17 +2678,30 @@ export default function App() {
         .map(([id, customization]) => ({ id, fileName: customization.cutoutFileName }));
       if (cutoutFileNames.length > 0) console.log('[BackgroundRemoval][JS] snapshotCutoutFileName', cutoutFileNames);
     }
-    if (!photoWasCopied && (serialized === widgetSnapshotSerializedRef.current || serialized === widgetSnapshotInFlightRef.current)) return;
-    widgetSnapshotInFlightRef.current = serialized;
-    try {
-      const saved = await saveRhythmWidgetSnapshot(snapshot);
-      if (saved) widgetSnapshotSerializedRef.current = serialized;
-    } catch (error) {
-      // Expo Go has no WidgetKit module. Native failures should not affect app state.
-      console.warn('Rhythm widget snapshot save failed.', error);
-    } finally {
-      if (widgetSnapshotInFlightRef.current === serialized) widgetSnapshotInFlightRef.current = undefined;
-    }
+    // Async photo/cutout preparation can finish out of order. Only the most
+    // recently requested snapshot may enter the save queue; otherwise an old
+    // request could overwrite a newer theme/task state after it completes.
+    if (requestId !== widgetSnapshotRequestRef.current) return;
+    if (!photoWasCopied && serialized === widgetSnapshotSerializedRef.current) return;
+    widgetSnapshotInFlightRef.current = { requestId, serialized };
+    const persist = async () => {
+      if (requestId !== widgetSnapshotRequestRef.current) return;
+      try {
+        const saved = await saveRhythmWidgetSnapshot(snapshot);
+        if (saved && requestId === widgetSnapshotRequestRef.current) widgetSnapshotSerializedRef.current = serialized;
+      } catch (error) {
+        // Expo Go has no WidgetKit module. Native failures should not affect app state.
+        console.warn('Rhythm widget snapshot save failed.', error);
+      } finally {
+        if (widgetSnapshotInFlightRef.current?.requestId === requestId) widgetSnapshotInFlightRef.current = undefined;
+      }
+    };
+    // Native writes are serialized as well as generation-checked. If a newer
+    // request arrives while an older native write is in progress, it waits for
+    // that write and becomes the final write; an older queued request skips.
+    const queuedPersist = widgetSnapshotSaveChainRef.current.then(persist, persist);
+    widgetSnapshotSaveChainRef.current = queuedPersist.catch(() => undefined);
+    await queuedPersist;
   }, [affirmationCustomTexts, affirmations, chicCheckColor, designMode, departureCheckIns, departurePlans, effectiveChicPattern, hasDesignCustomizeAccess, hydrated, onboarding.state.firstRunStage, planTier, rewardedAccess.widgetPhotoCustomization, storeKitEntitlementsResolved, tasks, widgetPhotoSyncedUriRef, widgetCustomCutoutSyncedUrisRef, widgetCustomPhotoSyncedUrisRef, widgetSettings, wishMonths, wishTopImageUri]);
 
   const openWidgetGuide = React.useCallback(() => {
@@ -2564,7 +2719,9 @@ export default function App() {
   }, [syncRhythmWidgetSnapshot]);
 
   useEffect(() => {
-    syncRhythmWidgetSnapshot();
+    void syncRhythmWidgetSnapshot().catch((error) => {
+      if (__DEV__) console.warn('[Widget] initial snapshot sync failed', error);
+    });
   }, [syncRhythmWidgetSnapshot]);
 
   const displayPlan = nextDeparturePlan ?? plan;
@@ -2760,9 +2917,18 @@ export default function App() {
   }, [dateKey, now, onboarding]);
 
   const scheduleAllTaskNotifications = async (task: Task) => {
-    await cancelPendingTaskNotifications(task.id);
-    if (task.remindAt) await scheduleTaskReminder(task);
-    if (task.deadlineDate && task.deadlineTime && task.deadlineNotifyBefore !== undefined) await scheduleDeadlineReminder(task);
+    try {
+      await enqueueNotificationOperation(`task:${task.id}`, async () => {
+        await cancelPendingTaskNotificationsUnsafe(task.id);
+        if (!tasksRef.current.some((item) => item.id === task.id)) return;
+        if (task.remindAt) await scheduleTaskReminder(task);
+        if (task.deadlineDate && task.deadlineTime && task.deadlineNotifyBefore !== undefined) await scheduleDeadlineReminder(task);
+      });
+    } catch (error) {
+      // Saving the task must remain successful even when the native
+      // notification store is unavailable (e.g. during backgrounding).
+      console.warn('Task notification scheduling failed.', error);
+    }
   };
 
   const scheduleTaskReminder = async (task: Task) => {
@@ -2827,33 +2993,38 @@ export default function App() {
   };
 
   const scheduleDeparture = async (targetPlan = plan, options?: { silent?: boolean }) => {
-    const mode = getDeparturePlanMode(targetPlan);
-    if (mode === 'calendar_only') return;
-    if (!await ensureNotifications()) {
-      if (!options?.silent) Alert.alert('通知がオフです', '端末設定からRhythmの通知を許可してください。');
-      return;
-    }
-    if (mode === 'departure_reminder') {
-      const departureAt = dateForReminder(planDateKey(targetPlan), getPlanScheduledTime(targetPlan));
-      if (departureAt.getTime() <= Date.now()) return;
-      await Notifications.scheduleNotificationAsync({
-        content: {
-          title: '出発時刻です',
-          body: targetPlan.title,
-          sound: 'default',
-          data: { departurePlanId: targetPlan.id, departureDate: targetPlan.date, departureStage: 'departure_reminder' },
-        },
-        trigger: { type: Notifications.SchedulableTriggerInputTypes.DATE, date: departureAt },
-      });
-      if (!options?.silent) Alert.alert('出発通知を設定しました', `${formatLiveTime(departureAt)}に1回お知らせします。`);
-      return;
-    }
-    // Existing arrival_reverse plans remain readable on a free device, but new
-    // Premium-only action notifications are never registered without access.
-    if (!hasPremiumAccess(planTier, 'late_recovery')) return;
-    const moments = getDepartureMoments(targetPlan);
-    const arrivalDate = moments.arrival;
-    const stages = [
+    if (!targetPlan.id) return;
+    const planId = targetPlan.id;
+    await enqueueNotificationOperation(`departure:${planId}`, async () => {
+      await cancelPendingDepartureNotificationsUnsafe(planId);
+      if (!departurePlansRef.current.some((item) => item.id === planId)) return;
+      const mode = getDeparturePlanMode(targetPlan);
+      if (mode === 'calendar_only') return;
+      if (!await ensureNotifications()) {
+        if (!options?.silent) Alert.alert('通知がオフです', '端末の通知を許可してください。');
+        return;
+      }
+      if (mode === 'departure_reminder') {
+        const departureAt = dateForReminder(planDateKey(targetPlan), getPlanScheduledTime(targetPlan));
+        if (departureAt.getTime() <= Date.now()) return;
+        await Notifications.scheduleNotificationAsync({
+          content: {
+            title: '出発時刻です',
+            body: targetPlan.title,
+            sound: 'default',
+            data: { departurePlanId: targetPlan.id, departureDate: targetPlan.date, departureStage: 'departure_reminder' },
+          },
+          trigger: { type: Notifications.SchedulableTriggerInputTypes.DATE, date: departureAt },
+        });
+        if (!options?.silent) Alert.alert('出発通知を設定しました', `${formatLiveTime(departureAt)}に1回お知らせします。`);
+        return;
+      }
+      // Existing arrival_reverse plans remain readable on a free device, but new
+      // Premium-only action notifications are never registered without access.
+      if (!hasPremiumAccess(planTier, 'late_recovery')) return;
+      const moments = getDepartureMoments(targetPlan);
+      const arrivalDate = moments.arrival;
+      const stages = [
       {
         id: 'wake_up',
         before: targetPlan.travelMinutes + targetPlan.bufferMinutes + targetPlan.preparationMinutes + 10,
@@ -2884,34 +3055,28 @@ export default function App() {
         title: 'まだなら、今出よう',
         body: '急いで出発するか、予定を組み直してください',
       },
-    ];
+      ];
 
-    let count = 0;
-    for (const stage of stages) {
-      const date = new Date(arrivalDate.getTime() - stage.before * 60_000);
-      if (date.getTime() <= Date.now()) continue;
-      await Notifications.scheduleNotificationAsync({
-        content: { title: stage.title, body: stage.body, sound: 'default', interruptionLevel: 'timeSensitive' as const, categoryIdentifier: stage.id === 'prepare' || stage.id === 'wake_up' ? 'PREPARATION_ACTIONS' : 'DEPARTURE_ACTIONS', data: { departurePlanId: targetPlan.id, departureDate: targetPlan.date, departureStage: stage.id } },
-        trigger: {
-          type: Notifications.SchedulableTriggerInputTypes.DATE,
-          date,
-        },
-      });
-      count += 1;
-    }
-    if (!options?.silent) Alert.alert('出発サポートを設定しました', `${formatLiveTime(moments.prepare)}から${count}段階でお知らせします。`);
+      let count = 0;
+      for (const stage of stages) {
+        const date = new Date(arrivalDate.getTime() - stage.before * 60_000);
+        if (date.getTime() <= Date.now()) continue;
+        await Notifications.scheduleNotificationAsync({
+          content: { title: stage.title, body: stage.body, sound: 'default', interruptionLevel: 'timeSensitive' as const, categoryIdentifier: stage.id === 'prepare' || stage.id === 'wake_up' ? 'PREPARATION_ACTIONS' : 'DEPARTURE_ACTIONS', data: { departurePlanId: targetPlan.id, departureDate: targetPlan.date, departureStage: stage.id } },
+          trigger: {
+            type: Notifications.SchedulableTriggerInputTypes.DATE,
+            date,
+          },
+        });
+        count += 1;
+      }
+      if (!options?.silent) Alert.alert('出発サポートを設定しました', `${formatLiveTime(moments.prepare)}から${count}段階でお知らせします。`);
+    });
   };
   useEffect(() => {
     if (!hydrated || !storeKitEntitlementsResolved || planTier !== 'premium') return;
     let active = true;
     void (async () => {
-      const pending = await Notifications.getAllScheduledNotificationsAsync().catch(() => []);
-      for (const affirmation of affirmations.filter((item) => item.enabled)) {
-        if (affirmation.notificationId) await Notifications.cancelScheduledNotificationAsync(affirmation.notificationId).catch(() => undefined);
-        const matches = pending.filter((request) => request.content.data?.affirmationId === affirmation.id);
-        await Promise.all(matches.map((request) => Notifications.cancelScheduledNotificationAsync(request.identifier).catch(() => undefined)));
-        if (active) await scheduleAffirmationNotification(affirmation).catch(() => undefined);
-      }
       if (!active) return;
       for (const item of departurePlans) {
         if (!item.id || getDeparturePlanMode(item) === 'calendar_only' || planDateKey(item) < dateKey()) continue;
@@ -2972,7 +3137,7 @@ export default function App() {
         setScreen('home');
         return false;
       }
-      const routine = addTask(result.title, categories[0]!, priorities[1]!, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, result.repeatRule ?? 'daily', 'once', result.scheduledDate ?? dateKey(), undefined, undefined, true);
+      const routine = addTask(result.title, categories[0]!, priorities[1]!, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, result.repeatRule ?? 'daily', 'once', result.scheduledDate ?? dateKey(), result.scheduledTime, undefined, true);
       setScreen('home');
       return Boolean(routine);
     }
@@ -3172,7 +3337,9 @@ export default function App() {
         void (async () => {
           await cancelPendingDepartureNotifications(updated.id!);
           await scheduleDeparture(updated);
-        })();
+        })().catch((error) => {
+          if (__DEV__) console.warn('[Notifications] recovery reschedule failed', error);
+        });
       }
     }
     setRecoveryTargetPlanId(undefined);
@@ -3631,8 +3798,9 @@ export default function App() {
       showCompleted
       completionIcon="✓"
       designMode={uiDesignMode}
-      selectedDesignMode={uiDesignMode}
-      monoAppearance="auto"
+               selectedDesignMode={uiDesignMode}
+               monoAppearance="auto"
+      monoPattern="plain"
       hapticsEnabled
       chicPalette={chicPalette}
       chicPattern={effectiveChicPattern}
@@ -3647,7 +3815,8 @@ export default function App() {
       onShowCompleted={() => undefined}
       onCompletionIcon={() => undefined}
       onDesignMode={() => undefined}
-      onMonoAppearance={() => undefined}
+               onMonoAppearance={() => undefined}
+      onMonoPattern={() => undefined}
       onHapticsEnabled={() => undefined}
       onReview={() => undefined}
       onChicPattern={() => undefined}
@@ -4057,20 +4226,27 @@ export default function App() {
   };
   const premiumRecoveryGuideVisible = planTier === 'premium' && productionGuideFeature === 'recovery' && !recoveryTargetPlanId;
   const backgroundVeilVisible = (screen === 'home' || screen === 'timeline' || screen === 'wish')
-    && ((designMode === 'chic' && effectiveChicPattern !== 'plain') || (designMode === 'photo' && photoThemeEnabled));
+    && ((designMode === 'chic' && effectiveChicPattern !== 'plain' && !isImageDesignPattern(effectiveChicPattern)) || (designMode === 'photo' && photoThemeEnabled));
   const backgroundVeilOpacity = designMode === 'photo' ? 0.28 : (effectiveChicPattern === 'floral' || effectiveChicPattern === 'floralSoft' || effectiveChicPattern === 'floralSeasonal' || effectiveChicPattern === 'floralDark' ? 0.18 : 0.12);
   const backgroundVeilColor = designMode === 'photo' ? theme.colors.screenBackground : chicPalette.background;
+  const imageDesignBackground = designMode === 'chic' && isImageDesignPattern(effectiveChicPattern) ? designBackgroundAssets[effectiveChicPattern] : undefined;
+  const headerChicPalette = designMode === 'chic' && effectiveChicPattern === 'nightSky'
+    ? { ...chicPalette, textPrimary: '#F4F7FC', textSecondary: '#D6DEEA' }
+    : chicPalette;
 
   return (
-        <SafeAreaView style={[styles.safe, uiDesignMode === 'minimal' && styles.safeMinimal, uiDesignMode === 'dark' && styles.safeDark, designMode === 'photo' && styles.safePhoto, { backgroundColor: uiDesignMode === 'chic' ? getChicPatternVisual(effectiveChicPattern, chicPalette).background : theme.colors.screenBackground }]}>
-      <StatusBar style={uiDesignMode === 'dark' ? 'light' : 'dark'} />
+    <SafeAreaView style={[styles.safe, uiDesignMode === 'minimal' && styles.safeMinimal, uiDesignMode === 'dark' && styles.safeDark, designMode === 'photo' && styles.safePhoto, !hydrated && { opacity: 0 }, { backgroundColor: imageDesignBackground?.background ?? (uiDesignMode === 'chic' ? getChicPatternVisual(effectiveChicPattern, chicPalette).background : theme.colors.screenBackground) }]}>
+      <StatusBar style={uiDesignMode === 'dark' || (designMode === 'chic' && effectiveChicPattern === 'nightSky') ? 'light' : 'dark'} />
+      {isMonoDesign && effectiveMonoPattern === 'looseLeaf' && <MonoLooseLeafBackground dark={uiDesignMode === 'dark'} />}
+      {isMonoDesign && effectiveMonoPattern === 'chic' && <MonoChicBackground dark={uiDesignMode === 'dark'} />}
+      {imageDesignBackground && <View pointerEvents="none" style={[StyleSheet.absoluteFillObject, { overflow: 'hidden', backgroundColor: imageDesignBackground.background }]}><Image source={imageDesignBackground.source} resizeMode="stretch" style={StyleSheet.absoluteFillObject} /></View>}
       {photoBackgroundUri && <View pointerEvents="none" style={styles.photoThemeBackgroundWrap}><Image source={{ uri: photoBackgroundUri }} resizeMode="cover" style={styles.photoThemeBackground} /></View>}
-      <View style={styles.app}>
+      <View style={styles.app} pointerEvents={hydrated ? 'auto' : 'none'}>
         <BThemeRibbonPreload />
         <CThemeRibbonPreload />
         {uiDesignMode === 'chic' && !photoThemeEnabled && <View pointerEvents="none" style={StyleSheet.absoluteFillObject}><ChicPatternDecor pattern={effectiveChicPattern} accent={chicPalette.accent} warm={chicPalette.accentSoft} checkColor={chicCheckColor} /></View>}
         {backgroundVeilVisible && <View pointerEvents="none" style={[StyleSheet.absoluteFillObject, { backgroundColor: backgroundVeilColor, opacity: backgroundVeilOpacity }]} />}
-        {photoTopImageUri && screen !== 'wish' ? <><Header designMode={uiDesignMode} now={now} compact chicPalette={chicPalette} onVoice={handleHeaderVoice} onPremium={planTier === 'premium' ? undefined : () => openPremiumFeature('voice')} /><View style={styles.photoThemeTopImage}><Image source={{ uri: photoTopImageUri }} resizeMode="contain" style={styles.photoThemeTopImageContent} /></View></> : <Header designMode={uiDesignMode} now={now} chicPalette={chicPalette} onVoice={handleHeaderVoice} onPremium={planTier === 'premium' ? undefined : () => openPremiumFeature('voice')} />}
+        {photoTopImageUri && screen !== 'wish' ? <><Header designMode={uiDesignMode} now={now} compact chicPalette={headerChicPalette} onVoice={handleHeaderVoice} onPremium={planTier === 'premium' ? undefined : () => openPremiumFeature('voice')} /><View style={styles.photoThemeTopImage}><Image source={{ uri: photoTopImageUri }} resizeMode="contain" style={styles.photoThemeTopImageContent} /></View></> : <Header designMode={uiDesignMode} now={now} chicPalette={headerChicPalette} onVoice={handleHeaderVoice} onPremium={planTier === 'premium' ? undefined : () => openPremiumFeature('voice')} />}
         {completionAffirmation && <Animated.View pointerEvents="none" style={{ position: 'absolute', top: 72, left: 20, right: 20, zIndex: 30, opacity: completionAffirmationOpacity, alignItems: 'center' }}><View style={{ maxWidth: 340, paddingHorizontal: 18, paddingVertical: 12, borderRadius: 18, backgroundColor: uiDesignMode === 'dark' ? '#20293A' : uiDesignMode === 'chic' ? chicPalette.cardSurface : '#FFFFFF', borderWidth: 1, borderColor: uiDesignMode === 'dark' ? '#40506A' : uiDesignMode === 'chic' ? chicPalette.border : '#E5E0E5', shadowColor: '#000', shadowOpacity: 0.12, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 4 }}><Text style={{ textAlign: 'center', color: uiDesignMode === 'dark' ? '#F4F7FC' : uiDesignMode === 'chic' ? chicPalette.textPrimary : '#282538', fontSize: 14, fontWeight: '600' }}>{completionAffirmation}</Text></View></Animated.View>}
 
         <ScrollView contentContainerStyle={[styles.content, screen === 'timeline' && styles.contentTimeline]} keyboardShouldPersistTaps="handled">
@@ -4132,6 +4308,13 @@ export default function App() {
                   return;
                 }
                 completeParentTask(taskId);
+              }}
+              onRestore={(taskId) => {
+                if (firstRunDemoActive) {
+                  updateGuideDemoTasks((current) => current.map((task) => task.id === taskId ? { ...task, done: false, status: 'active', completedAt: undefined, subtasks: task.subtasks?.map((item) => ({ ...item, done: false })) } : task));
+                  return;
+                }
+                restoreTaskById(taskId);
               }}
               onEdit={(task) => {
                 setEditingTask(task);
@@ -4398,6 +4581,7 @@ export default function App() {
                designMode={uiDesignMode}
                selectedDesignMode={designMode}
                monoAppearance={monoAppearance}
+               monoPattern={monoPattern}
                hapticsEnabled={hapticsEnabled}
                premiumTrialReminderEnabled={premiumTrialReminderEnabled}
                onPremiumTrialReminderEnabled={premiumTrialReminderAvailable ? setPremiumTrialReminderEnabled : undefined}
@@ -4459,6 +4643,11 @@ export default function App() {
                onMonoAppearance={(appearance) => {
                  setDesignMode('minimal');
                  setMonoAppearance(appearance);
+                 if (!onboardingDesignSelectionPending) void onboarding.complete('design');
+                 completeInitialDesignSelection();
+               }}
+               onMonoPattern={(pattern) => {
+                 setMonoPattern(pattern);
                  if (!onboardingDesignSelectionPending) void onboarding.complete('design');
                  completeInitialDesignSelection();
                }}
@@ -4576,7 +4765,9 @@ export default function App() {
                   void (async () => {
                     await cancelPendingDepartureNotifications(updatedPlan.id!);
                     if (getDeparturePlanMode(updatedPlan) !== 'calendar_only') await scheduleDeparture(updatedPlan);
-                  })();
+                  })().catch((error) => {
+                    if (__DEV__) console.warn('[Notifications] suggestion reschedule failed', error);
+                  });
                 }
               }}
               onRemoveRoutine={(taskId) => { if (firstRunDemoActive) return; Alert.alert('ルーティンから外しますか？', 'タスク自体と完了履歴は残ります。', [{ text: 'キャンセル', style: 'cancel' }, { text: 'ルーティンから外す', style: 'destructive', onPress: () => {
@@ -4869,9 +5060,14 @@ function DesignPreviewModal({ visible, initialPattern, initialMode = 'chic', chi
     { id: 'floralSoft', label: designFloralAssets.floralSoft.label },
     { id: 'floralSeasonal', label: designFloralAssets.floralSeasonal.label },
     { id: 'dot', label: 'ドット' },
+    { id: 'heart', label: 'ハート' },
     { id: 'checkLavenderSatin', label: 'ギンガム1' },
     { id: 'checkBeigeNoir', label: 'ギンガム2' },
     { id: 'checkMauveFrame', label: 'ギンガム3' },
+    { id: 'stationery', label: 'ステーショナリー' },
+    { id: 'botanicalBackground', label: 'ボタニカル' },
+    { id: 'ocean', label: 'オーシャン' },
+    { id: 'nightSky', label: 'ナイトスカイ' },
   ];
   if (!visible) return null;
   return <>
@@ -4883,14 +5079,14 @@ function DesignPreviewModal({ visible, initialPattern, initialMode = 'chic', chi
         <View style={designPreviewStyles.modeRow}>
           {([{ id: 'minimal', label: 'Mono Light' }, { id: 'dark', label: 'Mono Dark' }, { id: 'chic', label: 'Design' }, { id: 'photo', label: 'Photo' }] as { id: DesignPreviewMode; label: string }[]).map((item) => <Pressable key={item.id} style={[designPreviewStyles.modeChip, { borderColor: uiPreview.border }, mode === item.id && { borderColor: uiPreview.accent, backgroundColor: uiPreview.soft }]} onPress={() => setMode(item.id)}><Text style={[designPreviewStyles.modeChipText, { color: uiPreview.muted }, mode === item.id && { color: uiPreview.accentStrong }]}>{item.label}</Text></Pressable>)}
         </View>
-        {mode === 'chic' && <View style={designPreviewStyles.patternRow}>{previewPatterns.map((item) => <Pressable key={item.id} style={[designPreviewStyles.patternChip, pattern === item.id && { borderColor: palette.accent, backgroundColor: palette.accentSoft }]} onPress={() => setPattern(item.id)}><View style={[designPreviewStyles.patternDot, { backgroundColor: item.id === 'plain' ? palette.accent : getChicPatternVisual(item.id, palette).accent }]} /><Text numberOfLines={1} style={[designPreviewStyles.patternText, pattern === item.id && { color: palette.accentStrong }]}>{item.label}</Text></Pressable>)}</View>}
+        {mode === 'chic' && <View style={designPreviewStyles.patternRow}>{previewPatterns.map((item) => { const imageAsset = isImageDesignPattern(item.id) ? designBackgroundAssets[item.id] : undefined; return <Pressable key={item.id} style={[designPreviewStyles.patternChip, pattern === item.id && { borderColor: palette.accent, backgroundColor: palette.accentSoft }]} onPress={() => setPattern(item.id)}>{imageAsset ? <Image source={imageAsset.previewSource} resizeMode="stretch" style={designPreviewStyles.patternDot} /> : <View style={[designPreviewStyles.patternDot, { backgroundColor: item.id === 'plain' ? palette.accent : getChicPatternVisual(item.id, palette).accent }]} />}<Text numberOfLines={1} style={[designPreviewStyles.patternText, pattern === item.id && { color: palette.accentStrong }]}>{item.label}</Text></Pressable>; })}</View>}
         <View style={[designPreviewStyles.preview, { backgroundColor: mode === 'photo' ? '#202020' : uiPreview.background, borderColor: uiPreview.border }]}>
           {isFreeFloralSoftPreview ? <View style={designPreviewStyles.floralSoftPreviewCard}>
             {floralSoftPreviewStatus !== 'loaded' && <View style={[StyleSheet.absoluteFillObject, designPreviewStyles.floralSoftPreviewFallback, { backgroundColor: uiPreview.soft }]}>{floralSoftPreviewStatus === 'error' ? <Text style={[designPreviewStyles.floralSoftPreviewError, { color: uiPreview.muted }]}>プレビューを表示できませんでした</Text> : <ActivityIndicator color={uiPreview.accent} />}</View>}
             <Image source={designFloralAssets.floralSoft.previewSource ?? designFloralAssets.floralSoft.source} resizeMode="contain" onLoadStart={() => setFloralSoftPreviewStatus('loading')} onLoad={() => setFloralSoftPreviewStatus('loaded')} onError={() => setFloralSoftPreviewStatus('error')} style={[designPreviewStyles.floralSoftPreviewImage, floralSoftPreviewStatus !== 'loaded' && { opacity: 0 }]} />
             <View style={[designPreviewStyles.floralSoftPreviewNotice, { backgroundColor: uiPreview.surface, borderTopColor: uiPreview.border }]}><Text style={[designPreviewStyles.floralSoftPreviewName, { color: uiPreview.text }]}>花柄2</Text><Text style={[designPreviewStyles.floralSoftPreviewPremium, { color: uiPreview.accent }]}>Premium限定デザイン</Text><Text style={[designPreviewStyles.floralSoftPreviewCopy, { color: uiPreview.muted }]}>このデザインを使うにはPremium登録が必要です</Text></View>
           </View> : <>
-            {mode === 'chic' && <View pointerEvents="none" style={StyleSheet.absoluteFillObject}><ChicPatternDecor pattern={pattern} accent={previewVisual.accent} warm={previewVisual.warm} checkColor={chicCheckColor} preview previewTopCrop={pattern === 'floralSoft'} /></View>}
+            {mode === 'chic' && (isImageDesignPattern(pattern) ? <View pointerEvents="none" style={StyleSheet.absoluteFillObject}><Image source={designBackgroundAssets[pattern].source} resizeMode="stretch" style={StyleSheet.absoluteFillObject} /></View> : <View pointerEvents="none" style={StyleSheet.absoluteFillObject}><ChicPatternDecor pattern={pattern} accent={previewVisual.accent} warm={previewVisual.warm} checkColor={chicCheckColor} preview previewTopCrop={pattern === 'floralSoft'} /></View>)}
           {mode === 'photo' && photoUri ? <Image source={{ uri: photoUri }} resizeMode="cover" style={designPreviewStyles.photoBackground} /> : null}
           <TodayWinStrip
             tasks={[]}
@@ -4993,11 +5189,13 @@ function FocusMode({ tasks, designMode, chicPalette, backgroundImageUri, planTie
   const behaviorCallbackRef = React.useRef(onBehaviorEvent);
   behaviorCallbackRef.current = onBehaviorEvent;
   const focusNotificationIdRef = React.useRef<string | null>(null);
-  const cancelFocusNotification = React.useCallback(async () => {
-    await cancelFocusCompletionNotification(focusNotificationIdRef.current);
+  const cancelFocusNotification = React.useCallback(() => enqueueNotificationOperation('focus', async () => {
+    const notificationId = focusNotificationIdRef.current;
+    const sessionId = sessionRef.current?.id;
     focusNotificationIdRef.current = null;
-    if (sessionRef.current?.id) await cancelPendingFocusCompletionNotifications(sessionRef.current.id);
-  }, []);
+    await cancelFocusCompletionNotification(notificationId);
+    if (sessionId) await cancelPendingFocusCompletionNotifications(sessionId);
+  }), []);
 
   useEffect(() => {
     const selectedStillExists = availableTasks.some((task) => task.id === selectedTaskId);
@@ -5149,9 +5347,17 @@ function FocusMode({ tasks, designMode, chicPalette, backgroundImageUri, planTie
     onFocusRunningChange?.(true);
     onFocusActivityChange?.({ taskTitle: sessionRef.current?.taskTitle, endsAt: new Date(endAtRef.current).toISOString() });
     if (sessionRef.current) {
-      void cancelFocusNotification().then(async () => {
+      void enqueueNotificationOperation('focus', async () => {
+        const notificationId = focusNotificationIdRef.current;
+        const sessionId = sessionRef.current?.id;
+        focusNotificationIdRef.current = null;
+        await cancelFocusCompletionNotification(notificationId);
+        if (sessionId) await cancelPendingFocusCompletionNotifications(sessionId);
         if (!sessionRef.current || !endAtRef.current) return;
-        focusNotificationIdRef.current = await scheduleFocusCompletionNotification({ timerId: sessionRef.current.id, endAt: new Date(endAtRef.current).toISOString(), taskTitle: sessionRef.current.taskTitle, permissionGranted: notificationPermissionGranted });
+        const scheduledId = await scheduleFocusCompletionNotification({ timerId: sessionRef.current.id, endAt: new Date(endAtRef.current).toISOString(), taskTitle: sessionRef.current.taskTitle, permissionGranted: notificationPermissionGranted });
+        focusNotificationIdRef.current = scheduledId;
+      }).catch((error) => {
+        if (__DEV__) console.warn('[Notifications] focus completion scheduling failed', error);
       });
     }
   };
@@ -5533,6 +5739,61 @@ function isFloralPattern(pattern: ChicPattern | 'flower' | 'stripe'): pattern is
   return pattern === 'floral' || pattern === 'floralSoft' || pattern === 'floralSeasonal' || pattern === 'floralDark';
 }
 
+const HEART_DECORATIONS = [
+  // Keep the upper third visibly heart-led while leaving the title, buttons,
+  // and tab labels readable. Positions are fixed so a rerender never changes
+  // the pattern's rhythm.
+  { left: '4%', top: '5%', size: 16, glyph: '♥', opacity: 0.34, rotate: '-12deg' },
+  { left: '17%', top: '2%', size: 10, glyph: '♡', opacity: 0.28, rotate: '9deg' },
+  { left: '8%', top: '12%', size: 18, glyph: '♥', opacity: 0.27, rotate: '6deg' },
+  { left: '31%', top: '7%', size: 23, glyph: '♥', opacity: 0.3, rotate: '-8deg' },
+  { left: '38%', top: '2%', size: 15, glyph: '♥', opacity: 0.25, rotate: '-10deg' },
+  { left: '47%', top: '3%', size: 11, glyph: '♡', opacity: 0.26, rotate: '12deg' },
+  { left: '61%', top: '9%', size: 15, glyph: '♥', opacity: 0.31, rotate: '-10deg' },
+  { left: '68%', top: '13%', size: 11, glyph: '♡', opacity: 0.24, rotate: '8deg' },
+  { left: '76%', top: '3%', size: 10, glyph: '♡', opacity: 0.3, rotate: '8deg' },
+  { left: '91%', top: '8%', size: 22, glyph: '♥', opacity: 0.32, rotate: '11deg' },
+  { left: '97%', top: '16%', size: 16, glyph: '♥', opacity: 0.26, rotate: '-7deg' },
+  { left: '10%', top: '17%', size: 12, glyph: '♡', opacity: 0.27, rotate: '-7deg' },
+  { left: '23%', top: '20%', size: 17, glyph: '♥', opacity: 0.32, rotate: '8deg' },
+  { left: '40%', top: '15%', size: 10, glyph: '♥', opacity: 0.24, rotate: '-12deg' },
+  { left: '55%', top: '22%', size: 26, glyph: '♡', opacity: 0.29, rotate: '7deg' },
+  { left: '70%', top: '16%', size: 13, glyph: '♥', opacity: 0.3, rotate: '-8deg' },
+  { left: '84%', top: '22%', size: 17, glyph: '♡', opacity: 0.28, rotate: '10deg' },
+  { left: '96%', top: '28%', size: 11, glyph: '♥', opacity: 0.25, rotate: '-10deg' },
+  { left: '14%', top: '26%', size: 22, glyph: '♡', opacity: 0.23, rotate: '8deg' },
+  { left: '32%', top: '29%', size: 12, glyph: '♥', opacity: 0.22, rotate: '-8deg' },
+  { left: '5%', top: '31%', size: 20, glyph: '♥', opacity: 0.3, rotate: '8deg' },
+  { left: '18%', top: '37%', size: 10, glyph: '♡', opacity: 0.23, rotate: '-12deg' },
+  { left: '38%', top: '33%', size: 14, glyph: '♥', opacity: 0.27, rotate: '6deg' },
+  { left: '58%', top: '31%', size: 18, glyph: '♥', opacity: 0.25, rotate: '-6deg' },
+  { left: '67%', top: '35%', size: 12, glyph: '♡', opacity: 0.24, rotate: '-8deg' },
+  { left: '88%', top: '39%', size: 21, glyph: '♥', opacity: 0.29, rotate: '10deg' },
+  { left: '2%', top: '51%', size: 13, glyph: '♡', opacity: 0.25, rotate: '-9deg' },
+  { left: '27%', top: '54%', size: 16, glyph: '♥', opacity: 0.26, rotate: '9deg' },
+  { left: '52%', top: '49%', size: 10, glyph: '♡', opacity: 0.23, rotate: '-7deg' },
+  { left: '76%', top: '56%', size: 18, glyph: '♥', opacity: 0.28, rotate: '-11deg' },
+  { left: '94%', top: '61%', size: 12, glyph: '♡', opacity: 0.25, rotate: '8deg' },
+  { left: '14%', top: '61%', size: 15, glyph: '♥', opacity: 0.24, rotate: '-8deg' },
+  { left: '43%', top: '63%', size: 23, glyph: '♡', opacity: 0.24, rotate: '7deg' },
+  { left: '9%', top: '69%', size: 22, glyph: '♥', opacity: 0.3, rotate: '-8deg' },
+  { left: '34%', top: '72%', size: 11, glyph: '♡', opacity: 0.23, rotate: '10deg' },
+  { left: '59%', top: '68%', size: 15, glyph: '♥', opacity: 0.27, rotate: '-6deg' },
+  { left: '83%', top: '73%', size: 24, glyph: '♡', opacity: 0.28, rotate: '8deg' },
+  { left: '18%', top: '87%', size: 17, glyph: '♥', opacity: 0.3, rotate: '-8deg' },
+  { left: '47%', top: '91%', size: 12, glyph: '♡', opacity: 0.25, rotate: '7deg' },
+  { left: '72%', top: '88%', size: 20, glyph: '♥', opacity: 0.28, rotate: '-10deg' },
+  { left: '31%', top: '95%', size: 16, glyph: '♥', opacity: 0.25, rotate: '8deg' },
+  { left: '69%', top: '79%', size: 11, glyph: '♥', opacity: 0.23, rotate: '-6deg' },
+  { left: '94%', top: '94%', size: 10, glyph: '♡', opacity: 0.24, rotate: '9deg' },
+] as const;
+
+const HEART_CONFETTI = [
+  { left: '17%', top: '16%', rotate: '28deg' }, { left: '63%', top: '5%', rotate: '-24deg' },
+  { left: '36%', top: '37%', rotate: '-18deg' }, { left: '88%', top: '24%', rotate: '22deg' },
+  { left: '9%', top: '73%', rotate: '-26deg' }, { left: '55%', top: '73%', rotate: '18deg' },
+];
+
 const FloralPatternDecor = React.memo(function FloralPatternDecor({ pattern, accent, warm, compact, previewTopCrop, preview = false, fallbackBackground }: { pattern: FloralPatternId; accent: string; warm: string; compact: boolean; previewTopCrop: boolean; preview?: boolean; fallbackBackground?: string }) {
   const [status, setStatus] = useState<'idle' | 'loading' | 'loaded' | 'error'>(preview ? 'idle' : 'loaded');
   const asset = designFloralAssets[pattern];
@@ -5597,6 +5858,11 @@ function ChicPatternDecor({ pattern, accent, warm, density = 'regular', checkCol
   if (pattern === 'dot') return <View pointerEvents="none" style={styles.patternLayer}>
     {Array.from({ length: compact ? 160 : 144 }, (_, index) => { const columns = compact ? 22 : 18; const spacingX = compact ? 20 : 25; const spacingY = compact ? 18 : 22; const row = Math.floor(index / columns); const column = index % columns; const size = index % 3 === 0 ? (compact ? 5 : 6) : index % 2 === 0 ? 4 : 3; return <View key={index} style={[styles.patternDotSmall, { width: size, height: size, borderRadius: size / 2, backgroundColor: index % 2 ? warm : accent, left: 4 + column * spacingX + (row % 2 ? spacingX / 2 : 0), top: 5 + row * spacingY }]} />; })}
   </View>;
+  if (pattern === 'heart') return <View pointerEvents="none" style={[styles.patternLayer, { backgroundColor: 'transparent' }]}>
+    {HEART_DECORATIONS.map((item, index) => <Text key={`heart-${index}`} style={{ position: 'absolute', left: item.left as any, top: item.top as any, fontSize: compact ? Math.max(8, item.size - 3) : item.size, lineHeight: compact ? item.size : item.size + 3, color: accent, opacity: item.opacity, transform: [{ rotate: item.rotate }] }}>{item.glyph}</Text>)}
+    {HEART_CONFETTI.map((item, index) => <View key={`heart-confetti-${index}`} style={{ position: 'absolute', left: item.left as any, top: item.top as any, width: compact ? 4 : 6, height: compact ? 9 : 13, borderRadius: 1, backgroundColor: warm, opacity: 0.45, transform: [{ rotate: item.rotate }] }} />)}
+    {['18%', '48%', '79%'].map((left, index) => <View key={`heart-dot-${index}`} style={{ position: 'absolute', left: left as any, top: `${20 + index * 23}%` as any, width: compact ? 3 : 4, height: compact ? 3 : 4, borderRadius: 3, backgroundColor: accent, opacity: 0.3 }} />)}
+  </View>;
   return null;
 }
 
@@ -5612,15 +5878,20 @@ function CompactNumberSetting({ label, value, onChange, isDark = false }: { labe
 }
 
 function ChicPatternSelector({ designMode, chicPattern, chicCheckColor, planTier, designCustomizePurchased = false, onPattern, onCheckColor, onPremium, onPreview }: { designMode: DesignMode; chicPattern: ChicPattern; chicCheckColor: ChicCheckColor; planTier: PlanTier; designCustomizePurchased?: boolean; onPattern: (pattern: ChicPattern) => void; onCheckColor: (color: ChicCheckColor) => void; onPremium: () => void; onPreview: (pattern: ChicPattern) => void }) {
-  const patterns: { id: ChicPattern; label: string; feature?: 'chic_floral' | 'chic_dot' | 'chic_check_lavender_satin' | 'chic_check_beige_noir' | 'chic_check_mauve_frame' }[] = [
+  const patterns: { id: ChicPattern; label: string; feature?: 'chic_floral' | 'chic_dot' | 'chic_heart' | 'chic_check_lavender_satin' | 'chic_check_beige_noir' | 'chic_check_mauve_frame' }[] = [
     { id: 'plain', label: 'プレーン' },
     { id: 'floral', label: designFloralAssets.floral.label, feature: 'chic_floral' },
     { id: 'floralSoft', label: designFloralAssets.floralSoft.label, feature: 'chic_floral' },
     { id: 'floralSeasonal', label: designFloralAssets.floralSeasonal.label, feature: 'chic_floral' },
     { id: 'dot', label: 'ドット', feature: 'chic_dot' },
+    { id: 'heart', label: 'ハート', feature: 'chic_heart' },
     { id: 'checkLavenderSatin', label: 'くすみラベンダーチェック', feature: 'chic_check_lavender_satin' },
     { id: 'checkBeigeNoir', label: 'ベージュ×ブラックチェック', feature: 'chic_check_beige_noir' },
     { id: 'checkMauveFrame', label: 'モーブフレームチェック', feature: 'chic_check_mauve_frame' },
+    { id: 'stationery', label: 'ステーショナリー', feature: 'chic_floral' },
+    { id: 'botanicalBackground', label: 'ボタニカル', feature: 'chic_floral' },
+    { id: 'ocean', label: 'オーシャン', feature: 'chic_floral' },
+    { id: 'nightSky', label: 'ナイトスカイ', feature: 'chic_floral' },
   ];
   const displayPatternLabels: Partial<Record<ChicPattern, string>> = {
     floral: designFloralAssets.floral.label,
@@ -5632,6 +5903,10 @@ function ChicPatternSelector({ designMode, chicPattern, chicCheckColor, planTier
     checkLavenderSatin: 'ギンガムチェック1',
     checkBeigeNoir: 'ギンガムチェック2',
     checkMauveFrame: 'ギンガムチェック3',
+    stationery: 'ステーショナリー',
+    botanicalBackground: 'ボタニカル',
+    ocean: 'オーシャン',
+    nightSky: 'ナイトスカイ',
   };
   const visiblePatterns = designMode === 'photo' ? patterns.filter((item) => item.id === 'plain') : patterns;
   const selectedPalette = getChicCheckColor(chicCheckColor);
@@ -5646,8 +5921,9 @@ function ChicPatternSelector({ designMode, chicPattern, chicCheckColor, planTier
         const patternStripe = isCheck ? getChicCheckColor(chicCheckColor).patternStripe : visual.warm;
         const choicePalette = selectedPalette;
         const selected = chicPattern === item.id;
+        const imageAsset = isImageDesignPattern(item.id) ? designBackgroundAssets[item.id] : undefined;
         return <Pressable key={item.id} style={[styles.patternChoice, { backgroundColor: choicePalette.cardSurface, borderColor: selected ? choicePalette.accent : choicePalette.border }, selected && { borderWidth: 2 }]} onPress={() => { if (locked) { onPreview(item.id); return; } onPattern(item.id); }}>
-          <View style={[styles.patternSwatch, styles.patternSwatchLarge, { backgroundColor: patternBase, borderColor: choicePalette.border, borderWidth: 1 }]}><ChicPatternDecor pattern={item.id} accent={visual.accent} warm={patternStripe} density="compact" checkColor={chicCheckColor} preview previewTopCrop={item.id === 'floralSoft'} /></View>
+          <View style={[styles.patternSwatch, styles.patternSwatchLarge, { backgroundColor: imageAsset?.background ?? patternBase, borderColor: choicePalette.border, borderWidth: 1 }]}>{imageAsset ? <Image source={imageAsset.previewSource} resizeMode="stretch" style={StyleSheet.absoluteFillObject} /> : <ChicPatternDecor pattern={item.id} accent={visual.accent} warm={patternStripe} density="compact" checkColor={chicCheckColor} preview previewTopCrop={item.id === 'floralSoft'} />}</View>
           <Text numberOfLines={2} ellipsizeMode="clip" style={[styles.patternChoiceText, { color: selected ? choicePalette.accentStrong : choicePalette.textSecondary }]}>{displayPatternLabels[item.id] ?? item.label}{locked ? ' 🔒' : ''}</Text>
         </Pressable>;
       })}
@@ -5690,6 +5966,44 @@ function SettingsDisclosure({ title, subtitle, expanded, onPress, children, desi
       <Text style={[styles.settingsDisclosureChevron, { color: theme.primaryAccent }]}>{expanded ? '⌃' : '⌄'}</Text>
     </Pressable>
     {expanded && <View style={styles.settingsDisclosureBody}>{children}</View>}
+  </View>;
+}
+
+function MonoLooseLeafBackground({ dark }: { dark: boolean }) {
+  const backgroundColor = dark ? '#171B24' : '#F7F5EF';
+  const lineColor = dark ? 'rgba(190,200,220,0.10)' : 'rgba(120,110,90,0.12)';
+  const marginColor = dark ? 'rgba(220,150,160,0.18)' : 'rgba(190,120,125,0.18)';
+  const holeColor = dark ? '#10141C' : '#E8E3D9';
+  return <View pointerEvents="none" style={[StyleSheet.absoluteFillObject, { backgroundColor }]}>
+    {Array.from({ length: 28 }, (_, index) => <View key={`line-${index}`} style={{ position: 'absolute', left: 0, right: 0, top: 28 + index * 30, height: 1, backgroundColor: lineColor }} />)}
+    <View style={{ position: 'absolute', top: 0, bottom: 0, left: 42, width: 1, backgroundColor: marginColor }} />
+    {Array.from({ length: 14 }, (_, index) => <View key={`hole-${index}`} style={{ position: 'absolute', left: 10, top: 17 + index * 48, width: 12, height: 12, borderRadius: 6, backgroundColor: holeColor, borderWidth: 1, borderColor: lineColor }} />)}
+  </View>;
+}
+
+function MonoChicBackground({ dark }: { dark: boolean }) {
+  const backgroundColor = dark ? '#101722' : '#F1F0EB';
+  const panelColors = dark
+    ? ['rgba(31, 48, 70, 0.72)', 'rgba(18, 31, 50, 0.58)', 'rgba(47, 62, 78, 0.32)']
+    : ['rgba(221, 219, 211, 0.62)', 'rgba(246, 245, 240, 0.72)', 'rgba(205, 202, 191, 0.26)'];
+  const lineColor = dark ? 'rgba(222, 187, 112, 0.52)' : 'rgba(125, 104, 58, 0.42)';
+  const dotColor = dark ? 'rgba(222, 187, 112, 0.48)' : 'rgba(125, 104, 58, 0.34)';
+  const dots = [
+    { left: '67%', top: '13%' }, { left: '72%', top: '13%' }, { left: '77%', top: '13%' },
+    { left: '67%', top: '18%' }, { left: '72%', top: '18%' }, { left: '77%', top: '18%' },
+    { left: '67%', top: '23%' }, { left: '72%', top: '23%' }, { left: '77%', top: '23%' },
+    { left: '67%', top: '28%' }, { left: '72%', top: '28%' }, { left: '77%', top: '28%' },
+    { left: '67%', top: '33%' }, { left: '72%', top: '33%' }, { left: '77%', top: '33%' },
+    { left: '83%', top: '78%' }, { left: '88%', top: '78%' }, { left: '93%', top: '78%' },
+    { left: '83%', top: '83%' }, { left: '88%', top: '83%' }, { left: '93%', top: '83%' },
+  ];
+  return <View pointerEvents="none" style={[StyleSheet.absoluteFillObject, { backgroundColor }]}>
+    <View style={{ position: 'absolute', width: '145%', height: '43%', left: '-35%' as any, top: '7%' as any, backgroundColor: panelColors[0], transform: [{ rotate: '-27deg' }] }} />
+    <View style={{ position: 'absolute', width: '125%', height: '36%', left: '24%' as any, top: '37%' as any, backgroundColor: panelColors[1], transform: [{ rotate: '-27deg' }] }} />
+    <View style={{ position: 'absolute', width: '120%', height: '22%', left: '-20%' as any, bottom: '1%' as any, backgroundColor: panelColors[2], transform: [{ rotate: '-27deg' }] }} />
+    <View style={{ position: 'absolute', width: '130%', height: 1, left: '-12%' as any, top: '21%' as any, backgroundColor: lineColor, transform: [{ rotate: '-45deg' }] }} />
+    <View style={{ position: 'absolute', width: '120%', height: 1, left: '10%' as any, top: '67%' as any, backgroundColor: lineColor, transform: [{ rotate: '-45deg' }] }} />
+    {dots.map((dot, index) => <View key={`chic-dot-${index}`} style={{ position: 'absolute', left: dot.left as any, top: dot.top as any, width: 4, height: 4, borderRadius: 2, backgroundColor: dotColor }} />)}
   </View>;
 }
 

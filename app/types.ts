@@ -22,7 +22,7 @@ export type WidgetStyle = 'mono' | 'color' | 'photo';
 export type WidgetAccentColor = 'blue' | 'purple' | 'pink' | 'green' | 'orange' | 'gray';
 export type WidgetPhotoSource = 'widget' | 'wish';
 export type WidgetPhotoLayout = 'background' | 'right' | 'top' | 'card' | 'circle' | 'cutout';
-export type WidgetMonoTemplate = 'clean' | 'pinNote' | 'ruledNote';
+export type WidgetMonoTemplate = 'clean' | 'pinNote' | 'ruledNote' | 'looseLeaf';
 export type WidgetCustomization = {
   photoUri?: string;
   /** Derived transparent foreground image kept app-local; the original photo remains intact. */
@@ -59,6 +59,7 @@ export type TaskListItem = { id: string; text: string; checked: boolean; order: 
 export type TaskStatus = 'active' | 'completed' | 'skipped';
 export type NudgeMode = 'once' | 'repeat' | 'strong';
 export type ThemeMode = DesignMode;
+export type MonoPattern = 'plain' | 'looseLeaf' | 'chic';
 export type UrgencyStatus = '余裕あり' | 'そろそろ準備' | '今出れば間に合う' | '急いで出発' | '予定どおりは厳しい' | 'リカバリーが必要';
 
 export type Task = {
@@ -282,6 +283,8 @@ export type PersistedState = {
   designMode: DesignMode;
   /** Mono appearance preference. Optional for backwards compatibility with older saves. */
   monoAppearance?: 'auto' | 'light' | 'dark';
+  /** Mono background pattern; absent in older saves and treated as plain. */
+  monoPattern?: MonoPattern;
   hapticsEnabled?: boolean;
   /** Whether to schedule the local reminder before a StoreKit free trial ends. */
   premiumTrialReminderEnabled?: boolean;

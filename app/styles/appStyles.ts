@@ -50,7 +50,7 @@ export const styles = StyleSheet.create({
   hero: { color: colors.ink, fontSize: 30, lineHeight: 38, fontWeight: '900', letterSpacing: -1.2, marginBottom: 22 },
   patternLayer: { ...StyleSheet.absoluteFillObject, width: '100%', height: '100%', overflow: 'hidden' },
   patternImageLayer: { ...StyleSheet.absoluteFillObject, width: '100%', height: '100%' },
-  patternImageLayerCompact: { opacity: 0.78 },
+  patternImageLayerCompact: { opacity: 1 },
   patternDotSmall: { position: 'absolute', opacity: 0.42 },
   checkVerticalBand: { position: 'absolute', top: 0, bottom: 0, width: 8, backgroundColor: 'rgba(232,184,199,0.22)' },
   checkHorizontalBand: { position: 'absolute', left: 0, right: 0, height: 8, backgroundColor: 'rgba(232,184,199,0.22)' },

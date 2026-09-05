@@ -20,7 +20,7 @@ export const WIDGET_TYPE_OPTIONS: ReadonlyArray<{ id: WidgetType; label: string;
   { id: 'current', label: '今はこれ', description: 'いま取り組むタスクを表示', sizes: 'M / L', access: 'free' },
   { id: 'next', label: '次の予定', description: '次に控えている予定を表示', sizes: 'M', access: 'free' },
   { id: 'combined', label: '今はこれ＋次の予定', description: 'タスクと予定をまとめて表示', sizes: 'M', access: 'design' },
-  { id: 'monthly', label: '月間カレンダー', description: '予定のある日を月ごとに確認', sizes: 'M / L', access: 'design' },
+  { id: 'monthly', label: '月間カレンダー', description: '予定のある日を月ごとに確認', sizes: 'L', access: 'design' },
   { id: 'weekly', label: '週間カレンダー', description: '今週の予定を一覧で確認', sizes: 'M / L', access: 'design' },
   { id: 'today', label: '今日の予定', description: '今日の予定を時刻順に表示', sizes: 'M', access: 'design' },
   { id: 'checklist', label: 'ToDoメモ', description: '持ち物やメモを確認', sizes: 'M', access: 'design' },
@@ -64,9 +64,10 @@ export const WIDGET_PHOTO_LAYOUT_OPTIONS: ReadonlyArray<{ id: WidgetPhotoLayout;
 ];
 
 export const WIDGET_MONO_TEMPLATE_OPTIONS: ReadonlyArray<{ id: WidgetMonoTemplate; label: string }> = [
-  { id: 'clean', label: 'Clean' },
+  { id: 'clean', label: 'Plain' },
   { id: 'pinNote', label: 'Pin Note' },
   { id: 'ruledNote', label: 'Ruled Note' },
+  { id: 'looseLeaf', label: 'Loose Leaf' },
 ];
 
 const DEFAULT_DISPLAY_OPTIONS: Record<WidgetDisplayOption, boolean> = {
@@ -99,6 +100,8 @@ const widgetStyleIds = new Set<WidgetStyle>(WIDGET_STYLE_OPTIONS.map((item) => i
 const accentIds = new Set<WidgetAccentColor>(WIDGET_ACCENT_OPTIONS.map((item) => item.id));
 const photoSourceIds = new Set<WidgetPhotoSource>(WIDGET_PHOTO_SOURCE_OPTIONS.map((item) => item.id));
 const photoLayoutIds = new Set<WidgetPhotoLayout>(WIDGET_PHOTO_LAYOUT_OPTIONS.map((item) => item.id));
+// Keep all legacy Mono treatments readable so existing saved settings and the
+// native AppIntent edit sheet resolve to the same renderer cases.
 const monoTemplateIds = new Set<WidgetMonoTemplate>(WIDGET_MONO_TEMPLATE_OPTIONS.map((item) => item.id));
 
 function isRecord(value: unknown): value is Record<string, unknown> {

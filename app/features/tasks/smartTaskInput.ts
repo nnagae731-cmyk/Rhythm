@@ -123,10 +123,12 @@ export function parseSmartTaskInput(input: string, now = new Date(), dateKey: (d
     scheduledTime = timeMatch.time;
     consume(timeMatch.source ?? '');
   } else {
-    const period = original.match(/(朝|午前中|昼|午後|夕方|夜|晩)/u);
+    const period = original.match(/(朝|午前中|午前|昼|午後|夕方|夜|晩)/u);
     if (period) {
-      scheduledTime = period[1] === '朝' || period[1] === '午前中' ? '09:00' : period[1] === '昼' || period[1] === '午後' ? '12:00' : period[1] === '夕方' ? '17:00' : '20:00';
-      consume(period[0]);
+      scheduledTime = period[1] === '朝' || period[1] === '午前中' || period[1] === '午前' ? '09:00' : period[1] === '昼' || period[1] === '午後' ? '12:00' : period[1] === '夕方' ? '17:00' : '20:00';
+      // Daypart words often form the task title itself (e.g. "朝の支度").
+      // Use them only for time inference; explicit clock/date expressions
+      // above remain consumable title metadata.
     }
   }
 

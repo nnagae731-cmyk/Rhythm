@@ -24,7 +24,8 @@ export const WIDGET_FLORAL_ASSET_FILENAMES: Record<WidgetFloralPattern, Record<W
 
 /** Static requires keep Metro's asset graph and the Native filename contract
  * pointed at the same production artwork. The PNGs are transparent overlays;
- * the selected palette remains responsible for the background below them.
+ * the Widget uses each floral design's fixed neutral paper background below
+ * them so the artwork is not recolored by the selected theme.
  */
 const WIDGET_FLORAL_ASSET_SOURCES: Record<WidgetFloralPattern, Record<WidgetFloralFamily, ImageSourcePropType>> = {
   vintageBloom: {

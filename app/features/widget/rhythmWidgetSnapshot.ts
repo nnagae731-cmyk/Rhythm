@@ -514,5 +514,12 @@ export async function getRhythmWidgetPendingActions() {
 export async function acknowledgeRhythmWidgetPendingActions(actionIds: string[]) {
   if (Platform.OS !== 'ios' || actionIds.length === 0) return false;
   const module = requireOptionalNativeModule<RhythmWidgetNativeModule>('RhythmWidget');
-  return module?.acknowledgePendingWidgetActions ? module.acknowledgePendingWidgetActions(actionIds) : false;
+  if (!module?.acknowledgePendingWidgetActions) return false;
+  try {
+    return await module.acknowledgePendingWidgetActions(actionIds);
+  } catch {
+    // Acknowledgement is best-effort; leave the action queued for the next
+    // foreground pass instead of surfacing an unhandled native rejection.
+    return false;
+  }
 }

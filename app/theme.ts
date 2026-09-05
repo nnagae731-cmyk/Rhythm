@@ -1,12 +1,13 @@
 export type DesignMode = 'minimal' | 'dark' | 'chic' | 'photo';
 
-// Legacy floral/check ids remain accepted for saved settings. New Design choices
-// continue to use the persisted `chic` key for backwards compatibility.
-export type ChicPattern = 'plain' | 'floral' | 'floralSoft' | 'floralSeasonal' | 'floralDark' | 'dot' | 'checkLavenderSatin' | 'checkBeigeNoir' | 'checkMauveFrame';
+// Legacy floral/check ids remain accepted for saved settings. Design image
+// backgrounds are app-only choices and continue to use the persisted `chic`
+// key for backwards compatibility.
+export type ChicPattern = 'plain' | 'floral' | 'floralSoft' | 'floralSeasonal' | 'floralDark' | 'dot' | 'heart' | 'checkLavenderSatin' | 'checkBeigeNoir' | 'checkMauveFrame' | 'stationery' | 'botanicalBackground' | 'ocean' | 'nightSky';
 export type ChicCheckColor = 'monochrome' | 'cool' | 'warm' | 'green' | 'orange' | 'yellow' | 'blue' | 'lightBlue' | 'pink';
 /** Design palette ids include the legacy floral pattern ids so shared theme
  * helpers can resolve a single palette for every Design screen. */
-export type DesignPaletteId = ChicCheckColor | 'floral' | 'floralSoft' | 'floralSeasonal' | 'floralDark';
+export type DesignPaletteId = ChicCheckColor | 'floral' | 'floralSoft' | 'floralSeasonal' | 'floralDark' | 'nightSky';
 
 export type ChicThemePalette = {
   id: DesignPaletteId;
@@ -302,6 +303,12 @@ export function getThemeTokens(mode: DesignMode, checkColor: DesignPaletteId = '
     radius: { large: 18, small: 10, button: 12, chip: 999, modal: 22 },
     shadow: { color: '#76505E', opacity: 0.12, radius: 16, y: 6 },
   };
+  if (checkColor === 'nightSky') return {
+    ...shared,
+    colors: { screenBackground: '#101722', surface: 'rgba(16,24,36,0.94)', secondarySurface: 'rgba(24,35,50,0.92)', primaryText: '#F4F2EC', secondaryText: '#D8D9D7', primaryAccent: '#D6B66F', secondaryAccent: '#CFAE67', softAccent: 'rgba(214,182,111,0.22)', border: 'rgba(220,225,230,0.42)', success: '#A8C9BB', warning: '#D6B66F', danger: '#E1A0A0' },
+    radius: { large: 26, small: 18, button: 18, chip: 999, modal: 28 },
+    shadow: { color: '#000000', opacity: 0.24, radius: 18, y: 7 },
+  };
   const palette = checkColor === 'floral' || checkColor === 'floralSoft' || checkColor === 'floralSeasonal' || checkColor === 'floralDark'
     ? floralPalettes[checkColor]
     : getDesignCheckThemeTokens(checkColor);
@@ -314,7 +321,7 @@ export function getThemeTokens(mode: DesignMode, checkColor: DesignPaletteId = '
 }
 
 export function normalizeChicPattern(pattern: unknown): ChicPattern {
-  if (pattern === 'plain' || pattern === 'dot' || pattern === 'checkLavenderSatin' || pattern === 'checkBeigeNoir' || pattern === 'checkMauveFrame') return pattern;
+  if (pattern === 'plain' || pattern === 'dot' || pattern === 'heart' || pattern === 'checkLavenderSatin' || pattern === 'checkBeigeNoir' || pattern === 'checkMauveFrame' || pattern === 'stationery' || pattern === 'botanicalBackground' || pattern === 'ocean' || pattern === 'nightSky') return pattern;
   if (pattern === 'floral' || pattern === 'floralSoft' || pattern === 'floralSeasonal' || pattern === 'floralDark') return pattern;
   if (pattern === 'check') return 'checkLavenderSatin';
   return 'plain';

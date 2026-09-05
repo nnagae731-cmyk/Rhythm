@@ -5,12 +5,12 @@ const path = require('path');
 const APP_GROUP = 'group.app.rhythm.daily';
 const TARGET_NAME = 'RhythmWidget';
 const BUNDLE_IDENTIFIER = 'app.rhythm.daily.widget';
+const MIN_IOS_VERSION = '17.0';
 const TEMPLATE_FILES = [
   'RhythmWidget.swift',
   'RhythmWidgetBundle.swift',
   'RhythmWidget-Info.plist',
   'RhythmWidget.entitlements',
-  'RhythmWidgetConfiguration.intentdefinition',
   'RhythmLiveActivity.swift',
   'RhythmLiveActivityAttributes.swift',
 ];
@@ -201,17 +201,28 @@ function configureWidgetBuildConfigurations(project, target, appConfig) {
     // are propagated without hardcoding the current release numbers.
     buildSettings.MARKETING_VERSION = appVersion;
     buildSettings.CURRENT_PROJECT_VERSION = appBuildNumber;
-    buildSettings.IPHONEOS_DEPLOYMENT_TARGET = '15.1';
+    buildSettings.IPHONEOS_DEPLOYMENT_TARGET = MIN_IOS_VERSION;
     buildSettings.APPLICATION_EXTENSION_API_ONLY = 'YES';
     buildSettings.TARGETED_DEVICE_FAMILY = '1';
     buildSettings.SWIFT_VERSION = '5.0';
-    // Generate the iOS 15-compatible SiriKit configuration intent used by
-    // IntentConfiguration. This keeps the edit screen available without
-    // requiring the iOS 17-only AppIntents framework.
-    buildSettings.INTENTS_CODEGEN_LANGUAGE = 'Swift';
     // Keep the Widget extension's Swift module distinct from the local
     // RhythmWidget Expo module pod imported by ExpoModulesProvider.
     buildSettings.PRODUCT_MODULE_NAME = 'RhythmWidgetExtension';
+  });
+}
+
+function configureMainAppBuildConfigurations(project) {
+  const targets = project.pbxNativeTargetSection();
+  Object.keys(targets).forEach((key) => {
+    if (key.endsWith('_comment')) return;
+    const target = targets[key];
+    if (target?.isa !== 'PBXNativeTarget' || unquoteXcodeValue(target.name) === TARGET_NAME) return;
+    const productType = unquoteXcodeValue(target.productType);
+    if (productType && productType !== 'com.apple.product-type.application') return;
+    getWidgetBuildConfigurations(project, target.buildConfigurationList).forEach(([, configuration]) => {
+      const settings = configuration.buildSettings ?? (configuration.buildSettings = {});
+      settings.IPHONEOS_DEPLOYMENT_TARGET = MIN_IOS_VERSION;
+    });
   });
 }
 
@@ -247,14 +258,11 @@ function ensureWidgetSourceGroup(project) {
 }
 
 function ensureWidgetSourceFiles(project, target) {
-  // Intent definitions are compiled by Xcode's Intent Definition Codegen
-  // when they are part of the target Sources phase (not merely copied as a
-  // resource). Keep the generated configuration type in the same target as
-  // the Widget Swift sources.
+  // Keep the AppIntent configuration source in the same target as the Widget
+  // Swift sources. The retired Intent Definition is intentionally excluded.
   const sourceNames = [
     'RhythmWidget.swift',
     'RhythmWidgetBundle.swift',
-    'RhythmWidgetConfiguration.intentdefinition',
     'RhythmLiveActivity.swift',
     'RhythmLiveActivityAttributes.swift',
   ];
@@ -344,10 +352,9 @@ function ensureWidgetResourceFiles(project, target) {
     resourcePhase = resources[created.uuid] ?? created.buildPhase;
   }
   resourcePhase.files = Array.isArray(resourcePhase.files) ? resourcePhase.files : [];
-  // If a previously generated project placed the intent definition in
-  // Resources, remove that stale build-file entry. It must be compiled via
-  // PBXSourcesBuildPhase for Intent Definition Codegen to emit the Swift
-  // RhythmWidgetConfigurationIntent type.
+  // If a previously generated project placed the retired intent definition in
+  // Resources, remove that stale build-file entry. Widget configuration now
+  // uses the native AppIntent declared in RhythmWidget.swift.
   resourcePhase.files = resourcePhase.files.filter((entry) => {
     const buildFile = buildFiles[entry.value];
     return !buildFile || unquoteXcodeValue(buildFile.fileRef_comment) !== 'RhythmWidgetConfiguration.intentdefinition';
@@ -394,6 +401,7 @@ function addWidgetTarget(project, appConfig) {
   // Apply values directly to the target's configuration list so the settings
   // are attached to the exact PBXNativeTarget used by archive.
   configureWidgetBuildConfigurations(project, target, appConfig);
+  configureMainAppBuildConfigurations(project);
 }
 
 module.exports = function withRhythmWidget(config) {

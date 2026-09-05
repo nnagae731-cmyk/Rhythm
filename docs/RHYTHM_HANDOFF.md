@@ -187,3 +187,56 @@ pnpm typecheck
 - `npx expo export --platform ios`: passed in the preceding implementation batch.
 - Expo Go cannot verify native Rewarded ads or iOS notification prompt behavior;
   those require a Development Build / physical device.
+
+---
+
+# 2026-09-06 Native / Widget build baseline
+
+このセクションを、現在のiOS / Widget Native構成の正式な引き継ぎ基準とする。
+
+## Platform and identifiers
+
+- Main App bundle ID: `app.rhythm.daily`
+- Widget Extension bundle ID: `app.rhythm.daily.widget`
+- Widget executable: `RhythmWidget`
+- App Group: `group.app.rhythm.daily`
+- EAS profile: `development-widget`
+- Main App / Widget minimum iOS: **17.0**
+
+以前の資料にある「Widget deployment target = iOS 15.1」は旧仕様・廃止であり、
+今後の監査、設定確認、Build判定の前提にはしない。現在の正式最低対応iOSは17.0である。
+
+## Widget configuration
+
+- `AppIntentConfiguration` を正式採用する。
+- 旧 `IntentConfiguration` へ戻さない。
+- `RhythmWidgetConfiguration.intentdefinition` はリポジトリ内に残っていてよいが、
+  現在はWidget targetへ追加せず、codegen対象にも含めない。この状態は意図した正式構成であり、
+  Build blockerとして扱わない。
+- AppIntent構成、既存保存値、index互換を維持する。
+
+Color index（変更・再利用禁止）:
+
+`unknown=0`, `monochrome=1`, `cool=2`, `warm=3`, `green=4`, `orange=5`,
+`yellow=6`, `blue=7`, `lightBlue=8`, `pink=9`, `appDefault=10`
+
+Design pattern index:
+
+`appDefault=13`（既存indexは変更・再利用しない）
+
+維持するWidget仕様:
+
+- Small WidgetはVoiceのみ。
+- Monthly WidgetはLargeのみ。
+- `appDefault` / unknown `designPattern` はWidget側で既存 `plain` へfallbackする。
+- Monthlyの年/月表示は `Text(verbatim: "\(month.year)年\(month.month)月")` 相当を維持する。
+- Widget Snapshotの `designCheckColor` は `stored.designCheckColor` を参照する。
+
+## Current EAS build state
+
+記録時点で、ユーザーがEAS Development Buildを `development-widget` profileで実行中である。
+Build resultは **PENDING / RUNNING** と記録し、成功扱いにはしない。完了結果はユーザーから結果が返った後に更新する。
+
+この記録更新では、Appコード、Swift、Config Plugin、`app.json`、`eas.json`、podspec、entitlements、
+IntentDefinition、Widget、Live Activity、通知、Design、StoreKit等の実装・設定を変更していない。
+新しいEAS Build、commit、pushも実行しない。

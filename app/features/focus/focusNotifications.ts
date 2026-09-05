@@ -78,7 +78,7 @@ export async function cancelFocusCompletionNotification(
 
   await Notifications.cancelScheduledNotificationAsync(
     notificationId,
-  );
+  ).catch(() => undefined);
 }
 
 /**
@@ -91,7 +91,7 @@ export async function cancelPendingFocusCompletionNotifications(
   timerId: string,
 ): Promise<void> {
   const pending =
-    await Notifications.getAllScheduledNotificationsAsync();
+    await Notifications.getAllScheduledNotificationsAsync().catch(() => []);
 
   const matches = pending.filter(
     request =>
@@ -104,7 +104,7 @@ export async function cancelPendingFocusCompletionNotifications(
     matches.map(request =>
       Notifications.cancelScheduledNotificationAsync(
         request.identifier,
-      ),
+      ).catch(() => undefined),
     ),
   );
 }

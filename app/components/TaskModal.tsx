@@ -105,6 +105,14 @@ export function TaskModal({ visible, task, templates, savedTemplates, designMode
     setTitle(value);
   };
 
+  // An explicit clock in the title wins over the existing field value. A
+  // daypart (朝/昼/夜) is inference-only, so a time chosen in the details
+  // picker must remain authoritative while the inferred value is the fallback.
+  const resolveScheduledTime = (parsed: SmartTaskParseResult) => {
+    const hasExplicitParsedTime = Boolean(parsed.scheduledTime && parsed.matched.some((value) => /\d/u.test(value)));
+    return hasExplicitParsedTime ? parsed.scheduledTime : scheduledTime || parsed.scheduledTime;
+  };
+
   const save = () => {
     if (saveGuardRef.current) return;
     const clean = title.trim();
@@ -115,25 +123,27 @@ export function TaskModal({ visible, task, templates, savedTemplates, designMode
     // Parse once on submit so quick templates and pasted text are always
     // reflected, while the input path itself remains debounced.
     const parsed = parseSmartTaskInput(title, new Date(), dateKey);
-    const startForRange = parsed.scheduledTime ?? scheduledTime;
+    const resolvedScheduledTime = resolveScheduledTime(parsed);
+    const startForRange = resolvedScheduledTime;
     const endForRange = parsed.endTime ?? scheduledEndTime;
     if (startForRange && endForRange && /^\d{2}:\d{2}$/.test(endForRange) && endForRange <= startForRange) {
       Alert.alert('終了時間を確認してください', '終了時間は開始時間より後にしてください。');
       return;
     }
-    if (parsed.scheduledDate && parsed.scheduledTime && dateForReminder(parsed.scheduledDate, parsed.scheduledTime).getTime() <= Date.now()) {
+    if (parsed.scheduledDate && resolvedScheduledTime && dateForReminder(parsed.scheduledDate, resolvedScheduledTime).getTime() <= Date.now()) {
       Alert.alert('日時を確認してください', '指定した日時が過去になっています。保存しますか？', [{ text: '修正する', style: 'cancel' }, { text: '保存する', onPress: () => saveTask(parsed) }]);
       return;
     }
     saveGuardRef.current = true;
     const parsedReminder = parsed.remindAt ? true : remind;
-    onSave(parsed.title || clean, category, priority, parsedReminder ? parsed.remindDate ?? remindDate : undefined, parsedReminder ? parsed.remindAt ?? time : undefined, hasDeadline ? deadlineDate : undefined, hasDeadline ? deadlineTime : undefined, hasDeadline && deadlineNotify ? deadlineNotifyBefore : undefined, hasDeadline && navigationEnabled, preparationMinutes, travelMinutes, bufferMinutes, parsed.repeatRule ?? repeatRule, nudgeMode, parsed.scheduledDate ?? scheduledDate, parsed.scheduledTime ?? (scheduledTime || undefined), parsed.endTime ?? (scheduledEndTime || undefined), isRoutine, subtasks.filter((item) => item.title.trim()).map((item, index) => ({ ...item, title: item.title.trim(), order: index })));
+    onSave(parsed.title || clean, category, priority, parsedReminder ? parsed.remindDate ?? remindDate : undefined, parsedReminder ? parsed.remindAt ?? time : undefined, hasDeadline ? deadlineDate : undefined, hasDeadline ? deadlineTime : undefined, hasDeadline && deadlineNotify ? deadlineNotifyBefore : undefined, hasDeadline && navigationEnabled, preparationMinutes, travelMinutes, bufferMinutes, parsed.repeatRule ?? repeatRule, nudgeMode, parsed.scheduledDate ?? scheduledDate, resolvedScheduledTime ?? undefined, parsed.endTime ?? (scheduledEndTime || undefined), isRoutine, subtasks.filter((item) => item.title.trim()).map((item, index) => ({ ...item, title: item.title.trim(), order: index })));
     requestAnimationFrame(() => { saveGuardRef.current = false; });
   };
 
   const saveTask = (parsed: SmartTaskParseResult) => {
     const clean = title.trim();
-    onSave(parsed.title || clean, category, priority, parsed.remindAt ? parsed.remindDate ?? remindDate : remind ? remindDate : undefined, parsed.remindAt ? parsed.remindAt : remind ? time : undefined, hasDeadline ? deadlineDate : undefined, hasDeadline ? deadlineTime : undefined, hasDeadline && deadlineNotify ? deadlineNotifyBefore : undefined, hasDeadline && navigationEnabled, preparationMinutes, travelMinutes, bufferMinutes, parsed.repeatRule ?? repeatRule, nudgeMode, parsed.scheduledDate ?? scheduledDate, parsed.scheduledTime ?? (scheduledTime || undefined), parsed.endTime ?? (scheduledEndTime || undefined), isRoutine, subtasks.filter((item) => item.title.trim()).map((item, index) => ({ ...item, title: item.title.trim(), order: index })));
+    const resolvedScheduledTime = resolveScheduledTime(parsed);
+    onSave(parsed.title || clean, category, priority, parsed.remindAt ? parsed.remindDate ?? remindDate : remind ? remindDate : undefined, parsed.remindAt ? parsed.remindAt : remind ? time : undefined, hasDeadline ? deadlineDate : undefined, hasDeadline ? deadlineTime : undefined, hasDeadline && deadlineNotify ? deadlineNotifyBefore : undefined, hasDeadline && navigationEnabled, preparationMinutes, travelMinutes, bufferMinutes, parsed.repeatRule ?? repeatRule, nudgeMode, parsed.scheduledDate ?? scheduledDate, resolvedScheduledTime ?? undefined, parsed.endTime ?? (scheduledEndTime || undefined), isRoutine, subtasks.filter((item) => item.title.trim()).map((item, index) => ({ ...item, title: item.title.trim(), order: index })));
   };
 
   const addSubtask = () => {

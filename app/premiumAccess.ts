@@ -8,6 +8,7 @@ export type PremiumFeature =
   | 'full_history'
   | 'history_search'
   | 'chic_dot'
+  | 'chic_heart'
   | 'chic_floral'
   | 'chic_check_lavender_satin'
   | 'chic_check_beige_noir'
@@ -33,14 +34,16 @@ export function getEffectiveNudgeMode<T extends 'once' | 'repeat' | 'strong'>(ti
   return tier === 'premium' ? mode : 'once';
 }
 
-export function getEffectiveChicPattern<T extends 'plain' | 'floral' | 'floralSoft' | 'floralSeasonal' | 'floralDark' | 'dot' | 'checkLavenderSatin' | 'checkBeigeNoir' | 'checkMauveFrame'>(tier: PlanTier, pattern: T, designCustomizePurchased = false): T | 'plain' {
+export function getEffectiveChicPattern<T extends 'plain' | 'floral' | 'floralSoft' | 'floralSeasonal' | 'floralDark' | 'dot' | 'heart' | 'checkLavenderSatin' | 'checkBeigeNoir' | 'checkMauveFrame' | 'stationery' | 'botanicalBackground' | 'ocean' | 'nightSky'>(tier: PlanTier, pattern: T, designCustomizePurchased = false): T | 'plain' {
   if (pattern === 'plain') return pattern;
   return tier === 'premium' || designCustomizePurchased ? pattern : 'plain';
 }
 
-export function getChicPatternFeatureId(pattern: 'floral' | 'floralSoft' | 'floralSeasonal' | 'floralDark' | 'dot' | 'checkLavenderSatin' | 'checkBeigeNoir' | 'checkMauveFrame'): PremiumFeature {
+export function getChicPatternFeatureId(pattern: 'floral' | 'floralSoft' | 'floralSeasonal' | 'floralDark' | 'dot' | 'heart' | 'checkLavenderSatin' | 'checkBeigeNoir' | 'checkMauveFrame' | 'stationery' | 'botanicalBackground' | 'ocean' | 'nightSky'): PremiumFeature {
+  if (pattern === 'stationery' || pattern === 'botanicalBackground' || pattern === 'ocean' || pattern === 'nightSky') return 'chic_floral';
   if (pattern === 'floral' || pattern === 'floralSoft' || pattern === 'floralSeasonal' || pattern === 'floralDark') return 'chic_floral';
   if (pattern === 'dot') return 'chic_dot';
+  if (pattern === 'heart') return 'chic_heart';
   if (pattern === 'checkBeigeNoir') return 'chic_check_beige_noir';
   if (pattern === 'checkMauveFrame') return 'chic_check_mauve_frame';
   return 'chic_check_lavender_satin';
