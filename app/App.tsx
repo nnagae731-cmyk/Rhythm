@@ -315,11 +315,8 @@ function isRegularVisibleTask(task: Task) {
   return task.isRoutine !== true && task.status !== 'skipped';
 }
 
-function isOccurrenceAfterNow(scheduledDate: string, scheduledTime: string | undefined, now: Date) {
-  const today = dateKey(now);
-  if (scheduledDate > today) return true;
-  if (scheduledDate < today) return false;
-  return Boolean(scheduledTime && dateForReminder(scheduledDate, scheduledTime).getTime() > now.getTime());
+function isOccurrenceAfterToday(scheduledDate: string, now: Date) {
+  return scheduledDate > dateKey(now);
 }
 
 function advanceDateBySteps(value: string | undefined, rule: RepeatRule, steps: number) {
@@ -328,10 +325,10 @@ function advanceDateBySteps(value: string | undefined, rule: RepeatRule, steps: 
   return current;
 }
 
-function nextFutureOccurrence(startDate: string | undefined, rule: RepeatRule, scheduledTime: string | undefined, now: Date) {
+function nextFutureOccurrence(startDate: string | undefined, rule: RepeatRule, _scheduledTime: string | undefined, now: Date) {
   let candidate = advanceDateValue(startDate ?? dateKey(now), rule);
   let steps = 1;
-  for (let index = 0; index < 5000 && !isOccurrenceAfterNow(candidate, scheduledTime, now); index += 1) {
+  for (let index = 0; index < 5000 && !isOccurrenceAfterToday(candidate, now); index += 1) {
     const next = advanceDateValue(candidate, rule);
     if (next === candidate) break;
     candidate = next;
@@ -2071,10 +2068,12 @@ export default function App() {
   const restoreTaskById = React.useCallback((taskId: string, source: 'manual' | 'notification' = 'manual') => {
     const target = tasksRef.current.find((task) => task.id === taskId);
     if (!target || (!target.done && getTaskStatus(target) !== 'skipped')) return;
+    const wasSkipped = getTaskStatus(target) === 'skipped';
+    const wasCompleted = target.done === true && !wasSkipped;
     const next = tasksRef.current.map((task) => task.id === taskId ? { ...task, done: false, status: 'active' as const, skippedAt: undefined, completedAt: undefined } : task);
     tasksRef.current = next;
     setTasks(next);
-    if (target.routineId && (!target.routineEndedAt || new Date(target.completedAt!).getTime() <= new Date(target.routineEndedAt).getTime())) {
+    if (wasCompleted && target.routineId && target.completedAt && (!target.routineEndedAt || new Date(target.completedAt).getTime() <= new Date(target.routineEndedAt).getTime())) {
       recordBehaviorEvent(createTaskCompletionRevertedBehaviorEvent({
         taskId: target.id,
         taskTitle: target.title,
@@ -2083,9 +2082,9 @@ export default function App() {
         source,
         routineId: target.routineId,
         routineTitle: target.title,
-        routineTargetDate: dateKey(target.completedAt!),
+        routineTargetDate: dateKey(target.completedAt),
       }));
-      recordBehaviorEvent(createRoutineStateChangedBehaviorEvent({ taskId: target.id, routineId: target.routineId, routineTitle: target.title, occurredAt: new Date(), targetDate: dateKey(target.completedAt!), completed: false, source }));
+      recordBehaviorEvent(createRoutineStateChangedBehaviorEvent({ taskId: target.id, routineId: target.routineId, routineTitle: target.title, occurredAt: new Date(), targetDate: dateKey(target.completedAt), completed: false, source }));
     }
   }, [recordBehaviorEvent]);
 
@@ -4491,13 +4490,13 @@ export default function App() {
               onDuplicate={(task) => {
                 if (firstRunDemoActive) {
                   const duplicateId = `${task.id}-copy`;
-                  updateGuideDemoTasks((current) => [{ ...task, id: duplicateId, title: `${task.title}（コピー）`, done: false, status: 'active', completedAt: undefined }, ...current]);
+                  updateGuideDemoTasks((current) => [{ ...task, id: duplicateId, createdAt: new Date().toISOString(), title: `${task.title}（コピー）`, done: false, status: 'active', completedAt: undefined }, ...current]);
                   return;
                 }
                 // 通知は複製せず、複製後にユーザーが改めて設定する。
                 // 過去のルーティンIDも引き継がない独立したタスクにする。
                  const duplicateId = `${Date.now()}-${Math.random().toString(16).slice(2)}-copy`;
-                 const duplicate = { ...task, id: duplicateId, title: `${task.title}（コピー）`, done: false, status: 'active' as const, skippedAt: undefined, completedAt: undefined, isRoutine: false, routineId: undefined, routineEndedAt: undefined, remindDate: undefined, remindAt: undefined, deadlineNotifyBefore: undefined, nudgeMode: 'once' as NudgeMode, subtasks: task.subtasks?.map((item, index) => ({ ...item, id: `${duplicateId}-subtask-${index}-${Math.random().toString(16).slice(2)}`, done: false, order: index })), listItems: task.listItems?.map((item, index) => ({ ...item, id: `${duplicateId}-list-${index}-${Math.random().toString(16).slice(2)}`, checked: false, order: index })) };
+                 const duplicate = { ...task, id: duplicateId, createdAt: new Date().toISOString(), title: `${task.title}（コピー）`, done: false, status: 'active' as const, skippedAt: undefined, completedAt: undefined, isRoutine: false, routineId: undefined, routineEndedAt: undefined, remindDate: undefined, remindAt: undefined, deadlineNotifyBefore: undefined, nudgeMode: 'once' as NudgeMode, subtasks: task.subtasks?.map((item, index) => ({ ...item, id: `${duplicateId}-subtask-${index}-${Math.random().toString(16).slice(2)}`, done: false, order: index })), listItems: task.listItems?.map((item, index) => ({ ...item, id: `${duplicateId}-list-${index}-${Math.random().toString(16).slice(2)}`, checked: false, order: index })) };
                 tasksRef.current = [duplicate, ...tasksRef.current];
                 setTasks(tasksRef.current);
               }}

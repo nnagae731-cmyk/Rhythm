@@ -102,17 +102,14 @@ export function advanceDateValue(value: string | undefined, rule: RepeatRule) {
   return dateKey(base);
 }
 
-function isOccurrenceAfterNow(scheduledDate: string, scheduledTime: string | undefined, now: Date) {
-  const today = dateKey(now);
-  if (scheduledDate > today) return true;
-  if (scheduledDate < today) return false;
-  return Boolean(scheduledTime && dateForReminder(scheduledDate, scheduledTime).getTime() > now.getTime());
+function isOccurrenceAfterToday(scheduledDate: string, now: Date) {
+  return scheduledDate > dateKey(now);
 }
 
-function nextFutureOccurrence(startDate: string | undefined, rule: RepeatRule, scheduledTime: string | undefined, now: Date) {
+function nextFutureOccurrence(startDate: string | undefined, rule: RepeatRule, _scheduledTime: string | undefined, now: Date) {
   let candidate = advanceDateValue(startDate ?? dateKey(now), rule);
   let steps = 1;
-  for (let index = 0; index < 5000 && !isOccurrenceAfterNow(candidate, scheduledTime, now); index += 1) {
+  for (let index = 0; index < 5000 && !isOccurrenceAfterToday(candidate, now); index += 1) {
     const next = advanceDateValue(candidate, rule);
     if (next === candidate) break;
     candidate = next;
