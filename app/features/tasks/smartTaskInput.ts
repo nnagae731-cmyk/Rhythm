@@ -133,7 +133,8 @@ export function parseSmartTaskInput(input: string, now = new Date(), dateKey: (d
   }
 
   const repeat = original.match(/(毎日|毎朝|毎晩|平日|毎週|毎月)(?:の)?(?:(日|月|火|水|木|金|土)曜日?)?/u);
-  if (repeat) {
+  const unsupportedRepeat = /(?:隔週|\d+\s*週間?ごと|週\s*[2-9]\d*\s*回|月\s*[2-9]\d*\s*回|毎月\s*第\s*\d+|毎週\s*[日月火水木金土](?:曜日?)?|[月火水木金土日]{2,}(?:曜日?)?)/u.test(original);
+  if (repeat && !unsupportedRepeat && !repeat[2]) {
     repeatRule = ['毎日', '毎朝', '毎晩'].includes(repeat[1]!) ? 'daily' : repeat[1] === '平日' ? 'weekdays' : repeat[1] === '毎月' ? 'monthly' : 'weekly';
     consume(repeat[0]);
   }

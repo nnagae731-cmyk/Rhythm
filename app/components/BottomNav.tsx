@@ -5,7 +5,7 @@ import { ChicThemePalette, getThemeTokens } from '../theme';
 import { Screen, ThemeMode } from '../types';
 
 export function BottomNav({ screen, designMode, chicPalette, onChange }: { screen: Screen; designMode: ThemeMode; chicPalette?: ChicThemePalette; onChange: (screen: Screen) => void }) {
-  const theme = getThemeTokens(designMode);
+  const theme = getThemeTokens(designMode, chicPalette?.id ?? 'cool');
   const designColors = designMode === 'chic' ? chicPalette : undefined;
   const items: { id: Screen; icon: string; label: string }[] = [
     { id: 'home', icon: '✓', label: 'ToDo' },

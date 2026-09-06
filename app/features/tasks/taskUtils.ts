@@ -102,33 +102,71 @@ export function advanceDateValue(value: string | undefined, rule: RepeatRule) {
   return dateKey(base);
 }
 
+function isOccurrenceAfterNow(scheduledDate: string, scheduledTime: string | undefined, now: Date) {
+  const today = dateKey(now);
+  if (scheduledDate > today) return true;
+  if (scheduledDate < today) return false;
+  return Boolean(scheduledTime && dateForReminder(scheduledDate, scheduledTime).getTime() > now.getTime());
+}
+
+function nextFutureOccurrence(startDate: string | undefined, rule: RepeatRule, scheduledTime: string | undefined, now: Date) {
+  let candidate = advanceDateValue(startDate ?? dateKey(now), rule);
+  let steps = 1;
+  for (let index = 0; index < 5000 && !isOccurrenceAfterNow(candidate, scheduledTime, now); index += 1) {
+    const next = advanceDateValue(candidate, rule);
+    if (next === candidate) break;
+    candidate = next;
+    steps += 1;
+  }
+  return { scheduledDate: candidate, steps };
+}
+
+function advanceDateBySteps(value: string | undefined, rule: RepeatRule, steps: number) {
+  let current = value;
+  for (let index = 0; index < steps; index += 1) current = advanceDateValue(current, rule);
+  return current;
+}
+
+function repeatSeriesKey(task: Task) {
+  return task.routineId ? `routine:${task.routineId}` : `repeat:${task.createdAt ?? task.id}`;
+}
+
 export type TaskCompletionResult = { tasks: Task[]; newlyCompleted: Task[] };
 
 export function completeTasksWithRepeats(current: Task[], ids: string[]) {
   const completedAt = new Date().toISOString();
+  const now = new Date();
   const nextTasks: Task[] = [];
   const updated = current.map((task) => {
-    if (!ids.includes(task.id) || task.done) return task;
+    if (!ids.includes(task.id) || task.done || task.status === 'skipped') return task;
     const rule = task.repeatRule ?? 'none';
-    if (rule !== 'none') {
-      nextTasks.push({
+    if (rule !== 'none' && !(task.routineId && task.routineEndedAt)) {
+      const { scheduledDate, steps } = nextFutureOccurrence(task.scheduledDate, rule, task.scheduledTime, now);
+      const seriesKey = repeatSeriesKey(task);
+      const alreadyExists = current.some((candidate) => candidate.id !== task.id && repeatSeriesKey(candidate) === seriesKey && (candidate.repeatRule ?? 'none') === rule && candidate.scheduledDate === scheduledDate)
+        || nextTasks.some((candidate) => repeatSeriesKey(candidate) === seriesKey && (candidate.repeatRule ?? 'none') === rule && candidate.scheduledDate === scheduledDate);
+      if (!alreadyExists) nextTasks.push({
         ...task,
         id: `${Date.now()}-${task.id}-${Math.random().toString(16).slice(2)}`,
+        createdAt: task.createdAt ?? task.id,
         done: false,
+        status: 'active',
+        skippedAt: undefined,
         completedAt: undefined,
-        deadlineDate: task.deadlineDate ? advanceDateValue(task.deadlineDate, rule) : undefined,
-        remindDate: task.remindDate ? advanceDateValue(task.remindDate, rule) : undefined,
-        scheduledDate: advanceDateValue(task.scheduledDate ?? dateKey(), rule),
+        deadlineDate: task.deadlineDate ? advanceDateBySteps(task.deadlineDate, rule, steps) : undefined,
+        remindDate: task.remindDate ? advanceDateBySteps(task.remindDate, rule, steps) : undefined,
+        scheduledDate,
         subtasks: task.subtasks?.map((item, index) => ({ ...item, order: index, done: false })),
+        listItems: task.listItems?.map((item, index) => ({ ...item, id: `${Date.now()}-${task.id}-list-${index}-${Math.random().toString(16).slice(2)}`, order: index, checked: false })),
       });
     }
-    return { ...task, done: true, completedAt, subtasks: task.subtasks?.map((item) => ({ ...item, done: true })) };
+    return { ...task, done: true, status: 'completed' as const, skippedAt: undefined, completedAt, subtasks: task.subtasks?.map((item) => ({ ...item, done: true })) };
   });
   return [...nextTasks, ...updated];
 }
 
 export function completeTasksAndCollectEvents(current: Task[], ids: string[]): TaskCompletionResult {
-  const eligibleIds = new Set(current.filter((task) => ids.includes(task.id) && !task.done).map((task) => task.id));
+  const eligibleIds = new Set(current.filter((task) => ids.includes(task.id) && !task.done && task.status !== 'skipped').map((task) => task.id));
   if (eligibleIds.size === 0) return { tasks: current, newlyCompleted: [] };
   const tasks = completeTasksWithRepeats(current, ids);
   return {

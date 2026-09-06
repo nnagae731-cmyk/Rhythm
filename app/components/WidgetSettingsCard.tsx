@@ -35,6 +35,7 @@ type WidgetSettingsCardProps = {
   entitlementsResolved?: boolean;
   widgetEntitlementOverride?: WidgetEntitlementOverride;
   onWidgetEntitlementOverrideChange?: (override: WidgetEntitlementOverride) => void;
+  onLockedWidget?: (access: 'design' | 'premium') => void;
 };
 
 const displayOptionsByType: Record<WidgetSettings['widgetType'], ReadonlyArray<{ key: WidgetDisplayOption; label: string }>> = {
@@ -61,12 +62,6 @@ const displayOptionsByType: Record<WidgetSettings['widgetType'], ReadonlyArray<{
   voice: [],
   affirmation: [],
 };
-
-const WIDGET_GALLERY_SECTIONS: ReadonlyArray<{ id: 'free' | 'design' | 'premium'; title: string; ids: ReadonlyArray<WidgetSettings['widgetType']> }> = [
-  { id: 'free', title: 'Freeで使える', ids: ['current', 'next', 'voice'] },
-  { id: 'design', title: 'Design Customizeで広がる', ids: ['combined', 'monthly', 'weekly', 'today', 'checklist'] },
-  { id: 'premium', title: 'Premiumでもっと深く', ids: ['current', 'next', 'voice', 'combined', 'monthly', 'weekly', 'today', 'checklist', 'goal', 'affirmation'] },
-];
 
 type WidgetPreviewSize = 'small' | 'medium' | 'large';
 
@@ -118,7 +113,7 @@ function WidgetTypePreview({ type, style, photoUri, cutoutUri, photoLayout = 'ba
   </View>;
 }
 
-export function WidgetSettingsCard({ settings, onChange, onPickPhoto, onUnlockWidgetPhoto, onRemoveWidgetPhotoBackground, widgetPhotoUnlock, onRemoveAffirmationPhoto, colors, styles, designPattern, designCheckColor, PatternDecor, planTier = 'free', designCustomizePurchased = false, entitlementsResolved = true, widgetEntitlementOverride = 'actual', onWidgetEntitlementOverrideChange }: WidgetSettingsCardProps) {
+export function WidgetSettingsCard({ settings, onChange, onPickPhoto, onUnlockWidgetPhoto, onRemoveWidgetPhotoBackground, widgetPhotoUnlock, onRemoveAffirmationPhoto, colors, styles, designPattern, designCheckColor, PatternDecor, planTier = 'free', designCustomizePurchased = false, entitlementsResolved = true, widgetEntitlementOverride = 'actual', onWidgetEntitlementOverrideChange, onLockedWidget }: WidgetSettingsCardProps) {
   const { width: windowWidth } = useWindowDimensions();
   const galleryWidth = Math.min(windowWidth - 44, 560);
   const cardWidth = Math.max(210, Math.round(galleryWidth * 0.8));
@@ -140,11 +135,9 @@ export function WidgetSettingsCard({ settings, onChange, onPickPhoto, onUnlockWi
   const selectedPhotoCustomizationAllowed = effectivePlanTier === 'premium' || effectiveDesignCustomizePurchased || selectedPhotoUnlockActive;
   const remainingPhotoUnlockDays = widgetPhotoUnlock?.expiresAt ? Math.max(1, Math.ceil((new Date(widgetPhotoUnlock.expiresAt).getTime() - Date.now()) / (24 * 60 * 60 * 1000))) : 0;
   const selectedPreviewSizes = selectedWidget ? selectedWidget.sizes.split('/').map((value) => value.trim().toUpperCase()).filter((value): value is 'S' | 'M' | 'L' => value === 'S' || value === 'M' || value === 'L').map((value) => value === 'S' ? 'small' as const : value === 'M' ? 'medium' as const : 'large' as const) : [];
-  const visibleSection = effectivePlanTier === 'premium'
-    ? WIDGET_GALLERY_SECTIONS[2]!
-    : effectiveDesignCustomizePurchased
-      ? { ...WIDGET_GALLERY_SECTIONS[1]!, ids: [...WIDGET_GALLERY_SECTIONS[0]!.ids, ...WIDGET_GALLERY_SECTIONS[1]!.ids] }
-      : WIDGET_GALLERY_SECTIONS[0]!;
+  // Keep all Widget kinds visible in the in-app catalogue. Entitlements
+  // control the lock state and purchase route, not catalogue visibility.
+  const visibleWidgetIds = WIDGET_TYPE_OPTIONS.map((item) => item.id);
   React.useEffect(() => {
     if (selectedPreviewSizes.length > 0 && !selectedPreviewSizes.includes(selectedPreviewSize)) setSelectedPreviewSize(selectedPreviewSizes[0] ?? 'medium');
   }, [selectedWidgetType, selectedPreviewSizes.join('|'), selectedPreviewSize]);
@@ -183,15 +176,15 @@ export function WidgetSettingsCard({ settings, onChange, onPickPhoto, onUnlockWi
       <Text style={[styles.settingsTitle, { color: colors.primaryText }]}>Widgetギャラリー</Text>
       {!entitlementsResolved ? <Text style={{ color: colors.secondaryText, fontSize: 11, marginTop: 14 }}>利用状況を確認中…</Text> : <View style={{ marginTop: 14 }}>
         {__DEV__ && <View style={{ marginBottom: 12, padding: 10, borderRadius: 11, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.screenBackground }}><Text style={{ color: colors.secondaryText, fontSize: 10, fontWeight: '800' }}>開発用・Widget権限確認</Text><View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 7 }}>{([{ id: 'actual', label: '実際の購入状態' }, { id: 'free', label: 'Freeとして確認' }, { id: 'design', label: 'Design Customizeとして確認' }, { id: 'premium', label: 'Premiumとして確認' }] as const).map((item) => <Pressable key={item.id} accessibilityRole="button" onPress={() => onWidgetEntitlementOverrideChange?.(item.id)} style={{ paddingHorizontal: 8, paddingVertical: 6, borderRadius: 999, borderWidth: 1, borderColor: widgetEntitlementOverride === item.id ? colors.primaryAccent : colors.border, backgroundColor: widgetEntitlementOverride === item.id ? colors.softAccent : colors.surface }}><Text style={{ color: widgetEntitlementOverride === item.id ? colors.primaryAccent : colors.secondaryText, fontSize: 10, fontWeight: '800' }}>{item.label}</Text></Pressable>)}</View></View>}
-        <View style={{ flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', gap: 8 }}><Text style={{ color: colors.primaryText, fontSize: 14, fontWeight: '900' }}>{visibleSection.title}</Text>{visibleSection.id === 'premium' && <Text style={{ color: colors.secondaryText, fontSize: 10, fontWeight: '600' }}>Premiumなら10種類すべて利用できます</Text>}</View>
+        <View style={{ flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', gap: 8 }}><Text style={{ color: colors.primaryText, fontSize: 14, fontWeight: '900' }}>Widgetギャラリー</Text><Text style={{ color: colors.secondaryText, fontSize: 10, fontWeight: '600' }}>全10種類</Text></View>
         <ScrollView horizontal nestedScrollEnabled directionalLockEnabled decelerationRate="fast" snapToInterval={cardWidth + 10} snapToAlignment="start" showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 10, paddingLeft: 2, paddingRight: 12 }} style={{ marginTop: 9 }}>
-          {visibleSection.ids.map((id) => {
+          {visibleWidgetIds.map((id) => {
             const option = WIDGET_TYPE_OPTIONS.find((item) => item.id === id);
             if (!option) return null;
             const available = canUseWidget(option.access);
             const customization = getWidgetCustomization(settings, option.id);
-            return <Pressable key={option.id} accessibilityRole="button" accessibilityLabel={`${option.label}。${option.description}。対応サイズ ${option.sizes}。${accessLabel(option.access)}${available ? '' : '。ロック中'}。タップして写真設定`} onPress={() => setSelectedWidgetType(option.id)} style={{ width: cardWidth, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface, borderRadius: 15, padding: 10 }}>
-              <WidgetTypePreview type={option.id} style={settings.style} photoUri={customization.photoUri} cutoutUri={customization.cutoutUri} colors={colors} designPattern={designPattern} designCheckColor={designCheckColor} PatternDecor={PatternDecor} previewSize={option.id === 'monthly' ? 'large' : undefined} />
+            return <Pressable key={option.id} accessibilityRole="button" accessibilityLabel={`${option.label}。${option.description}。対応サイズ ${option.sizes}。${accessLabel(option.access)}${available ? '' : '。ロック中'}`} onPress={() => { if (!available) { onLockedWidget?.(option.access === 'premium' ? 'premium' : 'design'); return; } setSelectedWidgetType(option.id); }} style={{ width: cardWidth, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface, borderRadius: 15, padding: 10 }}>
+              <WidgetTypePreview type={option.id} style={settings.style} photoUri={customization.photoUri} cutoutUri={customization.cutoutUri} photoLayout={customization.photoLayout} colors={colors} designPattern={designPattern} designCheckColor={designCheckColor} PatternDecor={PatternDecor} previewSize={option.id === 'monthly' ? 'large' : undefined} />
               <View style={{ paddingHorizontal: 2, paddingTop: 10 }}>
                 <Text style={{ color: colors.primaryText, fontSize: 15, lineHeight: 20, fontWeight: '900' }}>{option.label}</Text>
                 <Text numberOfLines={2} style={{ color: colors.secondaryText, fontSize: 11, lineHeight: 16, marginTop: 3 }}>{option.description}</Text>
@@ -209,7 +202,7 @@ export function WidgetSettingsCard({ settings, onChange, onPickPhoto, onUnlockWi
               <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}><View style={{ flex: 1 }}><Text style={{ color: colors.primaryText, fontSize: 18, fontWeight: '900' }}>{selectedWidget.label}</Text><Text style={{ color: colors.secondaryText, fontSize: 11, marginTop: 3 }}>このWidgetだけの写真とレイアウト</Text></View><Pressable accessibilityRole="button" accessibilityLabel="閉じる" onPress={() => setSelectedWidgetType(null)} hitSlop={10}><Text style={{ color: colors.secondaryText, fontSize: 22 }}>×</Text></Pressable></View>
               {!selectedAvailable ? <View style={{ marginTop: 16, padding: 14, borderRadius: 13, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.screenBackground }}><Text style={{ color: colors.primaryText, fontSize: 13, fontWeight: '800' }}>このWidgetは現在ロックされています</Text><Text style={{ color: colors.secondaryText, fontSize: 11, lineHeight: 17, marginTop: 5 }}>{selectedWidget.access === 'premium' ? 'Premiumで利用できます。' : 'Design Customizeで利用できます。'}</Text></View> : <>
               {selectedPreviewSizes.length > 1 && <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7, marginTop: 12 }}><Text style={{ color: colors.secondaryText, fontSize: 11, fontWeight: '800' }}>Preview</Text>{selectedPreviewSizes.map((size) => <Pressable key={size} onPress={() => setSelectedPreviewSize(size)} style={{ minWidth: 34, paddingVertical: 6, paddingHorizontal: 8, borderRadius: 999, borderWidth: 1, borderColor: selectedPreviewSize === size ? colors.primaryAccent : colors.border, backgroundColor: selectedPreviewSize === size ? colors.softAccent : colors.surface, alignItems: 'center' }}><Text style={{ color: selectedPreviewSize === size ? colors.primaryAccent : colors.secondaryText, fontSize: 10, fontWeight: '800' }}>{size === 'small' ? 'S' : size === 'medium' ? 'M' : 'L'}</Text></Pressable>)}</View>}
-              <WidgetTypePreview type={selectedWidget.id} style="photo" photoUri={selectedCustomization.photoUri} cutoutUri={selectedCustomization.cutoutUri} photoLayout={selectedCustomization.photoLayout} colors={colors} designPattern={designPattern} designCheckColor={designCheckColor} PatternDecor={PatternDecor} previewSize={selectedWidget.id === 'monthly' ? 'large' : selectedPreviewSize} />
+              <WidgetTypePreview type={selectedWidget.id} style={settings.style} photoUri={selectedCustomization.photoUri} cutoutUri={selectedCustomization.cutoutUri} photoLayout={selectedCustomization.photoLayout} colors={colors} designPattern={designPattern} designCheckColor={designCheckColor} PatternDecor={PatternDecor} previewSize={selectedWidget.id === 'monthly' ? 'large' : selectedPreviewSize} />
               <Text style={{ color: colors.secondaryText, fontSize: 12, fontWeight: '800', marginTop: 14 }}>写真</Text>
               {effectivePlanTier === 'free' && !effectiveDesignCustomizePurchased && !selectedPhotoUnlockActive && <View style={{ marginTop: 8, padding: 10, borderRadius: 10, backgroundColor: colors.screenBackground, borderWidth: 1, borderColor: colors.border }}><Text style={{ color: colors.secondaryText, fontSize: 10, lineHeight: 15 }}>{widgetPhotoUnlockActive ? '別のFree Widgetで写真利用中です。' : '広告を1回見ると、このWidgetで写真を7日間使えます。'}</Text>{!widgetPhotoUnlockActive && onUnlockWidgetPhoto ? <Pressable accessibilityRole="button" onPress={requestSelectedWidgetPhotoUnlock} style={{ marginTop: 8, minHeight: 36, paddingHorizontal: 10, borderRadius: 9, backgroundColor: colors.softAccent, alignItems: 'center', justifyContent: 'center' }}><Text style={{ color: colors.primaryAccent, fontSize: 11, fontWeight: '800' }}>広告を見て7日間使う</Text></Pressable> : null}</View>}
               {selectedPhotoUnlockActive && <Text style={{ color: colors.primaryAccent, fontSize: 10, fontWeight: '800', marginTop: 7 }}>広告で写真利用中・あと{remainingPhotoUnlockDays}日</Text>}

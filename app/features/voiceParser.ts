@@ -63,18 +63,22 @@ const singleDateWords = /(?:今日|きょう|明日|あした|明後日|あさ�
 /** Detect recurring language without treating a one-off date as a routine. */
 export function detectRoutineCandidate(input: string) {
   const value = input.trim();
-  const recurringDayPhrase = value.replace(/毎週\s*[日月火水木金土](?:曜日?)?/u, '');
+  // The current Task schema cannot represent selected weekdays or a
+  // multi-occurrence interval. Keep these as a routine candidate so the
+  // confirmation form can ask for a supported cadence, but never guess one.
+  const unsupported = /(?:隔週|\d+\s*週間?ごと|週\s*[2-9]\d*\s*回|月\s*[2-9]\d*\s*回|毎月\s*第\s*\d+|毎週\s*[日月火水木金土](?:曜日?)?|[月火水木金土日]{2,}(?:曜日?)?)/u.test(value);
   const recurring = /毎日|毎朝|毎晩|毎夜|毎週|毎月|平日|休日|毎食後|週\s*\d+\s*回|1日\s*\d+\s*回/u.test(value)
     || /[月火水木金土日]{2,}(?:曜日?)?/u.test(value);
-  const contextRoutine = /寝る前|朝起きたら/u.test(value) && !singleDateWords.test(recurringDayPhrase);
-  return recurring || contextRoutine;
+  const contextRoutine = /寝る前|朝起きたら/u.test(value) && !singleDateWords.test(value);
+  return recurring || contextRoutine || unsupported;
 }
 
 export function detectRoutineRepeatRule(input: string, fallback?: RepeatRule) {
+  if (/(?:隔週|\d+\s*週間?ごと|週\s*[2-9]\d*\s*回|月\s*[2-9]\d*\s*回|毎月\s*第\s*\d+|毎週\s*[日月火水木金土](?:曜日?)?|[月火水木金土日]{2,}(?:曜日?)?)/u.test(input)) return undefined;
   if (/毎月/u.test(input)) return 'monthly' as RepeatRule;
   if (/平日/u.test(input)) return 'weekdays' as RepeatRule;
-  if (/毎週|休日|週\s*\d+\s*回|[月火水木金土日]{2,}(?:曜日?)/u.test(input)) return 'weekly' as RepeatRule;
-  if (/毎日|毎朝|毎晩|毎夜|毎食後|1日\s*\d+\s*回/u.test(input)) return 'daily' as RepeatRule;
+  if (/毎週|休日|週\s*1\s*回/u.test(input)) return 'weekly' as RepeatRule;
+  if (/毎日|毎朝|毎晩|毎夜|毎食後|1日\s*1\s*回/u.test(input)) return 'daily' as RepeatRule;
   return fallback;
 }
 

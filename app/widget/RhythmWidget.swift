@@ -474,13 +474,15 @@ struct RhythmWidgetEntry: TimelineEntry {
   let affirmationTextOverride: String?
   let affirmationPhotoFileNameOverride: String?
   let widgetKind: String?
+  let isGallerySample: Bool
 
-  init(date: Date, snapshot: WidgetSnapshot?, affirmationTextOverride: String? = nil, affirmationPhotoFileNameOverride: String? = nil, widgetKind: String? = nil) {
+  init(date: Date, snapshot: WidgetSnapshot?, affirmationTextOverride: String? = nil, affirmationPhotoFileNameOverride: String? = nil, widgetKind: String? = nil, isGallerySample: Bool = false) {
     self.date = date
     self.snapshot = snapshot
     self.affirmationTextOverride = affirmationTextOverride
     self.affirmationPhotoFileNameOverride = affirmationPhotoFileNameOverride
     self.widgetKind = widgetKind
+    self.isGallerySample = isGallerySample
   }
 }
 
@@ -571,6 +573,7 @@ struct RhythmWidgetConfigurationAppIntent: WidgetConfigurationIntent {
             \.$appearance
             \.$designColor
             \.$photoLayout
+            \.$affirmationMode
           }
         } otherwise: {
           Summary {
@@ -596,7 +599,7 @@ typealias RhythmWidgetIntent = RhythmWidgetConfigurationAppIntent
 /// Gallery-only content used to show the finished widget design before a user
 /// has written any data. This is never returned from getTimeline, so sample
 /// values cannot reach a widget installed on the Home Screen.
-private func gallerySampleSnapshot(now: Date = Date(), neutral: Bool = false) -> WidgetSnapshot {
+private func gallerySampleSnapshot(now: Date = Date()) -> WidgetSnapshot {
   var calendar = Calendar.current
   calendar.timeZone = .current
   let today = calendar.startOfDay(for: now)
@@ -675,13 +678,14 @@ private func gallerySampleSnapshot(now: Date = Date(), neutral: Bool = false) ->
       isToday: calendar.isDate(date, inSameDayAs: today)
     )
   }
-  let sampleAppearance = neutral
-    ? WidgetSnapshot.Appearance(style: .mono, monoTemplate: "clean", accentHex: nil, photoFileName: nil, cutoutFileName: nil, photoLayout: nil, designPattern: nil, designCheckColor: nil, designPatternUnlocked: false, affirmationBackgrounds: nil)
-    : WidgetSnapshot.Appearance(style: .color, monoTemplate: "clean", accentHex: "#8EA6FF", photoFileName: nil, cutoutFileName: nil, photoLayout: nil, designPattern: "dot", designCheckColor: "cool", designPatternUnlocked: true, affirmationBackgrounds: ["floral", "dot", "check"])
+  // The Widget gallery sample must be reproducible by a Free user. Keep the
+  // sample data rich, but render it with the neutral Mono Plain treatment;
+  // the installed-widget placeholder uses the same appearance below.
+  let sampleAppearance = WidgetSnapshot.Appearance(style: .mono, monoTemplate: "clean", accentHex: nil, photoFileName: nil, cutoutFileName: nil, photoLayout: nil, designPattern: nil, designCheckColor: nil, designPatternUnlocked: false, affirmationBackgrounds: nil)
   return WidgetSnapshot(
     updatedAt: now,
-    isPremium: neutral ? false : true,
-    designCustomizePurchased: neutral ? false : true,
+    isPremium: false,
+    designCustomizePurchased: false,
     appearance: sampleAppearance,
     widgetCustomizations: nil,
     // Gallery keeps the task preview focused on the task itself; the timer
@@ -768,20 +772,21 @@ struct RhythmWidgetProvider: AppIntentTimelineProvider {
     // Placeholder is also used while an installed widget is being reloaded.
     // Keep it neutral so the gallery's finished cool+dot sample cannot flash
     // on the Home Screen between the old and new configured snapshots.
-    RhythmWidgetEntry(date: .now, snapshot: gallerySampleSnapshot(neutral: true), widgetKind: widgetKind)
+    RhythmWidgetEntry(date: .now, snapshot: gallerySampleSnapshot(), widgetKind: widgetKind, isGallerySample: true)
   }
 
   func snapshot(for configuration: RhythmWidgetIntent, in context: Context) async -> RhythmWidgetEntry {
-    let snapshot = context.isPreview ? gallerySampleSnapshot() : loadSnapshot().map { applying(configuration, to: $0) }
+    let isGallerySample = context.isPreview
+    let snapshot = isGallerySample ? gallerySampleSnapshot() : loadSnapshot().map { applying(configuration, to: $0) }
     let now = Date()
     let resolved = snapshot?.resolved(at: now, kind: widgetKind)
     if widgetKind == "RhythmAffirmationWidget", configuration.affirmationMode == .automatic, let resolved, let affirmations = resolved.affirmations, !affirmations.isEmpty {
       let slotIndex = affirmationSlotIndex(for: now)
       let photoNames = resolved.affirmationPhotoFileNames ?? []
       let photo = photoNames.isEmpty ? nil : photoNames[slotIndex % photoNames.count]
-      return RhythmWidgetEntry(date: now, snapshot: resolved, affirmationTextOverride: affirmations[slotIndex % affirmations.count].text, affirmationPhotoFileNameOverride: photo, widgetKind: widgetKind)
+      return RhythmWidgetEntry(date: now, snapshot: resolved, affirmationTextOverride: affirmations[slotIndex % affirmations.count].text, affirmationPhotoFileNameOverride: photo, widgetKind: widgetKind, isGallerySample: isGallerySample)
     }
-    return RhythmWidgetEntry(date: now, snapshot: resolved, widgetKind: widgetKind)
+    return RhythmWidgetEntry(date: now, snapshot: resolved, widgetKind: widgetKind, isGallerySample: isGallerySample)
   }
 
   func timeline(for configuration: RhythmWidgetIntent, in context: Context) async -> Timeline<RhythmWidgetEntry> {
@@ -986,11 +991,10 @@ private struct WidgetPalette {
     let style = appearance?.style ?? .mono
     let colors = DesignPatternColors(checkColor: appearance?.designCheckColor)
     let accent = colors.accent
-    // A stored photo may intentionally be combined with Mono (paper
-    // treatment + a non-background photo). Design is the only style that
-    // must always suppress stale photo references after a style switch.
-    let photoAvailable = style != .color && ((appearance?.photoFileName.map { loadWidgetPhoto($0) != nil } ?? false) || (appearance?.cutoutFileName.map { loadWidgetPhoto($0) != nil } ?? false))
-    let photoBackground = style != .color && appearance?.photoLayout == "background" && photoAvailable
+    // Stored photo filenames remain available for Photo -> Mono -> Photo
+    // round-trips, but only the effective Photo style may render them.
+    let photoAvailable = style == .photo && ((appearance?.photoFileName.map { loadWidgetPhoto($0) != nil } ?? false) || (appearance?.cutoutFileName.map { loadWidgetPhoto($0) != nil } ?? false))
+    let photoBackground = style == .photo && appearance?.photoLayout == "background" && photoAvailable
     if photoBackground {
       return WidgetPalette(foreground: .white, secondary: .white.opacity(0.82), accent: accent, background: colors.background, divider: colors.background.opacity(0.34), monoTemplate: nil, designPattern: nil, designCheckColor: appearance?.designCheckColor)
     }
@@ -1303,21 +1307,30 @@ private struct WidgetSurface<Content: View>: View {
 
   @ViewBuilder
   private func photoLayer(_ image: Image, layout: String, size: CGSize, palette: WidgetPalette) -> some View {
+    let isMonthly = widgetKind == "RhythmMonthlyCalendarWidget"
     switch layout {
     case "right", "side":
-      HStack(spacing: 0) {
-        Spacer(minLength: 0)
-        image.resizable().scaledToFill().frame(width: size.width * (family == .systemSmall ? 0.22 : family == .systemLarge ? 0.26 : 0.24), height: size.height).clipped()
+      if isMonthly {
+        image.resizable().scaledToFill()
+          .frame(width: size.width * 0.22, height: size.height * 0.22)
+          .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+          .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
+          .padding(8)
+      } else {
+        HStack(spacing: 0) {
+          Spacer(minLength: 0)
+          image.resizable().scaledToFill().frame(width: size.width * (family == .systemSmall ? 0.22 : family == .systemLarge ? 0.26 : 0.24), height: size.height).clipped()
+        }
       }
     case "top":
       VStack(spacing: 0) {
         if calendarPhotoLayout { Spacer(minLength: 0) }
-        image.resizable().scaledToFill().frame(width: size.width, height: size.height * (family == .systemLarge ? 0.30 : 0.36)).clipped()
+        image.resizable().scaledToFill().frame(width: size.width, height: size.height * (isMonthly ? 0.16 : family == .systemLarge ? 0.30 : 0.36)).clipped()
         if !calendarPhotoLayout { Spacer(minLength: 0) }
       }
     case "card":
-      let widthFraction: CGFloat = family == .systemSmall ? 0.28 : family == .systemLarge ? 0.34 : 0.32
-      let heightFraction: CGFloat = family == .systemSmall ? 0.28 : family == .systemLarge ? 0.30 : 0.28
+      let widthFraction: CGFloat = isMonthly ? 0.22 : family == .systemSmall ? 0.28 : family == .systemLarge ? 0.34 : 0.32
+      let heightFraction: CGFloat = isMonthly ? 0.18 : family == .systemSmall ? 0.28 : family == .systemLarge ? 0.30 : 0.28
       image.resizable().scaledToFill()
         .frame(width: min(size.width * widthFraction, family == .systemLarge ? 210 : 120), height: min(size.height * heightFraction, family == .systemLarge ? 150 : 78))
         .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
@@ -1327,8 +1340,8 @@ private struct WidgetSurface<Content: View>: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
         .padding(10)
     case "circle":
-      let fraction: CGFloat = family == .systemSmall ? 0.22 : family == .systemLarge ? 0.23 : 0.20
-      let cap: CGFloat = family == .systemSmall ? 48 : family == .systemLarge ? 120 : 64
+      let fraction: CGFloat = isMonthly ? 0.16 : family == .systemSmall ? 0.22 : family == .systemLarge ? 0.23 : 0.20
+      let cap: CGFloat = isMonthly ? 82 : family == .systemSmall ? 48 : family == .systemLarge ? 120 : 64
       let circleSize = min(size.width * fraction, cap)
       image.resizable().scaledToFill()
         .frame(width: circleSize, height: circleSize)
@@ -1339,8 +1352,8 @@ private struct WidgetSurface<Content: View>: View {
         .padding(11)
     case "cutout":
       image.resizable().scaledToFit()
-        .frame(width: family == .systemSmall ? size.width * 0.28 : family == .systemLarge ? size.width * 0.34 : size.width * 0.30,
-               height: family == .systemSmall ? size.height * 0.48 : family == .systemLarge ? size.height * 0.62 : size.height * 0.54)
+        .frame(width: isMonthly ? size.width * 0.22 : family == .systemSmall ? size.width * 0.28 : family == .systemLarge ? size.width * 0.34 : size.width * 0.30,
+               height: isMonthly ? size.height * 0.36 : family == .systemSmall ? size.height * 0.48 : family == .systemLarge ? size.height * 0.62 : size.height * 0.54)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .trailing)
         .padding(.trailing, family == .systemSmall ? 8 : 12)
     default:
@@ -1358,7 +1371,9 @@ private struct WidgetSurface<Content: View>: View {
       // Keep the original photo fallback when a cutout is missing. A stale
       // cutout reference must not turn a valid configured photo into a blank
       // widget.
-      let photo = appearance?.style == .color ? nil : (cutout ?? loadWidgetPhoto(appearance?.photoFileName))
+      // A stored photo is data, not a rendering mode. Only Photo may display
+      // it; Mono and Design must remain their own visual treatments.
+      let photo = appearance?.style == .photo ? (cutout ?? loadWidgetPhoto(appearance?.photoFileName)) : nil
       let photoLayout = configuredPhotoLayout == "cutout" && cutout == nil ? "background" : configuredPhotoLayout
       ZStack {
         palette.background
@@ -1378,7 +1393,7 @@ private struct WidgetSurface<Content: View>: View {
         content
           .padding(family == .systemSmall ? 10 : family == .systemLarge ? 16 : 12)
           .padding(.top, photo != nil && photoLayout == "top" && !calendarPhotoLayout ? proxy.size.height * (family == .systemLarge ? 0.23 : 0.27) : 0)
-          .padding(.bottom, photo != nil && photoLayout == "top" && calendarPhotoLayout ? proxy.size.height * (family == .systemLarge ? 0.23 : 0.27) : 0)
+          .padding(.bottom, photo != nil && photoLayout == "top" && calendarPhotoLayout ? proxy.size.height * (widgetKind == "RhythmMonthlyCalendarWidget" ? 0.14 : family == .systemLarge ? 0.23 : 0.27) : 0)
           .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
           .background(photo != nil && photoLayout == "background" ? palette.background.opacity(0.12) : Color.clear)
       }
@@ -1889,6 +1904,8 @@ private struct MonthlyCalendarWidgetView: View {
     let isLarge = family == .systemLarge
     Group {
       if let month = entry.snapshot?.calendarMonth {
+        let weekCount = max(1, Int(ceil(Double(month.leadingEmptyCount + month.days.count) / 7.0)))
+        let dayCellHeight: CGFloat = isLarge ? (weekCount >= 6 ? 31 : 36) : 22
         VStack(alignment: .leading, spacing: isLarge ? 8 : 5) {
           Text(verbatim: "\(month.year)年\(month.month)月")
             .font((isLarge ? Font.title3 : Font.headline).weight(.semibold))
@@ -1898,10 +1915,10 @@ private struct MonthlyCalendarWidgetView: View {
               Text(label).font(isLarge ? .subheadline : .caption2).foregroundStyle(palette.secondary)
             }
             ForEach(0..<max(0, month.leadingEmptyCount), id: \.self) { _ in
-              Color.clear.frame(height: isLarge ? 26 : 20)
+              Color.clear.frame(height: dayCellHeight)
             }
             ForEach(Array(month.days.enumerated()), id: \.offset) { _, day in
-              VStack(spacing: isLarge ? 2 : 1) {
+              VStack(alignment: .leading, spacing: 1) {
                 ZStack {
                   if day.isToday {
                     Circle().fill(palette.accent)
@@ -1912,30 +1929,23 @@ private struct MonthlyCalendarWidgetView: View {
                     .lineLimit(1)
                     .minimumScaleFactor(0.7)
                 }
-                .frame(maxWidth: .infinity, minHeight: isLarge ? 24 : 19)
-                Circle()
-                  .fill(day.hasSchedule ? palette.accent : Color.clear)
-                  .frame(width: isLarge ? 4 : 3, height: isLarge ? 4 : 3)
-              }
-            }
-          }
-          if isLarge {
-            let scheduledDays = month.days.filter { $0.hasSchedule }.prefix(3)
-            if !scheduledDays.isEmpty {
-              VStack(alignment: .leading, spacing: 3) {
-                ForEach(Array(scheduledDays), id: \.date) { day in
-                  HStack(spacing: 5) {
-                    Circle().fill(palette.accent).frame(width: 4, height: 4)
-                    Text("\(day.day)日")
-                      .font(.caption.weight(.semibold))
+                .frame(maxWidth: .infinity, minHeight: isLarge ? 20 : 16)
+                if day.hasSchedule {
+                  Text(day.scheduleTitle ?? "予定")
+                    .font(.system(size: isLarge ? 8 : 6, weight: .medium))
+                    .foregroundStyle(palette.foreground)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.65)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                  if day.scheduleCount > 1 {
+                    Text("+\(day.scheduleCount - 1)")
+                      .font(.system(size: isLarge ? 7 : 6, weight: .semibold))
                       .foregroundStyle(palette.accent)
-                    Text(day.scheduleTitle ?? "予定")
-                      .font(.caption)
-                      .foregroundStyle(palette.foreground)
                       .lineLimit(1)
                   }
                 }
               }
+              .frame(maxWidth: .infinity, minHeight: dayCellHeight, alignment: .topLeading)
             }
           }
         }
@@ -2243,7 +2253,8 @@ private struct WidgetAccessGate<Content: View>: View {
 
   @ViewBuilder
   var body: some View {
-    if let snapshot = entry.snapshot,
+    if !entry.isGallerySample,
+       let snapshot = entry.snapshot,
        let kind = entry.widgetKind,
        !snapshot.canDisplayWidget(kind: kind) {
       WidgetAccessLockedView(kind: kind)

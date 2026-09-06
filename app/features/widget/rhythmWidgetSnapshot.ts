@@ -252,7 +252,7 @@ export function buildRhythmWidgetSnapshot({
 }: SnapshotInput): RhythmWidgetSnapshot {
   const today = dateKey(now);
   const currentCandidates = tasks
-    .filter((task) => !task.done && task.status !== 'skipped' && (task.bucket ?? 'now') === 'now')
+    .filter((task) => task.isRoutine !== true && !task.done && task.status !== 'skipped' && (task.bucket ?? 'now') === 'now')
     .filter((task) => !task.scheduledDate || task.scheduledDate <= today);
   const currentTask = selectCurrentTask(currentCandidates, now);
   const rankedCurrentTasks = selectCurrentTasks(currentCandidates, now);
@@ -263,7 +263,7 @@ export function buildRhythmWidgetSnapshot({
   // same ranking when the app is not running. The bound prevents snapshots
   // from growing with the full task history.
   const futureCandidates = tasks
-    .filter((task) => !task.done && task.status !== 'skipped' && (task.bucket ?? 'now') === 'now')
+    .filter((task) => task.isRoutine !== true && !task.done && task.status !== 'skipped' && (task.bucket ?? 'now') === 'now')
     .filter((task) => Boolean(task.scheduledDate && task.scheduledDate > today))
     .sort((a, b) => (taskActionableAt(a)?.getTime() ?? Number.MAX_SAFE_INTEGER) - (taskActionableAt(b)?.getTime() ?? Number.MAX_SAFE_INTEGER));
   const timelineTaskCandidates = [...rankedCurrentTasks, ...futureCandidates]
@@ -402,7 +402,13 @@ export function buildRhythmWidgetSnapshot({
     ...(todaySchedules.length ? { todaySchedules } : {}),
     ...(allTodaySchedules.length ? { todayScheduleCount: allTodaySchedules.length } : {}),
     checklist: tasks
-      .flatMap((task) => (task.listItems ?? []).slice().sort((a, b) => a.order - b.order).map((item) => ({ id: `${task.id}:${item.id}`, taskId: task.id, listItemId: item.id, title: item.text, done: item.checked })))
+      .filter((task) => task.isRoutine !== true && task.done !== true && task.status !== 'skipped' && (task.bucket ?? 'now') === 'now')
+      .filter((task) => !task.scheduledDate || task.scheduledDate <= today)
+      .flatMap((task) => (task.listItems ?? [])
+        .filter((item) => item.text.trim())
+        .slice()
+        .sort((a, b) => a.order - b.order)
+        .map((item) => ({ id: `${task.id}:${item.id}`, taskId: task.id, listItemId: item.id, title: item.text, done: item.checked })))
       .filter((item) => item.title.trim().length > 0)
       .slice(0, 8),
     ...(goal ? { goal } : {}),

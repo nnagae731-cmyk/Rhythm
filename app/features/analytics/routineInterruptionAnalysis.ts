@@ -1,5 +1,6 @@
 import { BehaviorEvent } from '../../behaviorEvents';
 import { Task } from '../../types';
+import { advanceDateValue } from '../tasks/taskUtils';
 
 export type RoutineHistory = {
   id: string;
@@ -28,6 +29,7 @@ export type RoutineDisplayDay = {
   future: boolean;
   today: boolean;
   eligible: boolean;
+  neutral?: boolean;
 };
 
 export type RoutineInterruptionSummary = {
@@ -48,7 +50,7 @@ export type RoutineInterruptionSummary = {
   deactivatedAt?: string;
 };
 
-type RoutineDay = { key: string; completed: boolean; eligible: boolean };
+type RoutineDay = { key: string; completed: boolean; eligible: boolean; neutral: boolean };
 
 export function localDateKey(value: Date | string): string {
   const date = value instanceof Date ? value : new Date(value);
@@ -161,6 +163,10 @@ function routineDayCompleted(events: BehaviorEvent[], tasks: Task[], routine: Ro
   return completed;
 }
 
+function isPersistedRoutineSkip(task: Task): boolean {
+  return task.status === 'skipped' || Boolean(task.skippedAt);
+}
+
 function routineStartKey(events: BehaviorEvent[], tasks: Task[], routine: RoutineHistory, todayKey: string): string {
   const keys = [
     routine.createdAt ? localDateKey(routine.createdAt) : undefined,
@@ -195,6 +201,52 @@ function getDeactivationWindows(events: BehaviorEvent[], tasks: Task[], routine:
   return windows;
 }
 
+function allDateKeys(startKey: string, endKey: string): string[] {
+  const keys: string[] = [];
+  for (let key = startKey; key <= endKey; key = addLocalDays(key, 1)) keys.push(key);
+  return keys;
+}
+
+/** Uses persisted instances first, then the shared repeat advancement for gaps. */
+function routineOccurrenceKeys(events: BehaviorEvent[], tasks: Task[], routine: RoutineHistory, startKey: string, endKey: string): Set<string> {
+  const members = tasks.filter((task) => routine.memberIds.has(task.id));
+  const occurrenceKeys = new Set<string>();
+  members.forEach((task) => {
+    if (task.scheduledDate && task.scheduledDate >= startKey && task.scheduledDate <= endKey) occurrenceKeys.add(task.scheduledDate);
+    if (isPersistedRoutineSkip(task) && task.skippedAt) {
+      const skippedKey = localDateKey(task.skippedAt);
+      if (skippedKey >= startKey && skippedKey <= endKey) occurrenceKeys.add(skippedKey);
+    }
+  });
+  routineEventsFor(events, routine).forEach((event) => {
+    const key = routineEventDay(event);
+    if (key >= startKey && key <= endKey) occurrenceKeys.add(key);
+  });
+
+  const seed = [
+    ...members.map((task) => task.scheduledDate),
+    ...routineEventsFor(events, routine).map(routineEventDay),
+    routine.createdAt ? localDateKey(routine.createdAt) : undefined,
+  ].filter((key): key is string => Boolean(key && key <= endKey)).sort()[0];
+  const rule = members.find((task) => task.repeatRule && task.repeatRule !== 'none')?.repeatRule ?? 'none';
+  const hasPersistedRepeatRule = members.some((task) => task.repeatRule !== undefined);
+  if (seed && rule !== 'none') {
+    for (let key = seed; key <= endKey;) {
+      if (key >= startKey) occurrenceKeys.add(key);
+      const next = advanceDateValue(key, rule);
+      if (next <= key) break;
+      key = next;
+    }
+    return occurrenceKeys;
+  }
+
+  // Legacy routines without an occurrence date retain the former all-days
+  // interpretation so old history is not silently removed.
+  if (!hasPersistedRepeatRule) return new Set(allDateKeys(startKey, endKey));
+  if (!occurrenceKeys.size && !seed) return new Set(allDateKeys(startKey, endKey));
+  return occurrenceKeys;
+}
+
 function isInInactiveWindow(key: string, windows: Array<{ start: string; end?: string }>): boolean {
   return windows.some((window) => key >= window.start && (!window.end || key <= window.end));
 }
@@ -203,6 +255,7 @@ function countTrailingCompleted(days: RoutineDay[], lastIndex: number): number {
   let count = 0;
   for (let index = lastIndex; index >= 0; index -= 1) {
     const day = days[index];
+    if (day?.neutral) continue;
     if (!day || !day.eligible) break;
     if (!day.completed) break;
     count += 1;
@@ -216,6 +269,7 @@ function buildInterruptionRecords(days: RoutineDay[], todayKey: string, active: 
   let previousEligibleCompleted: boolean | undefined;
 
   days.forEach((day) => {
+    if (day.neutral) return;
     if (!day.eligible) {
       previousEligibleCompleted = undefined;
       return;
@@ -286,10 +340,16 @@ export function buildRoutineInterruptionSummary(events: BehaviorEvent[], tasks: 
   const deactivatedAt = routine.active ? undefined : routine.endedAt;
   const endKey = deactivatedAt ? localDateKey(deactivatedAt) : todayKey;
   const inactiveWindows = getDeactivationWindows(events, tasks, routine, todayKey);
+  const occurrenceKeys = routineOccurrenceKeys(events, tasks, routine, startKey, endKey);
+  const skippedKeys = new Set(tasks
+    .filter((task) => routine.memberIds.has(task.id) && isPersistedRoutineSkip(task))
+    .map((task) => task.skippedAt ? localDateKey(task.skippedAt) : task.scheduledDate)
+    .filter((key): key is string => Boolean(key && key >= startKey && key <= endKey)));
   const days: RoutineDay[] = [];
   for (let key = startKey; key <= endKey; key = addLocalDays(key, 1)) {
-    const eligible = !isInInactiveWindow(key, inactiveWindows);
-    days.push({ key, eligible, completed: eligible && routineDayCompleted(events, tasks, routine, key) });
+    const eligible = occurrenceKeys.has(key) && !isInInactiveWindow(key, inactiveWindows);
+    const neutral = eligible && skippedKeys.has(key);
+    days.push({ key, eligible, neutral, completed: eligible && !neutral && routineDayCompleted(events, tasks, routine, key) });
   }
 
   const completedDays = days.filter((day) => day.completed);
@@ -310,6 +370,7 @@ export function buildRoutineInterruptionSummary(events: BehaviorEvent[], tasks: 
   let longestStreak = 0;
   let runningStreak = 0;
   days.forEach((day) => {
+    if (day.neutral) return;
     if (!day.eligible) { runningStreak = 0; return; }
     runningStreak = day.completed ? runningStreak + 1 : 0;
     longestStreak = Math.max(longestStreak, runningStreak);
@@ -357,12 +418,13 @@ export function buildRoutineInterruptionSummary(events: BehaviorEvent[], tasks: 
       label: `${dateFromLocalKey(key).getMonth() + 1}/${dateFromLocalKey(key).getDate()}`,
       completed: Boolean(day?.completed),
       eligible: Boolean(day?.eligible),
-      future: key > cycleEndKey || !day?.eligible,
+      neutral: Boolean(day?.neutral),
+      future: key > cycleEndKey || (!day?.eligible && !day?.neutral),
       today: key === todayKey,
     };
   });
-  const completedCycleDays = displayDays.filter((day) => day.eligible && day.completed).length;
-  const eligibleCycleDays = Math.max(1, displayDays.filter((day) => day.eligible).length);
+  const completedCycleDays = displayDays.filter((day) => day.eligible && !day.neutral && day.completed).length;
+  const eligibleCycleDays = Math.max(1, displayDays.filter((day) => day.eligible && !day.neutral).length);
   const text = statusText(status, currentStreak, currentInterruption?.offDays ?? 0);
 
   return {

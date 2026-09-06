@@ -9,6 +9,9 @@ let initialized = false;
 let rewardedRequestActive = false;
 const REWARDED_OPERATION_TIMEOUT_MS = 15_000;
 const REWARDED_SHOW_WATCHDOG_TIMEOUT_MS = 120_000;
+const isProductionAds = process.env.EXPO_PUBLIC_RHYTHM_ADS_ENV === 'production' || process.env.RHYTHM_ADS_ENV === 'production';
+const productionRewardedUnitId = process.env.EXPO_PUBLIC_RHYTHM_REWARDED_AD_UNIT_ID;
+const rewardedUnitId = isProductionAds ? productionRewardedUnitId : TestIds.REWARDED;
 
 function describeAdError(error: unknown) {
   if (typeof error === 'object' && error !== null) {
@@ -45,17 +48,25 @@ export async function initializeMobileAds() {
   }
 }
 
+// The legacy export name is kept for existing callers; the unit is selected
+// from the build environment (Google's test unit in development, production
+// unit in a configured production build).
 export function createTestRewardedAd() {
-  return RewardedAd.createForAdRequest(TestIds.REWARDED, {
+  if (!rewardedUnitId) return undefined;
+  return RewardedAd.createForAdRequest(rewardedUnitId, {
     requestNonPersonalizedAdsOnly: true,
   });
 }
 
 /**
- * Shows one test rewarded ad and resolves only when EARNED_REWARD fires.
+ * Shows one configured rewarded ad and resolves only when EARNED_REWARD fires.
  * Closing or failing the ad never grants access.
  */
 export function showTestRewardedAd(): Promise<boolean> {
+  if (isProductionAds && !productionRewardedUnitId) {
+    if (__DEV__) console.log('[Ads] production rewarded unit is not configured');
+    return Promise.resolve(false);
+  }
   if (rewardedRequestActive) {
     return Promise.resolve(false);
   }
@@ -81,6 +92,11 @@ export function showTestRewardedAd(): Promise<boolean> {
       let rewardedAd: ReturnType<typeof createTestRewardedAd>;
       try {
         rewardedAd = createTestRewardedAd();
+        if (!rewardedAd) {
+          rewardedRequestActive = false;
+          resolve(false);
+          return;
+        }
       } catch (error) {
         if (__DEV__) console.log('[Ads] show:error', describeAdError(error));
         rewardedRequestActive = false;

@@ -71,9 +71,10 @@ export function DeparturePlanForm({
   travelApps,
   onOpenTravelAppSettings,
 }: Props) {
-  const theme = getThemeTokens(designMode);
+  const theme = getThemeTokens(designMode, chicPalette?.id ?? 'cool');
   const isDark = designMode === 'dark';
   const isDesign = designMode === 'chic' || designMode === 'photo';
+  const usesDarkInputSurface = isDark || (designMode === 'chic' && chicPalette?.id === 'nightSky');
   const mode = getDeparturePlanMode(plan);
   const isReverse = isArrivalReversePlan(plan);
   const canUseReverse = isReverse && planTier === 'premium';
@@ -206,17 +207,17 @@ export function DeparturePlanForm({
     await onSubmit();
   };
 
-  const fieldText = isDark ? styles.darkPrimaryText : { color: theme.colors.primaryText };
-  const secondaryText = isDark ? styles.darkSecondaryText : { color: theme.colors.secondaryText };
+  const fieldText = { color: theme.colors.primaryText };
+  const secondaryText = { color: theme.colors.secondaryText };
   const panel = { backgroundColor: theme.colors.surface, borderColor: theme.colors.border };
-  const input = { backgroundColor: isDark ? theme.colors.secondarySurface : theme.colors.surface, borderColor: theme.colors.border, color: theme.colors.primaryText };
+  const input = { backgroundColor: usesDarkInputSurface ? theme.colors.secondarySurface : theme.colors.surface, borderColor: theme.colors.border, color: theme.colors.primaryText };
 
   return <View style={styles.root}>
     <View style={[styles.editorHeader, { borderColor: theme.colors.border }]}>
       <View style={styles.editorTitleRow}><View style={{ flex: 1 }}><Text style={[styles.editorTitle, fieldText]}>{plan.id ? '予定を編集' : '予定を追加'}</Text><Text style={[styles.editorCopy, secondaryText]}>予定の形に合わせて、必要な項目だけ登録できます</Text></View></View>
     </View>
 
-    <View style={[styles.segmented, styles.segmentedThree, { borderColor: theme.colors.border, backgroundColor: isDark ? theme.colors.secondarySurface : '#F6F7FB' }, isDesign && styles.segmentedDesign]}>
+    <View style={[styles.segmented, styles.segmentedThree, { borderColor: theme.colors.border, backgroundColor: usesDarkInputSurface ? theme.colors.secondarySurface : '#F6F7FB' }, isDesign && styles.segmentedDesign]}>
       <Pressable
         onPress={() => selectMode('calendar_only')}
         style={[styles.segmentButton, mode === 'calendar_only' && { backgroundColor: theme.colors.primaryAccent }, mode === 'calendar_only' && styles.segmentActive]}
@@ -270,7 +271,7 @@ export function DeparturePlanForm({
         locale="ja-JP"
         minimumDate={new Date()}
         display={Platform.OS === 'ios' ? 'inline' : 'default'}
-        themeVariant={isDark ? 'dark' : 'light'}
+        themeVariant={usesDarkInputSurface ? 'dark' : 'light'}
         textColor={theme.colors.primaryText}
         accentColor={theme.colors.primaryAccent}
         onChange={(event, selected) => {
@@ -283,7 +284,7 @@ export function DeparturePlanForm({
         mode="time"
         locale="ja-JP"
         display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-        themeVariant={isDark ? 'dark' : 'light'}
+        themeVariant={usesDarkInputSurface ? 'dark' : 'light'}
         textColor={theme.colors.primaryText}
         accentColor={theme.colors.primaryAccent}
         onChange={(event, selected) => {
@@ -305,7 +306,7 @@ export function DeparturePlanForm({
         mode="time"
         locale="ja-JP"
         display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-        themeVariant={isDark ? 'dark' : 'light'}
+        themeVariant={usesDarkInputSurface ? 'dark' : 'light'}
         textColor={theme.colors.primaryText}
         accentColor={theme.colors.primaryAccent}
         onChange={(event, selected) => {
@@ -330,7 +331,7 @@ export function DeparturePlanForm({
         placeholderTextColor={theme.colors.secondaryText}
       />
       <Pressable
-        style={[styles.mapButton, { borderColor: theme.colors.primaryAccent, backgroundColor: isDark ? theme.colors.secondarySurface : 'transparent' }]}
+        style={[styles.mapButton, { borderColor: theme.colors.primaryAccent, backgroundColor: usesDarkInputSurface ? theme.colors.secondarySurface : 'transparent' }]}
         onPress={() => void openMapSearch(getMapSearchTarget(plan))}
       >
         <Text style={[styles.mapButtonText, { color: theme.colors.primaryAccent }]}>地図で確認</Text>
@@ -353,7 +354,7 @@ export function DeparturePlanForm({
           <View><Text style={[styles.durationLabel, secondaryText]}>余裕</Text><Text style={[styles.durationValue, fieldText]}>{durationLabel(plan.bufferMinutes)}</Text></View><Text style={[styles.durationChevron, { color: theme.colors.secondaryText }]}>〉</Text>
         </Pressable>
       </View>
-      {learningMessage && <View style={[styles.learningHint, { backgroundColor: isDark ? theme.colors.secondarySurface : theme.colors.softAccent }]}>
+      {learningMessage && <View style={[styles.learningHint, { backgroundColor: usesDarkInputSurface ? theme.colors.secondarySurface : theme.colors.softAccent }]}>
         <Text style={[styles.learningHintText, { color: theme.colors.primaryAccent }]}>{learningMessage}</Text>
       </View>}
       <View style={[styles.timelineLine, { backgroundColor: theme.colors.primaryAccent }]}>
@@ -373,7 +374,7 @@ export function DeparturePlanForm({
       <Pressable accessibilityRole="button" style={[styles.submitButton, { backgroundColor: theme.colors.primaryAccent }]} onPress={() => void handleSubmit()}>
         <Text style={[styles.submitButtonText, { color: onAccent }]}>{plan.id ? '変更を保存' : canUseReverse ? 'この予定を登録' : isDirectDeparture ? '出発時刻を登録' : '予定表に追加'}</Text>
       </Pressable>
-      <Pressable accessibilityRole="button" accessibilityLabel="予定の追加を閉じる" style={[styles.bottomCloseButton, { borderColor: theme.colors.border, backgroundColor: isDark ? theme.colors.secondarySurface : theme.colors.surface }]} onPress={onClose}>
+      <Pressable accessibilityRole="button" accessibilityLabel="予定の追加を閉じる" style={[styles.bottomCloseButton, { borderColor: theme.colors.border, backgroundColor: usesDarkInputSurface ? theme.colors.secondarySurface : theme.colors.surface }]} onPress={onClose}>
         <Text style={[styles.bottomCloseButtonText, fieldText]}>閉じる</Text>
       </Pressable>
     </View>

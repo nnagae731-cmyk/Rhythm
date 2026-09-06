@@ -41,7 +41,7 @@ import { RecoveryModal } from './components/RecoveryModal';
 import { DesignCustomizeModal } from './components/DesignCustomizeModal';
 import { TravelAppsSettingsCard } from './components/TravelAppsSettingsCard';
 import { styles } from './styles/appStyles';
-import { Affirmation, AffirmationCustomText, CalendarMarks, Category, DeparturePlan, DeparturePreparationStatus, DevDesignCustomizeOverride, LiveActivityDisplayOptions, MonthlyReflectionCard, MonthlyReview, MonthlyWishState, MonoPattern, NudgeMode, PersistedState, PhotoThemePhotoTarget, PhotoThemeSettings, Priority, RepeatRule, Screen, SharedEvent, SharedParticipantPrefs, Subtask, Task, TaskBucket, TaskListItem, ThemeMode, TimeTab, UrgencyStatus, WidgetSettings, WidgetSize, WidgetType, WishAction, WishMonthMap } from './types';
+import { Affirmation, AffirmationCustomText, CalendarMarks, Category, DeparturePlan, DeparturePreparationStatus, DevDesignCustomizeOverride, FocusPersistedState, LiveActivityDisplayOptions, MonthlyReflectionCard, MonthlyReview, MonthlyWishState, MonoPattern, NudgeMode, PersistedState, PhotoThemePhotoTarget, PhotoThemeSettings, Priority, RepeatRule, Screen, SharedEvent, SharedParticipantPrefs, Subtask, Task, TaskBucket, TaskListItem, ThemeMode, TimeTab, UrgencyStatus, WidgetSettings, WidgetSize, WidgetType, WishAction, WishMonthMap } from './types';
 import { initialPlan } from './storage/rhythmState';
 import { DEFAULT_TRAVEL_APP_SETTINGS, normalizeTravelAppSettings, TravelAppSettings } from './features/travel/travelApps';
 import { loadRhythmState, saveRhythmState } from './storage/rhythmStorage';
@@ -309,6 +309,98 @@ function advanceDateValue(value: string | undefined, rule: RepeatRule) {
   return dateKey(base);
 }
 
+// Current schedule surfaces intentionally exclude routine instances and
+// skipped items. History/analysis use their own unfiltered data paths.
+function isRegularVisibleTask(task: Task) {
+  return task.isRoutine !== true && task.status !== 'skipped';
+}
+
+function isOccurrenceAfterNow(scheduledDate: string, scheduledTime: string | undefined, now: Date) {
+  const today = dateKey(now);
+  if (scheduledDate > today) return true;
+  if (scheduledDate < today) return false;
+  return Boolean(scheduledTime && dateForReminder(scheduledDate, scheduledTime).getTime() > now.getTime());
+}
+
+function advanceDateBySteps(value: string | undefined, rule: RepeatRule, steps: number) {
+  let current = value;
+  for (let index = 0; index < steps; index += 1) current = advanceDateValue(current, rule);
+  return current;
+}
+
+function nextFutureOccurrence(startDate: string | undefined, rule: RepeatRule, scheduledTime: string | undefined, now: Date) {
+  let candidate = advanceDateValue(startDate ?? dateKey(now), rule);
+  let steps = 1;
+  for (let index = 0; index < 5000 && !isOccurrenceAfterNow(candidate, scheduledTime, now); index += 1) {
+    const next = advanceDateValue(candidate, rule);
+    if (next === candidate) break;
+    candidate = next;
+    steps += 1;
+  }
+  return { scheduledDate: candidate, steps };
+}
+
+function repeatSeriesKey(task: Task) {
+  if (task.routineId) return `routine:${task.routineId}`;
+  // Generated ordinary repeat instances preserve createdAt. This gives the
+  // series a stable identity without merging unrelated same-title tasks.
+  return `repeat:${task.createdAt ?? task.id}`;
+}
+
+function shiftDateKey(value: string, days: number) {
+  const date = dateForReminder(value, '12:00');
+  date.setDate(date.getDate() + days);
+  return dateKey(date);
+}
+
+function normalizeRoutineResumeDate(value: string | undefined, templateScheduledDate: string | undefined, resumedScheduledDate: string) {
+  if (!value) return undefined;
+  if (!templateScheduledDate) return value < resumedScheduledDate ? resumedScheduledDate : value;
+  const offset = Math.round((dateForReminder(value, '12:00').getTime() - dateForReminder(templateScheduledDate, '12:00').getTime()) / 86_400_000);
+  return shiftDateKey(resumedScheduledDate, Math.max(0, offset));
+}
+
+function routineResumeScheduledDate(template: Task, now: Date) {
+  const today = dateKey(now);
+  if (template.repeatRule !== 'weekdays') return today;
+  const weekday = dateForReminder(today, '12:00').getDay();
+  return weekday === 0 || weekday === 6 ? advanceDateValue(today, 'weekdays') : today;
+}
+
+function buildNextRepeatedTask(task: Task, current: Task[], now = new Date()): Task | undefined {
+  const rule = task.repeatRule ?? 'none';
+  // Deactivated routines keep their historical repeatRule for analytics, but
+  // must never create a new occurrence when an old instance is completed.
+  if (rule === 'none' || (task.routineId && task.routineEndedAt)) return undefined;
+  const { scheduledDate, steps } = nextFutureOccurrence(task.scheduledDate, rule, task.scheduledTime, now);
+  const routineId = task.routineId ?? (task.isRoutine ? task.id : undefined);
+  const seriesKey = repeatSeriesKey(task);
+  if (current.some((candidate) => (
+    candidate.id !== task.id
+    && repeatSeriesKey(candidate) === seriesKey
+    && (candidate.repeatRule ?? 'none') === rule
+    && candidate.scheduledDate === scheduledDate
+  ))) return undefined;
+  const stamp = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  return {
+    ...task,
+    id: `${stamp}-${task.id}`,
+    createdAt: task.createdAt ?? task.id,
+    done: false,
+    status: 'active',
+    skippedAt: undefined,
+    completedAt: undefined,
+    deadlineDate: task.deadlineDate ? advanceDateBySteps(task.deadlineDate, rule, steps) : undefined,
+    remindDate: task.remindAt ? advanceDateBySteps(task.remindDate ?? task.scheduledDate ?? dateKey(now), rule, steps) : undefined,
+    scheduledDate,
+    scheduledTime: task.scheduledTime,
+    isRoutine: task.isRoutine,
+    routineId,
+    subtasks: task.subtasks?.map((item, index) => ({ ...item, order: index, done: false })),
+    listItems: task.listItems?.map((item, index) => ({ ...item, id: `${stamp}-list-${index}`, order: index, checked: false })),
+  };
+}
+
 function calendarEventOccurrenceKey(event: Calendar.Event) {
   const calendarId = String((event as Calendar.Event & { calendarId?: string }).calendarId ?? '');
   const start = new Date(event.startDate).toISOString();
@@ -327,23 +419,8 @@ function completeTasksWithRepeats(current: Task[], ids: string[]) {
     if (!ids.includes(task.id) || task.done || getTaskStatus(task) === 'skipped') return task;
     const rule = task.repeatRule ?? 'none';
     if (rule !== 'none') {
-      nextTasks.push({
-        ...task,
-        id: `${Date.now()}-${task.id}-${Math.random().toString(16).slice(2)}`,
-        createdAt: task.createdAt,
-        done: false,
-        status: 'active',
-        skippedAt: undefined,
-        completedAt: undefined,
-        deadlineDate: task.deadlineDate ? advanceDateValue(task.deadlineDate, rule) : undefined,
-        remindDate: task.remindAt ? advanceDateValue(task.remindDate ?? task.scheduledDate ?? dateKey(), rule) : undefined,
-        scheduledDate: advanceDateValue(task.scheduledDate ?? dateKey(), rule),
-        scheduledTime: task.scheduledTime,
-        isRoutine: task.isRoutine,
-        routineId: task.routineId ?? (task.isRoutine ? task.id : undefined),
-        subtasks: task.subtasks?.map((item, index) => ({ ...item, order: index, done: false })),
-        listItems: task.listItems?.map((item, index) => ({ ...item, id: `${Date.now()}-${task.id}-list-${index}-${Math.random().toString(16).slice(2)}`, order: index, checked: false })),
-      });
+      const nextTask = buildNextRepeatedTask(task, [...current, ...nextTasks]);
+      if (nextTask) nextTasks.push(nextTask);
     }
     return { ...task, done: true, status: 'completed' as const, skippedAt: undefined, completedAt, subtasks: task.subtasks?.map((item) => ({ ...item, done: true })) };
   });
@@ -652,6 +729,7 @@ export default function App() {
   const [pendingTopPhoto, setPendingTopPhoto] = useState<{ target: Exclude<PhotoThemePhotoTarget, 'background' | 'focus'>; originalUri: string; sourceWidth: number; sourceHeight: number; cropRect?: NormalizedCropRect }>();
   const [recoveryHistory, setRecoveryHistory] = useState<RecoveryRecord[]>([]);
   const [focusSessions, setFocusSessions] = useState<FocusSession[]>([]);
+  const [focusState, setFocusState] = useState<FocusPersistedState | undefined>();
   const [focusCustomDurationMinutes, setFocusCustomDurationMinutes] = useState<number | undefined>();
   const [behaviorEvents, setBehaviorEvents] = useState<BehaviorEvent[]>([]);
   const behaviorEventsRef = React.useRef<BehaviorEvent[]>([]);
@@ -1172,7 +1250,7 @@ export default function App() {
       return;
     }
     if (!__DEV__) {
-      Alert.alert('購入機能は準備中です', 'App Storeの商品情報を確認できません。');
+      Alert.alert('購入を利用できません', 'App Storeの商品情報を確認できません。時間をおいてもう一度お試しください。');
       return;
     }
     Alert.alert('開発用購入確認', 'Design Customizeを購入済みにしますか？', [
@@ -1194,7 +1272,7 @@ export default function App() {
       return;
     }
     if (!__DEV__) {
-      Alert.alert('購入の復元は準備中です', 'App Storeの商品情報を確認できません。');
+      Alert.alert('購入を復元できません', 'App Storeの商品情報を確認できません。時間をおいてもう一度お試しください。');
       return;
     }
     if (designCustomizePurchased) {
@@ -1205,7 +1283,7 @@ export default function App() {
   }, [designCustomizePurchased, storeKit]);
   const restorePremiumPurchase = React.useCallback(async () => {
     if (!storeKit.configured) {
-      Alert.alert('購入の復元は準備中です', 'App Storeの商品情報を確認できません。');
+      Alert.alert('購入を復元できません', 'App Storeの商品情報を確認できません。時間をおいてもう一度お試しください。');
       return;
     }
     const restored = await storeKit.restore();
@@ -1853,12 +1931,19 @@ export default function App() {
     if (!current?.subtasks?.length) return;
     const nextSubtasks = current.subtasks.map((item) => item.id === subtaskId ? { ...item, done: !item.done } : item);
     const allDone = nextSubtasks.length > 0 && nextSubtasks.every((item) => item.done);
-    const updated = { ...current, subtasks: nextSubtasks, done: allDone, status: allDone ? 'completed' as const : 'active' as const, skippedAt: undefined, completedAt: allDone ? (current.completedAt ?? new Date().toISOString()) : undefined };
+    if (allDone && !current.done) {
+      const withCompletedSubtasks = tasksRef.current.map((task) => task.id === taskId ? { ...task, subtasks: nextSubtasks } : task);
+      tasksRef.current = withCompletedSubtasks;
+      setTasks(withCompletedSubtasks);
+      completeTaskIds([taskId]);
+      return;
+    }
+    const updated = { ...current, subtasks: nextSubtasks, done: false, status: 'active' as const, skippedAt: undefined, completedAt: undefined };
     const next = tasksRef.current.map((task) => task.id === taskId ? updated : task);
     tasksRef.current = next;
     setTasks(next);
     if (allDone && !current.done) { void playCompletionSound(); triggerHaptic(hapticsEnabled, 18); showCompletionAffirmation('task'); }
-  }, [hapticsEnabled, showCompletionAffirmation]);
+  }, [completeTaskIds]);
 
   const completeParentTask = React.useCallback((taskId: string) => {
     const current = tasksRef.current.find((task) => task.id === taskId);
@@ -1871,17 +1956,13 @@ export default function App() {
         // snapshot captured when the alert was presented.
         const latest = tasksRef.current.find((task) => task.id === taskId);
         if (!latest || latest.done || !latest.subtasks?.some((item) => !item.done)) return;
-        const completedAt = new Date().toISOString();
-        const updated = { ...latest, done: true, status: 'completed' as const, skippedAt: undefined, completedAt, subtasks: latest.subtasks?.map((item) => ({ ...item, done: true })) };
-        const next = tasksRef.current.map((task) => task.id === taskId ? updated : task);
-        tasksRef.current = next;
-        setTasks(next);
-        void playCompletionSound();
-        triggerHaptic(hapticsEnabled, 18);
-        showCompletionAffirmation('task');
+        const withCompletedSubtasks = tasksRef.current.map((task) => task.id === taskId ? { ...task, subtasks: task.subtasks?.map((item) => ({ ...item, done: true })) } : task);
+        tasksRef.current = withCompletedSubtasks;
+        setTasks(withCompletedSubtasks);
+        completeTaskIds([taskId]);
       } },
     ]);
-  }, [completeTaskIds, hapticsEnabled, showCompletionAffirmation]);
+  }, [completeTaskIds]);
 
   const markDeparturePlanAsDeparted = React.useCallback((planId: string, source: 'manual' | 'notification' = 'manual') => {
     const target = departurePlansRef.current.find((item) => item.id === planId);
@@ -2015,7 +2096,12 @@ export default function App() {
       { text: 'キャンセル', style: 'cancel' },
       { text: '今日は休む', onPress: () => {
         const skippedAt = new Date().toISOString();
-        const next = tasksRef.current.map((task) => task.id === taskId ? { ...task, done: false, status: 'skipped' as const, skippedAt } : task);
+        const current = tasksRef.current;
+        const latest = current.find((task) => task.id === taskId);
+        if (!latest || latest.done || getTaskStatus(latest) === 'skipped') return;
+        const nextOccurrence = latest.isRoutine ? buildNextRepeatedTask(latest, current) : undefined;
+        const next = current.map((task) => task.id === taskId ? { ...task, done: false, status: 'skipped' as const, skippedAt } : task);
+        if (nextOccurrence) next.push(nextOccurrence);
         tasksRef.current = next;
         setTasks(next);
         void cancelPendingTaskNotifications(taskId);
@@ -2142,6 +2228,8 @@ export default function App() {
         setDesignCustomizePurchased(saved.designCustomizePurchased === true);
         setRecoveryHistory(saved.recoveryHistory ?? []);
         setFocusSessions(saved.focusSessions ?? []);
+        setFocusState(saved.focusState);
+        if (saved.focusState?.running && saved.focusState.endAt && Date.parse(saved.focusState.endAt) > Date.now()) setFocusTimerActive(true);
         if (typeof saved.focusCustomDurationMinutes === 'number' && Number.isSafeInteger(saved.focusCustomDurationMinutes) && saved.focusCustomDurationMinutes > 0) {
           setFocusCustomDurationMinutes(saved.focusCustomDurationMinutes);
         }
@@ -2331,7 +2419,7 @@ export default function App() {
 
   useEffect(() => {
     if (!hydrated) return;
-    const state: PersistedState = { tasks, plan, departurePlans, widgetSize, widgetSettings, showCompleted, completionIcon, designMode, monoAppearance, monoPattern, hapticsEnabled, premiumTrialReminderEnabled, liveActivityEnabled, liveActivityDisplayOptions, reviewPromptedAt, taskTemplates, savedTaskTemplates, chicPattern, chicCheckColor, recoveryHistory, focusSessions, focusCustomDurationMinutes, departureCheckIns, behaviorEvents, wishMonths: normalizeWishMonthsForSave(wishMonths), calendarMarks, calendarImportCalendarIds, calendarImportKnownCalendarIds, sharedEvents, sharedParticipantIdsByToken, sharedParticipantPrefsByToken, departurePreparationStatuses, affirmations, affirmationCustomTexts, photoTheme, travelApps, designCustomizePurchased, routineArchives: pruneRoutineArchives(routineArchives), voiceUsage: normalizeVoiceUsage(voiceUsage, dateKey()) };
+    const state: PersistedState = { tasks, plan, departurePlans, widgetSize, widgetSettings, showCompleted, completionIcon, designMode, monoAppearance, monoPattern, hapticsEnabled, premiumTrialReminderEnabled, liveActivityEnabled, liveActivityDisplayOptions, reviewPromptedAt, taskTemplates, savedTaskTemplates, chicPattern, chicCheckColor, recoveryHistory, focusSessions, focusState, focusCustomDurationMinutes, departureCheckIns, behaviorEvents, wishMonths: normalizeWishMonthsForSave(wishMonths), calendarMarks, calendarImportCalendarIds, calendarImportKnownCalendarIds, sharedEvents, sharedParticipantIdsByToken, sharedParticipantPrefsByToken, departurePreparationStatuses, affirmations, affirmationCustomTexts, photoTheme, travelApps, designCustomizePurchased, routineArchives: pruneRoutineArchives(routineArchives), voiceUsage: normalizeVoiceUsage(voiceUsage, dateKey()) };
     latestPersistedStateRef.current = state;
     if (persistenceDisabledRef.current) return;
     if (persistenceTimerRef.current) clearTimeout(persistenceTimerRef.current);
@@ -2347,7 +2435,7 @@ export default function App() {
     return () => {
       if (persistenceTimerRef.current) clearTimeout(persistenceTimerRef.current);
     };
-  }, [tasks, plan, departurePlans, widgetSize, widgetSettings, showCompleted, completionIcon, designMode, monoAppearance, monoPattern, hapticsEnabled, premiumTrialReminderEnabled, liveActivityEnabled, liveActivityDisplayOptions, reviewPromptedAt, taskTemplates, savedTaskTemplates, chicPattern, chicCheckColor, recoveryHistory, focusSessions, focusCustomDurationMinutes, departureCheckIns, behaviorEvents, wishMonths, calendarMarks, calendarImportCalendarIds, calendarImportKnownCalendarIds, sharedEvents, sharedParticipantIdsByToken, sharedParticipantPrefsByToken, departurePreparationStatuses, affirmations, affirmationCustomTexts, photoTheme, travelApps, designCustomizePurchased, routineArchives, voiceUsage, hydrated]);
+  }, [tasks, plan, departurePlans, widgetSize, widgetSettings, showCompleted, completionIcon, designMode, monoAppearance, monoPattern, hapticsEnabled, premiumTrialReminderEnabled, liveActivityEnabled, liveActivityDisplayOptions, reviewPromptedAt, taskTemplates, savedTaskTemplates, chicPattern, chicCheckColor, recoveryHistory, focusSessions, focusState, focusCustomDurationMinutes, departureCheckIns, behaviorEvents, wishMonths, calendarMarks, calendarImportCalendarIds, calendarImportKnownCalendarIds, sharedEvents, sharedParticipantIdsByToken, sharedParticipantPrefsByToken, departurePreparationStatuses, affirmations, affirmationCustomTexts, photoTheme, travelApps, designCustomizePurchased, routineArchives, voiceUsage, hydrated]);
 
   useEffect(() => {
     if (!hydrated) return;
@@ -2505,7 +2593,7 @@ export default function App() {
     }
     const today = dateKey(now);
     const candidates = tasks
-      .filter((task) => !task.done && task.status !== 'skipped' && (task.bucket ?? 'now') === 'now')
+      .filter((task) => task.isRoutine !== true && !task.done && task.status !== 'skipped' && (task.bucket ?? 'now') === 'now')
       .filter((task) => !task.scheduledDate || task.scheduledDate <= today);
     const current = tier !== 'premium' || displayOptions.currentTask ? selectCurrentTask(candidates, now) : undefined;
     const next = tier === 'premium' && (displayOptions.nextSchedule || displayOptions.departureCountdown) ? nextDeparturePlan : undefined;
@@ -2707,6 +2795,33 @@ export default function App() {
   const openWidgetGuide = React.useCallback(() => {
     setWidgetGuideVisible(true);
   }, []);
+
+  const removeRoutineById = React.useCallback((taskId: string) => {
+    const target = tasksRef.current.find((task) => task.id === taskId);
+    if (!target?.isRoutine) return;
+    Alert.alert('ルーティンから外しますか？', 'タスク自体と完了履歴は残ります。', [{ text: 'キャンセル', style: 'cancel' }, { text: 'ルーティンから外す', style: 'destructive', onPress: () => {
+      const latest = tasksRef.current.find((task) => task.id === taskId);
+      if (!latest) return;
+      const endedAt = new Date().toISOString();
+      const routineId = latest.routineId ?? latest.id;
+      const routine = getRoutineHistories(behaviorEventsRef.current, tasksRef.current).find((item) => item.id === routineId);
+      const summary = routine ? buildRoutineInterruptionSummary(behaviorEventsRef.current, tasksRef.current, routine, new Date(endedAt)) : undefined;
+      const archive: RoutineArchive = {
+        id: `routine-archive:${routineId}:${endedAt}`,
+        routineId,
+        title: latest.title,
+        removedAt: endedAt,
+        streakDays: summary?.longestStreak ?? 0,
+        totalCompletedDays: summary?.totalCompletedDays ?? 0,
+        taskTemplate: { ...latest, subtasks: latest.subtasks?.map((item) => ({ ...item })), listItems: latest.listItems?.map((item) => ({ ...item })) },
+      };
+      const next = tasksRef.current.map((task) => (task.routineId ?? task.id) === routineId ? { ...task, isRoutine: false, routineEndedAt: endedAt } : task);
+      tasksRef.current = next;
+      setTasks(next);
+      setRoutineArchives((current) => pruneRoutineArchives([...current.filter((item) => item.routineId !== routineId), archive]));
+      recordBehaviorEvent(createRoutineDeactivatedBehaviorEvent({ routineId, routineTitle: latest.title, taskId: latest.id, occurredAt: new Date(endedAt), targetDate: dateKey(endedAt) }));
+    } }]);
+  }, [recordBehaviorEvent]);
   const closeWidgetGuide = React.useCallback(() => {
     setWidgetGuideVisible(false);
     if (!onboarding.isCompleted('widgetGuide')) void onboarding.complete('widgetGuide');
@@ -2760,9 +2875,13 @@ export default function App() {
     .filter((task) => !task.done && !isTaskSkippedOnDate(task, todayTaskDate) && task.navigationEnabled && task.deadlineDate)
     .sort((a, b) => urgencyLevel(getUrgencyStatus(b, now)) - urgencyLevel(getUrgencyStatus(a, now)))[0];
 
-  const addTask = (title: string, category: Category, priority: Priority, remindDate?: string, remindAt?: string, deadlineDate?: string, deadlineTime?: string, deadlineNotifyBefore?: number, navigationEnabled?: boolean, preparationMinutes?: number, travelMinutes?: number, bufferMinutes?: number, repeatRule: RepeatRule = 'none', nudgeMode: NudgeMode = 'once', scheduledDate?: string, scheduledTime?: string, endAt?: string, isRoutine = false, subtasks: Subtask[] = [], listItems: TaskListItem[] = []): Task | undefined => {
+  const addTask = (title: string, category: Category, priority: Priority, remindDate?: string, remindAt?: string, deadlineDate?: string, deadlineTime?: string, deadlineNotifyBefore?: number, navigationEnabled?: boolean, preparationMinutes?: number, travelMinutes?: number, bufferMinutes?: number, repeatRule: RepeatRule = 'none', nudgeMode: NudgeMode = 'once', scheduledDate?: string, scheduledTime?: string, endAt?: string, isRoutine = false, subtasks: Subtask[] = [], listItems: TaskListItem[] = [], routineIdOverride?: string): Task | undefined => {
     if (scheduledTime && endAt && endAt <= scheduledTime) {
       Alert.alert('終了時間を確認してください', '終了時間は開始時間より後にしてください。');
+      return undefined;
+    }
+    if (isRoutine && repeatRule === 'none') {
+      Alert.alert('繰り返しを選んでください', 'ルーティンには毎日・平日・毎週・毎月のいずれかを設定してください。');
       return undefined;
     }
     const routineLimit = hasPremiumAccess(planTier, 'full_history') ? 100 : 5;
@@ -2791,7 +2910,7 @@ export default function App() {
       bufferMinutes,
       repeatRule,
       isRoutine,
-      routineId: isRoutine ? taskId : undefined,
+      routineId: isRoutine ? routineIdOverride ?? taskId : undefined,
       nudgeMode,
       scheduledDate: scheduledDate ?? dateKey(now),
       scheduledTime,
@@ -2816,6 +2935,10 @@ export default function App() {
       Alert.alert('終了時間を確認してください', '終了時間は開始時間より後にしてください。');
       return;
     }
+    if (isRoutine && repeatRule === 'none') {
+      Alert.alert('繰り返しを選んでください', 'ルーティンには毎日・平日・毎週・毎月のいずれかを設定してください。');
+      return;
+    }
     const routineLimit = hasPremiumAccess(planTier, 'full_history') ? 100 : 5;
     const existingRoutineId = editingTask.routineId ?? editingTask.id;
     const activeRoutineIds = new Set(tasksRef.current.filter((item) => item.isRoutine && (item.routineId ?? item.id) !== existingRoutineId).map((item) => item.routineId ?? item.id));
@@ -2825,7 +2948,8 @@ export default function App() {
     }
     const reactivatesRoutine = isRoutine && !editingTask.isRoutine && Boolean(editingTask.routineId);
     const endedAt = editingTask.isRoutine && !isRoutine ? new Date().toISOString() : editingTask.routineEndedAt;
-    const updated = { ...editingTask, title, category, priority, remindDate, remindAt, deadlineDate, deadlineTime, deadlineNotifyBefore, navigationEnabled, preparationMinutes, travelMinutes, bufferMinutes, repeatRule, isRoutine, routineId: isRoutine ? editingTask.routineId ?? editingTask.id : editingTask.routineId, routineEndedAt: isRoutine ? undefined : endedAt, nudgeMode, scheduledDate: scheduledDate ?? editingTask.scheduledDate ?? dateKey(now), scheduledTime, endAt: endAt && /^\d{2}:\d{2}$/.test(endAt) ? endAt : undefined, status: 'active' as const, skippedAt: undefined, subtasks: subtasks.map((item, index) => ({ ...item, order: index, done: Boolean(item.done) })), listItems: (listItems ?? editingTask.listItems ?? []).map((item, index) => ({ ...item, text: item.text.trim(), order: index, checked: Boolean(item.checked) })).filter((item) => item.text) };
+    const existingStatus = getTaskStatus(editingTask);
+    const updated = { ...editingTask, title, category, priority, remindDate, remindAt, deadlineDate, deadlineTime, deadlineNotifyBefore, navigationEnabled, preparationMinutes, travelMinutes, bufferMinutes, repeatRule, isRoutine, routineId: isRoutine ? editingTask.routineId ?? editingTask.id : editingTask.routineId, routineEndedAt: isRoutine ? undefined : endedAt, nudgeMode, scheduledDate: scheduledDate ?? editingTask.scheduledDate ?? dateKey(now), scheduledTime, endAt: endAt && /^\d{2}:\d{2}$/.test(endAt) ? endAt : undefined, done: editingTask.done, status: existingStatus, completedAt: editingTask.completedAt, skippedAt: editingTask.skippedAt, subtasks: subtasks.map((item, index) => ({ ...item, order: index, done: Boolean(item.done) })), listItems: (listItems ?? editingTask.listItems ?? []).map((item, index) => ({ ...item, text: item.text.trim(), order: index, checked: Boolean(item.checked) })).filter((item) => item.text) };
     const nextTasks = tasksRef.current.map((task) => {
       if (task.id === editingTask.id) return updated;
       if (editingTask.isRoutine && !isRoutine && (task.routineId ?? task.id) === existingRoutineId) {
@@ -2843,7 +2967,8 @@ export default function App() {
     if (reactivatesRoutine && updated.routineId) {
       recordBehaviorEvent(createRoutineStateChangedBehaviorEvent({ taskId: updated.id, routineId: updated.routineId, routineTitle: updated.title, occurredAt: new Date(), targetDate: dateKey(), completed: Boolean(updated.done), source: 'manual' }));
     }
-    void scheduleAllTaskNotifications(updated);
+    if (updated.done || getTaskStatus(updated) === 'skipped') void cancelPendingTaskNotifications(updated.id);
+    else void scheduleAllTaskNotifications(updated);
   };
 
   const updateTaskList = React.useCallback((taskId: string, items: TaskListItem[]) => {
@@ -3131,15 +3256,6 @@ export default function App() {
       setVoiceFocusRequest({ durationMinutes: result.focusDurationMinutes, id: Date.now() });
       setScreen('timeline');
       return true;
-    }
-    if (result.intent === 'routine' && result.explicitRoutineRegistration) {
-      if (!result.title.trim()) {
-        setScreen('home');
-        return false;
-      }
-      const routine = addTask(result.title, categories[0]!, priorities[1]!, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, result.repeatRule ?? 'daily', 'once', result.scheduledDate ?? dateKey(), result.scheduledTime, undefined, true);
-      setScreen('home');
-      return Boolean(routine);
     }
     if (result.intent === 'todo' || result.intent === 'routine') {
       setVoiceTaskDraft(result);
@@ -3557,7 +3673,7 @@ export default function App() {
     if (kind === 'voice') {
       return readonly(<View pointerEvents="none" style={{ padding: 18, alignItems: 'center' }}><Text style={{ color: themedColors.muted, fontSize: 12, fontWeight: '800' }}>共通音声入力</Text><View style={{ marginTop: 12, width: 70, height: 70, borderRadius: 35, backgroundColor: themedColors.violet, alignItems: 'center', justifyContent: 'center' }}><Text style={{ color: uiDesignMode === 'dark' ? theme.colors.screenBackground : '#FFFFFF', fontSize: 28 }}>⌕</Text></View><Text style={{ color: themedColors.ink, fontSize: 14, fontWeight: '900', marginTop: 10 }}>明日の18時に美容院</Text><Text style={{ color: themedColors.muted, fontSize: 11, marginTop: 4 }}>予定として整理 → 確認して保存</Text></View>, 430);
     }
-    if (kind === 'nudge') return readonly(<NotificationManagerCard designMode={uiDesignMode} readOnly />, 560, 0);
+    if (kind === 'nudge') return readonly(<NotificationManagerCard designMode={uiDesignMode} chicPalette={chicPalette} readOnly />, 560, 0);
     if (kind === 'travel_apps') return readonly(<TravelAppsSettingsCard settings={travelApps} onChange={() => undefined} planTier="premium" designMode={uiDesignMode} chicPalette={chicPalette} onPremium={() => undefined} readOnlyPreview />, 560);
     if (kind === 'route') {
       return readonly(<View pointerEvents="none"><DepartureCountdownCard plan={previewPlans[0]!} now={now} planTier="premium" designMode={uiDesignMode} chicPalette={chicPalette} prepared={false} departed={false} styles={premiumPreviewStyles} helpers={{ getThemeTokens: getThemedThemeTokens, planDateKey, formatLiveTime, getDepartureMoments, countdownToDate, getMapSearchTarget, openMapSearch: async () => undefined, getPlanCountdownAt }} onPrepare={() => undefined} onDepart={() => undefined} onStill={() => undefined} onRecover={() => undefined} onShare={() => undefined} onPremium={() => undefined} onEdit={() => undefined} onDelete={() => undefined} travelApps={travelApps} onOpenTravelAppSettings={() => undefined} /></View>, 760, 0);
@@ -4359,6 +4475,7 @@ export default function App() {
                 }
                 skipTaskById(id);
               }}
+              onRemoveRoutine={firstRunDemoActive ? undefined : removeRoutineById}
               onOpenSkipBonusReward={firstRunDemoActive || planTier === 'premium' ? undefined : () => openRewardedPrompt('routineSkipBonus', 'Skip Bonus', '広告を2回見ると、ルーティンのスキップ権を1回分追加できます。')}
               skipBonusAdded={rewardedAccess.routine.skipBonusAdded}
               skipBonusMax={2}
@@ -4538,6 +4655,8 @@ export default function App() {
               onFocusNotificationPermission={firstRunDemoActive ? async () => false : ensureNotifications}
               onFocusRunningChange={setFocusTimerActive}
               onFocusActivityChange={setFocusActivity}
+              focusPersistedState={firstRunDemoActive ? undefined : focusState}
+              onFocusStateChange={firstRunDemoActive ? () => undefined : setFocusState}
               focusCustomDurationMinutes={focusCustomDurationMinutes}
               onFocusCustomDurationChange={firstRunDemoActive ? () => undefined : setFocusCustomDurationMinutes}
               focusVoiceRequest={voiceFocusRequest}
@@ -4730,7 +4849,7 @@ export default function App() {
               routineArchives={firstRunDemoActive ? [] : routineArchives}
               onResumeRoutine={(archive) => {
                 if (firstRunDemoActive) return;
-                const duplicate = tasksRef.current.some((task) => task.isRoutine && (task.title.trim() === archive.title.trim() || (archive.routineId && task.routineId === archive.routineId)));
+                const duplicate = tasksRef.current.some((task) => task.isRoutine && (archive.routineId ? task.routineId === archive.routineId : task.title.trim() === archive.title.trim()));
                 if (duplicate) {
                   Alert.alert('同じルーティンがすでにあります', '使用中のルーティンを重複して再開することはできません。');
                   return;
@@ -4740,7 +4859,12 @@ export default function App() {
                   Alert.alert('ルーティンを再開できません', '引き継げる設定が見つかりません。');
                   return;
                 }
-                addTask(template.title, template.category, template.priority, template.remindDate, template.remindAt, template.deadlineDate, template.deadlineTime, template.deadlineNotifyBefore, template.navigationEnabled, template.preparationMinutes, template.travelMinutes, template.bufferMinutes, template.repeatRule ?? 'none', template.nudgeMode ?? 'once', dateKey(now), template.scheduledTime, template.endAt, true, template.subtasks ?? [], template.listItems ?? []);
+                const resumedScheduledDate = routineResumeScheduledDate(template, now);
+                const resumedRemindDate = normalizeRoutineResumeDate(template.remindDate, template.scheduledDate, resumedScheduledDate);
+                const resumedDeadlineDate = normalizeRoutineResumeDate(template.deadlineDate, template.scheduledDate, resumedScheduledDate);
+                const resetSubtasks = (template.subtasks ?? []).map((item, index) => ({ ...item, order: index, done: false }));
+                const resetListItems = (template.listItems ?? []).map((item, index) => ({ ...item, order: index, checked: false }));
+                addTask(template.title, template.category, template.priority, resumedRemindDate, template.remindAt, resumedDeadlineDate, template.deadlineTime, template.deadlineNotifyBefore, template.navigationEnabled, template.preparationMinutes, template.travelMinutes, template.bufferMinutes, template.repeatRule ?? 'none', template.nudgeMode ?? 'once', resumedScheduledDate, template.scheduledTime, template.endAt, true, resetSubtasks, resetListItems, archive.routineId);
               }}
               onDeleteRoutineArchive={(archive) => { if (firstRunDemoActive) return; Alert.alert('この解除履歴を削除しますか？', '解除履歴を削除すると、この解除歴画面からは確認できなくなります。', [{ text: 'キャンセル', style: 'cancel' }, { text: '削除する', style: 'destructive', onPress: () => setRoutineArchives((current) => current.filter((item) => item.id !== archive.id)) }]); }}
               onAnalysisUsed={(tab) => {
@@ -4857,6 +4981,7 @@ export default function App() {
         visible={sharedEventOpen && hasPremiumAccess(planTier, 'late_recovery')}
         shareToken={sharedEventToken}
         designMode={uiDesignMode}
+        chicPalette={chicPalette}
         sharedEvents={sharedEvents}
         participantIdsByToken={sharedParticipantIdsByToken}
         participantPrefsByToken={sharedParticipantPrefsByToken}
@@ -4908,7 +5033,7 @@ export default function App() {
       <VoiceInputModal visible={voiceOpen} autoStart={voiceAutoStart} designMode={uiDesignMode} chicPalette={chicPalette} dateKey={dateKey} onClose={() => { setVoiceAutoStart(false); setVoiceOpen(false); }} onRoute={handleVoiceRoute} hapticsEnabled={hapticsEnabled} isPremium={planTier === 'premium'} remainingUses={remainingVoiceUses(voiceUsage, dateKey())} onRecognitionAccepted={consumeVoiceInput} />
       <DesignCustomizeModal visible={designCustomizeOpen} designMode={uiDesignMode} chicPalette={chicPalette} purchased={hasDesignCustomizeAccess} localizedPrice={storeKit.designProduct?.displayPrice} priceStatus={storeKit.status} purchaseError={storeKit.errorMessage} isDevelopment={__DEV__} onPurchase={purchaseDesignCustomize} onRestore={restoreDesignCustomizePurchase} onPremium={() => { setDesignCustomizeOpen(false); openPremiumFeature('photo_design'); }} onClose={() => setDesignCustomizeOpen(false)} />
       {__DEV__ && <OnboardingCaptureStudio visible={captureStudioOpen} onClose={() => setCaptureStudioOpen(false)} renderStep={renderOnboardingCaptureStep} renderGuideStep={renderGuideCaptureStep} renderPremiumStep={renderPremiumReadOnlyPreview} colors={{ background: theme.colors.screenBackground, surface: theme.colors.surface, border: theme.colors.border, text: theme.colors.primaryText, muted: theme.colors.secondaryText, accent: theme.colors.primaryAccent, onAccent: uiDesignMode === 'chic' && chicPalette ? chicPalette.onAccent : uiDesignMode === 'dark' ? theme.colors.screenBackground : '#FFFFFF' }} />}
-      <DesignPreviewModal visible={Boolean(designPreviewPattern)} initialPattern={designPreviewPattern} initialMode={designPreviewMode} chicCheckColor={chicCheckColor} planTier={planTier} photoUri={designPreviewPhotoUri} onPickPhoto={() => void pickPhotoForDesignPreview()} onClose={() => { setDesignPreviewPattern(undefined); setDesignPreviewPhotoUri(undefined); setDesignPreviewMode('chic'); }} onTrial={(mode, pattern) => {
+      <DesignPreviewModal visible={Boolean(designPreviewPattern)} initialPattern={designPreviewPattern} initialMode={designPreviewMode} chicCheckColor={chicCheckColor} planTier={planTier} designCustomizePurchased={hasDesignCustomizeAccess} photoUri={designPreviewPhotoUri} onPickPhoto={() => void pickPhotoForDesignPreview()} onClose={() => { setDesignPreviewPattern(undefined); setDesignPreviewPhotoUri(undefined); setDesignPreviewMode('chic'); }} onTrial={(mode, pattern) => {
         if (mode === 'chic' && pattern && canStartPremiumDesignTrial(rewardedAccess)) {
           startDesignTrial(pattern);
           completeInitialDesignSelection();
@@ -5023,7 +5148,7 @@ export default function App() {
 
 type DesignPreviewMode = 'minimal' | 'dark' | 'chic' | 'photo';
 
-function DesignPreviewModal({ visible, initialPattern, initialMode = 'chic', chicCheckColor, planTier, photoUri, onPickPhoto, onClose, onUse, onTrial }: { visible: boolean; initialPattern?: ChicPattern; initialMode?: DesignPreviewMode; chicCheckColor: ChicCheckColor; planTier: PlanTier; photoUri?: string; onPickPhoto: () => void; onClose: () => void; onUse: (mode: DesignPreviewMode, pattern?: ChicPattern) => void; onTrial?: (mode: DesignPreviewMode, pattern?: ChicPattern) => void }) {
+function DesignPreviewModal({ visible, initialPattern, initialMode = 'chic', chicCheckColor, planTier, designCustomizePurchased = false, photoUri, onPickPhoto, onClose, onUse, onTrial }: { visible: boolean; initialPattern?: ChicPattern; initialMode?: DesignPreviewMode; chicCheckColor: ChicCheckColor; planTier: PlanTier; designCustomizePurchased?: boolean; photoUri?: string; onPickPhoto: () => void; onClose: () => void; onUse: (mode: DesignPreviewMode, pattern?: ChicPattern) => void; onTrial?: (mode: DesignPreviewMode, pattern?: ChicPattern) => void }) {
   const [mode, setMode] = useState<DesignPreviewMode>('chic');
   const [pattern, setPattern] = useState<ChicPattern>(initialPattern ?? 'plain');
   const [floralSoftPreviewStatus, setFloralSoftPreviewStatus] = useState<'idle' | 'loading' | 'loaded' | 'error'>('idle');
@@ -5033,8 +5158,9 @@ function DesignPreviewModal({ visible, initialPattern, initialMode = 'chic', chi
       setPattern(initialPattern ?? 'plain');
     }
   }, [initialMode, initialPattern, visible]);
-  const isFreeFloralSoftPreview = planTier !== 'premium' && mode === 'chic' && pattern === 'floralSoft';
-  const isLockedPremiumPattern = planTier !== 'premium' && mode === 'chic' && pattern !== 'plain';
+  const hasDesignAccess = planTier === 'premium' || designCustomizePurchased;
+  const isFreeFloralSoftPreview = !hasDesignAccess && mode === 'chic' && pattern === 'floralSoft';
+  const isLockedPremiumPattern = !hasDesignAccess && mode === 'chic' && pattern !== 'plain';
   useEffect(() => {
     if (!visible || !isFreeFloralSoftPreview) {
       setFloralSoftPreviewStatus('idle');
@@ -5046,10 +5172,10 @@ function DesignPreviewModal({ visible, initialPattern, initialMode = 'chic', chi
     }, 2000);
     return () => clearTimeout(timeout);
   }, [isFreeFloralSoftPreview, visible]);
-  const palette = getDesignCheckThemeTokens(chicCheckColor);
+  const palette = pattern === 'nightSky' ? getNightSkyPalette(getDesignCheckThemeTokens(chicCheckColor)) : getDesignCheckThemeTokens(chicCheckColor);
   const previewVisual = getChicPatternVisual(pattern, palette);
   const previewTokens = mode === 'chic'
-    ? getDesignPatternThemeTokens(pattern, chicCheckColor)
+    ? (pattern === 'nightSky' ? palette : getDesignPatternThemeTokens(pattern, chicCheckColor))
     : undefined;
   const uiPreview = mode === 'chic' && previewTokens
     ? { background: previewTokens.background, surface: previewTokens.cardSurface, soft: previewTokens.accentSoft, border: previewTokens.border, text: previewTokens.textPrimary, muted: previewTokens.textSecondary, accent: previewTokens.accent, accentStrong: previewTokens.accentStrong, onAccent: previewTokens.onAccent }
@@ -5160,14 +5286,14 @@ function TimeTabButton({ tab, active, designMode, chicPattern, chicPalette, them
      return <Pressable style={[styles.timeTab, styles.timeTabMinimal, isDark && styles.darkSurface, active && styles.timeTabActive, active && { backgroundColor: isDark ? '#26365F' : themeAccent, borderColor: isDark ? '#6F8DFF' : themeAccent }]} onPress={onPress}><Text numberOfLines={1} style={[styles.timeTabText, { color: isDark ? '#F4F7FC' : secondaryText }, active && styles.timeTabTextActive, active && styles.timeTabTextActiveMinimal]}>{label}</Text></Pressable>;
 }
 
-function FocusMode({ tasks, designMode, chicPalette, backgroundImageUri, planTier, onPremium, customDurationMinutes, onCustomDurationChange, voiceStartRequest, onFocusCompleted, onFocusStarted, onFocusNotificationPermission, onFocusRunningChange, onFocusActivityChange, onBehaviorEvent, hapticsEnabled = true, previewCustomDurationOpen = false, previewMode = false }: { tasks: Task[]; designMode: DesignMode; chicPalette?: ChicThemePalette; backgroundImageUri?: string; planTier: PlanTier; onPremium?: (featureId?: PremiumGuideFeatureId) => void; customDurationMinutes?: number; onCustomDurationChange?: (minutes: number) => void; voiceStartRequest?: { durationMinutes: number; id: number }; onFocusCompleted: (session: FocusSession) => void; onFocusStarted?: () => void; onFocusNotificationPermission?: () => Promise<boolean>; onFocusRunningChange?: (running: boolean) => void; onFocusActivityChange?: (state?: { taskTitle?: string; endsAt?: string }) => void; onBehaviorEvent: (event: BehaviorEvent) => void; hapticsEnabled?: boolean; previewCustomDurationOpen?: boolean; previewMode?: boolean }) {
+function FocusMode({ tasks, designMode, chicPalette, backgroundImageUri, planTier, onPremium, customDurationMinutes, onCustomDurationChange, voiceStartRequest, focusPersistedState, onFocusStateChange, onFocusCompleted, onFocusStarted, onFocusNotificationPermission, onFocusRunningChange, onFocusActivityChange, onBehaviorEvent, hapticsEnabled = true, previewCustomDurationOpen = false, previewMode = false }: { tasks: Task[]; designMode: DesignMode; chicPalette?: ChicThemePalette; backgroundImageUri?: string; planTier: PlanTier; onPremium?: (featureId?: PremiumGuideFeatureId) => void; customDurationMinutes?: number; onCustomDurationChange?: (minutes: number) => void; voiceStartRequest?: { durationMinutes: number; id: number }; focusPersistedState?: FocusPersistedState; onFocusStateChange?: (state?: FocusPersistedState) => void; onFocusCompleted: (session: FocusSession) => void; onFocusStarted?: () => void; onFocusNotificationPermission?: () => Promise<boolean>; onFocusRunningChange?: (running: boolean) => void; onFocusActivityChange?: (state?: { taskTitle?: string; endsAt?: string }) => void; onBehaviorEvent: (event: BehaviorEvent) => void; hapticsEnabled?: boolean; previewCustomDurationOpen?: boolean; previewMode?: boolean }) {
   const availableTasks = React.useMemo(() => {
     const today = dateKey();
     const seenTitles = new Set<string>();
     const bucketOrder: Record<TaskBucket, number> = { now: 0, later: 1, waiting: 2 };
     return tasks.filter((task) => {
       const scheduledDate = normalizeTaskDateKey(task.scheduledDate);
-      if (task.done || isTaskSkippedOnDate(task, today) || (scheduledDate && scheduledDate > today)) return false;
+      if (!isRegularVisibleTask(task) || task.done || isTaskSkippedOnDate(task, today) || (scheduledDate && scheduledDate > today)) return false;
       const titleKey = task.title.trim();
       if (seenTitles.has(titleKey)) return false;
       seenTitles.add(titleKey);
@@ -5184,14 +5310,32 @@ function FocusMode({ tasks, designMode, chicPalette, backgroundImageUri, planTie
   const selectedTask = availableTasks.find((task) => task.id === selectedTaskId);
   const sessionRef = React.useRef<{ id: string; startedAt: Date; taskId?: string; taskTitle?: string; plannedDurationMinutes: number } | undefined>(undefined);
   const endAtRef = React.useRef<number | undefined>(undefined);
+  const focusStateRestoredRef = React.useRef(false);
   const completionCallbackRef = React.useRef(onFocusCompleted);
   completionCallbackRef.current = onFocusCompleted;
   const behaviorCallbackRef = React.useRef(onBehaviorEvent);
   behaviorCallbackRef.current = onBehaviorEvent;
   const focusNotificationIdRef = React.useRef<string | null>(null);
-  const cancelFocusNotification = React.useCallback(() => enqueueNotificationOperation('focus', async () => {
+  const publishFocusState = React.useCallback((runningState: boolean, endAt?: number) => {
+    const session = sessionRef.current;
+    if (!session) {
+      onFocusStateChange?.(undefined);
+      return;
+    }
+    onFocusStateChange?.({
+      sessionId: session.id,
+      taskId: session.taskId,
+      taskTitle: session.taskTitle,
+      plannedDurationMinutes: session.plannedDurationMinutes,
+      startedAt: session.startedAt.toISOString(),
+      running: runningState,
+      endAt: endAt ? new Date(endAt).toISOString() : undefined,
+      pausedSeconds: pausedSecondsRef.current,
+    });
+  }, [onFocusStateChange]);
+  const cancelFocusNotification = React.useCallback((sessionIdOverride?: string) => enqueueNotificationOperation('focus', async () => {
     const notificationId = focusNotificationIdRef.current;
-    const sessionId = sessionRef.current?.id;
+    const sessionId = sessionIdOverride ?? sessionRef.current?.id;
     focusNotificationIdRef.current = null;
     await cancelFocusCompletionNotification(notificationId);
     if (sessionId) await cancelPendingFocusCompletionNotifications(sessionId);
@@ -5211,6 +5355,7 @@ function FocusMode({ tasks, designMode, chicPalette, backgroundImageUri, planTie
     const session = createCompletedFocusSession({ id: activeSession.id, taskId: activeSession.taskId, taskTitle: activeSession.taskTitle, durationMinutes: activeSession.plannedDurationMinutes, startedAt: activeSession.startedAt, completedAt: actualAt });
     sessionRef.current = undefined;
     endAtRef.current = undefined;
+    onFocusStateChange?.(undefined);
     onFocusActivityChange?.(undefined);
     behaviorCallbackRef.current(createFocusCompletedBehaviorEvent({ sessionId: activeSession.id, taskId: activeSession.taskId, taskTitle: activeSession.taskTitle, plannedDurationMinutes: activeSession.plannedDurationMinutes, focusStartedAt: activeSession.startedAt, actualAt }));
     setRunning(false);
@@ -5218,26 +5363,61 @@ function FocusMode({ tasks, designMode, chicPalette, backgroundImageUri, planTie
     setSecondsLeft(0);
     pausedSecondsRef.current = 0;
     completionCallbackRef.current(session);
-    void cancelFocusNotification();
+    void cancelFocusNotification(activeSession.id);
     triggerHaptic(hapticsEnabled, [0, 35, 70]);
     Alert.alert('集中タイム終了', activeSession.taskTitle ? `「${activeSession.taskTitle}」に取り組めました。少し休憩しよう。` : '少し休憩しよう。');
-  }, [cancelFocusNotification, hapticsEnabled, onFocusRunningChange]);
+  }, [cancelFocusNotification, hapticsEnabled, onFocusRunningChange, onFocusStateChange]);
 
   const stopActiveSession = React.useCallback(() => {
     const activeSession = sessionRef.current;
     if (!activeSession) return;
     sessionRef.current = undefined;
     endAtRef.current = undefined;
+    onFocusStateChange?.(undefined);
     onFocusActivityChange?.(undefined);
     behaviorCallbackRef.current(createFocusStoppedEvent({ sessionId: activeSession.id, taskId: activeSession.taskId, taskTitle: activeSession.taskTitle, plannedDurationMinutes: activeSession.plannedDurationMinutes, focusStartedAt: activeSession.startedAt, actualAt: new Date() }));
-  }, []);
+  }, [onFocusActivityChange, onFocusStateChange]);
 
-  useEffect(() => () => {
-    stopActiveSession();
-    void cancelFocusNotification();
+  useEffect(() => {
+    if (previewMode || focusStateRestoredRef.current || !focusPersistedState) return;
+    focusStateRestoredRef.current = true;
+    const startedAt = new Date(focusPersistedState.startedAt);
+    if (Number.isNaN(startedAt.getTime())) {
+      onFocusStateChange?.(undefined);
+      return;
+    }
+    sessionRef.current = {
+      id: focusPersistedState.sessionId,
+      startedAt,
+      taskId: focusPersistedState.taskId,
+      taskTitle: focusPersistedState.taskTitle,
+      plannedDurationMinutes: focusPersistedState.plannedDurationMinutes,
+    };
+    setDuration(Math.max(1, focusPersistedState.plannedDurationMinutes));
+    pausedSecondsRef.current = Math.max(0, Math.round(focusPersistedState.pausedSeconds));
+    const savedEndAt = focusPersistedState.endAt ? Date.parse(focusPersistedState.endAt) : undefined;
+    if (focusPersistedState.running && savedEndAt && savedEndAt > Date.now()) {
+      endAtRef.current = savedEndAt;
+      const remaining = Math.max(0, Math.ceil((savedEndAt - Date.now()) / 1000));
+      pausedSecondsRef.current = remaining;
+      setSecondsLeft(remaining);
+      setRunning(true);
+      onFocusRunningChange?.(true);
+      onFocusActivityChange?.({ taskTitle: sessionRef.current.taskTitle, endsAt: new Date(savedEndAt).toISOString() });
+      return;
+    }
+    if (focusPersistedState.running && savedEndAt && savedEndAt <= Date.now()) {
+      setSecondsLeft(0);
+      pausedSecondsRef.current = 0;
+      finishSession();
+      return;
+    }
+    endAtRef.current = undefined;
+    setSecondsLeft(pausedSecondsRef.current || focusPersistedState.plannedDurationMinutes * 60);
+    setRunning(false);
     onFocusRunningChange?.(false);
-    onFocusActivityChange?.(undefined);
-  }, [stopActiveSession]);
+    onFocusActivityChange?.({ taskTitle: sessionRef.current.taskTitle });
+  }, [finishSession, focusPersistedState, onFocusActivityChange, onFocusRunningChange, onFocusStateChange, previewMode]);
 
   useEffect(() => {
     if (!running) return;
@@ -5260,6 +5440,7 @@ function FocusMode({ tasks, designMode, chicPalette, backgroundImageUri, planTie
     setRunning(false);
     sessionRef.current = undefined;
     endAtRef.current = undefined;
+    onFocusStateChange?.(undefined);
   };
   useEffect(() => {
     // A saved custom value remains in storage for a future Premium upgrade,
@@ -5300,6 +5481,7 @@ function FocusMode({ tasks, designMode, chicPalette, backgroundImageUri, planTie
     pausedSecondsRef.current = duration * 60;
     sessionRef.current = undefined;
     endAtRef.current = undefined;
+    onFocusStateChange?.(undefined);
   };
   const toggleTimer = async (requestedDurationMinutes?: number) => {
     // First-run GUIDE uses the real Focus screen as a read-only demo.  The
@@ -5323,6 +5505,7 @@ function FocusMode({ tasks, designMode, chicPalette, backgroundImageUri, planTie
       setRunning(false);
       onFocusRunningChange?.(false);
       onFocusActivityChange?.({ taskTitle: sessionRef.current?.taskTitle });
+      publishFocusState(false);
       void cancelFocusNotification();
       return;
     }
@@ -5343,6 +5526,7 @@ function FocusMode({ tasks, designMode, chicPalette, backgroundImageUri, planTie
     setSecondsLeft(nextSeconds);
     pausedSecondsRef.current = nextSeconds;
     endAtRef.current = Date.now() + nextSeconds * 1000;
+    publishFocusState(true, endAtRef.current);
     setRunning(true);
     onFocusRunningChange?.(true);
     onFocusActivityChange?.({ taskTitle: sessionRef.current?.taskTitle, endsAt: new Date(endAtRef.current).toISOString() });
@@ -5412,7 +5596,7 @@ function DailyScheduleTimeline({ date, tasks, plans, externalEvents, now, design
   const categoryColors = Object.fromEntries(categories.map((category) => [category, designMode === 'chic' && chicPalette ? chicPalette.accentStrong : theme.colors.primaryAccent])) as Record<Category, string>;
   type ScheduleItem = { id: string; time?: string; endTime?: string; title: string; meta?: string; kind: 'task' | 'plan' | 'external' | 'done'; onPress?: () => void };
   const items: ScheduleItem[] = [];
-  tasks.filter((task) => {
+  tasks.filter((task) => (isRegularVisibleTask(task) || task.done)).filter((task) => {
     const dates = [task.scheduledDate, task.deadlineDate, task.remindDate, task.done && task.completedAt ? dateKey(task.completedAt) : undefined];
     return dates.includes(date);
   }).forEach((task) => {
@@ -5540,7 +5724,7 @@ function TaskScheduleCalendar({ tasks, plans, externalEvents, now, designMode, c
     task.remindDate,
     task.done && task.completedAt ? dateKey(task.completedAt) : undefined,
   ].filter((value): value is string => Boolean(value))));
-  const selectedTasks = tasks.filter((task) => !task.done && taskDates(task).includes(selectedDate));
+  const selectedTasks = tasks.filter((task) => isRegularVisibleTask(task) && !task.done && taskDates(task).includes(selectedDate));
   const selectedCompletedTasks = tasks.filter((task) => task.done && taskDates(task).includes(selectedDate));
   const selectedPlans = plans.filter((item) => isPlanOnDate(item, selectedDate));
   const selectedExternalEvents = externalEvents.filter((event) => dateKey(new Date(event.startDate)) === selectedDate);
@@ -5620,7 +5804,7 @@ function TaskScheduleCalendar({ tasks, plans, externalEvents, now, designMode, c
       return { date, key: dateKey(date) };
     });
     const freeSelected = freeDates.some((item) => item.key === selectedDate) ? selectedDate : freeDates[0]!.key;
-    const freeTasks = tasks.filter((task) => !task.done && taskDates(task).includes(freeSelected));
+    const freeTasks = tasks.filter((task) => isRegularVisibleTask(task) && !task.done && taskDates(task).includes(freeSelected));
     const freeCompletedTasks = tasks.filter((task) => task.done && taskDates(task).includes(freeSelected));
     const freePlans = plans.filter((item) => isPlanOnDate(item, freeSelected));
     const visibleFreeTasks = scheduleFilter === 'plans' ? [] : freeTasks;
@@ -5630,18 +5814,18 @@ function TaskScheduleCalendar({ tasks, plans, externalEvents, now, designMode, c
     const hiddenFreePlanCount = Math.max(0, freePlanEntries.length - visibleFreePlans.length);
     return <>
       <View style={[styles.scheduleCalendarCard, designMode !== 'chic' && styles.scheduleCalendarCardMinimal, isDark && styles.darkSurface, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border, borderRadius: designMode !== 'chic' ? 16 : theme.radius.large }]}>
-        <View style={styles.scheduleCalendarHeader}><View><Text style={[styles.scheduleMonthTitle, isDark && styles.darkCalendarText]}>これから7日間</Text><Text style={[styles.scheduleMonthCopy, isDark && styles.darkCalendarAccent]}>今日から6日後までの予定</Text></View><Pressable onPress={() => onPremium('month')}><Text style={[styles.scheduleAgendaEdit, { color: designMode === 'chic' && chicPalette ? chicPalette.accent : theme.colors.primaryAccent }, isDark && styles.darkCalendarAccent]}>月表示 Premium</Text></Pressable></View>
+        <View style={styles.scheduleCalendarHeader}><View><Text style={[styles.scheduleMonthTitle, isDark && styles.darkCalendarText, designMode === 'chic' && chicPalette && { color: chicPalette.textPrimary }]}>これから7日間</Text><Text style={[styles.scheduleMonthCopy, isDark && styles.darkCalendarAccent, designMode === 'chic' && chicPalette && { color: chicPalette.textSecondary }]}>今日から6日後までの予定</Text></View><Pressable onPress={() => onPremium('month')}><Text style={[styles.scheduleAgendaEdit, { color: designMode === 'chic' && chicPalette ? chicPalette.accent : theme.colors.primaryAccent }, isDark && styles.darkCalendarAccent]}>月表示 Premium</Text></Pressable></View>
         <ScheduleFilterChips value={scheduleFilter} designMode={designMode} chicPalette={chicPalette} onChange={setScheduleFilter} compact />
         <View style={styles.scheduleGrid}>{freeDates.map(({ date, key }) => {
           const selected = key === freeSelected;
-          const taskCount = scheduleFilter === 'plans' ? 0 : tasks.filter((task) => taskDates(task).includes(key)).length;
+          const taskCount = scheduleFilter === 'plans' ? 0 : tasks.filter((task) => (isRegularVisibleTask(task) || task.done) && taskDates(task).includes(key)).length;
           const planCount = scheduleFilter === 'tasks' ? 0 : plans.filter((item) => isPlanOnDate(item, key)).length;
           const count = taskCount + planCount;
         return <Pressable key={key} style={[styles.scheduleDayCell, isDark && styles.scheduleDayCellDark, selected && styles.scheduleDayCellSelected, selected && { backgroundColor: designMode === 'chic' && chicPalette ? chicPalette.accentSoft : theme.colors.softAccent, borderColor: designMode === 'chic' && chicPalette ? chicPalette.accent : theme.colors.primaryAccent }]} onPress={() => setSelectedDate(key)}><Text style={[styles.scheduleDayNumber, isDark && styles.darkBodyText, date.getDay() === 0 && styles.scheduleSundayNumber, date.getDay() === 6 && styles.scheduleSaturdayNumber, selected && styles.scheduleSelectedNumber, selected && isDark && styles.scheduleSelectedNumberDark, selected && { color: designMode === 'chic' && chicPalette ? chicPalette.accentStrong : theme.colors.primaryAccent }]}>{date.getMonth() + 1}/{date.getDate()}</Text>{calendarMarks[key] && <Text style={[styles.scheduleCalendarMark, { color: designMode === 'chic' && chicPalette ? chicPalette.accentStrong : theme.colors.primaryAccent }]}>{calendarMarks[key]}</Text>}{count > 0 && <Text style={[styles.scheduleMoreText, isDark && styles.darkMutedText, selected && styles.scheduleMoreTextSelected, selected && { color: designMode === 'chic' && chicPalette ? chicPalette.textSecondary : theme.colors.primaryAccent }]}>{count}件</Text>}</Pressable>;
         })}</View>
       </View>
       <CalendarMarkPicker date={freeSelected} mark={calendarMarks[freeSelected]} onSet={onSetCalendarMark} designMode={designMode} chicPalette={chicPalette} />
-      <View style={[styles.scheduleAgendaHeader, isDark && styles.darkPanel]}><Text style={[styles.sectionTitle, isDark && styles.darkBodyText]}>{freeSelected.replaceAll('-', '.')} の予定</Text><Text style={[styles.sectionSub, isDark && styles.darkMutedText]}>{visibleFreeTasks.length + visibleFreeCompletedTasks.length + visibleFreePlans.length}件</Text></View>
+      <View style={[styles.scheduleAgendaHeader, isDark && styles.darkPanel, designMode === 'chic' && chicPalette && { backgroundColor: chicPalette.surfaceSubtle, borderColor: chicPalette.border }]}><Text style={[styles.sectionTitle, isDark && styles.darkBodyText, designMode === 'chic' && chicPalette && { color: chicPalette.textPrimary }]}>{freeSelected.replaceAll('-', '.')} の予定</Text><Text style={[styles.sectionSub, isDark && styles.darkMutedText, designMode === 'chic' && chicPalette && { color: chicPalette.textSecondary }]}>{visibleFreeTasks.length + visibleFreeCompletedTasks.length + visibleFreePlans.length}件</Text></View>
       {visibleFreeTasks.map((task) => <Pressable key={task.id} style={[styles.scheduleAgendaItem, isDark && styles.scheduleAgendaItemDark, chicAgendaStyle]} onPress={() => onEditTask(task)}><View style={[styles.scheduleAgendaDot, { backgroundColor: categoryColors[task.category] }]} /><View style={{ flex: 1 }}><Text style={[styles.scheduleAgendaTitle, isDark && styles.darkBodyText]}>{task.title}</Text><Text style={[styles.scheduleAgendaMeta, { color: designMode === 'chic' && chicPalette ? chicPalette.textSecondary : theme.colors.secondaryText }, isDark && styles.darkAccentText]}>{task.category}</Text></View><Text style={[styles.scheduleAgendaEdit, { color: designMode === 'chic' && chicPalette ? chicPalette.accent : theme.colors.primaryAccent }, isDark && styles.darkAccentText]}>編集 ›</Text></Pressable>)}
       {visibleFreeCompletedTasks.map((task) => <View key={`free-completed-${task.id}`} style={[styles.scheduleAgendaItem, styles.scheduleCompletedAgendaItem, isDark && styles.scheduleCompletedAgendaItemDark, chicAgendaStyle]}><View style={[styles.scheduleAgendaDot, styles.scheduleCompletedDot]} /><View style={{ flex: 1 }}><Text style={[styles.scheduleAgendaTitle, styles.scheduleCompletedTitle, isDark && styles.scheduleCompletedTitleDark]}>✓ {task.title}</Text><Text style={[styles.scheduleAgendaMeta, styles.scheduleCompletedMeta, isDark && styles.scheduleCompletedMetaDark]}>完了したタスク ・ {task.completedAt ? formatLiveTime(new Date(task.completedAt)) : '記録あり'}</Text></View><Text style={[styles.scheduleCompletedLabel, isDark && styles.scheduleCompletedLabelDark]}>完了</Text></View>)}
       {visibleFreePlans.map(renderPlanAgenda)}
@@ -5654,7 +5838,7 @@ function TaskScheduleCalendar({ tasks, plans, externalEvents, now, designMode, c
       <View style={[styles.scheduleCalendarCard, designMode !== 'chic' && styles.scheduleCalendarCardMinimal, isDark && styles.darkSurface, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border, borderRadius: designMode !== 'chic' ? 16 : theme.radius.large }]}>
         <View style={styles.scheduleCalendarHeader}>
           <Pressable style={[styles.scheduleMonthArrow, isDark && styles.scheduleMonthArrowDark]} onPress={() => moveMonth(-1)}><Text style={[styles.scheduleMonthArrowText, isDark && styles.scheduleMonthArrowTextDark]}>‹</Text></Pressable>
-        <View><Text style={[styles.scheduleMonthTitle, isDark && styles.darkCalendarText]}>{year}年 {month + 1}月</Text><Text style={[styles.scheduleMonthCopy, isDark && styles.darkCalendarAccent]}>予定をまとめて見渡す</Text></View>
+        <View><Text style={[styles.scheduleMonthTitle, isDark && styles.darkCalendarText, designMode === 'chic' && chicPalette && { color: chicPalette.textPrimary }]}>{year}年 {month + 1}月</Text><Text style={[styles.scheduleMonthCopy, isDark && styles.darkCalendarAccent, designMode === 'chic' && chicPalette && { color: chicPalette.textSecondary }]}>予定をまとめて見渡す</Text></View>
         <Pressable style={[styles.scheduleMonthArrow, isDark && styles.scheduleMonthArrowDark]} onPress={() => moveMonth(1)}><Text style={[styles.scheduleMonthArrowText, isDark && styles.scheduleMonthArrowTextDark]}>›</Text></Pressable>
       </View>
       <ScheduleFilterChips value={scheduleFilter} designMode={designMode} chicPalette={chicPalette} onChange={setScheduleFilter} compact />
@@ -5662,7 +5846,7 @@ function TaskScheduleCalendar({ tasks, plans, externalEvents, now, designMode, c
       <View style={styles.scheduleGrid}>{cells.map((date, index) => {
         if (!date) return <View key={`empty-${index}`} style={styles.scheduleDayCell} />;
         const key = dateKey(date);
-        const dayTasks = scheduleFilter === 'plans' ? [] : tasks.filter((task) => !task.done && taskDates(task).includes(key));
+        const dayTasks = scheduleFilter === 'plans' ? [] : tasks.filter((task) => isRegularVisibleTask(task) && !task.done && taskDates(task).includes(key));
         const dayCompletedTasks = scheduleFilter === 'plans' ? [] : tasks.filter((task) => task.done && taskDates(task).includes(key));
         const dayPlans = scheduleFilter === 'tasks' ? [] : plans.filter((item) => isPlanOnDate(item, key));
         const dayExternalEvents = scheduleFilter === 'tasks' ? [] : externalEvents.filter((event) => dateKey(new Date(event.startDate)) === key);
@@ -5698,7 +5882,7 @@ function TaskScheduleCalendar({ tasks, plans, externalEvents, now, designMode, c
     </View>
 
     <CalendarMarkPicker date={selectedDate} mark={calendarMarks[selectedDate]} onSet={onSetCalendarMark} designMode={designMode} chicPalette={chicPalette} />
-    <View style={[styles.scheduleAgendaHeader, isDark && styles.darkPanel]}><Text style={[styles.sectionTitle, isDark && styles.darkBodyText]}>{selectedDate.replaceAll('-', '.')} の予定</Text><Text style={[styles.sectionSub, isDark && styles.darkMutedText]}>{visibleSelectedTasks.length + visibleSelectedCompletedTasks.length + visibleSelectedPlans.length + visibleSelectedExternalEvents.length}件</Text></View>
+    <View style={[styles.scheduleAgendaHeader, isDark && styles.darkPanel, designMode === 'chic' && chicPalette && { backgroundColor: chicPalette.surfaceSubtle, borderColor: chicPalette.border }]}><Text style={[styles.sectionTitle, isDark && styles.darkBodyText, designMode === 'chic' && chicPalette && { color: chicPalette.textPrimary }]}>{selectedDate.replaceAll('-', '.')} の予定</Text><Text style={[styles.sectionSub, isDark && styles.darkMutedText, designMode === 'chic' && chicPalette && { color: chicPalette.textSecondary }]}>{visibleSelectedTasks.length + visibleSelectedCompletedTasks.length + visibleSelectedPlans.length + visibleSelectedExternalEvents.length}件</Text></View>
     {visibleSelectedTasks.length === 0 && visibleSelectedCompletedTasks.length === 0 && visibleSelectedPlans.length === 0 && visibleSelectedExternalEvents.length === 0 ? <View style={styles.departureEmpty}><Text style={styles.emptyCopy}>この日はまだ空いています。</Text></View> : <>
       {visibleSelectedTasks.map((task) => {
         const overdue = Boolean(task.deadlineDate && getTargetDate(task) && getTargetDate(task)!.getTime() < now.getTime());
@@ -5909,7 +6093,7 @@ function ChicPatternSelector({ designMode, chicPattern, chicCheckColor, planTier
     nightSky: 'ナイトスカイ',
   };
   const visiblePatterns = designMode === 'photo' ? patterns.filter((item) => item.id === 'plain') : patterns;
-  const selectedPalette = getChicCheckColor(chicCheckColor);
+  const selectedPalette = chicPattern === 'nightSky' ? getNightSkyPalette(getChicCheckColor(chicCheckColor)) : getChicCheckColor(chicCheckColor);
   return <View style={[styles.patternSelectorNew, designMode === 'dark' && styles.darkSurface, { borderTopColor: selectedPalette.border }]}>
     <Text style={[styles.fieldLabel, designMode === 'dark' && styles.darkAccentText, { color: designMode === 'dark' ? '#B4C0D4' : selectedPalette.textPrimary }]}>背景の柄</Text>
     <View style={styles.patternChoices}>
@@ -5957,13 +6141,17 @@ function ThemeColorSelector({ color, onChange, designMode }: { color: ChicCheckC
   </View>;
 }
 
-function SettingsDisclosure({ title, subtitle, expanded, onPress, children, designMode }: { title: string; subtitle: string; expanded: boolean; onPress: () => void; children: React.ReactNode; designMode?: DesignMode }) {
+function SettingsDisclosure({ title, subtitle, expanded, onPress, children, designMode, chicPalette }: { title: string; subtitle: string; expanded: boolean; onPress: () => void; children: React.ReactNode; designMode?: DesignMode; chicPalette?: ChicThemePalette }) {
   const isDark = designMode === 'dark';
-  const theme = getThemeTokens(designMode ?? 'minimal').colors;
+  const isChic = designMode === 'chic' && !!chicPalette;
+  const theme = getThemeTokens(designMode ?? 'minimal', chicPalette?.id ?? 'cool').colors;
+  const textPrimary = isChic ? chicPalette!.textPrimary : theme.primaryText;
+  const textSecondary = isChic ? chicPalette!.textSecondary : theme.secondaryText;
+  const accent = isChic ? chicPalette!.accent : theme.primaryAccent;
   return <View style={styles.settingsDisclosure}>
-    <Pressable style={[styles.settingsDisclosureHeader, isDark && styles.darkSurface]} onPress={onPress} accessibilityRole="button" accessibilityState={{ expanded }}>
-      <View style={{ flex: 1 }}><Text style={[styles.settingsDisclosureTitle, { color: theme.primaryText }]}>{title}</Text><Text style={[styles.settingsDisclosureSubtitle, { color: theme.secondaryText }]}>{subtitle}</Text></View>
-      <Text style={[styles.settingsDisclosureChevron, { color: theme.primaryAccent }]}>{expanded ? '⌃' : '⌄'}</Text>
+    <Pressable style={[styles.settingsDisclosureHeader, isDark && styles.darkSurface, isChic && { backgroundColor: chicPalette!.cardSurface, borderColor: chicPalette!.border }]} onPress={onPress} accessibilityRole="button" accessibilityState={{ expanded }}>
+      <View style={{ flex: 1 }}><Text style={[styles.settingsDisclosureTitle, { color: textPrimary }]}>{title}</Text><Text style={[styles.settingsDisclosureSubtitle, { color: textSecondary }]}>{subtitle}</Text></View>
+      <Text style={[styles.settingsDisclosureChevron, { color: accent }]}>{expanded ? '⌃' : '⌄'}</Text>
     </Pressable>
     {expanded && <View style={styles.settingsDisclosureBody}>{children}</View>}
   </View>;
@@ -6007,9 +6195,25 @@ function MonoChicBackground({ dark }: { dark: boolean }) {
   </View>;
 }
 
-function NotificationManagerCard({ designMode, readOnly = false }: { designMode?: DesignMode; readOnly?: boolean }) {
+function NotificationManagerCard({ designMode, chicPalette, readOnly = false }: { designMode?: DesignMode; chicPalette?: ChicThemePalette; readOnly?: boolean }) {
   const isDark = designMode === 'dark';
-  const theme = getThemeTokens(designMode ?? 'minimal').colors;
+  const isChic = designMode === 'chic' && !!chicPalette;
+  const theme = getThemeTokens(designMode ?? 'minimal', chicPalette?.id ?? 'cool').colors;
+  const notificationColors = isChic ? {
+    surface: chicPalette!.cardSurface,
+    border: chicPalette!.border,
+    text: chicPalette!.textPrimary,
+    muted: chicPalette!.textSecondary,
+    accent: chicPalette!.accent,
+    danger: chicPalette!.danger,
+  } : {
+    surface: theme.surface,
+    border: theme.border,
+    text: theme.primaryText,
+    muted: theme.secondaryText,
+    accent: theme.primaryAccent,
+    danger: theme.danger,
+  };
   const [pending, setPending] = useState<Notifications.NotificationRequest[]>([]);
   const [loading, setLoading] = useState(false);
   const refresh = React.useCallback(async () => {
@@ -6028,12 +6232,12 @@ function NotificationManagerCard({ designMode, readOnly = false }: { designMode?
     { text: 'キャンセル', style: 'cancel' },
     { text: '停止する', style: 'destructive', onPress: () => { void Notifications.cancelAllScheduledNotificationsAsync().then(refresh); } },
   ]);
-  if (readOnly) return <View style={[styles.notificationManagerCard, isDark && styles.darkSurface]}><View style={styles.notificationManagerHeader}><View><Text style={[styles.settingsTitle, { color: theme.primaryText }]}>高度な通知</Text><Text style={[styles.switchCopy, { color: theme.secondaryText }]}>段階的な通知を設定できます</Text></View><Text style={[styles.notificationRefreshText, { color: theme.primaryAccent }]}>Premium</Text></View>{[['09:00', 'そろそろ始められそう？'], ['09:05', 'もう一度確認しよう'], ['09:08', '今からできることを選ぶ']].map(([time, copy]) => <View key={time} style={styles.notificationPendingRow}><View style={[styles.notificationPendingDot, { backgroundColor: theme.primaryAccent }]} /><View style={{ flex: 1 }}><Text style={[styles.notificationPendingTitle, { color: theme.primaryText }]}>{time}</Text><Text style={[styles.notificationPendingBody, { color: theme.secondaryText }]}>{copy}</Text></View></View>)}</View>;
-  return <View style={[styles.notificationManagerCard, isDark && styles.darkSurface]}>
-    <View style={styles.notificationManagerHeader}><View><Text style={[styles.settingsTitle, { color: theme.primaryText }]}>通知管理</Text><Text style={[styles.switchCopy, { color: theme.secondaryText }]}>{loading ? '確認中…' : `${pending.length}件の通知を予約中`}</Text></View><Pressable style={styles.notificationRefresh} onPress={() => void refresh()}><Text style={[styles.notificationRefreshText, { color: theme.primaryAccent }]}>更新</Text></Pressable></View>
-    {pending.slice(0, 4).map((request) => <View key={request.identifier} style={styles.notificationPendingRow}><View style={[styles.notificationPendingDot, { backgroundColor: theme.primaryAccent }]} /><View style={{ flex: 1 }}><Text numberOfLines={1} style={[styles.notificationPendingTitle, { color: theme.primaryText }]}>{request.content.title ?? '通知'}</Text><Text numberOfLines={1} style={[styles.notificationPendingBody, { color: theme.secondaryText }]}>{request.content.body ?? ''}</Text></View></View>)}
-    {pending.length > 4 && <Text style={[styles.notificationMore, { color: theme.secondaryText }]}>ほか{pending.length - 4}件</Text>}
-    <Pressable disabled={pending.length === 0} style={[styles.notificationStopButton, pending.length === 0 && styles.batchDisabled]} onPress={stopAll}><Text style={styles.notificationStopText}>予約通知をすべて停止</Text></Pressable>
+  if (readOnly) return <View style={[styles.notificationManagerCard, isDark && styles.darkSurface, isChic && { backgroundColor: notificationColors.surface, borderColor: notificationColors.border }]}><View style={styles.notificationManagerHeader}><View><Text style={[styles.settingsTitle, { color: notificationColors.text }]}>高度な通知</Text><Text style={[styles.switchCopy, { color: notificationColors.muted }]}>段階的な通知を設定できます</Text></View><Text style={[styles.notificationRefreshText, { color: notificationColors.accent }]}>Premium</Text></View>{[['09:00', 'そろそろ始められそう？'], ['09:05', 'もう一度確認しよう'], ['09:08', '今からできることを選ぶ']].map(([time, copy]) => <View key={time} style={styles.notificationPendingRow}><View style={[styles.notificationPendingDot, { backgroundColor: notificationColors.accent }]} /><View style={{ flex: 1 }}><Text style={[styles.notificationPendingTitle, { color: notificationColors.text }]}>{time}</Text><Text style={[styles.notificationPendingBody, { color: notificationColors.muted }]}>{copy}</Text></View></View>)}</View>;
+  return <View style={[styles.notificationManagerCard, isDark && styles.darkSurface, isChic && { backgroundColor: notificationColors.surface, borderColor: notificationColors.border }]}>
+    <View style={styles.notificationManagerHeader}><View><Text style={[styles.settingsTitle, { color: notificationColors.text }]}>通知管理</Text><Text style={[styles.switchCopy, { color: notificationColors.muted }]}>{loading ? '確認中…' : `${pending.length}件の通知を予約中`}</Text></View><Pressable style={styles.notificationRefresh} onPress={() => void refresh()}><Text style={[styles.notificationRefreshText, { color: notificationColors.accent }]}>更新</Text></Pressable></View>
+    {pending.slice(0, 4).map((request) => <View key={request.identifier} style={styles.notificationPendingRow}><View style={[styles.notificationPendingDot, { backgroundColor: notificationColors.accent }]} /><View style={{ flex: 1 }}><Text numberOfLines={1} style={[styles.notificationPendingTitle, { color: notificationColors.text }]}>{request.content.title ?? '通知'}</Text><Text numberOfLines={1} style={[styles.notificationPendingBody, { color: notificationColors.muted }]}>{request.content.body ?? ''}</Text></View></View>)}
+    {pending.length > 4 && <Text style={[styles.notificationMore, { color: notificationColors.muted }]}>ほか{pending.length - 4}件</Text>}
+    <Pressable disabled={pending.length === 0} style={[styles.notificationStopButton, isChic && { borderColor: notificationColors.danger }, pending.length === 0 && styles.batchDisabled]} onPress={stopAll}><Text style={[styles.notificationStopText, isChic && { color: notificationColors.danger }]}>予約通知をすべて停止</Text></Pressable>
   </View>;
 }
 
@@ -6046,7 +6250,7 @@ function TodayWinStrip({ tasks, designMode, chicPattern, chicPalette, onRestore,
     : theme.colors;
   const now = new Date();
   const todayKey = dateKey(now);
-  const scheduledToday = tasks.filter((task) => !task.scheduledDate || normalizeTaskDateKey(task.scheduledDate)! <= todayKey).filter((task) => !isTaskSkippedOnDate(task, todayKey));
+  const scheduledToday = tasks.filter((task) => isRegularVisibleTask(task) && (!task.scheduledDate || normalizeTaskDateKey(task.scheduledDate)! <= todayKey)).filter((task) => !isTaskSkippedOnDate(task, todayKey));
   const completedToday = tasks.filter((task) => task.done && task.completedAt && dateKey(task.completedAt) === todayKey);
   const count = completedToday.reduce((sum, task) => sum + (task.subtasks?.length ? task.subtasks.filter((item) => item.done).length : 1), 0);
   const drop = React.useRef(new Animated.Value(1)).current;

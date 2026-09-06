@@ -284,7 +284,7 @@ function PremiumFeatureDetail({ icon, kind, title, description, designMode, chic
 
 export function PremiumModal({ visible, initialFeatureId, designMode, chicPalette, planTier, isDevelopment = false, onMockPlanTier, onClose, styles, helpers, renderReadOnlyPreview, products, productStatus = products ? 'ready' : 'unavailable', onRestorePurchase, onPurchasePlan, purchaseError }: { visible: boolean; initialFeatureId: PremiumGuideFeatureId; designMode: DesignMode; chicPalette?: ChicThemePalette; planTier: PlanTier; isDevelopment?: boolean; onMockPlanTier?: (tier: PlanTier | null) => void; onClose: () => void; styles: any; helpers: any; renderReadOnlyPreview?: (kind: PremiumPreviewKind) => React.ReactNode; products?: PremiumStoreProducts; productStatus?: PremiumStoreProductStatus; onRestorePurchase?: () => void; onPurchasePlan?: (plan: 'monthly' | 'annual') => Promise<boolean>; purchaseError?: string }) {
   const { getThemeTokens } = helpers;
-  const theme = getThemeTokens(designMode);
+  const theme = getThemeTokens(designMode, chicPalette?.id ?? 'cool');
   const designSurface = designMode === 'chic' && chicPalette ? { backgroundColor: chicPalette.cardSurface, borderColor: chicPalette.border } : undefined;
   const accent = designMode === 'chic' && chicPalette ? chicPalette.accent : theme.colors.primaryAccent;
   const accentStrong = designMode === 'chic' && chicPalette ? chicPalette.accentStrong : theme.colors.primaryAccent;

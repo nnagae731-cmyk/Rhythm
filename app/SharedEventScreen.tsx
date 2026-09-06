@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Alert, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
-import { DesignMode, getThemeTokens } from './theme';
+import { ChicThemePalette, DesignMode, getThemeTokens } from './theme';
 import { SharedActionStatus, SharedAttendanceStatus, SharedEvent, SharedParticipantPrefs } from './types';
 import { formatClock } from './features/tasks/taskUtils';
 import { getDepartureMoments } from './features/departure/departureUtils';
@@ -10,6 +10,7 @@ type SharedEventScreenProps = {
   visible: boolean;
   shareToken?: string;
   designMode: DesignMode;
+  chicPalette?: ChicThemePalette;
   sharedEvents: SharedEvent[];
   participantIdsByToken: Record<string, string>;
   participantPrefsByToken: Record<string, SharedParticipantPrefs>;
@@ -81,6 +82,7 @@ export function SharedEventScreen({
   visible,
   shareToken,
   designMode,
+  chicPalette,
   sharedEvents,
   participantIdsByToken,
   participantPrefsByToken,
@@ -91,7 +93,8 @@ export function SharedEventScreen({
   onOpenMap,
   onShareCurrentEvent,
 }: SharedEventScreenProps) {
-  const theme = getThemeTokens(designMode);
+  const theme = getThemeTokens(designMode, chicPalette?.id ?? 'cool');
+  const onAccent = designMode === 'chic' && chicPalette ? chicPalette.onAccent : designMode === 'dark' ? theme.colors.screenBackground : '#FFFFFF';
   const event = shareToken ? sharedEvents.find((item) => item.shareToken === shareToken) : undefined;
   const localParticipantId = shareToken ? participantIdsByToken[shareToken] : undefined;
   const localParticipant = event?.participants.find((participant) => participant.participantId === localParticipantId);
@@ -212,7 +215,7 @@ export function SharedEventScreen({
               </View>
               <View style={styles.headerActions}>
                 {event && <Pressable style={[styles.shareButton, { borderColor: theme.colors.primaryAccent }]} onPress={() => onShareCurrentEvent(event.shareToken)}><Text style={[styles.shareButtonText, { color: theme.colors.primaryAccent }]}>共有</Text></Pressable>}
-                <Pressable style={styles.closeButton} onPress={onClose}><Text style={styles.closeText}>閉じる</Text></Pressable>
+                <Pressable style={[styles.closeButton, { borderColor: theme.colors.border, backgroundColor: theme.colors.surface }]} onPress={onClose}><Text style={[styles.closeText, { color: theme.colors.primaryText }]}>閉じる</Text></Pressable>
               </View>
             </View>
 
@@ -247,16 +250,16 @@ export function SharedEventScreen({
                       onChangeText={(displayName) => setDraft((current) => ({ ...current, displayName }))}
                       placeholder="表示名"
                       placeholderTextColor={theme.colors.secondaryText}
-                      style={[styles.input, { borderColor: theme.colors.border, color: theme.colors.primaryText }]}
+                      style={[styles.input, { borderColor: theme.colors.border, color: theme.colors.primaryText, backgroundColor: theme.colors.secondarySurface }]}
                     />
                     <View style={styles.choiceRow}>
                       {sharedAttendanceStatuses.map((status) => (
                         <Pressable
                           key={status}
-                          style={[styles.choiceButton, draft.attendanceStatus === status && { backgroundColor: theme.colors.primaryAccent }]}
+                          style={[styles.choiceButton, { borderColor: theme.colors.border, backgroundColor: draft.attendanceStatus === status ? theme.colors.primaryAccent : theme.colors.secondarySurface }]}
                           onPress={() => setDraft((current) => ({ ...current, attendanceStatus: status }))}
                         >
-                          <Text style={[styles.choiceText, draft.attendanceStatus === status && styles.choiceTextActive]}>{status}</Text>
+                          <Text style={[styles.choiceText, { color: draft.attendanceStatus === status ? onAccent : theme.colors.primaryText }]}>{status}</Text>
                         </Pressable>
                       ))}
                     </View>
@@ -265,10 +268,10 @@ export function SharedEventScreen({
                       {sharedDeparturePoints.map((point) => (
                         <Pressable
                           key={point.id}
-                          style={[styles.choiceButton, draft.departurePoint === point.id && { backgroundColor: theme.colors.primaryAccent }]}
+                          style={[styles.choiceButton, { borderColor: theme.colors.border, backgroundColor: draft.departurePoint === point.id ? theme.colors.primaryAccent : theme.colors.secondarySurface }]}
                           onPress={() => setDraft((current) => ({ ...current, departurePoint: point.id }))}
                         >
-                          <Text style={[styles.choiceText, draft.departurePoint === point.id && styles.choiceTextActive]}>{point.label}</Text>
+                          <Text style={[styles.choiceText, { color: draft.departurePoint === point.id ? onAccent : theme.colors.primaryText }]}>{point.label}</Text>
                         </Pressable>
                       ))}
                     </View>
@@ -279,19 +282,19 @@ export function SharedEventScreen({
                         onChangeText={(departurePointLabel) => setDraft((current) => ({ ...current, departurePointLabel }))}
                         placeholder="指定した場所"
                         placeholderTextColor={theme.colors.secondaryText}
-                        style={[styles.input, { borderColor: theme.colors.border, color: theme.colors.primaryText, marginTop: 10 }]}
+                        style={[styles.input, { borderColor: theme.colors.border, color: theme.colors.primaryText, backgroundColor: theme.colors.secondarySurface, marginTop: 10 }]}
                       />
                     )}
                     <Text style={[styles.subLabel, { color: theme.colors.secondaryText }]}>行動状態</Text>
                     <View style={styles.statusWrap}>
                       {sharedActionStatuses.map((status) => (
-                        <Pressable key={status} style={[styles.statusButton, draft.actionStatus === status && { borderColor: theme.colors.primaryAccent, backgroundColor: theme.colors.softAccent }]} onPress={() => void updateActionStatus(status)}>
-                          <Text style={[styles.statusText, draft.actionStatus === status && { color: theme.colors.primaryAccent }]}>{status}</Text>
+                        <Pressable key={status} style={[styles.statusButton, { borderColor: draft.actionStatus === status ? theme.colors.primaryAccent : theme.colors.border, backgroundColor: draft.actionStatus === status ? theme.colors.softAccent : theme.colors.secondarySurface }]} onPress={() => void updateActionStatus(status)}>
+                          <Text style={[styles.statusText, { color: draft.actionStatus === status ? theme.colors.primaryAccent : theme.colors.primaryText }]}>{status}</Text>
                         </Pressable>
                       ))}
                     </View>
                     <Pressable style={[styles.primaryButton, !canSave && styles.primaryButtonDisabled, { backgroundColor: theme.colors.primaryAccent }]} onPress={saveParticipant} disabled={!canSave}>
-                      <Text style={styles.primaryButtonText}>参加情報を保存</Text>
+                      <Text style={[styles.primaryButtonText, { color: onAccent }]}>参加情報を保存</Text>
                     </Pressable>
                     {!!statusMessage && <Text style={[styles.statusMessage, { color: theme.colors.secondaryText }]}>{statusMessage}</Text>}
                   </View>

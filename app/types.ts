@@ -100,6 +100,18 @@ export type Task = {
   listItems?: TaskListItem[];
 };
 
+/** Minimal in-progress Focus state used to restore a timer after termination. */
+export type FocusPersistedState = {
+  sessionId: string;
+  taskId?: string;
+  taskTitle?: string;
+  plannedDurationMinutes: number;
+  startedAt: string;
+  running: boolean;
+  endAt?: string;
+  pausedSeconds: number;
+};
+
 /** A lightweight snapshot for routines that were explicitly deactivated. */
 export type RoutineArchive = {
   id: string;
@@ -298,6 +310,7 @@ export type PersistedState = {
   chicCheckColor?: ChicCheckColor;
   recoveryHistory?: RecoveryRecord[];
   focusSessions?: FocusSession[];
+  focusState?: FocusPersistedState;
   /** Last custom Focus duration in minutes. Kept optional for older saves. */
   focusCustomDurationMinutes?: number;
   departureCheckIns?: DepartureCheckIn[];

@@ -42,6 +42,7 @@ export function HomeScreen({
   onDeleteSelected,
   onDelete,
   onSkip,
+  onRemoveRoutine,
   onOpenSkipBonusReward,
   skipBonusAdded = 0,
   skipBonusMax = 2,
@@ -88,6 +89,7 @@ export function HomeScreen({
   onDeleteSelected: () => void;
   onDelete: (id: string) => void;
   onSkip: (id: string) => void;
+  onRemoveRoutine?: (id: string) => void;
   onOpenSkipBonusReward?: () => void;
   skipBonusAdded?: number;
   skipBonusMax?: number;
@@ -127,9 +129,11 @@ export function HomeScreen({
   const [postponeDateTask, setPostponeDateTask] = useState<Task | null>(null);
   useEffect(() => {
     setHomeTab(initialTab);
+    onClearSelection?.();
     if (initialTab === 'list') setBucketFilter('all');
   }, [initialTab]);
   const nonRoutineTasks = tasks.filter((task) => task.isRoutine !== true);
+  const allNonRoutineTasks = allTasks.filter((task) => task.isRoutine !== true);
   const bucketTasks = bucketFilter === 'all' ? nonRoutineTasks.filter((task) => !task.done) : nonRoutineTasks.filter((task) => (task.bucket ?? 'now') === bucketFilter);
   const categoryTasks = categoryFilter === 'すべて' ? bucketTasks : bucketTasks.filter((task) => task.category === categoryFilter);
   const displayTasks = [...categoryTasks].sort((a, b) => {
@@ -173,9 +177,9 @@ export function HomeScreen({
   const daysUntilSaturday = (6 - weekendDate.getDay() + 7) % 7 || 7;
   weekendDate.setDate(weekendDate.getDate() + daysUntilSaturday);
   const weekendKey = dateKey(weekendDate);
-  const tomorrowTasks = nonRoutineTasks.filter((task) => task.scheduledDate === tomorrowKey).sort((a, b) => (a.scheduledTime ?? '99:99').localeCompare(b.scheduledTime ?? '99:99'));
+  const tomorrowTasks = allNonRoutineTasks.filter((task) => task.scheduledDate === tomorrowKey && !task.done && task.status !== 'skipped').sort((a, b) => (a.scheduledTime ?? '99:99').localeCompare(b.scheduledTime ?? '99:99'));
   const todayKey = dateKey(now);
-  const nextUpcoming = selectNextUpcomingItem(nonRoutineTasks, departurePlans, now, canShowArrivalReverseCountdown);
+  const nextUpcoming = selectNextUpcomingItem(allNonRoutineTasks, departurePlans, now, canShowArrivalReverseCountdown);
   const nextTimeLabel = (value: Date) => `${String(value.getHours()).padStart(2, '0')}:${String(value.getMinutes()).padStart(2, '0')}`;
   const nextScheduledLabel = nextUpcoming ? nextTimeLabel(nextUpcoming.displayAt) : '';
   const nextArrivalLabel = nextUpcoming?.arrivalAt ? nextTimeLabel(nextUpcoming.arrivalAt) : '';
@@ -202,10 +206,13 @@ export function HomeScreen({
   const routineTasks = Array.from(allTasks.reduce((byRoutine, task) => {
     if (task.isRoutine !== true) return byRoutine;
     const scheduledDate = task.scheduledDate ?? '';
-    if (scheduledDate && scheduledDate > todayKey) return byRoutine;
+    // The routine tab is a today view. Legacy routines without a date are
+    // still eligible, but historical dated instances must stay in History /
+    // Analysis instead of resurfacing here.
+    if (scheduledDate && scheduledDate !== todayKey) return byRoutine;
     const routineKey = task.routineId ?? task.id;
     const current = byRoutine.get(routineKey);
-    if (!current || (current.scheduledDate ?? '') < scheduledDate) byRoutine.set(routineKey, task);
+    if (!current || (current.createdAt ?? '') < (task.createdAt ?? '')) byRoutine.set(routineKey, task);
     return byRoutine;
   }, new Map<string, Task>()).values());
   const routineCompletedCount = routineTasks.filter((task) => task.done || task.status === 'completed').length;
@@ -226,7 +233,7 @@ export function HomeScreen({
         <Text style={{ color: designMode === 'chic' ? chicPalette.textPrimary : theme?.colors?.primaryText ?? '#182235', fontSize: 18, fontWeight: '900' }}>{now.getMonth() + 1}月{now.getDate()}日（{weekdayLabels[now.getDay()]}）</Text>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
           <Pressable accessibilityRole="button" accessibilityLabel="タスクを追加" onPress={onAdd} style={{ minHeight: 40, paddingHorizontal: 13, borderRadius: 12, borderWidth: 1, borderColor: focusShortcutBorder, backgroundColor: designMode === 'chic' ? chicPalette.accentSoft : theme?.colors?.softAccent ?? '#E8EEFF', justifyContent: 'center' }}><Text style={{ color: focusShortcutAccent, fontSize: 13, fontWeight: '900' }}>＋追加</Text></Pressable>
-          <Pressable accessibilityRole="button" accessibilityLabel={selectionMode ? '選択を終了' : 'タスクを選択'} onPress={() => { if (homeTab === 'routine' && !selectionMode) return; onSelectionMode(); }} style={{ minHeight: 40, paddingHorizontal: 13, borderRadius: 12, borderWidth: 1, borderColor: selectionMode ? focusShortcutAccent : focusShortcutBorder, backgroundColor: selectionMode ? focusShortcutAccent : focusShortcutBackground, justifyContent: 'center', opacity: homeTab === 'routine' && !selectionMode ? 0.55 : 1 }}><Text style={{ color: selectionMode ? (designMode === 'chic' ? chicPalette.onAccent : theme?.colors?.screenBackground ?? '#FFFFFF') : focusShortcutText, fontSize: 13, fontWeight: '900' }}>{selectionMode ? '取消' : '選択'}</Text></Pressable>
+          {homeTab !== 'routine' && <Pressable accessibilityRole="button" accessibilityLabel={selectionMode ? '選択を終了' : 'タスクを選択'} onPress={onSelectionMode} style={{ minHeight: 40, paddingHorizontal: 13, borderRadius: 12, borderWidth: 1, borderColor: selectionMode ? focusShortcutAccent : focusShortcutBorder, backgroundColor: selectionMode ? focusShortcutAccent : focusShortcutBackground, justifyContent: 'center' }}><Text style={{ color: selectionMode ? (designMode === 'chic' ? chicPalette.onAccent : theme?.colors?.screenBackground ?? '#FFFFFF') : focusShortcutText, fontSize: 13, fontWeight: '900' }}>{selectionMode ? '取消' : '選択'}</Text></Pressable>}
         </View>
       </View>
        <View style={{ flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: focusShortcutBorder, marginBottom: 14 }}>
@@ -285,9 +292,9 @@ export function HomeScreen({
         <OnboardingHint featureId="taskDetails" designMode={designMode} chicPalette={chicPalette} />
        </View>
       )}
-      <View style={[styles.sectionHeader, designMode === 'minimal' && styles.sectionHeaderMinimal, isDark && styles.darkPanel]}>
+      <View style={[styles.sectionHeader, designMode === 'minimal' && styles.sectionHeaderMinimal, isDark && styles.darkPanel, designMode === 'chic' && { backgroundColor: chicPalette.cardSurface, borderColor: chicPalette.border }]}>
         <View>
-          <Text style={[styles.sectionTitle, isDark && styles.darkBodyText]}>今日のタスク</Text>
+          <Text style={[styles.sectionTitle, isDark && styles.darkBodyText, designMode === 'chic' && { color: chicPalette.textPrimary }]}>今日のタスク</Text>
         </View>
       </View>
 
@@ -338,17 +345,25 @@ export function HomeScreen({
           <Pressable style={[styles.taskActionCard, { backgroundColor: popupSurface, borderColor: popupBorder }]} onPress={(event) => event.stopPropagation()}>
             <Text numberOfLines={1} style={[styles.bucketModalTitle, { color: popupText }]}>{actionTask?.title}</Text>
             <Text style={[styles.taskActionHint, { color: popupMuted }]}>タスクの操作</Text>
-            <View style={styles.taskActionGrid}>
-              <Pressable style={[styles.taskActionOption, { backgroundColor: popupSoft, borderColor: popupBorder }]} onPress={() => { if (actionTask) onEdit(actionTask); setActionTask(null); }}><Text style={[styles.taskActionIcon, { color: popupAccent }]}>✎</Text><Text style={[styles.taskActionLabel, { color: popupText }]}>編集</Text></Pressable>
-              <Pressable style={[styles.taskActionOption, { backgroundColor: popupSoft, borderColor: popupBorder }]} onPress={() => { if (actionTask) onDuplicate(actionTask); setActionTask(null); }}><Text style={[styles.taskActionIcon, { color: popupAccent }]}>▣</Text><Text style={[styles.taskActionLabel, { color: popupText }]}>複製</Text></Pressable>
-              <Pressable style={[styles.taskActionOption, { backgroundColor: popupSoft, borderColor: popupBorder }]} onPress={() => { const target = actionTask; setActionTask(null); if (target) setTimeout(() => setPostponeTask(target), 0); }}><Text style={[styles.taskActionIcon, { color: popupAccent }]}>→</Text><View><Text style={[styles.taskActionLabel, { color: popupText }]}>延期する</Text><Text style={[styles.taskActionSubcopy, { color: popupMuted }]}>明日・週末・日付を指定</Text></View></Pressable>
-              <Pressable style={[styles.taskActionOption, styles.taskActionDelete, { backgroundColor: popupSurface, borderColor: popupDanger }]} onPress={() => { if (actionTask) onDelete(actionTask.id); setActionTask(null); }}><Text style={[styles.taskActionIcon, styles.taskActionDeleteText, { color: popupDanger }]}>×</Text><Text style={[styles.taskActionLabel, styles.taskActionDeleteText, { color: popupDanger }]}>削除</Text></Pressable>
-            </View>
-            <View style={styles.taskActionGrid}>
-              <Pressable style={[styles.taskActionOption, { backgroundColor: popupSoft, borderColor: popupBorder }]} onPress={() => { const target = actionTask; setActionTask(null); if (target) setTimeout(() => setListTask(target), 0); }}><Text style={[styles.taskActionIcon, { color: popupAccent }]}>☷</Text><Text style={[styles.taskActionLabel, { color: popupText }]}>リスト・メモ{actionTask?.listItems?.length ? ` ${actionTask.listItems.length}件` : ''}</Text></Pressable>
-              <Pressable style={[styles.taskActionOption, { backgroundColor: popupSoft, borderColor: popupBorder }]} onPress={() => { const target = actionTask; setActionTask(null); if (target) setTimeout(() => setBucketTask(target), 0); }}><Text style={[styles.taskActionIcon, { color: popupAccent }]}>⇄</Text><View><Text style={[styles.taskActionLabel, { color: popupText }]}>振り分ける</Text><Text style={[styles.taskActionSubcopy, { color: popupMuted }]}>今やる・あとで・待ち</Text></View></Pressable>
-            </View>
-            <Pressable style={[styles.taskTemplateSaveAction, { backgroundColor: popupSoft, borderColor: popupBorder }]} onPress={() => { if (actionTask) onSaveTemplate(actionTask); setActionTask(null); }}><View><Text style={[styles.taskTemplateSaveTitle, { color: popupText }]}>設定ごとひな型に保存</Text><Text style={[styles.taskTemplateSaveCopy, { color: popupMuted }]}>カテゴリ・通知・間に合うナビも再利用</Text></View><Text style={[styles.taskTemplateSavePremium, { color: popupAccent }]}>Premium</Text></Pressable>
+            {actionTask?.isRoutine ? <>
+              <View style={styles.taskActionGrid}>
+                <Pressable style={[styles.taskActionOption, { backgroundColor: popupSoft, borderColor: popupBorder }]} onPress={() => { if (actionTask) onEdit(actionTask); setActionTask(null); }}><Text style={[styles.taskActionIcon, { color: popupAccent }]}>✎</Text><Text style={[styles.taskActionLabel, { color: popupText }]}>編集</Text></Pressable>
+                {actionTask.status !== 'skipped' && !actionTask.done && <Pressable style={[styles.taskActionOption, { backgroundColor: popupSoft, borderColor: popupBorder }]} onPress={() => { if (actionTask) onSkip(actionTask.id); setActionTask(null); }}><Text style={[styles.taskActionIcon, { color: popupAccent }]}>◌</Text><Text style={[styles.taskActionLabel, { color: popupText }]}>今日は休む</Text></Pressable>}
+                {onRemoveRoutine && <Pressable style={[styles.taskActionOption, styles.taskActionDelete, { backgroundColor: popupSurface, borderColor: popupDanger }]} onPress={() => { if (actionTask) onRemoveRoutine(actionTask.id); setActionTask(null); }}><Text style={[styles.taskActionIcon, styles.taskActionDeleteText, { color: popupDanger }]}>×</Text><Text style={[styles.taskActionLabel, styles.taskActionDeleteText, { color: popupDanger }]}>Routine解除</Text></Pressable>}
+              </View>
+            </> : <>
+              <View style={styles.taskActionGrid}>
+                <Pressable style={[styles.taskActionOption, { backgroundColor: popupSoft, borderColor: popupBorder }]} onPress={() => { if (actionTask) onEdit(actionTask); setActionTask(null); }}><Text style={[styles.taskActionIcon, { color: popupAccent }]}>✎</Text><Text style={[styles.taskActionLabel, { color: popupText }]}>編集</Text></Pressable>
+                <Pressable style={[styles.taskActionOption, { backgroundColor: popupSoft, borderColor: popupBorder }]} onPress={() => { if (actionTask) onDuplicate(actionTask); setActionTask(null); }}><Text style={[styles.taskActionIcon, { color: popupAccent }]}>▣</Text><Text style={[styles.taskActionLabel, { color: popupText }]}>複製</Text></Pressable>
+                <Pressable style={[styles.taskActionOption, { backgroundColor: popupSoft, borderColor: popupBorder }]} onPress={() => { const target = actionTask; setActionTask(null); if (target) setTimeout(() => setPostponeTask(target), 0); }}><Text style={[styles.taskActionIcon, { color: popupAccent }]}>→</Text><View><Text style={[styles.taskActionLabel, { color: popupText }]}>延期する</Text><Text style={[styles.taskActionSubcopy, { color: popupMuted }]}>明日・週末・日付を指定</Text></View></Pressable>
+                <Pressable style={[styles.taskActionOption, styles.taskActionDelete, { backgroundColor: popupSurface, borderColor: popupDanger }]} onPress={() => { if (actionTask) onDelete(actionTask.id); setActionTask(null); }}><Text style={[styles.taskActionIcon, styles.taskActionDeleteText, { color: popupDanger }]}>×</Text><Text style={[styles.taskActionLabel, styles.taskActionDeleteText, { color: popupDanger }]}>削除</Text></Pressable>
+              </View>
+              <View style={styles.taskActionGrid}>
+                <Pressable style={[styles.taskActionOption, { backgroundColor: popupSoft, borderColor: popupBorder }]} onPress={() => { const target = actionTask; setActionTask(null); if (target) setTimeout(() => setListTask(target), 0); }}><Text style={[styles.taskActionIcon, { color: popupAccent }]}>☷</Text><Text style={[styles.taskActionLabel, { color: popupText }]}>リスト・メモ{actionTask?.listItems?.length ? ` ${actionTask.listItems.length}件` : ''}</Text></Pressable>
+                <Pressable style={[styles.taskActionOption, { backgroundColor: popupSoft, borderColor: popupBorder }]} onPress={() => { const target = actionTask; setActionTask(null); if (target) setTimeout(() => setBucketTask(target), 0); }}><Text style={[styles.taskActionIcon, { color: popupAccent }]}>⇄</Text><View><Text style={[styles.taskActionLabel, { color: popupText }]}>振り分ける</Text><Text style={[styles.taskActionSubcopy, { color: popupMuted }]}>今やる・あとで・待ち</Text></View></Pressable>
+              </View>
+              <Pressable style={[styles.taskTemplateSaveAction, { backgroundColor: popupSoft, borderColor: popupBorder }]} onPress={() => { if (actionTask) onSaveTemplate(actionTask); setActionTask(null); }}><View><Text style={[styles.taskTemplateSaveTitle, { color: popupText }]}>設定ごとひな型に保存</Text><Text style={[styles.taskTemplateSaveCopy, { color: popupMuted }]}>カテゴリ・通知・間に合うナビも再利用</Text></View><Text style={[styles.taskTemplateSavePremium, { color: popupAccent }]}>Premium</Text></Pressable>
+            </>}
           </Pressable>
         </Pressable>
       </Modal>
@@ -428,10 +443,12 @@ function TodoTaskRow({ task, styles, designMode, chicPalette, isDark, selected, 
 
 function RoutineTaskRow({ task, styles, designMode, chicPalette, isDark, completionIcon, textColor, accentColor, borderColor, onPress, onCheck, onSkip }: { task: Task; styles: any; designMode: DesignMode; chicPalette: ChicThemePalette; isDark: boolean; completionIcon: string; textColor: string; accentColor: string; borderColor: string; onPress: () => void; onCheck: () => void; onSkip: () => void }) {
   const completed = task.done || task.status === 'completed';
-  const canSkip = !completed && task.status !== 'skipped';
+  const skipped = task.status === 'skipped';
+  const canSkip = !completed && !skipped;
   return <View style={{ minHeight: 50, flexDirection: 'row', alignItems: 'center', borderBottomWidth: 1, borderBottomColor: borderColor, paddingVertical: 5 }}>
-    <Pressable accessibilityRole="checkbox" accessibilityState={{ checked: completed }} onPress={(event) => { event.stopPropagation(); onCheck(); }} style={[styles.check, isDark && styles.checkDark, completed && styles.checkDone, designMode === 'chic' && completed && { backgroundColor: chicPalette.accent, borderColor: chicPalette.accent }]}><Text style={styles.checkMark}>{completed ? completionIcon : ''}</Text></Pressable>
-    <Pressable accessibilityRole="button" onPress={onPress} style={{ flex: 1, minHeight: 40, justifyContent: 'center', paddingLeft: 9, paddingRight: 8 }}><Text numberOfLines={2} style={{ color: textColor, fontSize: 13, fontWeight: '700', textDecorationLine: completed ? 'line-through' : 'none', opacity: completed ? 0.62 : 1 }}>{task.title}</Text></Pressable>
+    <Pressable disabled={skipped} accessibilityRole="checkbox" accessibilityState={{ checked: completed, disabled: skipped }} onPress={(event) => { event.stopPropagation(); onCheck(); }} style={[styles.check, isDark && styles.checkDark, completed && styles.checkDone, skipped && { opacity: 0.5 }, designMode === 'chic' && completed && { backgroundColor: chicPalette.accent, borderColor: chicPalette.accent }]}><Text style={styles.checkMark}>{completed ? completionIcon : ''}</Text></Pressable>
+    <Pressable accessibilityRole="button" onPress={onPress} style={{ flex: 1, minHeight: 40, justifyContent: 'center', paddingLeft: 9, paddingRight: 8 }}><Text numberOfLines={2} style={{ color: textColor, fontSize: 13, fontWeight: '700', textDecorationLine: completed ? 'line-through' : 'none', opacity: completed ? 0.62 : skipped ? 0.7 : 1 }}>{task.title}</Text></Pressable>
+    {skipped && <View accessibilityLabel="お休み" style={{ minHeight: 30, paddingHorizontal: 8, borderRadius: 9, borderWidth: 1, borderColor, backgroundColor: designMode === 'chic' ? chicPalette.surfaceSubtle : isDark ? '#20293A' : '#F5F7FB', alignItems: 'center', justifyContent: 'center' }}><Text style={{ color: textColor, fontSize: 11, fontWeight: '800' }}>お休み</Text></View>}
     {canSkip && <Pressable accessibilityRole="button" accessibilityLabel={`${task.title}をスキップ`} onPress={onSkip} hitSlop={8} style={{ minHeight: 36, paddingHorizontal: 9, borderRadius: 10, borderWidth: 1, borderColor: borderColor, backgroundColor: designMode === 'chic' ? chicPalette.accentSoft : isDark ? '#20293A' : '#F5F7FB', alignItems: 'center', justifyContent: 'center' }}><Text style={{ color: accentColor, fontSize: 12, fontWeight: '800' }}>スキップ</Text></Pressable>}
   </View>;
 }
