@@ -43,6 +43,10 @@ public struct RhythmLiveActivityAttributes: ActivityAttributes {
     public var departureAt: Date?
     public var focusTaskTitle: String?
     public var focusEndsAt: Date?
+    public var focusElapsedStartAt: Date?
+    public var focusElapsedSeconds: Int?
+    public var focusRemainingSeconds: Int?
+    public var focusRunning: Bool
     public var affirmationText: String?
     public var accentHex: String
     public var displayOptions: DisplayOptions
@@ -50,6 +54,7 @@ public struct RhythmLiveActivityAttributes: ActivityAttributes {
     public init(mode: Mode, tier: Tier = .free, currentTaskTitle: String? = nil, nextScheduleTitle: String? = nil,
                 nextScheduleAt: Date? = nil, departureAt: Date? = nil,
                 focusTaskTitle: String? = nil, focusEndsAt: Date? = nil,
+                focusElapsedStartAt: Date? = nil, focusElapsedSeconds: Int? = nil, focusRemainingSeconds: Int? = nil, focusRunning: Bool = false,
                 affirmationText: String? = nil,
                 accentHex: String = "#FFFFFF",
                 displayOptions: DisplayOptions = .all) {
@@ -61,13 +66,17 @@ public struct RhythmLiveActivityAttributes: ActivityAttributes {
       self.departureAt = departureAt
       self.focusTaskTitle = focusTaskTitle
       self.focusEndsAt = focusEndsAt
+      self.focusElapsedStartAt = focusElapsedStartAt
+      self.focusElapsedSeconds = focusElapsedSeconds
+      self.focusRemainingSeconds = focusRemainingSeconds
+      self.focusRunning = focusRunning
       self.affirmationText = affirmationText
       self.accentHex = accentHex
       self.displayOptions = displayOptions
     }
 
     private enum CodingKeys: String, CodingKey {
-      case mode, tier, currentTaskTitle, nextScheduleTitle, nextScheduleAt, departureAt, focusTaskTitle, focusEndsAt, affirmationText, accentHex, displayOptions
+      case mode, tier, currentTaskTitle, nextScheduleTitle, nextScheduleAt, departureAt, focusTaskTitle, focusEndsAt, focusElapsedStartAt, focusElapsedSeconds, focusRemainingSeconds, focusRunning, affirmationText, accentHex, displayOptions
     }
 
     public init(from decoder: Decoder) throws {
@@ -80,6 +89,10 @@ public struct RhythmLiveActivityAttributes: ActivityAttributes {
       departureAt = try container.decodeIfPresent(Date.self, forKey: .departureAt)
       focusTaskTitle = try container.decodeIfPresent(String.self, forKey: .focusTaskTitle)
       focusEndsAt = try container.decodeIfPresent(Date.self, forKey: .focusEndsAt)
+      focusElapsedStartAt = try container.decodeIfPresent(Date.self, forKey: .focusElapsedStartAt)
+      focusElapsedSeconds = try container.decodeIfPresent(Int.self, forKey: .focusElapsedSeconds)
+      focusRemainingSeconds = try container.decodeIfPresent(Int.self, forKey: .focusRemainingSeconds)
+      focusRunning = try container.decodeIfPresent(Bool.self, forKey: .focusRunning) ?? (focusEndsAt != nil)
       affirmationText = try container.decodeIfPresent(String.self, forKey: .affirmationText)
       accentHex = try container.decodeIfPresent(String.self, forKey: .accentHex) ?? "#FFFFFF"
       displayOptions = try container.decodeIfPresent(DisplayOptions.self, forKey: .displayOptions) ?? .all
@@ -95,6 +108,10 @@ public struct RhythmLiveActivityAttributes: ActivityAttributes {
       try container.encodeIfPresent(departureAt, forKey: .departureAt)
       try container.encodeIfPresent(focusTaskTitle, forKey: .focusTaskTitle)
       try container.encodeIfPresent(focusEndsAt, forKey: .focusEndsAt)
+      try container.encodeIfPresent(focusElapsedStartAt, forKey: .focusElapsedStartAt)
+      try container.encodeIfPresent(focusElapsedSeconds, forKey: .focusElapsedSeconds)
+      try container.encodeIfPresent(focusRemainingSeconds, forKey: .focusRemainingSeconds)
+      try container.encode(focusRunning, forKey: .focusRunning)
       try container.encodeIfPresent(affirmationText, forKey: .affirmationText)
       try container.encode(accentHex, forKey: .accentHex)
       try container.encode(displayOptions, forKey: .displayOptions)

@@ -38,11 +38,15 @@ struct RhythmLiveActivityAttributes: ActivityAttributes {
     var departureAt: Date?
     var focusTaskTitle: String?
     var focusEndsAt: Date?
+    var focusElapsedStartAt: Date?
+    var focusElapsedSeconds: Int?
+    var focusRemainingSeconds: Int?
+    var focusRunning: Bool
     var affirmationText: String?
     var accentHex: String
     var displayOptions: DisplayOptions
 
-    init(mode: Mode, tier: Tier = .free, currentTaskTitle: String? = nil, nextScheduleTitle: String? = nil, nextScheduleAt: Date? = nil, departureAt: Date? = nil, focusTaskTitle: String? = nil, focusEndsAt: Date? = nil, affirmationText: String? = nil, accentHex: String = "#FFFFFF", displayOptions: DisplayOptions = .all) {
+    init(mode: Mode, tier: Tier = .free, currentTaskTitle: String? = nil, nextScheduleTitle: String? = nil, nextScheduleAt: Date? = nil, departureAt: Date? = nil, focusTaskTitle: String? = nil, focusEndsAt: Date? = nil, focusElapsedStartAt: Date? = nil, focusElapsedSeconds: Int? = nil, focusRemainingSeconds: Int? = nil, focusRunning: Bool = false, affirmationText: String? = nil, accentHex: String = "#FFFFFF", displayOptions: DisplayOptions = .all) {
       self.mode = mode
       self.tier = tier
       self.currentTaskTitle = currentTaskTitle
@@ -51,13 +55,17 @@ struct RhythmLiveActivityAttributes: ActivityAttributes {
       self.departureAt = departureAt
       self.focusTaskTitle = focusTaskTitle
       self.focusEndsAt = focusEndsAt
+      self.focusElapsedStartAt = focusElapsedStartAt
+      self.focusElapsedSeconds = focusElapsedSeconds
+      self.focusRemainingSeconds = focusRemainingSeconds
+      self.focusRunning = focusRunning
       self.affirmationText = affirmationText
       self.accentHex = accentHex
       self.displayOptions = displayOptions
     }
 
     private enum CodingKeys: String, CodingKey {
-      case mode, tier, currentTaskTitle, nextScheduleTitle, nextScheduleAt, departureAt, focusTaskTitle, focusEndsAt, affirmationText, accentHex, displayOptions
+      case mode, tier, currentTaskTitle, nextScheduleTitle, nextScheduleAt, departureAt, focusTaskTitle, focusEndsAt, focusElapsedStartAt, focusElapsedSeconds, focusRemainingSeconds, focusRunning, affirmationText, accentHex, displayOptions
     }
 
     // Old activities did not carry tier/affirmation. Defaults keep an
@@ -72,6 +80,10 @@ struct RhythmLiveActivityAttributes: ActivityAttributes {
       departureAt = try container.decodeIfPresent(Date.self, forKey: .departureAt)
       focusTaskTitle = try container.decodeIfPresent(String.self, forKey: .focusTaskTitle)
       focusEndsAt = try container.decodeIfPresent(Date.self, forKey: .focusEndsAt)
+      focusElapsedStartAt = try container.decodeIfPresent(Date.self, forKey: .focusElapsedStartAt)
+      focusElapsedSeconds = try container.decodeIfPresent(Int.self, forKey: .focusElapsedSeconds)
+      focusRemainingSeconds = try container.decodeIfPresent(Int.self, forKey: .focusRemainingSeconds)
+      focusRunning = try container.decodeIfPresent(Bool.self, forKey: .focusRunning) ?? (focusEndsAt != nil)
       affirmationText = try container.decodeIfPresent(String.self, forKey: .affirmationText)
       accentHex = try container.decodeIfPresent(String.self, forKey: .accentHex) ?? "#FFFFFF"
       displayOptions = try container.decodeIfPresent(DisplayOptions.self, forKey: .displayOptions) ?? .all
@@ -87,6 +99,10 @@ struct RhythmLiveActivityAttributes: ActivityAttributes {
       try container.encodeIfPresent(departureAt, forKey: .departureAt)
       try container.encodeIfPresent(focusTaskTitle, forKey: .focusTaskTitle)
       try container.encodeIfPresent(focusEndsAt, forKey: .focusEndsAt)
+      try container.encodeIfPresent(focusElapsedStartAt, forKey: .focusElapsedStartAt)
+      try container.encodeIfPresent(focusElapsedSeconds, forKey: .focusElapsedSeconds)
+      try container.encodeIfPresent(focusRemainingSeconds, forKey: .focusRemainingSeconds)
+      try container.encode(focusRunning, forKey: .focusRunning)
       try container.encodeIfPresent(affirmationText, forKey: .affirmationText)
       try container.encode(accentHex, forKey: .accentHex)
       try container.encode(displayOptions, forKey: .displayOptions)

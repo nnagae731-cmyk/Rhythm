@@ -1,3 +1,4 @@
+import Foundation
 import ActivityKit
 import SwiftUI
 import WidgetKit
@@ -53,8 +54,15 @@ private enum RhythmLiveActivityCopy {
     return !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
   }
 
+  static func isFocus(_ state: RhythmLiveActivityAttributes.ContentState) -> Bool {
+    guard state.mode == .focus else { return false }
+    if state.tier == .premium && !state.displayOptions.focusRemaining { return false }
+    return state.focusRunning ? state.focusEndsAt != nil : state.focusElapsedSeconds != nil
+  }
+
   static func hasActiveFocus(_ state: RhythmLiveActivityAttributes.ContentState, now: Date = Date()) -> Bool {
-    state.tier == .premium && state.mode == .focus && state.displayOptions.focusRemaining && (state.focusEndsAt.map { $0 > now } ?? false) && hasText(state.focusTaskTitle)
+    guard isFocus(state) else { return false }
+    return !state.focusRunning || (state.focusEndsAt.map { $0 > now } ?? false)
   }
 
   static func hasActiveDeparture(_ state: RhythmLiveActivityAttributes.ContentState, now: Date = Date()) -> Bool {
@@ -94,6 +102,7 @@ private enum RhythmLiveActivityCopy {
 
   static func title(for state: RhythmLiveActivityAttributes.ContentState) -> String {
     if hasActiveFocus(state), let title = state.focusTaskTitle?.trimmingCharacters(in: .whitespacesAndNewlines), !title.isEmpty { return title }
+    if hasActiveFocus(state) { return "集中中" }
     if hasActiveDeparture(state),
        let title = state.nextScheduleTitle?.trimmingCharacters(in: .whitespacesAndNewlines), !title.isEmpty { return title }
     if hasActiveNext(state), let title = state.nextScheduleTitle?.trimmingCharacters(in: .whitespacesAndNewlines), !title.isEmpty { return title }
@@ -102,6 +111,18 @@ private enum RhythmLiveActivityCopy {
     if state.tier == .premium, state.displayOptions.affirmation,
        let text = state.affirmationText?.trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty { return text }
     return "今日のRhythm"
+  }
+
+  static func elapsedText(_ state: RhythmLiveActivityAttributes.ContentState) -> Text {
+    if state.focusRunning, let start = state.focusElapsedStartAt {
+      return Text(start, style: .timer).monospacedDigit()
+    }
+    return Text(formatDuration(state.focusElapsedSeconds ?? 0)).monospacedDigit()
+  }
+
+  static func formatDuration(_ totalSeconds: Int) -> String {
+    let safeSeconds = max(0, totalSeconds)
+    return String(format: "%02d:%02d", safeSeconds / 60, safeSeconds % 60)
   }
 }
 
@@ -131,10 +152,21 @@ private struct RhythmLiveActivityDetail: View {
   var body: some View {
     VStack(alignment: .leading, spacing: 4) {
       if RhythmLiveActivityCopy.hasActiveFocus(state) {
-        if let ends = state.focusEndsAt {
-          Label { Text(ends, style: .timer).lineLimit(1) } icon: { Image(systemName: "timer") }
-            .font(.title3.monospacedDigit())
+        HStack(spacing: 10) {
+          Label { RhythmLiveActivityCopy.elapsedText(state) } icon: { Image(systemName: "timer") }
+          if state.focusRunning, let ends = state.focusEndsAt {
+            Label { Text(ends, style: .timer).lineLimit(1) } icon: { Image(systemName: "hourglass") }
+          } else {
+            VStack(alignment: .leading, spacing: 2) {
+              Text("一時停止中").font(.caption2).foregroundStyle(.secondary)
+              if let remaining = state.focusRemainingSeconds {
+                Text("残り \(RhythmLiveActivityCopy.formatDuration(remaining))")
+                  .font(.caption2.monospacedDigit())
+              }
+            }
+          }
         }
+        .font(.title3.monospacedDigit())
       } else if RhythmLiveActivityCopy.hasActiveDeparture(state) {
         if let departure = state.departureAt {
           Label { Text(departure, style: .relative).lineLimit(1) } icon: { Image(systemName: "figure.walk") }
@@ -150,6 +182,7 @@ private struct RhythmLiveActivityDetail: View {
       }
     }
   }
+
 }
 
 @available(iOS 16.1, *)
@@ -166,10 +199,10 @@ private struct RhythmLiveActivityAffirmation: View {
 private struct RhythmLiveActivityTimer: View {
   let state: RhythmLiveActivityAttributes.ContentState
   var body: some View {
-    if state.tier == .premium {
-      if RhythmLiveActivityCopy.hasActiveFocus(state), let date = state.focusEndsAt {
-        Text(date, style: .timer).font(.caption2.monospacedDigit())
-      } else if RhythmLiveActivityCopy.hasActiveDeparture(state), let date = state.departureAt {
+    if RhythmLiveActivityCopy.hasActiveFocus(state) {
+      RhythmLiveActivityCopy.elapsedText(state).font(.caption2.monospacedDigit())
+    } else if state.tier == .premium {
+      if RhythmLiveActivityCopy.hasActiveDeparture(state), let date = state.departureAt {
         Text(date, style: .timer).font(.caption2.monospacedDigit())
       } else if RhythmLiveActivityCopy.hasActiveNext(state), let date = state.nextScheduleAt {
         Text(date, style: .timer).font(.caption2.monospacedDigit())

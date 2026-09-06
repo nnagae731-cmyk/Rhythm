@@ -399,6 +399,7 @@ private extension RhythmWidgetModule {
       let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
       return trimmed.isEmpty ? nil : String(trimmed.prefix(300))
     }
+    let focusEndsAt = date("focusEndsAt")
     return RhythmLiveActivityAttributes.ContentState(
       mode: mode,
       tier: tier,
@@ -407,7 +408,11 @@ private extension RhythmWidgetModule {
       nextScheduleAt: date("nextScheduleAt"),
       departureAt: date("departureAt"),
       focusTaskTitle: text("focusTaskTitle"),
-      focusEndsAt: date("focusEndsAt"),
+      focusEndsAt: focusEndsAt,
+      focusElapsedStartAt: date("focusElapsedStartAt"),
+      focusElapsedSeconds: object["focusElapsedSeconds"] as? Int,
+      focusRemainingSeconds: object["focusRemainingSeconds"] as? Int,
+      focusRunning: object["focusRunning"] as? Bool ?? (focusEndsAt != nil),
       affirmationText: text("affirmationText"),
       accentHex: text("accentHex") ?? "#FFFFFF",
       displayOptions: displayOptions
@@ -418,7 +423,7 @@ private extension RhythmWidgetModule {
   static func activityContent(_ state: RhythmLiveActivityAttributes.ContentState) -> ActivityContent<RhythmLiveActivityAttributes.ContentState> {
     let now = Date()
     let staleDate: Date?
-    if state.tier == .premium, state.mode == .focus, state.displayOptions.focusRemaining,
+    if state.mode == .focus, state.focusRunning,
        let ends = state.focusEndsAt, ends > now {
       staleDate = ends
     } else if state.tier == .premium, state.displayOptions.departureCountdown,

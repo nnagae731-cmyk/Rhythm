@@ -41,7 +41,7 @@ import { RecoveryModal } from './components/RecoveryModal';
 import { DesignCustomizeModal } from './components/DesignCustomizeModal';
 import { TravelAppsSettingsCard } from './components/TravelAppsSettingsCard';
 import { styles } from './styles/appStyles';
-import { Affirmation, AffirmationCustomText, CalendarMarks, Category, DeparturePlan, DeparturePreparationStatus, DevDesignCustomizeOverride, FocusPersistedState, LiveActivityDisplayOptions, MonthlyReflectionCard, MonthlyReview, MonthlyWishState, MonoPattern, NudgeMode, PersistedState, PhotoThemePhotoTarget, PhotoThemeSettings, Priority, RepeatRule, Screen, SharedEvent, SharedParticipantPrefs, Subtask, Task, TaskBucket, TaskListItem, ThemeMode, TimeTab, UrgencyStatus, WidgetSettings, WidgetSize, WidgetType, WishAction, WishMonthMap } from './types';
+import { Affirmation, AffirmationCustomText, AppNotice, AppNoticeCategory, CalendarMarks, Category, DeparturePlan, DeparturePreparationStatus, DevDesignCustomizeOverride, FocusPersistedState, LiveActivityDisplayOptions, MonthlyReflectionCard, MonthlyReview, MonthlyWishState, MonoPattern, NudgeMode, PersistedState, PhotoThemePhotoTarget, PhotoThemeSettings, Priority, RepeatRule, Screen, SharedEvent, SharedParticipantPrefs, Subtask, Task, TaskBucket, TaskListItem, ThemeMode, TimeTab, UrgencyStatus, WidgetSettings, WidgetSize, WidgetType, WishAction, WishMonthMap } from './types';
 import { initialPlan } from './storage/rhythmState';
 import { DEFAULT_TRAVEL_APP_SETTINGS, normalizeTravelAppSettings, TravelAppSettings } from './features/travel/travelApps';
 import { loadRhythmState, saveRhythmState } from './storage/rhythmStorage';
@@ -97,6 +97,7 @@ import {
   TextInput,
   View,
   Vibration,
+  type DimensionValue,
 } from 'react-native';
 
 const colors = {
@@ -113,6 +114,22 @@ const colors = {
 };
 const categoryColors = baseCategoryColors;
 const ROUTINE_ARCHIVE_RETENTION_DAYS = 90;
+
+// Stable local notices. Their IDs are intentionally independent from the
+// persisted read state so a future push/remote source can reuse the same UI.
+const INITIAL_APP_NOTICES: AppNotice[] = [
+  { id: 'feature-tomorrow-review-202609', category: 'feature', title: '明日の準備が使えるようになりました', body: '夜にRhythmを開くと、今日残っていることと明日の予定を整理できます。無理なく明日の流れを整えられます。', publishedAt: '2026-09-06T09:00:00+09:00', targetScreen: 'home' },
+  { id: 'feature-focus-complete-202609', category: 'feature', title: '集中したあと、そのまま完了できます', body: 'Taskに集中したあと、「完了・もう少し・後で」を選べるようになりました。', publishedAt: '2026-09-05T09:00:00+09:00', targetScreen: 'timeline', targetParams: { timelineTab: 'focus' } },
+  { id: 'feature-schedule-conflict-202609', category: 'feature', title: '予定に近いTaskをお知らせします', body: 'Taskが予定の準備時間や出発時間に重なりそうな時、Rhythmが先に気づかせます。', publishedAt: '2026-09-04T09:00:00+09:00', targetScreen: 'timeline' },
+  { id: 'update-schedule-switch-202609', category: 'update', title: '次の予定への切り替えをお知らせします', body: '予定の準備や出発が近づいた時、今のTaskを切り替えるタイミングを通知します。', publishedAt: '2026-09-03T09:00:00+09:00', targetScreen: 'timeline' },
+  { id: 'update-routine-remaining-202609', category: 'update', title: '夜のRoutine残りを確認できます', body: '夜になって今日のRoutineが残っている時だけ、1日1回お知らせします。', publishedAt: '2026-09-02T09:00:00+09:00' },
+];
+
+const APP_NOTICE_CATEGORY_LABELS: Record<AppNoticeCategory, string> = {
+  feature: '新機能',
+  update: 'アップデート',
+  important: '重要なお知らせ',
+};
 
 function pruneRoutineArchives(items: RoutineArchive[], now = Date.now()): RoutineArchive[] {
   return items.filter((item) => {
@@ -313,6 +330,121 @@ function advanceDateValue(value: string | undefined, rule: RepeatRule) {
 // skipped items. History/analysis use their own unfiltered data paths.
 function isRegularVisibleTask(task: Task) {
   return task.isRoutine !== true && task.status !== 'skipped';
+}
+
+type ScheduleConflictKind = 'schedule' | 'preparation' | 'departure';
+
+type ScheduleConflict = {
+  key: string;
+  task: Task;
+  plan: DeparturePlan;
+  kind: ScheduleConflictKind;
+  effectiveAt: Date;
+  taskStart: Date;
+  taskEnd: Date;
+};
+
+function getTaskScheduleInterval(task: Task) {
+  const day = normalizeTaskDateKey(task.scheduledDate);
+  if (!day || !task.scheduledTime) return undefined;
+  const endTime = task.endAt ?? (normalizeTaskDateKey(task.deadlineDate) === day ? task.deadlineTime : undefined);
+  if (!endTime) return undefined;
+  const start = dateForReminder(day, task.scheduledTime);
+  const end = dateForReminder(day, endTime);
+  return end.getTime() > start.getTime() ? { start, end } : undefined;
+}
+
+function findScheduleConflict(task: Task, plans: DeparturePlan[], now: Date): ScheduleConflict | undefined {
+  if (!isRegularVisibleTask(task) || task.done) return undefined;
+  const interval = getTaskScheduleInterval(task);
+  const taskDay = normalizeTaskDateKey(task.scheduledDate);
+  if (!interval || !taskDay) return undefined;
+  for (const plan of plans) {
+    if (!plan.id || plan.allDay || planDateKey(plan) !== taskDay) continue;
+    const scheduledTime = getPlanScheduledTime(plan);
+    if (!scheduledTime) continue;
+    const planStart = dateForReminder(taskDay, scheduledTime);
+    if (planStart.getTime() <= now.getTime() && !isArrivalReversePlan(plan)) continue;
+    const planEnd = plan.endAt && /^\d{2}:\d{2}$/.test(plan.endAt)
+      ? dateForReminder(plan.endDate ?? taskDay, plan.endAt)
+      : planStart;
+    const moments = isArrivalReversePlan(plan) ? getDepartureMoments({ ...plan, date: taskDay }) : undefined;
+    const boundaries: Array<{ kind: ScheduleConflictKind; at: Date }> = [
+      { kind: 'schedule', at: planStart },
+      ...(moments ? [{ kind: 'preparation' as const, at: moments.prepare }, { kind: 'departure' as const, at: moments.leave }] : []),
+    ];
+    const directOverlap = planEnd.getTime() > planStart.getTime()
+      && interval.start.getTime() < planEnd.getTime()
+      && interval.end.getTime() > planStart.getTime();
+    const boundary = boundaries.find(({ at }) => interval.start.getTime() < at.getTime() && interval.end.getTime() > at.getTime());
+    const match = directOverlap ? { kind: 'schedule' as const, at: planStart } : boundary;
+    if (!match || (match.at.getTime() <= now.getTime() && planEnd.getTime() <= now.getTime())) continue;
+    return {
+      key: `${task.id}:${plan.id}:${interval.start.toISOString()}:${interval.end.toISOString()}:${match.kind}:${match.at.toISOString()}`,
+      task,
+      plan,
+      kind: match.kind,
+      effectiveAt: match.at,
+      taskStart: interval.start,
+      taskEnd: interval.end,
+    };
+  }
+  return undefined;
+}
+
+type ScheduleSwitchCandidate = {
+  task: Task;
+  plan: DeparturePlan;
+  kind: ScheduleConflictKind;
+  boundaryAt: Date;
+  notifyAt: Date;
+  key: string;
+};
+
+function findScheduleSwitchCandidate(task: Task, plans: DeparturePlan[], now: Date): ScheduleSwitchCandidate | undefined {
+  if (!isRegularVisibleTask(task) || task.done) return undefined;
+  const day = normalizeTaskDateKey(task.scheduledDate);
+  if (!day || !task.scheduledTime) return undefined;
+  const endClock = task.endAt ?? (normalizeTaskDateKey(task.deadlineDate) === day ? task.deadlineTime : undefined);
+  if (!endClock) return undefined;
+  const taskStart = dateForReminder(day, task.scheduledTime);
+  const taskEnd = dateForReminder(day, endClock);
+  if (taskEnd.getTime() <= taskStart.getTime()) return undefined;
+
+  for (const plan of plans) {
+    if (!plan.id || plan.allDay || planDateKey(plan) !== day) continue;
+    const scheduledClock = getPlanScheduledTime(plan);
+    if (!scheduledClock) continue;
+    const scheduledAt = dateForReminder(day, scheduledClock);
+    const moments = isArrivalReversePlan(plan) ? getDepartureMoments({ ...plan, date: day }) : undefined;
+    const boundaries: Array<{ kind: ScheduleConflictKind; at: Date }> = moments
+      ? [
+        { kind: 'preparation', at: moments.prepare },
+        { kind: 'departure', at: moments.leave },
+        { kind: 'schedule', at: moments.arrival },
+      ]
+      : [{ kind: 'schedule', at: scheduledAt }];
+    const boundary = boundaries.find(({ at }) => at.getTime() > now.getTime() && taskStart.getTime() < at.getTime() && taskEnd.getTime() > at.getTime());
+    if (!boundary) continue;
+    const notifyAt = new Date(boundary.at.getTime() - 15 * 60_000);
+    if (notifyAt.getTime() <= now.getTime()) continue;
+    const key = `${task.id}:${plan.id}:${boundary.kind}:${boundary.at.toISOString()}`;
+    return { task, plan, kind: boundary.kind, boundaryAt: boundary.at, notifyAt, key };
+  }
+  return undefined;
+}
+
+function getTodayRemainingRoutines(items: Task[], day: string) {
+  const latestByRoutine = new Map<string, Task>();
+  items.forEach((task) => {
+    if (!task.isRoutine || task.done || getTaskStatus(task) === 'skipped' || task.routineEndedAt) return;
+    const scheduled = normalizeTaskDateKey(task.scheduledDate);
+    if (scheduled && scheduled !== day) return;
+    const key = task.routineId ?? task.id;
+    const current = latestByRoutine.get(key);
+    if (!current || (task.createdAt ?? '') > (current.createdAt ?? '')) latestByRoutine.set(key, task);
+  });
+  return [...latestByRoutine.values()];
 }
 
 function isOccurrenceAfterToday(scheduledDate: string, now: Date) {
@@ -642,7 +774,7 @@ export default function App() {
   const [openTodayReview, setOpenTodayReview] = useState(false);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [focusTimerActive, setFocusTimerActive] = useState(false);
-  const [focusActivity, setFocusActivity] = useState<{ taskTitle?: string; endsAt?: string }>();
+  const [focusActivity, setFocusActivity] = useState<{ taskTitle?: string; endsAt?: string; elapsedStartAt?: string; elapsedSeconds?: number; remainingSeconds?: number; running?: boolean }>();
   const [liveActivityEnabled, setLiveActivityEnabled] = useState(false);
   const [liveActivityDisplayOptions, setLiveActivityDisplayOptions] = useState<LiveActivityDisplayOptions>(() => ({ ...DEFAULT_LIVE_ACTIVITY_DISPLAY_OPTIONS }));
   const liveActivitySerializedRef = React.useRef<string | undefined>(undefined);
@@ -669,6 +801,7 @@ export default function App() {
   const latestPersistedStateRef = React.useRef<PersistedState | undefined>(undefined);
   const pendingNotificationCompletionIdsRef = React.useRef<string[]>([]);
   const pendingWidgetActionsProcessingRef = React.useRef(false);
+  const pendingNotificationNavigationRef = React.useRef<Array<'timeline' | 'routine'>>([]);
   const pendingDepartureNotificationActionsRef = React.useRef<Array<{
     planId: string;
     action: DepartureNotificationAction;
@@ -776,6 +909,22 @@ export default function App() {
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedTaskIds, setSelectedTaskIds] = useState<string[]>([]);
   const [now, setNow] = useState(new Date());
+  const [tomorrowPrepPromptedDate, setTomorrowPrepPromptedDate] = useState<string | undefined>();
+  const tomorrowPrepPromptedDateRef = React.useRef<string | undefined>(undefined);
+  const [routineRemainingNotifiedDate, setRoutineRemainingNotifiedDate] = useState<string | undefined>();
+  const routineRemainingNotifiedDateRef = React.useRef<string | undefined>(undefined);
+  const [readNoticeIds, setReadNoticeIds] = useState<string[]>([]);
+  const [noticeCenterOpen, setNoticeCenterOpen] = useState(false);
+  const routineRemainingNotificationInFlightRef = React.useRef(false);
+  const [homeInitialTab, setHomeInitialTab] = useState<'now' | 'list' | 'routine'>('now');
+  const [tomorrowPrepOpen, setTomorrowPrepOpen] = useState(false);
+  const [tomorrowPrepStep, setTomorrowPrepStep] = useState<0 | 1 | 2 | 3>(0);
+  const [focusTaskCompletionPrompt, setFocusTaskCompletionPrompt] = useState<FocusSession | undefined>();
+  const focusTaskCompletionPromptedRef = React.useRef(new Set<string>());
+  const tomorrowPrepDeferredUntilRef = React.useRef(0);
+  const [scheduleConflictPrompt, setScheduleConflictPrompt] = useState<ScheduleConflict | undefined>();
+  const pendingScheduleConflictRef = React.useRef<ScheduleConflict | undefined>(undefined);
+  const scheduleConflictKeysRef = React.useRef(new Set<string>());
   const [premiumOpen, setPremiumOpen] = useState(false);
   const [designCustomizeOpen, setDesignCustomizeOpen] = useState(false);
   const [designCustomizePurchased, setDesignCustomizePurchased] = useState(false);
@@ -1898,7 +2047,7 @@ export default function App() {
     tasksRef.current = result.tasks;
     setTasks(result.tasks);
     if (result.newlyCompleted.length === 0) return false;
-    result.newlyCompleted.forEach((task) => { void cancelPendingTaskNotifications(task.id); });
+    result.newlyCompleted.forEach((task) => { void cancelPendingTaskNotifications(task.id); void cancelScheduleSwitchNotificationsForTask(task.id); });
     const previousIds = new Set(previousTasks.map((task) => task.id));
     result.tasks.filter((task) => !previousIds.has(task.id) && !task.done).forEach((nextTask) => {
       void scheduleTaskNotificationsRef.current(nextTask);
@@ -2075,7 +2224,10 @@ export default function App() {
     tasksRef.current = next;
     setTasks(next);
     const restored = next.find((task) => task.id === taskId);
-    if (restored) void scheduleTaskNotificationsRef.current(restored);
+    if (restored) {
+      void scheduleTaskNotificationsRef.current(restored);
+      void syncScheduleSwitchNotificationsForTask(restored.id);
+    }
     if (wasCompleted && target.routineId && target.completedAt && (!target.routineEndedAt || new Date(target.completedAt).getTime() <= new Date(target.routineEndedAt).getTime())) {
       recordBehaviorEvent(createTaskCompletionRevertedBehaviorEvent({
         taskId: target.id,
@@ -2107,7 +2259,11 @@ export default function App() {
         tasksRef.current = next;
         setTasks(next);
         void cancelPendingTaskNotifications(taskId);
-        if (nextOccurrence) void scheduleTaskNotificationsRef.current(nextOccurrence);
+        void cancelScheduleSwitchNotificationsForTask(taskId);
+        if (nextOccurrence) {
+          void scheduleTaskNotificationsRef.current(nextOccurrence);
+          void syncScheduleSwitchNotificationsForTask(nextOccurrence.id);
+        }
         onApplied?.();
       } },
     ]);
@@ -2144,6 +2300,7 @@ export default function App() {
     setTasks(next);
     setSelectedTaskIds((current) => current.filter((id) => id !== taskId));
     void cancelPendingTaskNotifications(taskId);
+    void cancelScheduleSwitchNotificationsForTask(taskId);
   }, []);
 
   const deleteSelectedTasks = React.useCallback((ids: string[]) => {
@@ -2197,6 +2354,11 @@ export default function App() {
         setLiveActivityEnabled(saved.liveActivityEnabled === true);
         setLiveActivityDisplayOptions(normalizeRhythmLiveActivityDisplayOptions(saved.liveActivityDisplayOptions));
         if (saved.reviewPromptedAt) setReviewPromptedAt(saved.reviewPromptedAt);
+        setReadNoticeIds(Array.isArray(saved.readNoticeIds) ? [...new Set(saved.readNoticeIds.filter((id): id is string => typeof id === 'string'))] : []);
+        tomorrowPrepPromptedDateRef.current = saved.tomorrowPrepPromptedDate;
+        setTomorrowPrepPromptedDate(saved.tomorrowPrepPromptedDate);
+        routineRemainingNotifiedDateRef.current = saved.routineRemainingNotifiedDate;
+        setRoutineRemainingNotifiedDate(saved.routineRemainingNotifiedDate);
         const legacyAppearance = saved.designMode === 'dark' ? 'dark' : saved.designMode === 'minimal' ? 'light' : undefined;
         const loadedMonoAppearance = saved.monoAppearance === 'auto' || saved.monoAppearance === 'light' || saved.monoAppearance === 'dark'
           ? saved.monoAppearance
@@ -2331,6 +2493,17 @@ export default function App() {
         const pendingSharedTokens = [...new Set(pendingSharedEventTokensRef.current)];
         pendingSharedEventTokensRef.current = [];
         pendingSharedTokens.forEach((shareToken) => openSharedEventToken(shareToken));
+        const pendingNotificationNavigation = [...new Set(pendingNotificationNavigationRef.current)];
+        pendingNotificationNavigationRef.current = [];
+        pendingNotificationNavigation.forEach((route) => {
+          if (route === 'timeline') {
+            setTimelineInitialTab('departure');
+            navigateWithinAppRef.current('timeline');
+          } else {
+            setHomeInitialTab('routine');
+            navigateWithinAppRef.current('home');
+          }
+        });
       });
 
     const responseSubscription = Notifications.addNotificationResponseReceivedListener((response) => {
@@ -2344,6 +2517,21 @@ export default function App() {
       const notificationInstanceIdValue = response.notification.request.content.data?.notificationInstanceId;
       const notificationInstanceId = typeof notificationInstanceIdValue === 'string' ? notificationInstanceIdValue : response.notification.request.identifier;
       const action = response.actionIdentifier;
+
+      const notificationKind = notificationData?.kind;
+      if (notificationKind === 'schedule_switch' || notificationKind === 'routine_remaining') {
+        const route: 'timeline' | 'routine' = notificationKind === 'schedule_switch' ? 'timeline' : 'routine';
+        if (!hydratedRef.current) {
+          pendingNotificationNavigationRef.current.push(route);
+        } else if (route === 'timeline') {
+          setTimelineInitialTab('departure');
+          navigateWithinAppRef.current('timeline');
+        } else {
+          setHomeInitialTab('routine');
+          navigateWithinAppRef.current('home');
+        }
+        return;
+      }
 
       // Premium の出発通知は hydration 後に画面操作と同じ共通処理へ渡す。
       if (typeof departurePlanId === 'string' && departureNotificationActions.includes(action as DepartureNotificationAction)) {
@@ -2381,6 +2569,7 @@ export default function App() {
         }
         completeTaskIdsRef.current([taskId], 'notification');
         void cancelPendingTaskNotifications(taskId);
+        void cancelScheduleSwitchNotificationsForTask(taskId);
       }
 
       if (action === 'SNOOZE' || action === 'LATER') {
@@ -2422,7 +2611,7 @@ export default function App() {
 
   useEffect(() => {
     if (!hydrated) return;
-    const state: PersistedState = { tasks, plan, departurePlans, widgetSize, widgetSettings, showCompleted, completionIcon, designMode, monoAppearance, monoPattern, hapticsEnabled, premiumTrialReminderEnabled, liveActivityEnabled, liveActivityDisplayOptions, reviewPromptedAt, taskTemplates, savedTaskTemplates, chicPattern, chicCheckColor, recoveryHistory, focusSessions, focusState, focusCustomDurationMinutes, departureCheckIns, behaviorEvents, wishMonths: normalizeWishMonthsForSave(wishMonths), calendarMarks, calendarImportCalendarIds, calendarImportKnownCalendarIds, sharedEvents, sharedParticipantIdsByToken, sharedParticipantPrefsByToken, departurePreparationStatuses, affirmations, affirmationCustomTexts, photoTheme, travelApps, designCustomizePurchased, routineArchives: pruneRoutineArchives(routineArchives), voiceUsage: normalizeVoiceUsage(voiceUsage, dateKey()) };
+    const state: PersistedState = { tasks, plan, departurePlans, widgetSize, widgetSettings, showCompleted, completionIcon, designMode, monoAppearance, monoPattern, hapticsEnabled, premiumTrialReminderEnabled, liveActivityEnabled, liveActivityDisplayOptions, reviewPromptedAt, readNoticeIds: [...new Set(readNoticeIds)], tomorrowPrepPromptedDate, routineRemainingNotifiedDate, taskTemplates, savedTaskTemplates, chicPattern, chicCheckColor, recoveryHistory, focusSessions, focusState, focusCustomDurationMinutes, departureCheckIns, behaviorEvents, wishMonths: normalizeWishMonthsForSave(wishMonths), calendarMarks, calendarImportCalendarIds, calendarImportKnownCalendarIds, sharedEvents, sharedParticipantIdsByToken, sharedParticipantPrefsByToken, departurePreparationStatuses, affirmations, affirmationCustomTexts, photoTheme, travelApps, designCustomizePurchased, routineArchives: pruneRoutineArchives(routineArchives), voiceUsage: normalizeVoiceUsage(voiceUsage, dateKey()) };
     latestPersistedStateRef.current = state;
     if (persistenceDisabledRef.current) return;
     if (persistenceTimerRef.current) clearTimeout(persistenceTimerRef.current);
@@ -2438,7 +2627,7 @@ export default function App() {
     return () => {
       if (persistenceTimerRef.current) clearTimeout(persistenceTimerRef.current);
     };
-  }, [tasks, plan, departurePlans, widgetSize, widgetSettings, showCompleted, completionIcon, designMode, monoAppearance, monoPattern, hapticsEnabled, premiumTrialReminderEnabled, liveActivityEnabled, liveActivityDisplayOptions, reviewPromptedAt, taskTemplates, savedTaskTemplates, chicPattern, chicCheckColor, recoveryHistory, focusSessions, focusState, focusCustomDurationMinutes, departureCheckIns, behaviorEvents, wishMonths, calendarMarks, calendarImportCalendarIds, calendarImportKnownCalendarIds, sharedEvents, sharedParticipantIdsByToken, sharedParticipantPrefsByToken, departurePreparationStatuses, affirmations, affirmationCustomTexts, photoTheme, travelApps, designCustomizePurchased, routineArchives, voiceUsage, hydrated]);
+  }, [tasks, plan, departurePlans, widgetSize, widgetSettings, showCompleted, completionIcon, designMode, monoAppearance, monoPattern, hapticsEnabled, premiumTrialReminderEnabled, liveActivityEnabled, liveActivityDisplayOptions, reviewPromptedAt, readNoticeIds, tomorrowPrepPromptedDate, routineRemainingNotifiedDate, taskTemplates, savedTaskTemplates, chicPattern, chicCheckColor, recoveryHistory, focusSessions, focusState, focusCustomDurationMinutes, departureCheckIns, behaviorEvents, wishMonths, calendarMarks, calendarImportCalendarIds, calendarImportKnownCalendarIds, sharedEvents, sharedParticipantIdsByToken, sharedParticipantPrefsByToken, departurePreparationStatuses, affirmations, affirmationCustomTexts, photoTheme, travelApps, designCustomizePurchased, routineArchives, voiceUsage, hydrated]);
 
   useEffect(() => {
     if (!hydrated) return;
@@ -2576,19 +2765,30 @@ export default function App() {
       ? widgetEntitlementOverride === 'premium' ? 'premium' : widgetEntitlementOverride === 'design' ? 'design' : 'free'
       : planTier === 'premium' ? 'premium' : hasDesignCustomizeAccess ? 'design' : 'free';
     const displayOptions = normalizeRhythmLiveActivityDisplayOptions(liveActivityDisplayOptions);
-    const accentHex = tier === 'free' ? '#FFFFFF' : chicPalette.accent;
+    // Live Activity keeps the saved nine-color accent even while the app is
+    // rendered with Night Sky's fixed foreground palette.
+    const accentHex = tier === 'free' ? '#FFFFFF' : selectedChicPalette.accent;
     const affirmationText = tier === 'premium' && displayOptions.affirmation
       ? ([...affirmations.filter((item) => item.enabled), ...affirmationCustomTexts]
         .map((item) => item.text.trim())
         .find(Boolean) || undefined)
       : undefined;
-    const focusDataAvailable = Boolean(focusActivity?.taskTitle?.trim() || focusActivity?.endsAt);
-    if (tier === 'premium' && displayOptions.focusRemaining && focusTimerActive && focusDataAvailable) {
+    const focusStateStillActive = Boolean(focusState && (!focusState.running || !focusState.endAt || Date.parse(focusState.endAt) > now.getTime()));
+    const focusDataAvailable = Boolean(focusStateStillActive || focusActivity?.taskTitle?.trim() || focusActivity?.endsAt);
+    const focusLiveActivityEnabled = focusDataAvailable && (tier !== 'premium' || displayOptions.focusRemaining) && (focusTimerActive || focusStateStillActive);
+    if (focusLiveActivityEnabled) {
+      const persistedFocus = focusState;
+      const elapsedSeconds = focusActivity?.elapsedSeconds ?? (persistedFocus ? Math.max(0, persistedFocus.plannedDurationMinutes * 60 - persistedFocus.pausedSeconds) : undefined);
+      const elapsedStartAt = focusActivity?.elapsedStartAt ?? persistedFocus?.elapsedStartAt;
       return {
         tier,
         mode: 'focus',
-        focusTaskTitle: focusActivity?.taskTitle,
-        focusEndsAt: focusActivity?.endsAt,
+        focusTaskTitle: focusActivity?.taskTitle ?? (focusStateStillActive ? persistedFocus?.taskTitle : undefined),
+        focusEndsAt: focusActivity?.endsAt ?? (focusStateStillActive && persistedFocus?.running ? persistedFocus.endAt : undefined),
+        focusElapsedStartAt: elapsedStartAt,
+        focusElapsedSeconds: elapsedSeconds,
+        focusRemainingSeconds: focusActivity?.remainingSeconds ?? (focusStateStillActive && persistedFocus?.running ? undefined : focusStateStillActive ? persistedFocus?.pausedSeconds : undefined),
+        focusRunning: focusActivity?.running ?? (focusStateStillActive ? persistedFocus?.running : false) ?? focusTimerActive,
         affirmationText,
         displayOptions,
         accentHex,
@@ -2612,7 +2812,7 @@ export default function App() {
       displayOptions: tier === 'premium' ? displayOptions : undefined,
       accentHex,
     };
-  }, [affirmationCustomTexts, affirmations, chicPalette.accent, focusActivity, focusTimerActive, hasDesignCustomizeAccess, hydrated, liveActivityDisplayOptions, liveActivityEnabled, nextDeparturePlan, now, planTier, storeKitEntitlementsResolved, tasks, widgetEntitlementOverride]);
+  }, [affirmationCustomTexts, affirmations, focusActivity, focusState, focusTimerActive, hasDesignCustomizeAccess, hydrated, liveActivityDisplayOptions, liveActivityEnabled, nextDeparturePlan, now, planTier, selectedChicPalette.accent, storeKitEntitlementsResolved, tasks, widgetEntitlementOverride]);
 
   useEffect(() => {
     if (!hydrated || !storeKitEntitlementsResolved) return;
@@ -2823,7 +3023,7 @@ export default function App() {
       setTasks(next);
       next
         .filter((task) => (task.routineId ?? task.id) === routineId && normalizeTaskDateKey(task.scheduledDate) && normalizeTaskDateKey(task.scheduledDate)! > dateKey(endedAt))
-        .forEach((task) => { void cancelPendingTaskNotifications(task.id); });
+        .forEach((task) => { void cancelPendingTaskNotifications(task.id); void cancelScheduleSwitchNotificationsForTask(task.id); });
       setRoutineArchives((current) => pruneRoutineArchives([...current.filter((item) => item.routineId !== routineId), archive]));
       recordBehaviorEvent(createRoutineDeactivatedBehaviorEvent({ routineId, routineTitle: latest.title, taskId: latest.id, occurredAt: new Date(endedAt), targetDate: dateKey(endedAt) }));
     } }]);
@@ -2881,6 +3081,30 @@ export default function App() {
     .filter((task) => !task.done && !isTaskSkippedOnDate(task, todayTaskDate) && task.navigationEnabled && task.deadlineDate)
     .sort((a, b) => urgencyLevel(getUrgencyStatus(b, now)) - urgencyLevel(getUrgencyStatus(a, now)))[0];
 
+  const enqueueScheduleConflict = React.useCallback((conflict: ScheduleConflict | undefined) => {
+    if (!conflict || scheduleConflictKeysRef.current.has(conflict.key)) return;
+    scheduleConflictKeysRef.current.add(conflict.key);
+    if (focusTaskCompletionPrompt || tomorrowPrepOpen || scheduleConflictPrompt || noticeCenterOpen) {
+      pendingScheduleConflictRef.current = conflict;
+      return;
+    }
+    setScheduleConflictPrompt(conflict);
+  }, [focusTaskCompletionPrompt, noticeCenterOpen, scheduleConflictPrompt, tomorrowPrepOpen]);
+
+  const queueScheduleConflictCheck = React.useCallback((task: Task, plans: DeparturePlan[]) => {
+    enqueueScheduleConflict(findScheduleConflict(task, plans, now));
+  }, [enqueueScheduleConflict, now]);
+
+  const queuePlanConflictCheck = React.useCallback((targetPlan: DeparturePlan, currentTasks: Task[]) => {
+    for (const task of currentTasks) {
+      const conflict = findScheduleConflict(task, [targetPlan], now);
+      if (conflict) {
+        enqueueScheduleConflict(conflict);
+        break;
+      }
+    }
+  }, [enqueueScheduleConflict, now]);
+
   const addTask = (title: string, category: Category, priority: Priority, remindDate?: string, remindAt?: string, deadlineDate?: string, deadlineTime?: string, deadlineNotifyBefore?: number, navigationEnabled?: boolean, preparationMinutes?: number, travelMinutes?: number, bufferMinutes?: number, repeatRule: RepeatRule = 'none', nudgeMode: NudgeMode = 'once', scheduledDate?: string, scheduledTime?: string, endAt?: string, isRoutine = false, subtasks: Subtask[] = [], listItems: TaskListItem[] = [], routineIdOverride?: string): Task | undefined => {
     if (scheduledTime && endAt && endAt <= scheduledTime) {
       Alert.alert('終了時間を確認してください', '終了時間は開始時間より後にしてください。');
@@ -2932,6 +3156,8 @@ export default function App() {
     void onboarding.complete('todo');
     if (isRoutine) void onboarding.complete('routine');
     if (remindAt || (deadlineDate && deadlineTime && deadlineNotifyBefore !== undefined)) void scheduleAllTaskNotifications(task);
+    void syncScheduleSwitchNotificationsForTask(task.id);
+    queueScheduleConflictCheck(task, departurePlansRef.current);
     return task;
   };
 
@@ -2975,6 +3201,8 @@ export default function App() {
     }
     if (updated.done || getTaskStatus(updated) === 'skipped') void cancelPendingTaskNotifications(updated.id);
     else void scheduleAllTaskNotifications(updated);
+    void syncScheduleSwitchNotificationsForTask(updated.id);
+    queueScheduleConflictCheck(updated, departurePlansRef.current);
   };
 
   const updateTaskList = React.useCallback((taskId: string, items: TaskListItem[]) => {
@@ -3056,9 +3284,83 @@ export default function App() {
     const next = [...newTasks, ...tasksRef.current];
     tasksRef.current = next;
     setTasks(next);
+    newTasks.forEach((task) => queueScheduleConflictCheck(task, departurePlansRef.current));
     setBulkAddOpen(false);
     void onboarding.complete('todo');
-  }, [dateKey, now, onboarding]);
+  }, [dateKey, now, onboarding, queueScheduleConflictCheck]);
+
+  const syncScheduleSwitchNotificationsForTask = async (taskId: string) => {
+    await enqueueNotificationOperation('schedule-switch', async () => {
+      const pending = await Notifications.getAllScheduledNotificationsAsync().catch(() => []);
+      await Promise.all(pending.filter((request) => {
+        const data = request.content.data as Record<string, unknown> | undefined;
+        return data?.kind === 'schedule_switch' && data.taskId === taskId;
+      }).map((request) => Notifications.cancelScheduledNotificationAsync(request.identifier)));
+      const latest = tasksRef.current.find((item) => item.id === taskId);
+      const candidate = latest ? findScheduleSwitchCandidate(latest, departurePlansRef.current, new Date()) : undefined;
+      if (!candidate || !await ensureNotifications()) return;
+      const identifier = `schedule-switch:${candidate.task.id}:${candidate.plan.id}`;
+      await Notifications.scheduleNotificationAsync({
+        identifier,
+        content: {
+          title: 'そろそろ次の予定へ切り替える時間',
+          body: `あと15分で「${candidate.plan.title}」の${candidate.kind === 'preparation' ? '準備' : candidate.kind === 'departure' ? '出発' : '予定'}時間です。「${candidate.task.title}」をそろそろ切り上げますか？`,
+          sound: 'default',
+          data: { kind: 'schedule_switch', taskId: candidate.task.id, departurePlanId: candidate.plan.id, notificationInstanceId: identifier, boundaryKind: candidate.kind, boundaryAt: candidate.boundaryAt.toISOString() },
+        },
+        trigger: { type: Notifications.SchedulableTriggerInputTypes.DATE, date: candidate.notifyAt },
+      });
+    }).catch((error) => {
+      if (__DEV__) console.warn('[Notifications] schedule switch sync failed', error);
+    });
+  };
+
+  const syncScheduleSwitchNotificationsForPlan = async (planId: string) => {
+    await enqueueNotificationOperation('schedule-switch', async () => {
+      const pending = await Notifications.getAllScheduledNotificationsAsync().catch(() => []);
+      await Promise.all(pending.filter((request) => {
+        const data = request.content.data as Record<string, unknown> | undefined;
+        return data?.kind === 'schedule_switch' && data.departurePlanId === planId;
+      }).map((request) => Notifications.cancelScheduledNotificationAsync(request.identifier)));
+      const latestPlan = departurePlansRef.current.find((item) => item.id === planId);
+      if (!latestPlan) return;
+      const candidate = tasksRef.current.map((task) => findScheduleSwitchCandidate(task, [latestPlan], new Date())).find(Boolean);
+      if (!candidate || !await ensureNotifications()) return;
+      const identifier = `schedule-switch:${candidate.task.id}:${candidate.plan.id}`;
+      await Notifications.scheduleNotificationAsync({
+        identifier,
+        content: {
+          title: 'そろそろ次の予定へ切り替える時間',
+          body: `あと15分で「${candidate.plan.title}」の${candidate.kind === 'preparation' ? '準備' : candidate.kind === 'departure' ? '出発' : '予定'}時間です。「${candidate.task.title}」をそろそろ切り上げますか？`,
+          sound: 'default',
+          data: { kind: 'schedule_switch', taskId: candidate.task.id, departurePlanId: candidate.plan.id, notificationInstanceId: identifier, boundaryKind: candidate.kind, boundaryAt: candidate.boundaryAt.toISOString() },
+        },
+        trigger: { type: Notifications.SchedulableTriggerInputTypes.DATE, date: candidate.notifyAt },
+      });
+    }).catch((error) => {
+      if (__DEV__) console.warn('[Notifications] schedule switch plan sync failed', error);
+    });
+  };
+
+  const cancelScheduleSwitchNotificationsForTask = async (taskId: string) => {
+    await enqueueNotificationOperation('schedule-switch', async () => {
+      const pending = await Notifications.getAllScheduledNotificationsAsync().catch(() => []);
+      await Promise.all(pending.filter((request) => {
+        const data = request.content.data as Record<string, unknown> | undefined;
+        return data?.kind === 'schedule_switch' && data.taskId === taskId;
+      }).map((request) => Notifications.cancelScheduledNotificationAsync(request.identifier)));
+    }).catch(() => undefined);
+  };
+
+  const cancelScheduleSwitchNotificationsForPlan = async (planId: string) => {
+    await enqueueNotificationOperation('schedule-switch', async () => {
+      const pending = await Notifications.getAllScheduledNotificationsAsync().catch(() => []);
+      await Promise.all(pending.filter((request) => {
+        const data = request.content.data as Record<string, unknown> | undefined;
+        return data?.kind === 'schedule_switch' && data.departurePlanId === planId;
+      }).map((request) => Notifications.cancelScheduledNotificationAsync(request.identifier)));
+    }).catch(() => undefined);
+  };
 
   const scheduleAllTaskNotifications = async (task: Task) => {
     try {
@@ -3233,6 +3535,36 @@ export default function App() {
   }, [hydrated, planTier, storeKitEntitlementsResolved]);
   scheduleTaskNotificationsRef.current = scheduleAllTaskNotifications;
 
+  const moveTaskToTomorrow = React.useCallback((taskId: string) => {
+    const target = tasksRef.current.find((item) => item.id === taskId);
+    if (!target) return;
+    const nextDate = todayInputValue(1);
+    const oldDate = normalizeTaskDateKey(target.scheduledDate);
+    const nextTask: Task = {
+      ...target,
+      scheduledDate: nextDate,
+      remindDate: target.remindAt ? nextDate : target.remindDate,
+      ...(oldDate && target.deadlineDate === oldDate ? { deadlineDate: nextDate } : {}),
+      bucket: 'later',
+    };
+    const next = tasksRef.current.map((item) => item.id === taskId ? nextTask : item);
+    tasksRef.current = next;
+    setTasks(next);
+    void scheduleTaskNotificationsRef.current(nextTask);
+    void syncScheduleSwitchNotificationsForTask(nextTask.id);
+  }, []);
+
+  const moveTaskToLater = React.useCallback((taskId: string) => {
+    const target = tasksRef.current.find((item) => item.id === taskId);
+    if (!target) return;
+    const nextTask = { ...target, bucket: 'later' as TaskBucket };
+    const next = tasksRef.current.map((item) => item.id === taskId ? nextTask : item);
+    tasksRef.current = next;
+    setTasks(next);
+    void scheduleTaskNotificationsRef.current(nextTask);
+    void syncScheduleSwitchNotificationsForTask(nextTask.id);
+  }, []);
+
   const createTaskFromWishAction = (action: WishAction) => {
     if (tasks.some((task) => !task.done && task.title.trim() === action.title.trim())) {
       Alert.alert('同じタスクがあります', '今日のタスク一覧から確認できます。');
@@ -3312,6 +3644,61 @@ export default function App() {
   };
 
   useEffect(() => {
+    if (!hydrated || routineRemainingNotificationInFlightRef.current) return;
+    const day = dateKey(now);
+    const remaining = getTodayRemainingRoutines(tasksRef.current, day);
+    routineRemainingNotificationInFlightRef.current = true;
+    void enqueueNotificationOperation('routine-remaining', async () => {
+      const pending = await Notifications.getAllScheduledNotificationsAsync().catch(() => []);
+      const sameDay = pending.filter((request) => {
+        const data = request.content.data as Record<string, unknown> | undefined;
+        return data?.kind === 'routine_remaining' && data.routineDate === day;
+      });
+      const scheduledAt = dateForReminder(day, '20:00');
+      const isBeforeNotificationTime = scheduledAt.getTime() > Date.now();
+      if (remaining.length === 0) {
+        await Promise.all(sameDay.map((request) => Notifications.cancelScheduledNotificationAsync(request.identifier)));
+        return;
+      }
+      // A notification that is already due is considered sent for the day;
+      // never create a second one after the 20:00 boundary.
+      if (!isBeforeNotificationTime) {
+        if (sameDay.length > 0 || routineRemainingNotifiedDateRef.current === day) {
+          routineRemainingNotifiedDateRef.current = day;
+          setRoutineRemainingNotifiedDate(day);
+        }
+        return;
+      }
+      const currentCount = remaining.length;
+      const existingSameDay = sameDay[0];
+      const sameCount = existingSameDay
+        ? Number((existingSameDay.content.data as Record<string, unknown> | undefined)?.routineCount)
+        : undefined;
+      if (sameDay.length > 0 && sameCount === currentCount) return;
+      await Promise.all(sameDay.map((request) => Notifications.cancelScheduledNotificationAsync(request.identifier)));
+      // A legacy save may have marked the date when scheduling rather than
+      // delivery. If no pending request remains, keep that day suppressed.
+      if (sameDay.length === 0 && routineRemainingNotifiedDateRef.current === day) return;
+      if (!canUseNotifications(await getNotificationPermissionStatus())) return;
+      const identifier = `routine-remaining:${day}`;
+      await Notifications.scheduleNotificationAsync({
+        identifier,
+        content: {
+          title: '今日のRoutineが残っています',
+          body: `今日のRoutineがあと${currentCount}件残っています。無理のないところまでやっておきますか？`,
+          sound: 'default',
+          data: { kind: 'routine_remaining', routineDate: day, routineCount: currentCount, notificationInstanceId: identifier },
+        },
+        trigger: { type: Notifications.SchedulableTriggerInputTypes.DATE, date: scheduledAt },
+      });
+    }).catch((error) => {
+      if (__DEV__) console.warn('[Notifications] routine remaining sync failed', error);
+    }).finally(() => {
+      routineRemainingNotificationInFlightRef.current = false;
+    });
+  }, [hydrated, now, tasks]);
+
+  useEffect(() => {
     if (screen !== 'wish') setVoiceWishDraft(undefined);
   }, [screen]);
 
@@ -3329,7 +3716,10 @@ export default function App() {
       id: editTarget?.id ?? `${Date.now()}-${Math.random().toString(16).slice(2)}-departure`,
       date: normalizePlanDate(plan.date),
     });
-    if (editTarget?.id) await cancelPendingDepartureNotifications(editTarget.id);
+    if (editTarget?.id) {
+      await cancelPendingDepartureNotifications(editTarget.id);
+      await cancelScheduleSwitchNotificationsForPlan(editTarget.id);
+    }
     const nextPlans = editTarget
       ? departurePlansRef.current.map((item) => item.id === editTarget.id ? saved : item)
       : [...departurePlansRef.current, saved];
@@ -3340,9 +3730,11 @@ export default function App() {
     } catch {
       Alert.alert('予定は保存しました', '通知を設定できませんでした。端末の通知設定を確認してください。');
     }
+    if (saved.id) void syncScheduleSwitchNotificationsForPlan(saved.id);
     if (mode === 'calendar_only') Alert.alert(plan.id ? '予定を保存しました' : '予定を追加しました', '予定表に表示しました。');
     closePlanEditor();
     void onboarding.complete('planRegistration');
+    queuePlanConflictCheck(saved, tasksRef.current);
     return true;
   };
 
@@ -3392,6 +3784,7 @@ export default function App() {
     const nextPlans = [...departurePlansRef.current, imported];
     departurePlansRef.current = nextPlans;
     setDeparturePlans(nextPlans);
+    if (imported.id) void syncScheduleSwitchNotificationsForPlan(imported.id);
     void onboarding.complete('calendarImport');
     return true;
   };
@@ -3432,6 +3825,7 @@ export default function App() {
           style: 'destructive',
           onPress: () => {
             void cancelPendingDepartureNotifications(id);
+            void cancelScheduleSwitchNotificationsForPlan(id);
             const nextPlans = departurePlansRef.current.filter((item) => item.id !== id);
             departurePlansRef.current = nextPlans;
             setDeparturePlans(nextPlans);
@@ -3472,7 +3866,9 @@ export default function App() {
       if (updated?.id) {
         void (async () => {
           await cancelPendingDepartureNotifications(updated.id!);
+          await cancelScheduleSwitchNotificationsForPlan(updated.id!);
           await scheduleDeparture(updated);
+          await syncScheduleSwitchNotificationsForPlan(updated.id!);
         })().catch((error) => {
           if (__DEV__) console.warn('[Notifications] recovery reschedule failed', error);
         });
@@ -3486,6 +3882,28 @@ export default function App() {
     setFocusSessions((current) => current.some((item) => item.id === session.id) ? current : [session, ...current].slice(0, 300));
     showCompletionAffirmation('focus');
   };
+
+  const handleFocusTaskFinished = React.useCallback((session: FocusSession) => {
+    if (!session.taskId || focusTaskCompletionPromptedRef.current.has(session.id)) return;
+    const target = tasksRef.current.find((task) => task.id === session.taskId);
+    if (!target || target.done || target.status === 'skipped') return;
+    focusTaskCompletionPromptedRef.current.add(session.id);
+    setScheduleConflictPrompt(undefined);
+    setFocusTaskCompletionPrompt(session);
+  }, []);
+
+  useEffect(() => {
+    if (!focusTaskCompletionPrompt) return;
+    const target = tasksRef.current.find((task) => task.id === focusTaskCompletionPrompt.taskId);
+    if (!target || target.done || target.status === 'skipped') setFocusTaskCompletionPrompt(undefined);
+  }, [focusTaskCompletionPrompt, tasks]);
+
+  useEffect(() => {
+    if (!scheduleConflictPrompt) return;
+    if (!tasks.some((task) => task.id === scheduleConflictPrompt.task.id) || !departurePlans.some((plan) => plan.id === scheduleConflictPrompt.plan.id)) {
+      setScheduleConflictPrompt(undefined);
+    }
+  }, [departurePlans, scheduleConflictPrompt, tasks]);
 
   const navigateWithinApp = React.useCallback((nextScreen: Screen) => {
     const decision = getFocusNavigationDecision(focusTimerActive && nextScreen !== 'timeline');
@@ -3746,6 +4164,7 @@ export default function App() {
         onRecovery={() => undefined}
         onRecoveryClosed={() => undefined}
         onFocusCompleted={() => undefined}
+        onFocusTaskFinished={() => undefined}
         onFocusStarted={() => undefined}
         onFocusNotificationPermission={async () => false}
         onFocusRunningChange={() => undefined}
@@ -4028,6 +4447,50 @@ export default function App() {
   // transitions are bounded so a target that is slow or unavailable cannot
   // hide the next GUIDE indefinitely.
   const firstRunDemoActive = onboarding.state.firstRunStage === 'demo';
+  const tomorrowKey = todayInputValue(1);
+  const todayKeyForPrep = dateKey(now);
+  const hasTomorrowPrepCandidates = tasks.some((task) => {
+    if (task.done || task.status === 'skipped') return false;
+    const scheduled = normalizeTaskDateKey(task.scheduledDate);
+    return (!scheduled || scheduled <= todayKeyForPrep) || scheduled === tomorrowKey;
+  }) || departurePlans.some((item) => planDateKey(item) === tomorrowKey);
+  const tomorrowPrepBlocked = focusTimerActive
+    || Boolean(focusTaskCompletionPrompt)
+    || Boolean(scheduleConflictPrompt)
+    || addOpen
+    || bulkAddOpen
+    || voiceOpen
+    || Boolean(editingTask)
+    || planEditorOpen
+    || premiumOpen
+    || designCustomizeOpen
+    || Boolean(designPreviewPattern)
+    || designTrialNoticeOpen
+    || openTodayReview
+    || sharedEventOpen
+    || Boolean(recoveryTargetPlanId)
+    || widgetGuideVisible
+    || noticeCenterOpen
+    || Boolean(currentGuideFeature)
+    || firstRunDemoActive
+    || onboarding.introVisible;
+
+  useEffect(() => {
+    if (!hydrated || tomorrowPrepBlocked || !hasTomorrowPrepCandidates || now.getHours() < 20 || now.getTime() < tomorrowPrepDeferredUntilRef.current) return;
+    if (tomorrowPrepPromptedDateRef.current === todayKeyForPrep || tomorrowPrepOpen) return;
+    tomorrowPrepPromptedDateRef.current = todayKeyForPrep;
+    setTomorrowPrepPromptedDate(todayKeyForPrep);
+    setTomorrowPrepStep(0);
+    setTomorrowPrepOpen(true);
+  }, [hasTomorrowPrepCandidates, hydrated, now, tomorrowPrepBlocked, todayKeyForPrep, tomorrowPrepOpen]);
+
+  useEffect(() => {
+    if (focusTaskCompletionPrompt || scheduleConflictPrompt || tomorrowPrepOpen || noticeCenterOpen) return;
+    const pending = pendingScheduleConflictRef.current;
+    if (!pending) return;
+    pendingScheduleConflictRef.current = undefined;
+    setScheduleConflictPrompt(pending);
+  }, [focusTaskCompletionPrompt, noticeCenterOpen, scheduleConflictPrompt, tomorrowPrepOpen]);
   const activeGuideTour: readonly Exclude<OnboardingFeatureId, 'intro'>[] = firstRunDemoActive
     ? FREE_GUIDE_TOUR
     : planTier === 'premium' ? PREMIUM_GUIDE_TOUR : FREE_GUIDE_TOUR;
@@ -4369,6 +4832,56 @@ export default function App() {
   const headerChicPalette = designMode === 'chic' && effectiveChicPattern === 'nightSky'
     ? { ...chicPalette, textPrimary: '#F4F7FC', textSecondary: '#D6DEEA' }
     : chicPalette;
+  const focusPromptTask = focusTaskCompletionPrompt?.taskId ? tasks.find((task) => task.id === focusTaskCompletionPrompt.taskId) : undefined;
+  const prepTodayTasks = tasks.filter((task) => {
+    const scheduled = normalizeTaskDateKey(task.scheduledDate);
+    return !task.done && task.status !== 'skipped' && (!scheduled || scheduled <= todayKeyForPrep);
+  });
+  const prepTomorrowTasks = tasks.filter((task) => normalizeTaskDateKey(task.scheduledDate) === tomorrowKey && !task.done && task.status !== 'skipped');
+  const prepTomorrowPlans = departurePlans.filter((item) => planDateKey(item) === tomorrowKey);
+  const visibleAppNotices = useMemo(() => INITIAL_APP_NOTICES
+    .filter((notice) => {
+      const publishedAt = Date.parse(notice.publishedAt);
+      return Number.isFinite(publishedAt) && publishedAt <= now.getTime();
+    })
+    .sort((left, right) => Date.parse(right.publishedAt) - Date.parse(left.publishedAt)), [now]);
+  const unreadNoticeCount = visibleAppNotices.reduce((count, notice) => count + (readNoticeIds.includes(notice.id) ? 0 : 1), 0);
+  const markNoticeRead = React.useCallback((noticeId: string) => {
+    setReadNoticeIds((current) => current.includes(noticeId) ? current : [...current, noticeId]);
+  }, []);
+  const openNoticeTarget = React.useCallback((notice: AppNotice) => {
+    if (!notice.targetScreen) return;
+    const params = notice.targetParams && typeof notice.targetParams === 'object' && !Array.isArray(notice.targetParams)
+      ? notice.targetParams as Record<string, unknown>
+      : {};
+    if (notice.targetScreen === 'home' && params.homeTab === 'routine') setHomeInitialTab('routine');
+    if (notice.targetScreen === 'timeline' && params.timelineTab === 'focus') setTimelineInitialTab('focus');
+    setNoticeCenterOpen(false);
+    navigateWithinAppRef.current(notice.targetScreen);
+  }, []);
+  const modalPalette: ModalPalette = {
+    screenBackground: theme.colors.screenBackground,
+    surface: theme.colors.surface,
+    secondarySurface: theme.colors.secondarySurface,
+    border: theme.colors.border,
+    primaryText: theme.colors.primaryText,
+    secondaryText: theme.colors.secondaryText,
+    primaryAccent: theme.colors.primaryAccent,
+    accentSoft: theme.colors.softAccent,
+    warning: theme.colors.warning,
+    onAccent: uiDesignMode === 'chic' && chicPalette ? chicPalette.onAccent : uiDesignMode === 'dark' ? theme.colors.screenBackground : '#FFFFFF',
+    modalRadius: theme.radius.modal,
+    buttonRadius: theme.radius.button,
+    shadow: theme.shadow,
+  };
+  const resolveFocusPrompt = (action: 'complete' | 'continue' | 'later') => {
+    const target = focusPromptTask;
+    tomorrowPrepDeferredUntilRef.current = Date.now() + 10 * 60_000;
+    setFocusTaskCompletionPrompt(undefined);
+    if (!target) return;
+    if (action === 'complete') completeTaskIds([target.id], 'manual');
+    if (action === 'continue') { setTimelineInitialTab('focus'); setScreen('timeline'); }
+  };
 
   return (
     <SafeAreaView style={[styles.safe, uiDesignMode === 'minimal' && styles.safeMinimal, uiDesignMode === 'dark' && styles.safeDark, designMode === 'photo' && styles.safePhoto, !hydrated && { opacity: 0 }, { backgroundColor: imageDesignBackground?.background ?? (uiDesignMode === 'chic' ? getChicPatternVisual(effectiveChicPattern, chicPalette).background : theme.colors.screenBackground) }]}>
@@ -4382,7 +4895,7 @@ export default function App() {
         <CThemeRibbonPreload />
         {uiDesignMode === 'chic' && !photoThemeEnabled && <View pointerEvents="none" style={StyleSheet.absoluteFillObject}><ChicPatternDecor pattern={effectiveChicPattern} accent={chicPalette.accent} warm={chicPalette.accentSoft} checkColor={chicCheckColor} /></View>}
         {backgroundVeilVisible && <View pointerEvents="none" style={[StyleSheet.absoluteFillObject, { backgroundColor: backgroundVeilColor, opacity: backgroundVeilOpacity }]} />}
-        {photoTopImageUri && screen !== 'wish' ? <><Header designMode={uiDesignMode} now={now} compact chicPalette={headerChicPalette} onVoice={handleHeaderVoice} onPremium={planTier === 'premium' ? undefined : () => openPremiumFeature('voice')} /><View style={styles.photoThemeTopImage}><Image source={{ uri: photoTopImageUri }} resizeMode="contain" style={styles.photoThemeTopImageContent} /></View></> : <Header designMode={uiDesignMode} now={now} chicPalette={headerChicPalette} onVoice={handleHeaderVoice} onPremium={planTier === 'premium' ? undefined : () => openPremiumFeature('voice')} />}
+        {photoTopImageUri && screen !== 'wish' ? <><Header designMode={uiDesignMode} now={now} compact chicPalette={headerChicPalette} onVoice={handleHeaderVoice} onPremium={planTier === 'premium' ? undefined : () => openPremiumFeature('voice')} onNotifications={screen === 'settings' ? () => setNoticeCenterOpen(true) : undefined} hasUnreadNotifications={screen === 'settings' && unreadNoticeCount > 0} /><View style={styles.photoThemeTopImage}><Image source={{ uri: photoTopImageUri }} resizeMode="contain" style={styles.photoThemeTopImageContent} /></View></> : <Header designMode={uiDesignMode} now={now} chicPalette={headerChicPalette} onVoice={handleHeaderVoice} onPremium={planTier === 'premium' ? undefined : () => openPremiumFeature('voice')} onNotifications={screen === 'settings' ? () => setNoticeCenterOpen(true) : undefined} hasUnreadNotifications={screen === 'settings' && unreadNoticeCount > 0} />}
         {completionAffirmation && <Animated.View pointerEvents="none" style={{ position: 'absolute', top: 72, left: 20, right: 20, zIndex: 30, opacity: completionAffirmationOpacity, alignItems: 'center' }}><View style={{ maxWidth: 340, paddingHorizontal: 18, paddingVertical: 12, borderRadius: 18, backgroundColor: uiDesignMode === 'dark' ? '#20293A' : uiDesignMode === 'chic' ? chicPalette.cardSurface : '#FFFFFF', borderWidth: 1, borderColor: uiDesignMode === 'dark' ? '#40506A' : uiDesignMode === 'chic' ? chicPalette.border : '#E5E0E5', shadowColor: '#000', shadowOpacity: 0.12, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 4 }}><Text style={{ textAlign: 'center', color: uiDesignMode === 'dark' ? '#F4F7FC' : uiDesignMode === 'chic' ? chicPalette.textPrimary : '#282538', fontSize: 14, fontWeight: '600' }}>{completionAffirmation}</Text></View></Animated.View>}
 
         <ScrollView contentContainerStyle={[styles.content, screen === 'timeline' && styles.contentTimeline]} keyboardShouldPersistTaps="handled">
@@ -4407,7 +4920,7 @@ export default function App() {
                 setTimelineInitialTab('focus');
                 navigateWithinApp('timeline');
               }}
-              initialTab={productionGuideFeature === 'taskBuckets' ? 'list' : 'now'}
+              initialTab={firstRunDemoActive ? 'now' : productionGuideFeature === 'taskBuckets' ? 'list' : homeInitialTab}
               onOpenSchedule={() => {
                 setTimelineInitialTab('departure');
                 navigateWithinApp('timeline');
@@ -4520,6 +5033,7 @@ export default function App() {
                  const duplicate = { ...task, id: duplicateId, createdAt: new Date().toISOString(), title: `${task.title}（コピー）`, done: false, status: 'active' as const, skippedAt: undefined, completedAt: undefined, isRoutine: false, routineId: undefined, routineEndedAt: undefined, remindDate: undefined, remindAt: undefined, deadlineNotifyBefore: undefined, nudgeMode: 'once' as NudgeMode, subtasks: task.subtasks?.map((item, index) => ({ ...item, id: `${duplicateId}-subtask-${index}-${Math.random().toString(16).slice(2)}`, done: false, order: index })), listItems: task.listItems?.map((item, index) => ({ ...item, id: `${duplicateId}-list-${index}-${Math.random().toString(16).slice(2)}`, checked: false, order: index })) };
                 tasksRef.current = [duplicate, ...tasksRef.current];
                 setTasks(tasksRef.current);
+                void syncScheduleSwitchNotificationsForTask(duplicate.id);
               }}
               onSaveTemplate={(task) => {
                 if (!firstRunDemoActive) saveTaskAsTemplate(task);
@@ -4664,6 +5178,7 @@ export default function App() {
               recoveryGuide={productionGuideFeature === 'recovery' ? productionGuideCard : undefined}
               onRecoveryClosed={() => setRecoveryTargetPlanId(undefined)}
               onFocusCompleted={firstRunDemoActive ? () => undefined : completeFocusSession}
+              onFocusTaskFinished={firstRunDemoActive ? () => undefined : handleFocusTaskFinished}
               onFocusStarted={() => {
                 setVoiceFocusRequest(undefined);
                 if (firstRunDemoActive) {
@@ -4908,7 +5423,9 @@ export default function App() {
                 if (updatedPlan?.id) {
                   void (async () => {
                     await cancelPendingDepartureNotifications(updatedPlan.id!);
+                    await cancelScheduleSwitchNotificationsForPlan(updatedPlan.id!);
                     if (getDeparturePlanMode(updatedPlan) !== 'calendar_only') await scheduleDeparture(updatedPlan);
+                    await syncScheduleSwitchNotificationsForPlan(updatedPlan.id!);
                   })().catch((error) => {
                     if (__DEV__) console.warn('[Notifications] suggestion reschedule failed', error);
                   });
@@ -4933,6 +5450,7 @@ export default function App() {
                 const next = tasksRef.current.map((task) => (task.routineId ?? task.id) === routineId ? { ...task, isRoutine: false, routineEndedAt: endedAt } : task);
                 tasksRef.current = next;
                 setTasks(next);
+                next.filter((task) => (task.routineId ?? task.id) === routineId).forEach((task) => { void cancelScheduleSwitchNotificationsForTask(task.id); });
                 setRoutineArchives((current) => pruneRoutineArchives([...current.filter((item) => item.routineId !== routineId), archive]));
                 recordBehaviorEvent(createRoutineDeactivatedBehaviorEvent({ routineId, routineTitle: target.title, taskId: target.id, occurredAt: new Date(endedAt), targetDate: dateKey(endedAt) }));
               } }]); }}
@@ -4996,6 +5514,53 @@ export default function App() {
           </Pressable>
         </Pressable>
       </Modal>
+
+      <AppNoticeCenter
+        visible={noticeCenterOpen}
+        notices={visibleAppNotices}
+        readNoticeIds={readNoticeIds}
+        palette={modalPalette}
+        onRead={markNoticeRead}
+        onNavigate={openNoticeTarget}
+        onClose={() => setNoticeCenterOpen(false)}
+      />
+
+      <TomorrowPrepModal
+        visible={tomorrowPrepOpen}
+        step={tomorrowPrepStep}
+        todayTasks={prepTodayTasks}
+        tomorrowTasks={prepTomorrowTasks}
+        tomorrowPlans={prepTomorrowPlans}
+        palette={modalPalette}
+        onStepChange={setTomorrowPrepStep}
+        onMoveTomorrow={moveTaskToTomorrow}
+        onLater={moveTaskToLater}
+        onCompleteTask={(taskId) => completeTaskIds([taskId], 'manual')}
+        onEditTask={(task) => { setTomorrowPrepOpen(false); setEditingTask(task); }}
+        onEditPlan={(target) => { setTomorrowPrepOpen(false); setScreen('timeline'); openPlanEditor(target); }}
+        onClose={() => setTomorrowPrepOpen(false)}
+      />
+
+      {scheduleConflictPrompt && <Modal visible transparent animationType="fade" onRequestClose={() => setScheduleConflictPrompt(undefined)}>
+        <Pressable style={styles.modalBackdrop} onPress={() => setScheduleConflictPrompt(undefined)}>
+          <Pressable style={[styles.modalSheet, popupSheetStyle(modalPalette)]} onPress={(event) => event.stopPropagation()}>
+            <Text style={[styles.modalTitle, { color: modalPalette.primaryText }]}>予定に少し近いかも</Text>
+            <Text style={{ color: modalPalette.warning, fontSize: 12, fontWeight: '800', marginBottom: 4 }}>⚠ 時間の余裕を確認してください</Text>
+            <Text style={[styles.emptyCopy, { color: modalPalette.secondaryText }]}>{scheduleConflictPrompt.kind === 'preparation' ? `「${scheduleConflictPrompt.plan.title}」の準備は${formatLiveTime(scheduleConflictPrompt.effectiveAt)}頃から。` : scheduleConflictPrompt.kind === 'departure' ? `「${scheduleConflictPrompt.plan.title}」は${formatLiveTime(scheduleConflictPrompt.effectiveAt)}頃に出発です。` : `「${scheduleConflictPrompt.plan.title}」の予定と時間が重なっています。`}</Text>
+            <Text style={[styles.emptyCopy, { color: modalPalette.secondaryText }]}>{`「${scheduleConflictPrompt.task.title}」は${formatLiveTime(scheduleConflictPrompt.taskStart)}〜${formatLiveTime(scheduleConflictPrompt.taskEnd)}です。このままだと時間が足りないかも。`}</Text>
+            <View style={{ flexDirection: 'row', gap: 8 }}><Pressable style={[styles.primaryButton, { backgroundColor: modalPalette.primaryAccent, borderRadius: modalPalette.buttonRadius }]} onPress={() => { const target = scheduleConflictPrompt.task; tomorrowPrepDeferredUntilRef.current = Date.now() + 10 * 60_000; setScheduleConflictPrompt(undefined); setEditingTask(target); }}><Text style={[styles.primaryButtonText, { color: modalPalette.onAccent }]}>時間を調整</Text></Pressable><Pressable style={{ minHeight: 46, flex: 1, borderRadius: modalPalette.buttonRadius, borderWidth: 1, borderColor: modalPalette.border, backgroundColor: modalPalette.secondarySurface, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 12, marginTop: 10 }} onPress={() => { tomorrowPrepDeferredUntilRef.current = Date.now() + 10 * 60_000; setScheduleConflictPrompt(undefined); }}><Text style={{ color: modalPalette.primaryText, fontSize: 13, fontWeight: '900' }}>このまま</Text></Pressable></View>
+          </Pressable>
+        </Pressable>
+      </Modal>}
+
+      <FocusTaskCompletionModal
+        session={focusTaskCompletionPrompt}
+        task={focusPromptTask}
+        palette={modalPalette}
+        onComplete={() => resolveFocusPrompt('complete')}
+        onContinue={() => resolveFocusPrompt('continue')}
+        onLater={() => resolveFocusPrompt('later')}
+      />
 
       <SharedEventScreen
         visible={sharedEventOpen && hasPremiumAccess(planTier, 'late_recovery')}
@@ -5166,6 +5731,140 @@ export default function App() {
   );
 }
 
+type ModalPalette = {
+  screenBackground: string;
+  surface: string;
+  secondarySurface: string;
+  border: string;
+  primaryText: string;
+  secondaryText: string;
+  primaryAccent: string;
+  accentSoft: string;
+  warning: string;
+  onAccent: string;
+  modalRadius: number;
+  buttonRadius: number;
+  shadow: { color: string; opacity: number; radius: number; y: number };
+};
+
+function popupSheetStyle(palette: ModalPalette, maxHeight?: DimensionValue) {
+  return {
+    backgroundColor: palette.surface,
+    borderColor: palette.border,
+    borderTopWidth: 1,
+    borderTopLeftRadius: palette.modalRadius,
+    borderTopRightRadius: palette.modalRadius,
+    shadowColor: palette.shadow.color,
+    shadowOpacity: palette.shadow.opacity,
+    shadowRadius: palette.shadow.radius,
+    shadowOffset: { width: 0, height: palette.shadow.y },
+    elevation: 6,
+    ...(maxHeight === undefined ? {} : { maxHeight }),
+  };
+}
+
+function FocusTaskCompletionModal({ session, task, palette, onComplete, onContinue, onLater }: { session?: FocusSession; task?: Task; palette: ModalPalette; onComplete: () => void; onContinue: () => void; onLater: () => void }) {
+  if (!session || !task) return null;
+  return <Modal visible transparent animationType="fade" onRequestClose={onLater}>
+    <Pressable style={styles.modalBackdrop} onPress={onLater}>
+      <Pressable style={[styles.modalSheet, popupSheetStyle(palette)]} onPress={(event) => event.stopPropagation()}>
+        <View style={[styles.modalHandle, { backgroundColor: palette.border }]} />
+        <Text style={[styles.modalTitle, { color: palette.primaryText }]}>集中おつかれさま</Text>
+        <Text style={[styles.emptyCopy, { color: palette.secondaryText }]}>{`「${task.title}」は終わった？`}</Text>
+        <Pressable style={[styles.primaryButton, { backgroundColor: palette.primaryAccent, borderRadius: palette.buttonRadius }]} onPress={onComplete}><Text style={[styles.primaryButtonText, { color: palette.onAccent }]}>完了</Text></Pressable>
+        <View style={{ flexDirection: 'row', gap: 8 }}>
+          <Pressable style={{ minHeight: 46, flex: 1, borderRadius: palette.buttonRadius, borderWidth: 1, borderColor: palette.border, backgroundColor: palette.accentSoft, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 12, marginTop: 10 }} onPress={onContinue}><Text style={{ color: palette.primaryText, fontSize: 13, fontWeight: '900' }}>もう少し</Text></Pressable>
+          <Pressable style={{ minHeight: 46, flex: 1, borderRadius: palette.buttonRadius, borderWidth: 1, borderColor: palette.border, backgroundColor: palette.secondarySurface, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 12, marginTop: 10 }} onPress={onLater}><Text style={{ color: palette.secondaryText, fontSize: 13, fontWeight: '900' }}>後で</Text></Pressable>
+        </View>
+      </Pressable>
+    </Pressable>
+  </Modal>;
+}
+
+function TomorrowPrepModal({ visible, step, todayTasks, tomorrowTasks, tomorrowPlans, palette, onStepChange, onMoveTomorrow, onLater, onCompleteTask, onEditTask, onEditPlan, onClose }: { visible: boolean; step: 0 | 1 | 2 | 3; todayTasks: Task[]; tomorrowTasks: Task[]; tomorrowPlans: DeparturePlan[]; palette: ModalPalette; onStepChange: (step: 0 | 1 | 2 | 3) => void; onMoveTomorrow: (taskId: string) => void; onLater: (taskId: string) => void; onCompleteTask: (taskId: string) => void; onEditTask: (task: Task) => void; onEditPlan: (plan: DeparturePlan) => void; onClose: () => void }) {
+  const buttonStyle = { minHeight: 38, borderRadius: palette.buttonRadius, borderWidth: 1, borderColor: palette.border, backgroundColor: palette.secondarySurface, alignItems: 'center' as const, justifyContent: 'center' as const, paddingHorizontal: 10, flex: 1 };
+  const timeLabel = (plan: DeparturePlan) => {
+    const scheduled = getPlanScheduledTime(plan);
+    if (!scheduled) return '終日';
+    if (!isArrivalReversePlan(plan)) return `予定 ${scheduled}`;
+    const moments = getDepartureMoments(plan);
+    return `予定 ${scheduled}  準備 ${formatLiveTime(moments.prepare)}  出発 ${formatLiveTime(moments.leave)}`;
+  };
+  return <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+    <Pressable style={styles.modalBackdrop} onPress={onClose}>
+      <Pressable style={[styles.modalSheet, popupSheetStyle(palette, '86%')]} onPress={(event) => event.stopPropagation()}>
+        <View style={[styles.modalHandle, { backgroundColor: palette.border }]} />
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}><Text style={[styles.modalTitle, { color: palette.primaryText }]}>{step === 0 ? '明日の準備をしておきますか？' : '明日の準備'}</Text><Pressable onPress={onClose}><Text style={{ color: palette.primaryAccent, fontWeight: '800' }}>閉じる</Text></Pressable></View>
+        {step === 0 && <>
+          <Text style={[styles.emptyCopy, { color: palette.secondaryText }]}>今日残っていることと、明日の予定を少し整理できます。</Text>
+          <Pressable style={[styles.primaryButton, { backgroundColor: palette.primaryAccent, borderRadius: palette.buttonRadius }]} onPress={() => onStepChange(1)}><Text style={[styles.primaryButtonText, { color: palette.onAccent }]}>準備する</Text></Pressable>
+          <Pressable style={{ minHeight: 46, borderRadius: palette.buttonRadius, borderWidth: 1, borderColor: palette.border, backgroundColor: palette.secondarySurface, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 12, marginTop: 10 }} onPress={onClose}><Text style={{ color: palette.secondaryText, fontSize: 13, fontWeight: '900' }}>今日はしない</Text></Pressable>
+        </>}
+        {step === 1 && <>
+          <Text style={[styles.emptyCopy, { color: palette.secondaryText }]}>今日の未完了Taskを少し整理できます。</Text>
+          <ScrollView style={{ marginTop: 8 }}><Text style={{ color: palette.primaryText, fontWeight: '900', marginBottom: 6 }}>今日の未完了Task</Text>{todayTasks.length === 0 ? <Text style={{ color: palette.secondaryText }}>残っているTaskはありません。</Text> : todayTasks.map((task) => <View key={task.id} style={{ paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: palette.border }}><Text style={{ color: palette.primaryText, fontWeight: '800' }}>{task.title}</Text><View style={{ flexDirection: 'row', gap: 6, marginTop: 6 }}><Pressable style={buttonStyle} onPress={() => onMoveTomorrow(task.id)}><Text style={{ color: palette.primaryText, fontSize: 12 }}>明日に移す</Text></Pressable><Pressable style={buttonStyle} onPress={() => onLater(task.id)}><Text style={{ color: palette.primaryText, fontSize: 12 }}>あとで</Text></Pressable><Pressable style={buttonStyle} onPress={() => onCompleteTask(task.id)}><Text style={{ color: palette.primaryText, fontSize: 12 }}>完了</Text></Pressable><Pressable style={buttonStyle} onPress={() => onEditTask(task)}><Text style={{ color: palette.primaryAccent, fontSize: 12 }}>編集</Text></Pressable></View></View>)}</ScrollView>
+          <Pressable style={[styles.primaryButton, { backgroundColor: palette.primaryAccent, borderRadius: palette.buttonRadius }]} onPress={() => onStepChange(2)}><Text style={[styles.primaryButtonText, { color: palette.onAccent }]}>明日の内容を見る</Text></Pressable>
+        </>}
+        {step === 2 && <>
+          <Text style={[styles.emptyCopy, { color: palette.secondaryText }]}>明日の予定とTaskを時系列で確認します。</Text>
+          <ScrollView style={{ marginTop: 8 }}><Text style={{ color: palette.primaryText, fontWeight: '900', marginBottom: 6 }}>予定</Text>{tomorrowPlans.length === 0 ? <Text style={{ color: palette.secondaryText }}>明日の予定はありません。</Text> : tomorrowPlans.map((plan) => <Pressable key={plan.id} onPress={() => onEditPlan(plan)} style={{ paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: palette.border }}><Text style={{ color: palette.primaryText, fontWeight: '800' }}>{plan.title}</Text><Text style={{ color: palette.secondaryText, fontSize: 12, marginTop: 3 }}>{timeLabel(plan)}</Text></Pressable>)}<Text style={{ color: palette.primaryText, fontWeight: '900', marginTop: 12, marginBottom: 6 }}>Task / Routine</Text>{tomorrowTasks.length === 0 ? <Text style={{ color: palette.secondaryText }}>明日のTaskはありません。</Text> : tomorrowTasks.map((task) => <Pressable key={task.id} onPress={() => onEditTask(task)} style={{ paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: palette.border }}><Text style={{ color: palette.primaryText }}>{task.title}</Text>{task.scheduledTime ? <Text style={{ color: palette.secondaryText, fontSize: 12, marginTop: 2 }}>{task.scheduledTime}</Text> : null}</Pressable>)}</ScrollView>
+          <Pressable style={[styles.primaryButton, { backgroundColor: palette.primaryAccent, borderRadius: palette.buttonRadius }]} onPress={() => onStepChange(3)}><Text style={[styles.primaryButtonText, { color: palette.onAccent }]}>次へ</Text></Pressable>
+        </>}
+        {step === 3 && <><Text style={[styles.modalTitle, { color: palette.primaryText, fontSize: 20 }]}>明日の準備ができました</Text><Text style={[styles.emptyCopy, { color: palette.secondaryText }]}>明日も自分のペースで進めよう。</Text><Pressable style={[styles.primaryButton, { backgroundColor: palette.primaryAccent, borderRadius: palette.buttonRadius }]} onPress={onClose}><Text style={[styles.primaryButtonText, { color: palette.onAccent }]}>閉じる</Text></Pressable></>}
+      </Pressable>
+    </Pressable>
+  </Modal>;
+}
+
+function formatNoticeDate(publishedAt: string) {
+  const date = new Date(publishedAt);
+  return Number.isNaN(date.getTime()) ? '' : `${date.getMonth() + 1}/${date.getDate()}`;
+}
+
+function AppNoticeCenter({ visible, notices, readNoticeIds, palette, onRead, onNavigate, onClose }: { visible: boolean; notices: AppNotice[]; readNoticeIds: string[]; palette: ModalPalette; onRead: (noticeId: string) => void; onNavigate: (notice: AppNotice) => void; onClose: () => void }) {
+  const [selectedNoticeId, setSelectedNoticeId] = useState<string>();
+  const selectedNotice = notices.find((notice) => notice.id === selectedNoticeId);
+
+  useEffect(() => {
+    if (!visible) setSelectedNoticeId(undefined);
+  }, [visible]);
+
+  return <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+    <Pressable style={styles.modalBackdrop} onPress={onClose}>
+      <Pressable style={[styles.modalSheet, popupSheetStyle(palette, '88%')]} onPress={(event) => event.stopPropagation()}>
+        <View style={[styles.modalHandle, { backgroundColor: palette.border }]} />
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            {selectedNotice ? <Pressable accessibilityRole="button" accessibilityLabel="お知らせ一覧へ戻る" onPress={() => setSelectedNoticeId(undefined)}><Text style={{ color: palette.primaryAccent, fontSize: 24, lineHeight: 26 }}>‹</Text></Pressable> : null}
+            <Text style={[styles.modalTitle, { color: palette.primaryText, marginBottom: 0 }]}>お知らせ</Text>
+          </View>
+          <Pressable accessibilityRole="button" onPress={onClose}><Text style={{ color: palette.primaryAccent, fontWeight: '800' }}>閉じる</Text></Pressable>
+        </View>
+        {!selectedNotice ? <ScrollView contentContainerStyle={{ paddingBottom: 12 }}>
+          {notices.length === 0 ? <Text style={{ color: palette.secondaryText, paddingVertical: 20 }}>現在のお知らせはありません。</Text> : notices.map((notice) => {
+            const unread = !readNoticeIds.includes(notice.id);
+            const categoryColor = notice.category === 'important' ? palette.warning : palette.primaryAccent;
+            return <Pressable key={notice.id} accessibilityRole="button" onPress={() => { onRead(notice.id); setSelectedNoticeId(notice.id); }} style={{ padding: 13, marginTop: 8, borderRadius: palette.buttonRadius, borderWidth: 1, borderColor: unread ? categoryColor : palette.border, backgroundColor: palette.secondarySurface }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }}>
+                <Text style={{ color: categoryColor, fontSize: 10, fontWeight: '900' }}>{APP_NOTICE_CATEGORY_LABELS[notice.category]}</Text>
+                {unread ? <View style={{ paddingHorizontal: 5, paddingVertical: 2, borderRadius: 5, backgroundColor: categoryColor }}><Text style={{ color: palette.onAccent, fontSize: 9, fontWeight: '900' }}>NEW</Text></View> : null}
+                <Text style={{ marginLeft: 'auto', color: palette.secondaryText, fontSize: 10 }}>{formatNoticeDate(notice.publishedAt)}</Text>
+              </View>
+              <Text numberOfLines={2} style={{ color: palette.primaryText, fontSize: 14, lineHeight: 20, fontWeight: '900', marginTop: 7 }}>{notice.title}</Text>
+              <Text numberOfLines={3} style={{ color: palette.secondaryText, fontSize: 12, lineHeight: 18, marginTop: 4 }}>{notice.body}</Text>
+            </Pressable>;
+          })}
+        </ScrollView> : <ScrollView contentContainerStyle={{ paddingBottom: 12 }}>
+          <Text style={{ color: selectedNotice.category === 'important' ? palette.warning : palette.primaryAccent, fontSize: 11, fontWeight: '900' }}>{APP_NOTICE_CATEGORY_LABELS[selectedNotice.category]} ・ {formatNoticeDate(selectedNotice.publishedAt)}</Text>
+          <Text style={{ color: palette.primaryText, fontSize: 20, lineHeight: 28, fontWeight: '900', marginTop: 8 }}>{selectedNotice.title}</Text>
+          <Text style={{ color: palette.secondaryText, fontSize: 14, lineHeight: 23, marginTop: 14 }}>{selectedNotice.body}</Text>
+          {selectedNotice.targetScreen ? <Pressable accessibilityRole="button" onPress={() => onNavigate(selectedNotice)} style={{ minHeight: 46, borderRadius: palette.buttonRadius, backgroundColor: palette.primaryAccent, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 14, marginTop: 20 }}><Text style={{ color: palette.onAccent, fontSize: 13, fontWeight: '900' }}>この機能を見る</Text></Pressable> : null}
+        </ScrollView>}
+      </Pressable>
+    </Pressable>
+  </Modal>;
+}
+
 type DesignPreviewMode = 'minimal' | 'dark' | 'chic' | 'photo';
 
 function DesignPreviewModal({ visible, initialPattern, initialMode = 'chic', chicCheckColor, planTier, designCustomizePurchased = false, photoUri, onPickPhoto, onClose, onUse, onTrial }: { visible: boolean; initialPattern?: ChicPattern; initialMode?: DesignPreviewMode; chicCheckColor: ChicCheckColor; planTier: PlanTier; designCustomizePurchased?: boolean; photoUri?: string; onPickPhoto: () => void; onClose: () => void; onUse: (mode: DesignPreviewMode, pattern?: ChicPattern) => void; onTrial?: (mode: DesignPreviewMode, pattern?: ChicPattern) => void }) {
@@ -5306,7 +6005,7 @@ function TimeTabButton({ tab, active, designMode, chicPattern, chicPalette, them
      return <Pressable style={[styles.timeTab, styles.timeTabMinimal, isDark && styles.darkSurface, active && styles.timeTabActive, active && { backgroundColor: isDark ? '#26365F' : themeAccent, borderColor: isDark ? '#6F8DFF' : themeAccent }]} onPress={onPress}><Text numberOfLines={1} style={[styles.timeTabText, { color: isDark ? '#F4F7FC' : secondaryText }, active && styles.timeTabTextActive, active && styles.timeTabTextActiveMinimal]}>{label}</Text></Pressable>;
 }
 
-function FocusMode({ tasks, designMode, chicPalette, backgroundImageUri, planTier, onPremium, customDurationMinutes, onCustomDurationChange, voiceStartRequest, focusPersistedState, onFocusStateChange, onFocusCompleted, onFocusStarted, onFocusNotificationPermission, onFocusRunningChange, onFocusActivityChange, onBehaviorEvent, hapticsEnabled = true, previewCustomDurationOpen = false, previewMode = false }: { tasks: Task[]; designMode: DesignMode; chicPalette?: ChicThemePalette; backgroundImageUri?: string; planTier: PlanTier; onPremium?: (featureId?: PremiumGuideFeatureId) => void; customDurationMinutes?: number; onCustomDurationChange?: (minutes: number) => void; voiceStartRequest?: { durationMinutes: number; id: number }; focusPersistedState?: FocusPersistedState; onFocusStateChange?: (state?: FocusPersistedState) => void; onFocusCompleted: (session: FocusSession) => void; onFocusStarted?: () => void; onFocusNotificationPermission?: () => Promise<boolean>; onFocusRunningChange?: (running: boolean) => void; onFocusActivityChange?: (state?: { taskTitle?: string; endsAt?: string }) => void; onBehaviorEvent: (event: BehaviorEvent) => void; hapticsEnabled?: boolean; previewCustomDurationOpen?: boolean; previewMode?: boolean }) {
+  function FocusMode({ tasks, designMode, chicPalette, backgroundImageUri, planTier, onPremium, customDurationMinutes, onCustomDurationChange, voiceStartRequest, focusPersistedState, onFocusStateChange, onFocusCompleted, onFocusTaskFinished, onFocusStarted, onFocusNotificationPermission, onFocusRunningChange, onFocusActivityChange, onBehaviorEvent, hapticsEnabled = true, previewCustomDurationOpen = false, previewMode = false }: { tasks: Task[]; designMode: DesignMode; chicPalette?: ChicThemePalette; backgroundImageUri?: string; planTier: PlanTier; onPremium?: (featureId?: PremiumGuideFeatureId) => void; customDurationMinutes?: number; onCustomDurationChange?: (minutes: number) => void; voiceStartRequest?: { durationMinutes: number; id: number }; focusPersistedState?: FocusPersistedState; onFocusStateChange?: (state?: FocusPersistedState) => void; onFocusCompleted: (session: FocusSession) => void; onFocusTaskFinished?: (session: FocusSession) => void; onFocusStarted?: () => void; onFocusNotificationPermission?: () => Promise<boolean>; onFocusRunningChange?: (running: boolean) => void; onFocusActivityChange?: (state?: { taskTitle?: string; endsAt?: string; elapsedStartAt?: string; elapsedSeconds?: number; remainingSeconds?: number; running?: boolean }) => void; onBehaviorEvent: (event: BehaviorEvent) => void; hapticsEnabled?: boolean; previewCustomDurationOpen?: boolean; previewMode?: boolean }) {
   const availableTasks = React.useMemo(() => {
     const today = dateKey();
     const seenTitles = new Set<string>();
@@ -5330,6 +6029,7 @@ function FocusMode({ tasks, designMode, chicPalette, backgroundImageUri, planTie
   const selectedTask = availableTasks.find((task) => task.id === selectedTaskId);
   const sessionRef = React.useRef<{ id: string; startedAt: Date; taskId?: string; taskTitle?: string; plannedDurationMinutes: number } | undefined>(undefined);
   const endAtRef = React.useRef<number | undefined>(undefined);
+  const focusElapsedStartAtRef = React.useRef<string | undefined>(undefined);
   const focusStateRestoredRef = React.useRef(false);
   const completionCallbackRef = React.useRef(onFocusCompleted);
   completionCallbackRef.current = onFocusCompleted;
@@ -5342,6 +6042,10 @@ function FocusMode({ tasks, designMode, chicPalette, backgroundImageUri, planTie
       onFocusStateChange?.(undefined);
       return;
     }
+    const elapsedSeconds = Math.max(0, session.plannedDurationMinutes * 60 - pausedSecondsRef.current);
+    if (runningState || !focusElapsedStartAtRef.current) {
+      focusElapsedStartAtRef.current = new Date(Date.now() - elapsedSeconds * 1000).toISOString();
+    }
     onFocusStateChange?.({
       sessionId: session.id,
       taskId: session.taskId,
@@ -5351,8 +6055,10 @@ function FocusMode({ tasks, designMode, chicPalette, backgroundImageUri, planTie
       running: runningState,
       endAt: endAt ? new Date(endAt).toISOString() : undefined,
       pausedSeconds: pausedSecondsRef.current,
+      elapsedStartAt: focusElapsedStartAtRef.current,
     });
-  }, [onFocusStateChange]);
+    onFocusActivityChange?.({ taskTitle: session.taskTitle, endsAt: endAt ? new Date(endAt).toISOString() : undefined, elapsedStartAt: focusElapsedStartAtRef.current, elapsedSeconds, remainingSeconds: runningState ? undefined : pausedSecondsRef.current, running: runningState });
+  }, [onFocusActivityChange, onFocusStateChange]);
   const cancelFocusNotification = React.useCallback((sessionIdOverride?: string) => enqueueNotificationOperation('focus', async () => {
     const notificationId = focusNotificationIdRef.current;
     const sessionId = sessionIdOverride ?? sessionRef.current?.id;
@@ -5375,6 +6081,7 @@ function FocusMode({ tasks, designMode, chicPalette, backgroundImageUri, planTie
     const session = createCompletedFocusSession({ id: activeSession.id, taskId: activeSession.taskId, taskTitle: activeSession.taskTitle, durationMinutes: activeSession.plannedDurationMinutes, startedAt: activeSession.startedAt, completedAt: actualAt });
     sessionRef.current = undefined;
     endAtRef.current = undefined;
+    focusElapsedStartAtRef.current = undefined;
     onFocusStateChange?.(undefined);
     onFocusActivityChange?.(undefined);
     behaviorCallbackRef.current(createFocusCompletedBehaviorEvent({ sessionId: activeSession.id, taskId: activeSession.taskId, taskTitle: activeSession.taskTitle, plannedDurationMinutes: activeSession.plannedDurationMinutes, focusStartedAt: activeSession.startedAt, actualAt }));
@@ -5383,16 +6090,18 @@ function FocusMode({ tasks, designMode, chicPalette, backgroundImageUri, planTie
     setSecondsLeft(0);
     pausedSecondsRef.current = 0;
     completionCallbackRef.current(session);
+    onFocusTaskFinished?.(session);
     void cancelFocusNotification(activeSession.id);
     triggerHaptic(hapticsEnabled, [0, 35, 70]);
     Alert.alert('集中タイム終了', activeSession.taskTitle ? `「${activeSession.taskTitle}」に取り組めました。少し休憩しよう。` : '少し休憩しよう。');
-  }, [cancelFocusNotification, hapticsEnabled, onFocusRunningChange, onFocusStateChange]);
+  }, [cancelFocusNotification, hapticsEnabled, onFocusRunningChange, onFocusStateChange, onFocusTaskFinished]);
 
   const stopActiveSession = React.useCallback(() => {
     const activeSession = sessionRef.current;
     if (!activeSession) return;
     sessionRef.current = undefined;
     endAtRef.current = undefined;
+    focusElapsedStartAtRef.current = undefined;
     onFocusStateChange?.(undefined);
     onFocusActivityChange?.(undefined);
     behaviorCallbackRef.current(createFocusStoppedEvent({ sessionId: activeSession.id, taskId: activeSession.taskId, taskTitle: activeSession.taskTitle, plannedDurationMinutes: activeSession.plannedDurationMinutes, focusStartedAt: activeSession.startedAt, actualAt: new Date() }));
@@ -5415,6 +6124,9 @@ function FocusMode({ tasks, designMode, chicPalette, backgroundImageUri, planTie
     };
     setDuration(Math.max(1, focusPersistedState.plannedDurationMinutes));
     pausedSecondsRef.current = Math.max(0, Math.round(focusPersistedState.pausedSeconds));
+    const restoredElapsedSeconds = Math.max(0, focusPersistedState.plannedDurationMinutes * 60 - pausedSecondsRef.current);
+    focusElapsedStartAtRef.current = focusPersistedState.elapsedStartAt ?? new Date(Date.now() - restoredElapsedSeconds * 1000).toISOString();
+    if (!focusPersistedState.elapsedStartAt) onFocusStateChange?.({ ...focusPersistedState, elapsedStartAt: focusElapsedStartAtRef.current });
     const savedEndAt = focusPersistedState.endAt ? Date.parse(focusPersistedState.endAt) : undefined;
     if (focusPersistedState.running && savedEndAt && savedEndAt > Date.now()) {
       endAtRef.current = savedEndAt;
@@ -5423,7 +6135,7 @@ function FocusMode({ tasks, designMode, chicPalette, backgroundImageUri, planTie
       setSecondsLeft(remaining);
       setRunning(true);
       onFocusRunningChange?.(true);
-      onFocusActivityChange?.({ taskTitle: sessionRef.current.taskTitle, endsAt: new Date(savedEndAt).toISOString() });
+      onFocusActivityChange?.({ taskTitle: sessionRef.current.taskTitle, endsAt: new Date(savedEndAt).toISOString(), elapsedStartAt: focusElapsedStartAtRef.current, elapsedSeconds: restoredElapsedSeconds, running: true });
       return;
     }
     if (focusPersistedState.running && savedEndAt && savedEndAt <= Date.now()) {
@@ -5436,7 +6148,7 @@ function FocusMode({ tasks, designMode, chicPalette, backgroundImageUri, planTie
     setSecondsLeft(pausedSecondsRef.current || focusPersistedState.plannedDurationMinutes * 60);
     setRunning(false);
     onFocusRunningChange?.(false);
-    onFocusActivityChange?.({ taskTitle: sessionRef.current.taskTitle });
+    onFocusActivityChange?.({ taskTitle: sessionRef.current.taskTitle, elapsedStartAt: focusElapsedStartAtRef.current, elapsedSeconds: restoredElapsedSeconds, remainingSeconds: pausedSecondsRef.current, running: false });
   }, [finishSession, focusPersistedState, onFocusActivityChange, onFocusRunningChange, onFocusStateChange, previewMode]);
 
   useEffect(() => {
@@ -5460,6 +6172,7 @@ function FocusMode({ tasks, designMode, chicPalette, backgroundImageUri, planTie
     setRunning(false);
     sessionRef.current = undefined;
     endAtRef.current = undefined;
+    focusElapsedStartAtRef.current = undefined;
     onFocusStateChange?.(undefined);
   };
   useEffect(() => {
@@ -5501,6 +6214,7 @@ function FocusMode({ tasks, designMode, chicPalette, backgroundImageUri, planTie
     pausedSecondsRef.current = duration * 60;
     sessionRef.current = undefined;
     endAtRef.current = undefined;
+    focusElapsedStartAtRef.current = undefined;
     onFocusStateChange?.(undefined);
   };
   const toggleTimer = async (requestedDurationMinutes?: number) => {
@@ -5524,7 +6238,6 @@ function FocusMode({ tasks, designMode, chicPalette, backgroundImageUri, planTie
       endAtRef.current = undefined;
       setRunning(false);
       onFocusRunningChange?.(false);
-      onFocusActivityChange?.({ taskTitle: sessionRef.current?.taskTitle });
       publishFocusState(false);
       void cancelFocusNotification();
       return;
@@ -5549,7 +6262,6 @@ function FocusMode({ tasks, designMode, chicPalette, backgroundImageUri, planTie
     publishFocusState(true, endAtRef.current);
     setRunning(true);
     onFocusRunningChange?.(true);
-    onFocusActivityChange?.({ taskTitle: sessionRef.current?.taskTitle, endsAt: new Date(endAtRef.current).toISOString() });
     if (sessionRef.current) {
       void enqueueNotificationOperation('focus', async () => {
         const notificationId = focusNotificationIdRef.current;

@@ -31,6 +31,10 @@ export type RhythmLiveActivityPayload = {
   departureAt?: string;
   focusTaskTitle?: string;
   focusEndsAt?: string;
+  focusElapsedStartAt?: string;
+  focusElapsedSeconds?: number;
+  focusRemainingSeconds?: number;
+  focusRunning?: boolean;
   affirmationText?: string;
   accentHex?: string;
   displayOptions?: LiveActivityDisplayOptions;

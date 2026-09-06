@@ -29,13 +29,21 @@ function PremiumEntryButton({ onPress, accent, surface, border }: { onPress: () 
   </Pressable>;
 }
 
-export function Header({ designMode, now, compact = false, chicPalette, onVoice, onPremium }: { designMode: ThemeMode; now: Date; compact?: boolean; chicPalette?: ChicThemePalette; onVoice?: () => void; onPremium?: () => void }) {
+function NotificationBell({ onPress, accent, danger, surface, hasUnread }: { onPress: () => void; accent: string; danger: string; surface: string; hasUnread: boolean }) {
+  return <Pressable accessibilityRole="button" accessibilityLabel="お知らせ" hitSlop={8} onPress={onPress} style={({ pressed }) => [styles.notificationBell, { opacity: pressed ? 0.72 : 1 }]}>
+    <Svg width={22} height={22} viewBox="0 0 24 24" accessibilityRole="image"><Path d="M6.5 10.5a5.5 5.5 0 0 1 11 0c0 5 2 5.5 2 7H4.5c0-1.5 2-2 2-7ZM10 20h4" stroke={accent} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" fill="none" /></Svg>
+    {hasUnread ? <View style={[styles.notificationBellDot, { backgroundColor: danger, borderColor: surface }]} /> : null}
+  </Pressable>;
+}
+
+export function Header({ designMode, now, compact = false, chicPalette, onVoice, onPremium, onNotifications, hasUnreadNotifications = false }: { designMode: ThemeMode; now: Date; compact?: boolean; chicPalette?: ChicThemePalette; onVoice?: () => void; onPremium?: () => void; onNotifications?: () => void; hasUnreadNotifications?: boolean }) {
   const theme = getThemeTokens(designMode, chicPalette?.id ?? 'cool');
   const colors = designMode === 'chic' && chicPalette
-    ? { surface: chicPalette.cardSurface, border: chicPalette.border, accent: chicPalette.accent }
-    : { surface: theme.colors.surface, border: theme.colors.border, accent: theme.colors.primaryAccent };
+    ? { surface: chicPalette.cardSurface, border: chicPalette.border, accent: chicPalette.accent, danger: chicPalette.danger }
+    : { surface: theme.colors.surface, border: theme.colors.border, accent: theme.colors.primaryAccent, danger: theme.colors.danger };
   const voiceButton = onVoice ? <VoiceMicButton onPress={onVoice} {...colors} /> : null;
-  const actions = <View style={styles.headerActions}>{onPremium ? <PremiumEntryButton onPress={onPremium} {...colors} /> : null}{voiceButton}</View>;
+  const notificationButton = onNotifications ? <NotificationBell onPress={onNotifications} accent={colors.accent} danger={colors.danger} surface={colors.surface} hasUnread={hasUnreadNotifications} /> : null;
+  const actions = <View style={styles.headerActions}>{onPremium ? <PremiumEntryButton onPress={onPremium} {...colors} /> : null}{notificationButton}{voiceButton}</View>;
 
   if (compact) return (
     <View style={styles.photoHeader}>
@@ -74,4 +82,6 @@ const styles = StyleSheet.create({
   headerActions: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   premiumEntry: { minWidth: 44, height: 44, paddingHorizontal: 8, borderRadius: 22, borderWidth: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4, zIndex: 2 },
   premiumEntryLabel: { fontSize: 10, fontWeight: '900' },
+  notificationBell: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center', position: 'relative' },
+  notificationBellDot: { position: 'absolute', top: 5, right: 5, width: 7, height: 7, borderRadius: 4, borderWidth: 1 },
 });

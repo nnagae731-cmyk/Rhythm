@@ -8,6 +8,18 @@ import type { NormalizedCropRect } from './features/photo/topImageCrop';
 import type { TravelAppSettings } from './features/travel/travelApps';
 
 export type Screen = 'home' | 'timeline' | 'analysis' | 'settings' | 'wish';
+
+export type AppNoticeCategory = 'feature' | 'update' | 'important';
+
+export type AppNotice = {
+  id: string;
+  category: AppNoticeCategory;
+  title: string;
+  body: string;
+  publishedAt: string;
+  targetScreen?: Screen;
+  targetParams?: unknown;
+};
 export type TimeTab = 'departure' | 'deadline' | 'calendar' | 'focus';
 export type WidgetSize = 'small' | 'medium';
 export type WidgetType = 'current' | 'next' | 'combined' | 'monthly' | 'weekly' | 'today' | 'checklist' | 'goal' | 'voice' | 'affirmation';
@@ -110,6 +122,8 @@ export type FocusPersistedState = {
   running: boolean;
   endAt?: string;
   pausedSeconds: number;
+  /** Stable wall-clock anchor for the native Live Activity elapsed timer. */
+  elapsedStartAt?: string;
 };
 
 /** A lightweight snapshot for routines that were explicitly deactivated. */
@@ -305,6 +319,12 @@ export type PersistedState = {
   /** Premium Live Activity content selection; optional for older saves. */
   liveActivityDisplayOptions?: LiveActivityDisplayOptions;
   reviewPromptedAt?: string;
+  /** Stable IDs of in-app notices the user has opened. */
+  readNoticeIds?: string[];
+  /** Local day on which the evening tomorrow-prep prompt was last shown. */
+  tomorrowPrepPromptedDate?: string;
+  /** Local day on which the evening routine-remaining notification was sent. */
+  routineRemainingNotifiedDate?: string;
   taskTemplates?: string[];
   chicPattern?: ChicPattern;
   chicCheckColor?: ChicCheckColor;
