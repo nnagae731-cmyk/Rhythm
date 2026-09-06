@@ -668,6 +668,7 @@ export default function App() {
   const persistenceTimerRef = React.useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const latestPersistedStateRef = React.useRef<PersistedState | undefined>(undefined);
   const pendingNotificationCompletionIdsRef = React.useRef<string[]>([]);
+  const pendingWidgetActionsProcessingRef = React.useRef(false);
   const pendingDepartureNotificationActionsRef = React.useRef<Array<{
     planId: string;
     action: DepartureNotificationAction;
@@ -1771,7 +1772,7 @@ export default function App() {
     try {
       const parsed = new URL(url);
       if (parsed.protocol !== 'rhythm:') return false;
-      if (parsed.hostname === 'todo') {
+      if (parsed.hostname === 'todo' || parsed.hostname === 'today') {
         navigateWithinAppRef.current('home');
         return true;
       }
@@ -2073,6 +2074,8 @@ export default function App() {
     const next = tasksRef.current.map((task) => task.id === taskId ? { ...task, done: false, status: 'active' as const, skippedAt: undefined, completedAt: undefined } : task);
     tasksRef.current = next;
     setTasks(next);
+    const restored = next.find((task) => task.id === taskId);
+    if (restored) void scheduleTaskNotificationsRef.current(restored);
     if (wasCompleted && target.routineId && target.completedAt && (!target.routineEndedAt || new Date(target.completedAt).getTime() <= new Date(target.routineEndedAt).getTime())) {
       recordBehaviorEvent(createTaskCompletionRevertedBehaviorEvent({
         taskId: target.id,
@@ -2104,6 +2107,7 @@ export default function App() {
         tasksRef.current = next;
         setTasks(next);
         void cancelPendingTaskNotifications(taskId);
+        if (nextOccurrence) void scheduleTaskNotificationsRef.current(nextOccurrence);
         onApplied?.();
       } },
     ]);
@@ -2817,6 +2821,9 @@ export default function App() {
       const next = tasksRef.current.map((task) => (task.routineId ?? task.id) === routineId ? { ...task, isRoutine: false, routineEndedAt: endedAt } : task);
       tasksRef.current = next;
       setTasks(next);
+      next
+        .filter((task) => (task.routineId ?? task.id) === routineId && normalizeTaskDateKey(task.scheduledDate) && normalizeTaskDateKey(task.scheduledDate)! > dateKey(endedAt))
+        .forEach((task) => { void cancelPendingTaskNotifications(task.id); });
       setRoutineArchives((current) => pruneRoutineArchives([...current.filter((item) => item.routineId !== routineId), archive]));
       recordBehaviorEvent(createRoutineDeactivatedBehaviorEvent({ routineId, routineTitle: latest.title, taskId: latest.id, occurredAt: new Date(endedAt), targetDate: dateKey(endedAt) }));
     } }]);
@@ -2980,35 +2987,48 @@ export default function App() {
 
   const processPendingWidgetActions = React.useCallback(async () => {
     if (!hydratedRef.current || onboarding.state.firstRunStage === 'demo') return;
-    const actions = await getRhythmWidgetPendingActions();
-    if (!actions.length) return;
-    const handledIds: string[] = [];
-    const taskIdsToComplete: string[] = [];
-    let nextTasks = tasksRef.current;
-    actions.forEach((raw: any) => {
-      if (!raw || typeof raw !== 'object' || typeof raw.id !== 'string') return;
-      if (raw.type === 'completeTask' && typeof raw.taskId === 'string') {
-        const target = nextTasks.find((task) => task.id === raw.taskId);
-        if (target && !target.done) {
-          taskIdsToComplete.push(raw.taskId);
+    if (pendingWidgetActionsProcessingRef.current) return;
+    pendingWidgetActionsProcessingRef.current = true;
+    try {
+      const actions = await getRhythmWidgetPendingActions();
+      if (!actions.length) return;
+      const handledIds: string[] = [];
+      const taskIdsToComplete: string[] = [];
+      let nextTasks = tasksRef.current;
+      actions.forEach((raw: any) => {
+        if (!raw || typeof raw !== 'object' || typeof raw.id !== 'string') return;
+        if (raw.type === 'completeTask' && typeof raw.taskId === 'string') {
+          const target = nextTasks.find((task) => task.id === raw.taskId);
+          if (target && !target.done) {
+            taskIdsToComplete.push(raw.taskId);
+          }
+          handledIds.push(raw.id);
+        } else if (raw.type === 'toggleListItem' && typeof raw.taskId === 'string' && typeof raw.listItemId === 'string' && typeof raw.completed === 'boolean') {
+          const target = nextTasks.find((task) => task.id === raw.taskId);
+          const scheduledDate = target?.scheduledDate ? normalizeTaskDateKey(target.scheduledDate) : undefined;
+          const isCurrentWidgetChecklistTask = target !== undefined
+            && target.isRoutine !== true
+            && target.done !== true
+            && target.status !== 'skipped'
+            && (target.bucket ?? 'now') === 'now'
+            && (!scheduledDate || scheduledDate <= dateKey());
+          if (isCurrentWidgetChecklistTask && target?.listItems?.some((item) => item.id === raw.listItemId)) {
+            nextTasks = nextTasks.map((task) => task.id === raw.taskId
+              ? { ...task, listItems: task.listItems?.map((item) => item.id === raw.listItemId ? { ...item, checked: raw.completed } : item) }
+              : task);
+          }
+          handledIds.push(raw.id);
         }
-        handledIds.push(raw.id);
-      } else if (raw.type === 'toggleListItem' && typeof raw.taskId === 'string' && typeof raw.listItemId === 'string' && typeof raw.completed === 'boolean') {
-        const target = nextTasks.find((task) => task.id === raw.taskId);
-        if (target?.listItems?.some((item) => item.id === raw.listItemId)) {
-          nextTasks = nextTasks.map((task) => task.id === raw.taskId
-            ? { ...task, listItems: task.listItems?.map((item) => item.id === raw.listItemId ? { ...item, checked: raw.completed } : item) }
-            : task);
-        }
-        handledIds.push(raw.id);
+      });
+      if (nextTasks !== tasksRef.current) {
+        tasksRef.current = nextTasks;
+        setTasks(nextTasks);
       }
-    });
-    if (nextTasks !== tasksRef.current) {
-      tasksRef.current = nextTasks;
-      setTasks(nextTasks);
+      if (taskIdsToComplete.length) completeTaskIds(taskIdsToComplete, 'manual');
+      if (handledIds.length) await acknowledgeRhythmWidgetPendingActions(handledIds);
+    } finally {
+      pendingWidgetActionsProcessingRef.current = false;
     }
-    if (taskIdsToComplete.length) completeTaskIds(taskIdsToComplete, 'manual');
-    if (handledIds.length) await acknowledgeRhythmWidgetPendingActions(handledIds);
   }, [completeTaskIds, onboarding.state.firstRunStage]);
 
   React.useEffect(() => {
@@ -3044,9 +3064,10 @@ export default function App() {
     try {
       await enqueueNotificationOperation(`task:${task.id}`, async () => {
         await cancelPendingTaskNotificationsUnsafe(task.id);
-        if (!tasksRef.current.some((item) => item.id === task.id)) return;
-        if (task.remindAt) await scheduleTaskReminder(task);
-        if (task.deadlineDate && task.deadlineTime && task.deadlineNotifyBefore !== undefined) await scheduleDeadlineReminder(task);
+        const latest = tasksRef.current.find((item) => item.id === task.id);
+        if (!latest || latest.done || latest.status === 'skipped') return;
+        if (latest.remindAt) await scheduleTaskReminder(latest);
+        if (latest.deadlineDate && latest.deadlineTime && latest.deadlineNotifyBefore !== undefined) await scheduleDeadlineReminder(latest);
       });
     } catch (error) {
       // Saving the task must remain successful even when the native
@@ -5595,7 +5616,7 @@ function DailyScheduleTimeline({ date, tasks, plans, externalEvents, now, design
   const categoryColors = Object.fromEntries(categories.map((category) => [category, designMode === 'chic' && chicPalette ? chicPalette.accentStrong : theme.colors.primaryAccent])) as Record<Category, string>;
   type ScheduleItem = { id: string; time?: string; endTime?: string; title: string; meta?: string; kind: 'task' | 'plan' | 'external' | 'done'; onPress?: () => void };
   const items: ScheduleItem[] = [];
-  tasks.filter((task) => (isRegularVisibleTask(task) || task.done)).filter((task) => {
+  tasks.filter((task) => isRegularVisibleTask(task)).filter((task) => {
     const dates = [task.scheduledDate, task.deadlineDate, task.remindDate, task.done && task.completedAt ? dateKey(task.completedAt) : undefined];
     return dates.includes(date);
   }).forEach((task) => {
@@ -5724,7 +5745,7 @@ function TaskScheduleCalendar({ tasks, plans, externalEvents, now, designMode, c
     task.done && task.completedAt ? dateKey(task.completedAt) : undefined,
   ].filter((value): value is string => Boolean(value))));
   const selectedTasks = tasks.filter((task) => isRegularVisibleTask(task) && !task.done && taskDates(task).includes(selectedDate));
-  const selectedCompletedTasks = tasks.filter((task) => task.done && taskDates(task).includes(selectedDate));
+  const selectedCompletedTasks = tasks.filter((task) => isRegularVisibleTask(task) && task.done && taskDates(task).includes(selectedDate));
   const selectedPlans = plans.filter((item) => isPlanOnDate(item, selectedDate));
   const selectedExternalEvents = externalEvents.filter((event) => dateKey(new Date(event.startDate)) === selectedDate);
   const calendarPlanDisplayLimit = planTier === 'premium' ? 30 : 3;
@@ -5804,7 +5825,7 @@ function TaskScheduleCalendar({ tasks, plans, externalEvents, now, designMode, c
     });
     const freeSelected = freeDates.some((item) => item.key === selectedDate) ? selectedDate : freeDates[0]!.key;
     const freeTasks = tasks.filter((task) => isRegularVisibleTask(task) && !task.done && taskDates(task).includes(freeSelected));
-    const freeCompletedTasks = tasks.filter((task) => task.done && taskDates(task).includes(freeSelected));
+    const freeCompletedTasks = tasks.filter((task) => isRegularVisibleTask(task) && task.done && taskDates(task).includes(freeSelected));
     const freePlans = plans.filter((item) => isPlanOnDate(item, freeSelected));
     const visibleFreeTasks = scheduleFilter === 'plans' ? [] : freeTasks;
     const visibleFreeCompletedTasks = scheduleFilter === 'plans' ? [] : freeCompletedTasks;
@@ -5817,7 +5838,7 @@ function TaskScheduleCalendar({ tasks, plans, externalEvents, now, designMode, c
         <ScheduleFilterChips value={scheduleFilter} designMode={designMode} chicPalette={chicPalette} onChange={setScheduleFilter} compact />
         <View style={styles.scheduleGrid}>{freeDates.map(({ date, key }) => {
           const selected = key === freeSelected;
-          const taskCount = scheduleFilter === 'plans' ? 0 : tasks.filter((task) => (isRegularVisibleTask(task) || task.done) && taskDates(task).includes(key)).length;
+          const taskCount = scheduleFilter === 'plans' ? 0 : tasks.filter((task) => isRegularVisibleTask(task) && taskDates(task).includes(key)).length;
           const planCount = scheduleFilter === 'tasks' ? 0 : plans.filter((item) => isPlanOnDate(item, key)).length;
           const count = taskCount + planCount;
         return <Pressable key={key} style={[styles.scheduleDayCell, isDark && styles.scheduleDayCellDark, selected && styles.scheduleDayCellSelected, selected && { backgroundColor: designMode === 'chic' && chicPalette ? chicPalette.accentSoft : theme.colors.softAccent, borderColor: designMode === 'chic' && chicPalette ? chicPalette.accent : theme.colors.primaryAccent }]} onPress={() => setSelectedDate(key)}><Text style={[styles.scheduleDayNumber, isDark && styles.darkBodyText, date.getDay() === 0 && styles.scheduleSundayNumber, date.getDay() === 6 && styles.scheduleSaturdayNumber, selected && styles.scheduleSelectedNumber, selected && isDark && styles.scheduleSelectedNumberDark, selected && { color: designMode === 'chic' && chicPalette ? chicPalette.accentStrong : theme.colors.primaryAccent }]}>{date.getMonth() + 1}/{date.getDate()}</Text>{calendarMarks[key] && <Text style={[styles.scheduleCalendarMark, { color: designMode === 'chic' && chicPalette ? chicPalette.accentStrong : theme.colors.primaryAccent }]}>{calendarMarks[key]}</Text>}{count > 0 && <Text style={[styles.scheduleMoreText, isDark && styles.darkMutedText, selected && styles.scheduleMoreTextSelected, selected && { color: designMode === 'chic' && chicPalette ? chicPalette.textSecondary : theme.colors.primaryAccent }]}>{count}件</Text>}</Pressable>;
@@ -5846,7 +5867,7 @@ function TaskScheduleCalendar({ tasks, plans, externalEvents, now, designMode, c
         if (!date) return <View key={`empty-${index}`} style={styles.scheduleDayCell} />;
         const key = dateKey(date);
         const dayTasks = scheduleFilter === 'plans' ? [] : tasks.filter((task) => isRegularVisibleTask(task) && !task.done && taskDates(task).includes(key));
-        const dayCompletedTasks = scheduleFilter === 'plans' ? [] : tasks.filter((task) => task.done && taskDates(task).includes(key));
+        const dayCompletedTasks = scheduleFilter === 'plans' ? [] : tasks.filter((task) => isRegularVisibleTask(task) && task.done && taskDates(task).includes(key));
         const dayPlans = scheduleFilter === 'tasks' ? [] : plans.filter((item) => isPlanOnDate(item, key));
         const dayExternalEvents = scheduleFilter === 'tasks' ? [] : externalEvents.filter((event) => dateKey(new Date(event.startDate)) === key);
         // 予定を追加したことが月表示でもすぐ分かるよう、出発予定は常に最初の帯にする。
