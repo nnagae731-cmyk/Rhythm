@@ -6,6 +6,14 @@ struct RhythmLiveActivityAttributes: ActivityAttributes {
   struct ContentState: Codable, Hashable {
     enum Mode: String, Codable, Hashable { case normal, focus }
     enum Tier: String, Codable, Hashable { case free, design, premium }
+    enum FontDesign: String, Codable, Hashable { case `default`, rounded, serif, monospaced }
+    enum FontSize: String, Codable, Hashable { case small, medium, large }
+    enum AffirmationRotationMode: String, Codable, Hashable { case fixed, automatic }
+    struct ListItem: Codable, Hashable {
+      var id: String
+      var text: String
+      var checked: Bool
+    }
     struct DisplayOptions: Codable, Hashable {
       var currentTask: Bool
       var nextSchedule: Bool
@@ -45,8 +53,17 @@ struct RhythmLiveActivityAttributes: ActivityAttributes {
     var affirmationText: String?
     var accentHex: String
     var displayOptions: DisplayOptions
+    var interactiveChecks: Bool
+    var currentTaskId: String?
+    var currentTaskListItems: [ListItem]?
+    var affirmationTexts: [String]?
+    var affirmationRotationMode: AffirmationRotationMode
+    var affirmationRotationIntervalMinutes: Int
+    var affirmationRotationAnchor: Date?
+    var fontDesign: FontDesign
+    var fontSize: FontSize
 
-    init(mode: Mode, tier: Tier = .free, currentTaskTitle: String? = nil, nextScheduleTitle: String? = nil, nextScheduleAt: Date? = nil, departureAt: Date? = nil, focusTaskTitle: String? = nil, focusEndsAt: Date? = nil, focusElapsedStartAt: Date? = nil, focusElapsedSeconds: Int? = nil, focusRemainingSeconds: Int? = nil, focusRunning: Bool = false, affirmationText: String? = nil, accentHex: String = "#FFFFFF", displayOptions: DisplayOptions = .all) {
+    init(mode: Mode, tier: Tier = .free, currentTaskTitle: String? = nil, nextScheduleTitle: String? = nil, nextScheduleAt: Date? = nil, departureAt: Date? = nil, focusTaskTitle: String? = nil, focusEndsAt: Date? = nil, focusElapsedStartAt: Date? = nil, focusElapsedSeconds: Int? = nil, focusRemainingSeconds: Int? = nil, focusRunning: Bool = false, affirmationText: String? = nil, accentHex: String = "#FFFFFF", displayOptions: DisplayOptions = .all, interactiveChecks: Bool = false, currentTaskId: String? = nil, currentTaskListItems: [ListItem]? = nil, affirmationTexts: [String]? = nil, affirmationRotationMode: AffirmationRotationMode = .fixed, affirmationRotationIntervalMinutes: Int = 60, affirmationRotationAnchor: Date? = nil, fontDesign: FontDesign = .default, fontSize: FontSize = .medium) {
       self.mode = mode
       self.tier = tier
       self.currentTaskTitle = currentTaskTitle
@@ -62,10 +79,19 @@ struct RhythmLiveActivityAttributes: ActivityAttributes {
       self.affirmationText = affirmationText
       self.accentHex = accentHex
       self.displayOptions = displayOptions
+      self.interactiveChecks = interactiveChecks
+      self.currentTaskId = currentTaskId
+      self.currentTaskListItems = currentTaskListItems
+      self.affirmationTexts = affirmationTexts
+      self.affirmationRotationMode = affirmationRotationMode
+      self.affirmationRotationIntervalMinutes = affirmationRotationIntervalMinutes
+      self.affirmationRotationAnchor = affirmationRotationAnchor
+      self.fontDesign = fontDesign
+      self.fontSize = fontSize
     }
 
     private enum CodingKeys: String, CodingKey {
-      case mode, tier, currentTaskTitle, nextScheduleTitle, nextScheduleAt, departureAt, focusTaskTitle, focusEndsAt, focusElapsedStartAt, focusElapsedSeconds, focusRemainingSeconds, focusRunning, affirmationText, accentHex, displayOptions
+      case mode, tier, currentTaskTitle, nextScheduleTitle, nextScheduleAt, departureAt, focusTaskTitle, focusEndsAt, focusElapsedStartAt, focusElapsedSeconds, focusRemainingSeconds, focusRunning, affirmationText, accentHex, displayOptions, interactiveChecks, currentTaskId, currentTaskListItems, affirmationTexts, affirmationRotationMode, affirmationRotationIntervalMinutes, affirmationRotationAnchor, fontDesign, fontSize
     }
 
     // Old activities did not carry tier/affirmation. Defaults keep an
@@ -87,6 +113,15 @@ struct RhythmLiveActivityAttributes: ActivityAttributes {
       affirmationText = try container.decodeIfPresent(String.self, forKey: .affirmationText)
       accentHex = try container.decodeIfPresent(String.self, forKey: .accentHex) ?? "#FFFFFF"
       displayOptions = try container.decodeIfPresent(DisplayOptions.self, forKey: .displayOptions) ?? .all
+      interactiveChecks = try container.decodeIfPresent(Bool.self, forKey: .interactiveChecks) ?? false
+      currentTaskId = try container.decodeIfPresent(String.self, forKey: .currentTaskId)
+      currentTaskListItems = try container.decodeIfPresent([ListItem].self, forKey: .currentTaskListItems)
+      affirmationTexts = try container.decodeIfPresent([String].self, forKey: .affirmationTexts)
+      affirmationRotationMode = try container.decodeIfPresent(AffirmationRotationMode.self, forKey: .affirmationRotationMode) ?? .fixed
+      affirmationRotationIntervalMinutes = try container.decodeIfPresent(Int.self, forKey: .affirmationRotationIntervalMinutes) ?? 60
+      affirmationRotationAnchor = try container.decodeIfPresent(Date.self, forKey: .affirmationRotationAnchor)
+      fontDesign = try container.decodeIfPresent(FontDesign.self, forKey: .fontDesign) ?? .default
+      fontSize = try container.decodeIfPresent(FontSize.self, forKey: .fontSize) ?? .medium
     }
 
     func encode(to encoder: Encoder) throws {
@@ -106,6 +141,15 @@ struct RhythmLiveActivityAttributes: ActivityAttributes {
       try container.encodeIfPresent(affirmationText, forKey: .affirmationText)
       try container.encode(accentHex, forKey: .accentHex)
       try container.encode(displayOptions, forKey: .displayOptions)
+      try container.encode(interactiveChecks, forKey: .interactiveChecks)
+      try container.encodeIfPresent(currentTaskId, forKey: .currentTaskId)
+      try container.encodeIfPresent(currentTaskListItems, forKey: .currentTaskListItems)
+      try container.encodeIfPresent(affirmationTexts, forKey: .affirmationTexts)
+      try container.encode(affirmationRotationMode, forKey: .affirmationRotationMode)
+      try container.encode(affirmationRotationIntervalMinutes, forKey: .affirmationRotationIntervalMinutes)
+      try container.encodeIfPresent(affirmationRotationAnchor, forKey: .affirmationRotationAnchor)
+      try container.encode(fontDesign, forKey: .fontDesign)
+      try container.encode(fontSize, forKey: .fontSize)
     }
   }
   var appName: String

@@ -9,7 +9,9 @@ import {
   WidgetStyle,
   WidgetType,
   WidgetMonoTemplate,
+  RhythmFontDesign,
 } from '../../types';
+import { normalizeRhythmFontDesign } from '../fontDesign';
 
 export type WidgetAccessTier = 'free' | 'design' | 'premium';
 
@@ -70,6 +72,13 @@ export const WIDGET_MONO_TEMPLATE_OPTIONS: ReadonlyArray<{ id: WidgetMonoTemplat
   { id: 'looseLeaf', label: 'Loose Leaf' },
 ];
 
+export const WIDGET_FONT_DESIGN_OPTIONS: ReadonlyArray<{ id: RhythmFontDesign; label: string }> = [
+  { id: 'default', label: '標準' },
+  { id: 'rounded', label: '丸み' },
+  { id: 'serif', label: 'セリフ' },
+  { id: 'monospaced', label: '等幅' },
+];
+
 const DEFAULT_DISPLAY_OPTIONS: Record<WidgetDisplayOption, boolean> = {
   startTime: true,
   remainingTime: true,
@@ -89,6 +98,7 @@ export const DEFAULT_WIDGET_SETTINGS: WidgetSettings = {
   photoSource: 'widget',
   photoLayout: 'background',
   monoTemplate: 'clean',
+  fontDesign: 'default',
   displayOptions: DEFAULT_DISPLAY_OPTIONS,
   affirmationRotationMode: 'fixed',
   affirmationBackgrounds: ['floral', 'dot', 'check', 'photo'],
@@ -121,6 +131,7 @@ export function normalizeWidgetSettings(value: unknown): WidgetSettings {
   const photoSource = photoSourceIds.has(source.photoSource as WidgetPhotoSource) ? source.photoSource as WidgetPhotoSource : DEFAULT_WIDGET_SETTINGS.photoSource;
   const photoLayout = photoLayoutIds.has(source.photoLayout as WidgetPhotoLayout) ? source.photoLayout as WidgetPhotoLayout : DEFAULT_WIDGET_SETTINGS.photoLayout;
   const monoTemplate = monoTemplateIds.has(source.monoTemplate as WidgetMonoTemplate) ? source.monoTemplate as WidgetMonoTemplate : DEFAULT_WIDGET_SETTINGS.monoTemplate;
+  const fontDesign = normalizeRhythmFontDesign(source.fontDesign);
   const photoUri = typeof source.photoUri === 'string' && source.photoUri.trim() ? source.photoUri : undefined;
   const rawCustomizations = isRecord(source.widgetCustomizations) ? source.widgetCustomizations : {};
   const widgetCustomizations: WidgetCustomizations = {};
@@ -141,7 +152,7 @@ export function normalizeWidgetSettings(value: unknown): WidgetSettings {
   const affirmationPhotoUris = Array.isArray(source.affirmationPhotoUris)
     ? source.affirmationPhotoUris.filter((item): item is string => typeof item === 'string' && item.trim().length > 0).slice(0, 3)
     : [];
-  return { widgetType, style, accentColor, photoUri, photoSource, photoLayout, monoTemplate, widgetCustomizations, displayOptions, affirmationRotationMode, affirmationBackgrounds, affirmationPhotoUris };
+  return { widgetType, style, accentColor, photoUri, photoSource, photoLayout, monoTemplate, fontDesign, widgetCustomizations, displayOptions, affirmationRotationMode, affirmationBackgrounds, affirmationPhotoUris };
 }
 
 /** Resolves a widget's new per-kind photo first, while retaining the legacy shared photo fallback. */

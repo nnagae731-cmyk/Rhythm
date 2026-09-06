@@ -2,6 +2,7 @@ import Foundation
 import ActivityKit
 import SwiftUI
 import WidgetKit
+import AppIntents
 
 @available(iOS 16.1, *)
 struct RhythmLiveActivityWidget: Widget {
@@ -17,13 +18,15 @@ struct RhythmLiveActivityWidget: Widget {
           TimelineView(.periodic(from: .now, by: 30)) { _ in
             Text(RhythmLiveActivityCopy.statusLabel(for: context.state))
               .font(.caption.weight(.semibold))
+              .fontDesign(RhythmLiveActivityCopy.fontDesign(for: context.state))
               .lineLimit(1)
           }
         }
         DynamicIslandExpandedRegion(.center) {
           TimelineView(.periodic(from: .now, by: 30)) { _ in
             Text(RhythmLiveActivityCopy.dynamicIslandTitle(for: context.state))
-              .font(.headline)
+              .font(.system(size: 17 * RhythmLiveActivityCopy.textScale(for: context.state), weight: .semibold))
+              .fontDesign(RhythmLiveActivityCopy.fontDesign(for: context.state))
               .lineLimit(RhythmLiveActivityCopy.isAffirmationOnly(context.state) ? 2 : 1)
               .minimumScaleFactor(0.7)
           }
@@ -79,12 +82,12 @@ private enum RhythmLiveActivityCopy {
 
   static func isAffirmationOnly(_ state: RhythmLiveActivityAttributes.ContentState, now: Date = Date()) -> Bool {
     guard state.tier == .premium, state.displayOptions.affirmation,
-          hasText(state.affirmationText) else { return false }
+          hasText(affirmationText(for: state, now: now)) else { return false }
     return !hasActiveFocus(state, now: now) && !hasActiveDeparture(state, now: now) && !hasActiveNext(state, now: now) && !hasActiveCurrent(state)
   }
 
   static func dynamicIslandTitle(for state: RhythmLiveActivityAttributes.ContentState) -> String {
-    if isAffirmationOnly(state), let text = state.affirmationText?.trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty { return text }
+    if isAffirmationOnly(state), let text = affirmationText(for: state), !text.isEmpty { return text }
     return title(for: state)
   }
 
@@ -109,8 +112,35 @@ private enum RhythmLiveActivityCopy {
     if hasActiveCurrent(state),
        let title = state.currentTaskTitle?.trimmingCharacters(in: .whitespacesAndNewlines), !title.isEmpty { return title }
     if state.tier == .premium, state.displayOptions.affirmation,
-       let text = state.affirmationText?.trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty { return text }
+       let text = affirmationText(for: state), !text.isEmpty { return text }
     return "今日のRhythm"
+  }
+
+  static func affirmationText(for state: RhythmLiveActivityAttributes.ContentState, now: Date = Date()) -> String? {
+    let candidates = (state.affirmationTexts ?? []).map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
+    guard !candidates.isEmpty else { return state.affirmationText?.trimmingCharacters(in: .whitespacesAndNewlines) }
+    guard state.affirmationRotationMode == .automatic, candidates.count > 1 else { return candidates[0] }
+    let interval = max(1, state.affirmationRotationIntervalMinutes) * 60
+    let anchor = state.affirmationRotationAnchor ?? now
+    let elapsed = max(0, Int(now.timeIntervalSince(anchor)))
+    return candidates[(elapsed / interval) % candidates.count]
+  }
+
+  static func fontDesign(for state: RhythmLiveActivityAttributes.ContentState) -> Font.Design {
+    switch state.fontDesign {
+    case .rounded: return .rounded
+    case .serif: return .serif
+    case .monospaced: return .monospaced
+    default: return .default
+    }
+  }
+
+  static func textScale(for state: RhythmLiveActivityAttributes.ContentState) -> CGFloat {
+    switch state.fontSize {
+    case .small: return 0.9
+    case .large: return 1.12
+    default: return 1.0
+    }
   }
 
   static func elapsedText(_ state: RhythmLiveActivityAttributes.ContentState) -> Text {
@@ -134,8 +164,11 @@ private struct RhythmLiveActivityLockScreenView: View {
       VStack(alignment: .leading, spacing: 8) {
         Text(RhythmLiveActivityCopy.statusLabel(for: state))
           .font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+          .fontDesign(RhythmLiveActivityCopy.fontDesign(for: state))
         Text(RhythmLiveActivityCopy.title(for: state))
-          .font(.headline).lineLimit(2).minimumScaleFactor(0.75)
+          .font(.system(size: 17 * RhythmLiveActivityCopy.textScale(for: state), weight: .semibold))
+          .fontDesign(RhythmLiveActivityCopy.fontDesign(for: state))
+          .lineLimit(2).minimumScaleFactor(0.75)
         RhythmLiveActivityDetail(state: state, suppressAffirmationOnly: false)
       }
       .padding(.horizontal, 16).padding(.vertical, 12)
@@ -178,9 +211,14 @@ private struct RhythmLiveActivityDetail: View {
           Text(date, style: .time).font(.caption2).foregroundStyle(.secondary)
         }
       } else if RhythmLiveActivityCopy.isAffirmationOnly(state) && !suppressAffirmationOnly {
-        RhythmLiveActivityAffirmation(text: state.affirmationText)
+        RhythmLiveActivityAffirmation(text: RhythmLiveActivityCopy.affirmationText(for: state), state: state)
+      }
+      if state.tier == .premium && state.interactiveChecks && RhythmLiveActivityCopy.hasActiveCurrent(state), let taskId = state.currentTaskId {
+        RhythmLiveActivityInteractiveTask(state: state, taskId: taskId)
       }
     }
+    .font(.system(size: 13 * RhythmLiveActivityCopy.textScale(for: state)))
+    .fontDesign(RhythmLiveActivityCopy.fontDesign(for: state))
   }
 
 }
@@ -188,9 +226,35 @@ private struct RhythmLiveActivityDetail: View {
 @available(iOS 16.1, *)
 private struct RhythmLiveActivityAffirmation: View {
   let text: String?
+  let state: RhythmLiveActivityAttributes.ContentState
   var body: some View {
     if let text, !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-      Text(text).font(.caption2).foregroundStyle(.secondary).lineLimit(1).minimumScaleFactor(0.8)
+      Text(text).font(.system(size: 12 * RhythmLiveActivityCopy.textScale(for: state))).fontDesign(RhythmLiveActivityCopy.fontDesign(for: state)).foregroundStyle(.secondary).lineLimit(1).minimumScaleFactor(0.8)
+    }
+  }
+}
+
+@available(iOS 16.1, *)
+private struct RhythmLiveActivityInteractiveTask: View {
+  let state: RhythmLiveActivityAttributes.ContentState
+  let taskId: String
+
+  var body: some View {
+    if #available(iOSApplicationExtension 17.0, *) {
+      VStack(alignment: .leading, spacing: 3) {
+        Button(intent: RhythmCompleteTaskIntent(taskId: taskId)) {
+          Label { Text(state.currentTaskTitle ?? "タスク").lineLimit(1) } icon: { Image(systemName: "circle") }
+        }
+        .buttonStyle(.plain)
+        ForEach((state.currentTaskListItems ?? []).prefix(3), id: \.id) { item in
+          Button(intent: RhythmToggleListItemIntent(taskId: taskId, listItemId: item.id, completed: !item.checked)) {
+            Label { Text(item.text).lineLimit(1) } icon: { Image(systemName: item.checked ? "checkmark.square.fill" : "square") }
+          }
+          .buttonStyle(.plain)
+        }
+      }
+      .font(.system(size: 12 * RhythmLiveActivityCopy.textScale(for: state)))
+      .fontDesign(RhythmLiveActivityCopy.fontDesign(for: state))
     }
   }
 }

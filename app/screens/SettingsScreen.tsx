@@ -3,7 +3,7 @@ import { Alert, DevSettings, Image, Pressable, Switch, Text, TextInput, View } f
 import { BannerAd, BannerAdSize, TestIds } from 'react-native-google-mobile-ads';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { ChicCheckColor, ChicPattern, ChicThemePalette, DesignMode, getDesignCheckColorLabel, getThemeTokens } from '../theme';
-import { Affirmation, AffirmationCustomText, DevDesignCustomizeOverride, LiveActivityDisplayOptions, PhotoThemePhotoTarget, PhotoThemeSettings, Task, WidgetSettings, WidgetSize, WidgetType } from '../types';
+import { Affirmation, AffirmationCustomText, DevDesignCustomizeOverride, LiveActivityCustomizationSettings, LiveActivityDisplayOptions, PhotoThemePhotoTarget, PhotoThemeSettings, Task, WidgetSettings, WidgetSize, WidgetType } from '../types';
 import { PlanTier } from '../premiumAccess';
 import { PremiumGuideFeatureId } from '../premiumGuide';
 import { PremiumTaskTemplate } from '../taskTemplates';
@@ -15,6 +15,7 @@ import { ONBOARDING_STORAGE_KEY } from '../features/onboarding/onboardingStorage
 import { REWARDED_ACCESS_STORAGE_KEY } from '../features/ads/rewardedAccessStorage';
 import { WidgetSettingsCard } from '../components/WidgetSettingsCard';
 import type { WidgetEntitlementOverride } from '../features/widget/widgetSettings';
+import { LiveActivitySettingsSheet } from '../components/LiveActivitySettingsSheet';
 
 // Keep the production unit configurable without scattering IDs through the UI.
 // Development builds use Google's test unit unless an explicit test/production
@@ -81,6 +82,8 @@ export function SettingsScreen({
   liveActivityEnabled = false,
   liveActivityDisplayOptions,
   onLiveActivityDisplayOptionsChange,
+  liveActivityCustomization,
+  onLiveActivityCustomizationChange,
   chicPalette,
   chicPattern,
   chicCheckColor,
@@ -192,6 +195,8 @@ export function SettingsScreen({
   onLiveActivityEnabled?: (value: boolean) => void;
   liveActivityDisplayOptions?: LiveActivityDisplayOptions;
   onLiveActivityDisplayOptionsChange?: (value: LiveActivityDisplayOptions) => void;
+  liveActivityCustomization?: LiveActivityCustomizationSettings;
+  onLiveActivityCustomizationChange?: (value: LiveActivityCustomizationSettings) => void;
   onReview: () => void;
   onChicPattern: (pattern: ChicPattern) => void;
   onDesignPreview: (pattern: ChicPattern) => void;
@@ -238,6 +243,7 @@ export function SettingsScreen({
   const { getChicPatternVisual, hasPremiumAccess, getChicCheckColor, countdownToClock, getUrgencyStatus, getNextBestAction, designModes, completionIcons, summarizePremiumTaskTemplate } = helpers;
   const { BThemeRibbonDecoration, CThemeRibbonDecoration, ChicPatternDecor, ChicPatternSelector, ThemeColorSelector, SettingsDisclosure, NotificationManagerCard } = components;
   const [newTemplate, setNewTemplate] = useState('');
+  const [liveActivitySettingsOpen, setLiveActivitySettingsOpen] = useState(false);
   const selectedMode = selectedDesignMode ?? designMode;
   const isDark = designMode === 'dark';
   const isDesign = selectedMode === 'chic' || selectedMode === 'photo';
@@ -414,7 +420,23 @@ export function SettingsScreen({
        <View style={[styles.settingsCard, isDark && styles.darkSurface, isDesign && chicPalette && { backgroundColor: guideColors.surface, borderColor: guideColors.border }]}>
          <View style={styles.switchRow}><View style={{ flex: 1 }}><Text style={[styles.switchTitle, isDark && styles.darkBodyText, isDesign && chicPalette && { color: guideColors.textPrimary }]}>ライブアクティビティ</Text><Text style={[styles.switchCopy, isDark && styles.darkMutedText, isDesign && chicPalette && { color: guideColors.textSecondary }]}>ロック画面とDynamic Islandに「今はこれ」を表示します</Text>{planTier === 'premium' ? <Text style={[styles.switchCopy, isDark && styles.darkMutedText, isDesign && chicPalette && { color: guideColors.textSecondary }, { marginTop: 4 }]}>Premiumでは次の予定・出発・集中・アファメーションも表示します</Text> : designCustomizePurchased ? <Text style={[styles.switchCopy, isDark && styles.darkMutedText, isDesign && chicPalette && { color: guideColors.textSecondary }, { marginTop: 4 }]}>Design Customizeではアクセントカラーを変更できます</Text> : <Text style={[styles.switchCopy, isDark && styles.darkMutedText, isDesign && chicPalette && { color: guideColors.textSecondary }, { marginTop: 4 }]}>無料版は今やることの基本表示に対応しています</Text>}</View><Switch value={liveActivityEnabled} onValueChange={(value) => onLiveActivityEnabled?.(value)} trackColor={{ false: isDark ? '#40506A' : baseTheme.border, true: isDesign && chicPalette ? chicPalette.accent : baseTheme.primaryAccent }} thumbColor={liveActivityEnabled ? (isDesign && chicPalette ? chicPalette.onAccent : '#FFFFFF') : (isDark ? '#8F9BB0' : '#FFFFFF')} /></View>
        </View>
-       {(planTier === 'premium' || (__DEV__ && widgetEntitlementOverride === 'premium')) && liveActivityDisplayOptions && onLiveActivityDisplayOptionsChange ? <LiveActivityDisplayOptionsCard options={liveActivityDisplayOptions} onChange={onLiveActivityDisplayOptionsChange} isDark={isDark} colors={isDesign && chicPalette ? { surface: chicPalette.cardSurface, border: chicPalette.border, text: chicPalette.textPrimary, muted: chicPalette.textSecondary, accent: chicPalette.accent, soft: chicPalette.accentSoft, onAccent: chicPalette.onAccent } : { surface: baseTheme.surface, border: baseTheme.border, text: baseTheme.primaryText, muted: baseTheme.secondaryText, accent: baseTheme.primaryAccent, soft: baseTheme.softAccent, onAccent: '#FFFFFF' }} /> : null}
+       {liveActivityDisplayOptions && onLiveActivityDisplayOptionsChange && liveActivityCustomization && onLiveActivityCustomizationChange ? <>
+         <Pressable accessibilityRole="button" onPress={() => setLiveActivitySettingsOpen(true)} style={[styles.settingsCard, isDark && styles.darkSurface, isDesign && chicPalette && { backgroundColor: guideColors.surface, borderColor: guideColors.border }, { marginTop: 10 }]}>
+           <View style={styles.switchRow}><View style={{ flex: 1 }}><Text style={[styles.switchTitle, isDark && styles.darkBodyText, isDesign && chicPalette && { color: guideColors.textPrimary }]}>表示内容・文字・チェック操作</Text><Text style={[styles.switchCopy, isDark && styles.darkMutedText, isDesign && chicPalette && { color: guideColors.textSecondary }]}>Live Activityの詳細設定を開く</Text></View><Text style={{ color: guideColors.accent, fontSize: 22, fontWeight: '800' }}>›</Text></View>
+         </Pressable>
+         <LiveActivitySettingsSheet
+           visible={liveActivitySettingsOpen}
+           options={liveActivityDisplayOptions}
+           customization={liveActivityCustomization}
+           onClose={() => setLiveActivitySettingsOpen(false)}
+           onSave={(nextOptions, nextCustomization) => { onLiveActivityDisplayOptionsChange(nextOptions); onLiveActivityCustomizationChange(nextCustomization); setLiveActivitySettingsOpen(false); }}
+           colors={{ background: isDesign && chicPalette ? chicPalette.background : baseTheme.screenBackground, surface: isDesign && chicPalette ? chicPalette.cardSurface : baseTheme.surface, secondarySurface: isDesign && chicPalette ? chicPalette.surfaceSubtle : baseTheme.secondarySurface, border: isDesign && chicPalette ? chicPalette.border : baseTheme.border, text: isDesign && chicPalette ? chicPalette.textPrimary : baseTheme.primaryText, muted: isDesign && chicPalette ? chicPalette.textSecondary : baseTheme.secondaryText, accent: isDesign && chicPalette ? chicPalette.accent : baseTheme.primaryAccent, soft: isDesign && chicPalette ? chicPalette.accentSoft : baseTheme.softAccent, onAccent: isDesign && chicPalette ? chicPalette.onAccent : (isDark ? baseTheme.screenBackground : '#FFFFFF') }}
+           canCustomize={planTier === 'premium' || designCustomizePurchased || (__DEV__ && widgetEntitlementOverride === 'premium')}
+           canInteractive={planTier === 'premium' || (__DEV__ && widgetEntitlementOverride === 'premium')}
+           taskTitle={tasks.find((task) => task.done !== true && task.isRoutine !== true)?.title}
+           nextTitle={timeline.arrival ? `次の予定 ${timeline.arrival}` : undefined}
+         />
+       </> : null}
        {onPremiumTrialReminderEnabled ? <View style={[styles.settingsCard, isDark && styles.darkSurface, isDesign && chicPalette && { backgroundColor: guideColors.surface, borderColor: guideColors.border }]}><View style={styles.switchRow}><View style={{ flex: 1 }}><Text style={[styles.switchTitle, isDark && styles.darkBodyText, isDesign && chicPalette && { color: guideColors.textPrimary }]}>無料期間終了前のお知らせ</Text><Text style={[styles.switchCopy, isDark && styles.darkMutedText, isDesign && chicPalette && { color: guideColors.textSecondary }]}>StoreKitで終了日時を確認できた場合、前日に通知します</Text></View><Switch value={premiumTrialReminderEnabled !== false} onValueChange={onPremiumTrialReminderEnabled} trackColor={{ false: isDark ? '#40506A' : baseTheme.border, true: isDesign && chicPalette ? chicPalette.accent : baseTheme.primaryAccent }} thumbColor={premiumTrialReminderEnabled !== false ? (isDesign && chicPalette ? chicPalette.onAccent : '#FFFFFF') : (isDark ? '#8F9BB0' : '#FFFFFF')} /></View></View> : null}
        <View style={[styles.settingsCard, isDark && styles.darkSurface, isDesign && chicPalette && { backgroundColor: guideColors.surface, borderColor: guideColors.border }]}><View style={styles.switchRow}><View style={{ flex: 1 }}><Text style={[styles.switchTitle, isDark && styles.darkBodyText, isDesign && chicPalette && { color: guideColors.textPrimary }]}>触覚フィードバック</Text><Text style={[styles.switchCopy, isDark && styles.darkMutedText, isDesign && chicPalette && { color: guideColors.textSecondary }]}>完了や集中開始を振動で知らせます</Text></View><Switch value={hapticsEnabled} onValueChange={(value) => onHapticsEnabled(value)} trackColor={{ false: isDark ? '#40506A' : baseTheme.border, true: isDesign && chicPalette ? chicPalette.accent : baseTheme.primaryAccent }} thumbColor={hapticsEnabled ? (isDesign && chicPalette ? chicPalette.onAccent : '#FFFFFF') : (isDark ? '#8F9BB0' : '#FFFFFF')} /></View></View>
        </SettingsDisclosure>

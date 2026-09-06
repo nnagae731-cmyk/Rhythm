@@ -23,6 +23,15 @@ export type AppNotice = {
 export type TimeTab = 'departure' | 'deadline' | 'calendar' | 'focus';
 export type WidgetSize = 'small' | 'medium';
 export type WidgetType = 'current' | 'next' | 'combined' | 'monthly' | 'weekly' | 'today' | 'checklist' | 'goal' | 'voice' | 'affirmation';
+export type RhythmFontDesign = 'default' | 'rounded' | 'serif' | 'monospaced';
+export type LiveActivityFontSize = 'small' | 'medium' | 'large';
+export type LiveActivityCustomizationSettings = {
+  interactiveChecks: boolean;
+  affirmationRotationMode: 'fixed' | 'automatic';
+  affirmationRotationIntervalMinutes: 30 | 60 | 120;
+  fontDesign: RhythmFontDesign;
+  fontSize: LiveActivityFontSize;
+};
 export type LiveActivityDisplayOptions = {
   currentTask: boolean;
   nextSchedule: boolean;
@@ -55,6 +64,8 @@ export type WidgetSettings = {
   photoSource: WidgetPhotoSource;
   photoLayout: WidgetPhotoLayout;
   monoTemplate?: WidgetMonoTemplate;
+  /** Shared Widget-wide typography choice; older saves default to system. */
+  fontDesign?: RhythmFontDesign;
   widgetCustomizations?: WidgetCustomizations;
   displayOptions: Partial<Record<WidgetDisplayOption, boolean>>;
   /** Optional defaults used by the affirmation widget. Kept app-local and backward compatible. */
@@ -318,6 +329,7 @@ export type PersistedState = {
   liveActivityEnabled?: boolean;
   /** Premium Live Activity content selection; optional for older saves. */
   liveActivityDisplayOptions?: LiveActivityDisplayOptions;
+  liveActivityCustomization?: LiveActivityCustomizationSettings;
   reviewPromptedAt?: string;
   /** Stable IDs of in-app notices the user has opened. */
   readNoticeIds?: string[];

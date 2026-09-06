@@ -1,6 +1,6 @@
 import { requireOptionalNativeModule } from 'expo';
 import { Platform } from 'react-native';
-import { Affirmation, AffirmationCustomText, DeparturePlan, Task, WidgetMonoTemplate, WidgetPhotoLayout, WidgetType, WishMonthMap } from '../../types';
+import { Affirmation, AffirmationCustomText, DeparturePlan, RhythmFontDesign, Task, WidgetMonoTemplate, WidgetPhotoLayout, WidgetType, WishMonthMap } from '../../types';
 import { DepartureCheckIn } from '../../departureCheckIn';
 import { getDeparturePlanMode, getPlanScheduledTime, isDepartureReminderPlan } from '../departure/departurePlanMode';
 import { getDepartureMoments } from '../departure/departureUtils';
@@ -13,6 +13,7 @@ export type RhythmWidgetAppearance = {
   /** Selected by the app's Widget settings UI. Mono remains the default. */
   style: 'mono' | 'color' | 'photo';
   monoTemplate?: WidgetMonoTemplate;
+  fontDesign?: RhythmFontDesign;
   accentHex?: string;
   /** Filename in the App Group container; the image itself is never in the snapshot. */
   photoFileName?: string;

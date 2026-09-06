@@ -399,6 +399,15 @@ private extension RhythmWidgetModule {
       let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
       return trimmed.isEmpty ? nil : String(trimmed.prefix(300))
     }
+    let currentTaskListItems = (object["currentTaskListItems"] as? [[String: Any])?.compactMap { item -> RhythmLiveActivityAttributes.ContentState.ListItem? in
+      guard let id = item["id"] as? String, let value = item["text"] as? String else { return nil }
+      return .init(id: String(id.prefix(120)), text: String(value.prefix(160)), checked: item["checked"] as? Bool ?? false)
+    }.prefix(3).map { $0 }
+    let affirmationTexts = (object["affirmationTexts"] as? [String])?.map { String($0.trimmingCharacters(in: .whitespacesAndNewlines).prefix(240)) }.filter { !$0.isEmpty }.prefix(8).map { $0 }
+    let rotationMode = RhythmLiveActivityAttributes.ContentState.AffirmationRotationMode(rawValue: object["affirmationRotationMode"] as? String ?? "fixed") ?? .fixed
+    let fontDesign = RhythmLiveActivityAttributes.ContentState.FontDesign(rawValue: object["fontDesign"] as? String ?? "default") ?? .default
+    let fontSize = RhythmLiveActivityAttributes.ContentState.FontSize(rawValue: object["fontSize"] as? String ?? "medium") ?? .medium
+    let rotationAnchor = date("affirmationRotationAnchor")
     let focusEndsAt = date("focusEndsAt")
     return RhythmLiveActivityAttributes.ContentState(
       mode: mode,
@@ -415,7 +424,16 @@ private extension RhythmWidgetModule {
       focusRunning: object["focusRunning"] as? Bool ?? (focusEndsAt != nil),
       affirmationText: text("affirmationText"),
       accentHex: text("accentHex") ?? "#FFFFFF",
-      displayOptions: displayOptions
+      displayOptions: displayOptions,
+      interactiveChecks: object["interactiveChecks"] as? Bool ?? false,
+      currentTaskId: text("currentTaskId"),
+      currentTaskListItems: currentTaskListItems,
+      affirmationTexts: affirmationTexts,
+      affirmationRotationMode: rotationMode,
+      affirmationRotationIntervalMinutes: object["affirmationRotationIntervalMinutes"] as? Int ?? 60,
+      affirmationRotationAnchor: rotationAnchor,
+      fontDesign: fontDesign,
+      fontSize: fontSize
     )
   }
 

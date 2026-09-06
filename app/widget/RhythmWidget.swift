@@ -161,6 +161,7 @@ struct WidgetSnapshot: Codable {
   struct Appearance: Codable {
     let style: Style
     let monoTemplate: String?
+    let fontDesign: String?
     let accentHex: String?
     let photoFileName: String?
     let cutoutFileName: String?
@@ -409,7 +410,7 @@ struct WidgetSnapshot: Codable {
     let resolvedAppearance: Appearance? = {
       guard let appearance, appearance.style == .photo, !canDisplayPhoto(kind: kind, at: date) else { return appearance }
       let fallbackStyle: Style = appearance.designPatternUnlocked == true ? .color : .mono
-      return Appearance(style: fallbackStyle, monoTemplate: appearance.monoTemplate, accentHex: appearance.accentHex, photoFileName: nil, cutoutFileName: nil, photoLayout: appearance.photoLayout, designPattern: fallbackStyle == .color ? (appearance.designPattern ?? "plain") : nil, designCheckColor: appearance.designCheckColor, designPatternUnlocked: appearance.designPatternUnlocked, affirmationBackgrounds: appearance.affirmationBackgrounds)
+      return Appearance(style: fallbackStyle, monoTemplate: appearance.monoTemplate, fontDesign: appearance.fontDesign, accentHex: appearance.accentHex, photoFileName: nil, cutoutFileName: nil, photoLayout: appearance.photoLayout, designPattern: fallbackStyle == .color ? (appearance.designPattern ?? "plain") : nil, designCheckColor: appearance.designCheckColor, designPatternUnlocked: appearance.designPatternUnlocked, affirmationBackgrounds: appearance.affirmationBackgrounds)
     }()
     let legacyPeriodChanged = calendarPlans == nil && isoDay(updatedAt) != isoDay(date)
     let resolvedMonth: CalendarMonth? = {
@@ -681,7 +682,7 @@ private func gallerySampleSnapshot(now: Date = Date()) -> WidgetSnapshot {
   // The Widget gallery sample must be reproducible by a Free user. Keep the
   // sample data rich, but render it with the neutral Mono Plain treatment;
   // the installed-widget placeholder uses the same appearance below.
-  let sampleAppearance = WidgetSnapshot.Appearance(style: .mono, monoTemplate: "clean", accentHex: nil, photoFileName: nil, cutoutFileName: nil, photoLayout: nil, designPattern: nil, designCheckColor: nil, designPatternUnlocked: false, affirmationBackgrounds: nil)
+  let sampleAppearance = WidgetSnapshot.Appearance(style: .mono, monoTemplate: "clean", fontDesign: "default", accentHex: nil, photoFileName: nil, cutoutFileName: nil, photoLayout: nil, designPattern: nil, designCheckColor: nil, designPatternUnlocked: false, affirmationBackgrounds: nil)
   return WidgetSnapshot(
     updatedAt: now,
     isPremium: false,
@@ -922,7 +923,7 @@ struct RhythmWidgetProvider: AppIntentTimelineProvider {
       @unknown default: return customization?.monoTemplate ?? stored.monoTemplate ?? (stored.designPattern == "pinNote" || stored.designPattern == "ruledNote" ? stored.designPattern : nil)
       }
     }()
-    let appearance = WidgetSnapshot.Appearance(style: style, monoTemplate: resolvedMonoTemplate, accentHex: stored.accentHex, photoFileName: resolvedPhotoFileName, cutoutFileName: resolvedCutoutFileName, photoLayout: resolvedPhotoLayout, designPattern: pattern, designCheckColor: resolvedDesignCheckColor, designPatternUnlocked: stored.designPatternUnlocked, affirmationBackgrounds: stored.affirmationBackgrounds)
+    let appearance = WidgetSnapshot.Appearance(style: style, monoTemplate: resolvedMonoTemplate, fontDesign: stored.fontDesign, accentHex: stored.accentHex, photoFileName: resolvedPhotoFileName, cutoutFileName: resolvedCutoutFileName, photoLayout: resolvedPhotoLayout, designPattern: pattern, designCheckColor: resolvedDesignCheckColor, designPatternUnlocked: stored.designPatternUnlocked, affirmationBackgrounds: stored.affirmationBackgrounds)
     return WidgetSnapshot(updatedAt: snapshot.updatedAt, isPremium: snapshot.isPremium, designCustomizePurchased: snapshot.designCustomizePurchased, appearance: appearance, widgetCustomizations: snapshot.widgetCustomizations, displayOptions: snapshot.displayOptions, currentTask: snapshot.currentTask, currentTaskCandidates: snapshot.currentTaskCandidates, todayNowTasks: snapshot.todayNowTasks, todayNowTaskCount: snapshot.todayNowTaskCount, nextPlan: snapshot.nextPlan, nextPlans: snapshot.nextPlans, calendarPlans: snapshot.calendarPlans, calendarMonth: snapshot.calendarMonth, calendarWeek: snapshot.calendarWeek, todaySchedules: snapshot.todaySchedules, todayScheduleCount: snapshot.todayScheduleCount, checklist: snapshot.checklist, goal: snapshot.goal, goalMonths: snapshot.goalMonths, widgetPhotoUnlock: snapshot.widgetPhotoUnlock, affirmations: snapshot.affirmations, affirmationPhotoFileNames: snapshot.affirmationPhotoFileNames)
   }
 
@@ -1391,6 +1392,7 @@ private struct WidgetSurface<Content: View>: View {
           photoLayer(photo, layout: photoLayout, size: proxy.size, palette: palette)
         }
         content
+          .fontDesign(widgetFontDesign(appearance?.fontDesign))
           .padding(family == .systemSmall ? 10 : family == .systemLarge ? 16 : 12)
           .padding(.top, photo != nil && photoLayout == "top" && !calendarPhotoLayout ? proxy.size.height * (family == .systemLarge ? 0.23 : 0.27) : 0)
           .padding(.bottom, photo != nil && photoLayout == "top" && calendarPhotoLayout ? proxy.size.height * (widgetKind == "RhythmMonthlyCalendarWidget" ? 0.14 : family == .systemLarge ? 0.23 : 0.27) : 0)
@@ -1400,6 +1402,15 @@ private struct WidgetSurface<Content: View>: View {
       .clipped()
     }
     .rhythmWidgetBackground(palette.background)
+  }
+}
+
+private func widgetFontDesign(_ raw: String?) -> Font.Design {
+  switch raw {
+  case "rounded": return .rounded
+  case "serif": return .serif
+  case "monospaced": return .monospaced
+  default: return .default
   }
 }
 
@@ -2139,13 +2150,13 @@ private struct AffirmationWidgetView: View {
         let slotIndex = affirmationSlotIndex(for: entry.date)
         let selectedBackground = safeBackgrounds[slotIndex % safeBackgrounds.count]
         if selectedBackground == "photo", let selectedPhoto {
-          return WidgetSnapshot.Appearance(style: .photo, monoTemplate: baseAppearance.monoTemplate, accentHex: baseAppearance.accentHex, photoFileName: selectedPhoto, cutoutFileName: baseAppearance.cutoutFileName, photoLayout: baseAppearance.photoLayout ?? "background", designPattern: nil, designCheckColor: baseAppearance.designCheckColor, designPatternUnlocked: baseAppearance.designPatternUnlocked, affirmationBackgrounds: baseAppearance.affirmationBackgrounds)
+          return WidgetSnapshot.Appearance(style: .photo, monoTemplate: baseAppearance.monoTemplate, fontDesign: baseAppearance.fontDesign, accentHex: baseAppearance.accentHex, photoFileName: selectedPhoto, cutoutFileName: baseAppearance.cutoutFileName, photoLayout: baseAppearance.photoLayout ?? "background", designPattern: nil, designCheckColor: baseAppearance.designCheckColor, designPatternUnlocked: baseAppearance.designPatternUnlocked, affirmationBackgrounds: baseAppearance.affirmationBackgrounds)
         }
         if baseAppearance.designPatternUnlocked != true {
-          return WidgetSnapshot.Appearance(style: .mono, monoTemplate: baseAppearance.monoTemplate, accentHex: baseAppearance.accentHex, photoFileName: nil, cutoutFileName: nil, photoLayout: baseAppearance.photoLayout, designPattern: nil, designCheckColor: baseAppearance.designCheckColor, designPatternUnlocked: false, affirmationBackgrounds: baseAppearance.affirmationBackgrounds)
+          return WidgetSnapshot.Appearance(style: .mono, monoTemplate: baseAppearance.monoTemplate, fontDesign: baseAppearance.fontDesign, accentHex: baseAppearance.accentHex, photoFileName: nil, cutoutFileName: nil, photoLayout: baseAppearance.photoLayout, designPattern: nil, designCheckColor: baseAppearance.designCheckColor, designPatternUnlocked: false, affirmationBackgrounds: baseAppearance.affirmationBackgrounds)
         }
         let pattern = selectedBackground == "dot" ? "dot" : selectedBackground == "check" ? "checkLavenderSatin" : "floral"
-        return WidgetSnapshot.Appearance(style: .color, monoTemplate: baseAppearance.monoTemplate, accentHex: baseAppearance.accentHex, photoFileName: nil, cutoutFileName: nil, photoLayout: baseAppearance.photoLayout, designPattern: pattern, designCheckColor: baseAppearance.designCheckColor, designPatternUnlocked: baseAppearance.designPatternUnlocked, affirmationBackgrounds: baseAppearance.affirmationBackgrounds)
+        return WidgetSnapshot.Appearance(style: .color, monoTemplate: baseAppearance.monoTemplate, fontDesign: baseAppearance.fontDesign, accentHex: baseAppearance.accentHex, photoFileName: nil, cutoutFileName: nil, photoLayout: baseAppearance.photoLayout, designPattern: pattern, designCheckColor: baseAppearance.designCheckColor, designPatternUnlocked: baseAppearance.designPatternUnlocked, affirmationBackgrounds: baseAppearance.affirmationBackgrounds)
       }
       return baseAppearance
     }()

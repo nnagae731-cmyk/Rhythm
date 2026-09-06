@@ -41,7 +41,7 @@ import { RecoveryModal } from './components/RecoveryModal';
 import { DesignCustomizeModal } from './components/DesignCustomizeModal';
 import { TravelAppsSettingsCard } from './components/TravelAppsSettingsCard';
 import { styles } from './styles/appStyles';
-import { Affirmation, AffirmationCustomText, AppNotice, AppNoticeCategory, CalendarMarks, Category, DeparturePlan, DeparturePreparationStatus, DevDesignCustomizeOverride, FocusPersistedState, LiveActivityDisplayOptions, MonthlyReflectionCard, MonthlyReview, MonthlyWishState, MonoPattern, NudgeMode, PersistedState, PhotoThemePhotoTarget, PhotoThemeSettings, Priority, RepeatRule, Screen, SharedEvent, SharedParticipantPrefs, Subtask, Task, TaskBucket, TaskListItem, ThemeMode, TimeTab, UrgencyStatus, WidgetSettings, WidgetSize, WidgetType, WishAction, WishMonthMap } from './types';
+import { Affirmation, AffirmationCustomText, AppNotice, AppNoticeCategory, CalendarMarks, Category, DeparturePlan, DeparturePreparationStatus, DevDesignCustomizeOverride, FocusPersistedState, LiveActivityCustomizationSettings, LiveActivityDisplayOptions, MonthlyReflectionCard, MonthlyReview, MonthlyWishState, MonoPattern, NudgeMode, PersistedState, PhotoThemePhotoTarget, PhotoThemeSettings, Priority, RepeatRule, Screen, SharedEvent, SharedParticipantPrefs, Subtask, Task, TaskBucket, TaskListItem, ThemeMode, TimeTab, UrgencyStatus, WidgetSettings, WidgetSize, WidgetType, WishAction, WishMonthMap } from './types';
 import { initialPlan } from './storage/rhythmState';
 import { DEFAULT_TRAVEL_APP_SETTINGS, normalizeTravelAppSettings, TravelAppSettings } from './features/travel/travelApps';
 import { loadRhythmState, saveRhythmState } from './storage/rhythmStorage';
@@ -56,7 +56,7 @@ import { cancelPendingTaskNotifications, cancelPendingTaskNotificationsUnsafe } 
 import { cancelPendingDepartureNotifications, cancelPendingDepartureNotificationsUnsafe } from './features/departure/departureNotifications';
 import { enqueueNotificationOperation } from './features/notifications/notificationOperationQueue';
 import { getDeparturePlanMode, getPlanScheduledTime, isArrivalReversePlan, isDepartureReminderPlan, normalizeDeparturePlanForSave } from './features/departure/departurePlanMode';
-import { DEFAULT_LIVE_ACTIVITY_DISPLAY_OPTIONS, endRhythmLiveActivity, normalizeRhythmLiveActivityDisplayOptions, startOrUpdateRhythmLiveActivity, type RhythmLiveActivityPayload } from './features/widget/rhythmLiveActivity';
+import { DEFAULT_LIVE_ACTIVITY_CUSTOMIZATION, DEFAULT_LIVE_ACTIVITY_DISPLAY_OPTIONS, endRhythmLiveActivity, normalizeRhythmLiveActivityCustomization, normalizeRhythmLiveActivityDisplayOptions, startOrUpdateRhythmLiveActivity, type RhythmLiveActivityPayload } from './features/widget/rhythmLiveActivity';
 import { WishScreen } from './WishScreen';
 import { VoiceInputModal } from './components/VoiceInputModal';
 import { VoiceParseResult } from './features/voiceParser';
@@ -359,6 +359,7 @@ function findScheduleConflict(task: Task, plans: DeparturePlan[], now: Date): Sc
   const interval = getTaskScheduleInterval(task);
   const taskDay = normalizeTaskDateKey(task.scheduledDate);
   if (!interval || !taskDay) return undefined;
+  let best: ScheduleConflict | undefined;
   for (const plan of plans) {
     if (!plan.id || plan.allDay || planDateKey(plan) !== taskDay) continue;
     const scheduledTime = getPlanScheduledTime(plan);
@@ -376,10 +377,14 @@ function findScheduleConflict(task: Task, plans: DeparturePlan[], now: Date): Sc
     const directOverlap = planEnd.getTime() > planStart.getTime()
       && interval.start.getTime() < planEnd.getTime()
       && interval.end.getTime() > planStart.getTime();
-    const boundary = boundaries.find(({ at }) => interval.start.getTime() < at.getTime() && interval.end.getTime() > at.getTime());
-    const match = directOverlap ? { kind: 'schedule' as const, at: planStart } : boundary;
+    const boundary = boundaries
+      .filter(({ at }) => interval.start.getTime() < at.getTime() && interval.end.getTime() > at.getTime())
+      .sort((left, right) => left.at.getTime() - right.at.getTime())[0];
+    const match = directOverlap && !isArrivalReversePlan(plan)
+      ? { kind: 'schedule' as const, at: planStart }
+      : boundary;
     if (!match || (match.at.getTime() <= now.getTime() && planEnd.getTime() <= now.getTime())) continue;
-    return {
+    const candidate = {
       key: `${task.id}:${plan.id}:${interval.start.toISOString()}:${interval.end.toISOString()}:${match.kind}:${match.at.toISOString()}`,
       task,
       plan,
@@ -388,8 +393,13 @@ function findScheduleConflict(task: Task, plans: DeparturePlan[], now: Date): Sc
       taskStart: interval.start,
       taskEnd: interval.end,
     };
+    if (!best
+      || candidate.effectiveAt.getTime() < best.effectiveAt.getTime()
+      || (candidate.effectiveAt.getTime() === best.effectiveAt.getTime() && String(candidate.plan.id).localeCompare(String(best.plan.id)) < 0)) {
+      best = candidate;
+    }
   }
-  return undefined;
+  return best;
 }
 
 type ScheduleSwitchCandidate = {
@@ -411,6 +421,7 @@ function findScheduleSwitchCandidate(task: Task, plans: DeparturePlan[], now: Da
   const taskEnd = dateForReminder(day, endClock);
   if (taskEnd.getTime() <= taskStart.getTime()) return undefined;
 
+  let best: ScheduleSwitchCandidate | undefined;
   for (const plan of plans) {
     if (!plan.id || plan.allDay || planDateKey(plan) !== day) continue;
     const scheduledClock = getPlanScheduledTime(plan);
@@ -424,14 +435,21 @@ function findScheduleSwitchCandidate(task: Task, plans: DeparturePlan[], now: Da
         { kind: 'schedule', at: moments.arrival },
       ]
       : [{ kind: 'schedule', at: scheduledAt }];
-    const boundary = boundaries.find(({ at }) => at.getTime() > now.getTime() && taskStart.getTime() < at.getTime() && taskEnd.getTime() > at.getTime());
+    const boundary = boundaries
+      .filter(({ at }) => at.getTime() > now.getTime() && taskStart.getTime() < at.getTime() && taskEnd.getTime() > at.getTime())
+      .sort((left, right) => left.at.getTime() - right.at.getTime())[0];
     if (!boundary) continue;
     const notifyAt = new Date(boundary.at.getTime() - 15 * 60_000);
     if (notifyAt.getTime() <= now.getTime()) continue;
     const key = `${task.id}:${plan.id}:${boundary.kind}:${boundary.at.toISOString()}`;
-    return { task, plan, kind: boundary.kind, boundaryAt: boundary.at, notifyAt, key };
+    const candidate = { task, plan, kind: boundary.kind, boundaryAt: boundary.at, notifyAt, key };
+    if (!best
+      || candidate.boundaryAt.getTime() < best.boundaryAt.getTime()
+      || (candidate.boundaryAt.getTime() === best.boundaryAt.getTime() && String(candidate.plan.id).localeCompare(String(best.plan.id)) < 0)) {
+      best = candidate;
+    }
   }
-  return undefined;
+  return best;
 }
 
 function getTodayRemainingRoutines(items: Task[], day: string) {
@@ -777,6 +795,7 @@ export default function App() {
   const [focusActivity, setFocusActivity] = useState<{ taskTitle?: string; endsAt?: string; elapsedStartAt?: string; elapsedSeconds?: number; remainingSeconds?: number; running?: boolean }>();
   const [liveActivityEnabled, setLiveActivityEnabled] = useState(false);
   const [liveActivityDisplayOptions, setLiveActivityDisplayOptions] = useState<LiveActivityDisplayOptions>(() => ({ ...DEFAULT_LIVE_ACTIVITY_DISPLAY_OPTIONS }));
+  const [liveActivityCustomization, setLiveActivityCustomization] = useState<LiveActivityCustomizationSettings>(() => ({ ...DEFAULT_LIVE_ACTIVITY_CUSTOMIZATION }));
   const liveActivitySerializedRef = React.useRef<string | undefined>(undefined);
   const [voiceFocusRequest, setVoiceFocusRequest] = useState<{ durationMinutes: number; id: number }>();
   const [rewardedAccess, setRewardedAccess] = useState<RewardedAccessState>(DEFAULT_REWARDED_ACCESS_STATE);
@@ -2353,6 +2372,7 @@ export default function App() {
         setPremiumTrialReminderEnabled(saved.premiumTrialReminderEnabled !== false);
         setLiveActivityEnabled(saved.liveActivityEnabled === true);
         setLiveActivityDisplayOptions(normalizeRhythmLiveActivityDisplayOptions(saved.liveActivityDisplayOptions));
+        setLiveActivityCustomization(normalizeRhythmLiveActivityCustomization(saved.liveActivityCustomization));
         if (saved.reviewPromptedAt) setReviewPromptedAt(saved.reviewPromptedAt);
         setReadNoticeIds(Array.isArray(saved.readNoticeIds) ? [...new Set(saved.readNoticeIds.filter((id): id is string => typeof id === 'string'))] : []);
         tomorrowPrepPromptedDateRef.current = saved.tomorrowPrepPromptedDate;
@@ -2611,7 +2631,7 @@ export default function App() {
 
   useEffect(() => {
     if (!hydrated) return;
-    const state: PersistedState = { tasks, plan, departurePlans, widgetSize, widgetSettings, showCompleted, completionIcon, designMode, monoAppearance, monoPattern, hapticsEnabled, premiumTrialReminderEnabled, liveActivityEnabled, liveActivityDisplayOptions, reviewPromptedAt, readNoticeIds: [...new Set(readNoticeIds)], tomorrowPrepPromptedDate, routineRemainingNotifiedDate, taskTemplates, savedTaskTemplates, chicPattern, chicCheckColor, recoveryHistory, focusSessions, focusState, focusCustomDurationMinutes, departureCheckIns, behaviorEvents, wishMonths: normalizeWishMonthsForSave(wishMonths), calendarMarks, calendarImportCalendarIds, calendarImportKnownCalendarIds, sharedEvents, sharedParticipantIdsByToken, sharedParticipantPrefsByToken, departurePreparationStatuses, affirmations, affirmationCustomTexts, photoTheme, travelApps, designCustomizePurchased, routineArchives: pruneRoutineArchives(routineArchives), voiceUsage: normalizeVoiceUsage(voiceUsage, dateKey()) };
+    const state: PersistedState = { tasks, plan, departurePlans, widgetSize, widgetSettings, showCompleted, completionIcon, designMode, monoAppearance, monoPattern, hapticsEnabled, premiumTrialReminderEnabled, liveActivityEnabled, liveActivityDisplayOptions, liveActivityCustomization, reviewPromptedAt, readNoticeIds: [...new Set(readNoticeIds)], tomorrowPrepPromptedDate, routineRemainingNotifiedDate, taskTemplates, savedTaskTemplates, chicPattern, chicCheckColor, recoveryHistory, focusSessions, focusState, focusCustomDurationMinutes, departureCheckIns, behaviorEvents, wishMonths: normalizeWishMonthsForSave(wishMonths), calendarMarks, calendarImportCalendarIds, calendarImportKnownCalendarIds, sharedEvents, sharedParticipantIdsByToken, sharedParticipantPrefsByToken, departurePreparationStatuses, affirmations, affirmationCustomTexts, photoTheme, travelApps, designCustomizePurchased, routineArchives: pruneRoutineArchives(routineArchives), voiceUsage: normalizeVoiceUsage(voiceUsage, dateKey()) };
     latestPersistedStateRef.current = state;
     if (persistenceDisabledRef.current) return;
     if (persistenceTimerRef.current) clearTimeout(persistenceTimerRef.current);
@@ -2627,7 +2647,7 @@ export default function App() {
     return () => {
       if (persistenceTimerRef.current) clearTimeout(persistenceTimerRef.current);
     };
-  }, [tasks, plan, departurePlans, widgetSize, widgetSettings, showCompleted, completionIcon, designMode, monoAppearance, monoPattern, hapticsEnabled, premiumTrialReminderEnabled, liveActivityEnabled, liveActivityDisplayOptions, reviewPromptedAt, readNoticeIds, tomorrowPrepPromptedDate, routineRemainingNotifiedDate, taskTemplates, savedTaskTemplates, chicPattern, chicCheckColor, recoveryHistory, focusSessions, focusState, focusCustomDurationMinutes, departureCheckIns, behaviorEvents, wishMonths, calendarMarks, calendarImportCalendarIds, calendarImportKnownCalendarIds, sharedEvents, sharedParticipantIdsByToken, sharedParticipantPrefsByToken, departurePreparationStatuses, affirmations, affirmationCustomTexts, photoTheme, travelApps, designCustomizePurchased, routineArchives, voiceUsage, hydrated]);
+  }, [tasks, plan, departurePlans, widgetSize, widgetSettings, showCompleted, completionIcon, designMode, monoAppearance, monoPattern, hapticsEnabled, premiumTrialReminderEnabled, liveActivityEnabled, liveActivityDisplayOptions, liveActivityCustomization, reviewPromptedAt, readNoticeIds, tomorrowPrepPromptedDate, routineRemainingNotifiedDate, taskTemplates, savedTaskTemplates, chicPattern, chicCheckColor, recoveryHistory, focusSessions, focusState, focusCustomDurationMinutes, departureCheckIns, behaviorEvents, wishMonths, calendarMarks, calendarImportCalendarIds, calendarImportKnownCalendarIds, sharedEvents, sharedParticipantIdsByToken, sharedParticipantPrefsByToken, departurePreparationStatuses, affirmations, affirmationCustomTexts, photoTheme, travelApps, designCustomizePurchased, routineArchives, voiceUsage, hydrated]);
 
   useEffect(() => {
     if (!hydrated) return;
@@ -2765,19 +2785,24 @@ export default function App() {
       ? widgetEntitlementOverride === 'premium' ? 'premium' : widgetEntitlementOverride === 'design' ? 'design' : 'free'
       : planTier === 'premium' ? 'premium' : hasDesignCustomizeAccess ? 'design' : 'free';
     const displayOptions = normalizeRhythmLiveActivityDisplayOptions(liveActivityDisplayOptions);
+    const requestedCustomization = normalizeRhythmLiveActivityCustomization(liveActivityCustomization);
+    // Free Live Activity keeps its existing basic typography. Design Customize
+    // and Premium may use the persisted typography settings.
+    const customization = tier === 'free' ? { ...DEFAULT_LIVE_ACTIVITY_CUSTOMIZATION } : requestedCustomization;
     // Live Activity keeps the saved nine-color accent even while the app is
     // rendered with Night Sky's fixed foreground palette.
     const accentHex = tier === 'free' ? '#FFFFFF' : selectedChicPalette.accent;
-    const affirmationText = tier === 'premium' && displayOptions.affirmation
-      ? ([...affirmations.filter((item) => item.enabled), ...affirmationCustomTexts]
-        .map((item) => item.text.trim())
-        .find(Boolean) || undefined)
-      : undefined;
+    const affirmationTexts = tier === 'premium' && displayOptions.affirmation
+      ? [...new Set([...affirmations.filter((item) => item.enabled).map((item) => item.text.trim()), ...affirmationCustomTexts.map((item) => item.text.trim())].filter(Boolean))].slice(0, 8)
+      : [];
+    const affirmationText = affirmationTexts[0];
+    const rotationAnchor = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString();
     const focusStateStillActive = Boolean(focusState && (!focusState.running || !focusState.endAt || Date.parse(focusState.endAt) > now.getTime()));
     const focusDataAvailable = Boolean(focusStateStillActive || focusActivity?.taskTitle?.trim() || focusActivity?.endsAt);
     const focusLiveActivityEnabled = focusDataAvailable && (tier !== 'premium' || displayOptions.focusRemaining) && (focusTimerActive || focusStateStillActive);
     if (focusLiveActivityEnabled) {
       const persistedFocus = focusState;
+      const focusTask = persistedFocus?.taskId ? tasks.find((task) => task.id === persistedFocus.taskId) : undefined;
       const elapsedSeconds = focusActivity?.elapsedSeconds ?? (persistedFocus ? Math.max(0, persistedFocus.plannedDurationMinutes * 60 - persistedFocus.pausedSeconds) : undefined);
       const elapsedStartAt = focusActivity?.elapsedStartAt ?? persistedFocus?.elapsedStartAt;
       return {
@@ -2790,6 +2815,17 @@ export default function App() {
         focusRemainingSeconds: focusActivity?.remainingSeconds ?? (focusStateStillActive && persistedFocus?.running ? undefined : focusStateStillActive ? persistedFocus?.pausedSeconds : undefined),
         focusRunning: focusActivity?.running ?? (focusStateStillActive ? persistedFocus?.running : false) ?? focusTimerActive,
         affirmationText,
+        affirmationTexts,
+        affirmationRotationMode: customization.affirmationRotationMode,
+        affirmationRotationIntervalMinutes: customization.affirmationRotationIntervalMinutes,
+        affirmationRotationAnchor: rotationAnchor,
+        interactiveChecks: tier === 'premium' && customization.interactiveChecks,
+        currentTaskId: tier === 'premium' && customization.interactiveChecks ? focusTask?.id : undefined,
+        currentTaskListItems: tier === 'premium' && customization.interactiveChecks && focusTask?.listItems?.length
+          ? focusTask.listItems.slice(0, 3).map((item) => ({ id: item.id, text: item.text, checked: item.checked }))
+          : undefined,
+        fontDesign: customization.fontDesign,
+        fontSize: customization.fontSize,
         displayOptions,
         accentHex,
       };
@@ -2809,10 +2845,21 @@ export default function App() {
       nextScheduleAt: tier === 'premium' && displayOptions.nextSchedule && next ? planScheduledAt(next).toISOString() : undefined,
       departureAt: tier === 'premium' && displayOptions.departureCountdown && next && getPlanCountdownAt(next).getTime() > now.getTime() ? getPlanCountdownAt(next).toISOString() : undefined,
       affirmationText,
+      affirmationTexts,
+      affirmationRotationMode: customization.affirmationRotationMode,
+      affirmationRotationIntervalMinutes: customization.affirmationRotationIntervalMinutes,
+      affirmationRotationAnchor: rotationAnchor,
+      interactiveChecks: tier === 'premium' && customization.interactiveChecks,
+      currentTaskId: tier === 'premium' && customization.interactiveChecks ? current?.id : undefined,
+      currentTaskListItems: tier === 'premium' && customization.interactiveChecks && current?.listItems?.length
+        ? current.listItems.slice(0, 3).map((item) => ({ id: item.id, text: item.text, checked: item.checked }))
+        : undefined,
+      fontDesign: customization.fontDesign,
+      fontSize: customization.fontSize,
       displayOptions: tier === 'premium' ? displayOptions : undefined,
       accentHex,
     };
-  }, [affirmationCustomTexts, affirmations, focusActivity, focusState, focusTimerActive, hasDesignCustomizeAccess, hydrated, liveActivityDisplayOptions, liveActivityEnabled, nextDeparturePlan, now, planTier, selectedChicPalette.accent, storeKitEntitlementsResolved, tasks, widgetEntitlementOverride]);
+  }, [affirmationCustomTexts, affirmations, focusActivity, focusState, focusTimerActive, hasDesignCustomizeAccess, hydrated, liveActivityCustomization, liveActivityDisplayOptions, liveActivityEnabled, nextDeparturePlan, now, planTier, selectedChicPalette.accent, storeKitEntitlementsResolved, tasks, widgetEntitlementOverride]);
 
   useEffect(() => {
     if (!hydrated || !storeKitEntitlementsResolved) return;
@@ -2934,6 +2981,7 @@ export default function App() {
       appearance: {
         style: widgetSettings.style,
         monoTemplate: widgetSettings.monoTemplate,
+        fontDesign: widgetSettings.fontDesign,
         accentHex: chicPalette.accent,
         // Keep the existing Design selection available to each widget's
         // AppIntent configuration even when the app's current screen mode is
@@ -3324,7 +3372,11 @@ export default function App() {
       }).map((request) => Notifications.cancelScheduledNotificationAsync(request.identifier)));
       const latestPlan = departurePlansRef.current.find((item) => item.id === planId);
       if (!latestPlan) return;
-      const candidate = tasksRef.current.map((task) => findScheduleSwitchCandidate(task, [latestPlan], new Date())).find(Boolean);
+      const candidate = tasksRef.current
+        .map((task) => findScheduleSwitchCandidate(task, [latestPlan], new Date()))
+        .filter((item): item is ScheduleSwitchCandidate => Boolean(item))
+        .sort((left, right) => left.boundaryAt.getTime() - right.boundaryAt.getTime()
+          || String(left.task.id).localeCompare(String(right.task.id)))[0];
       if (!candidate || !await ensureNotifications()) return;
       const identifier = `schedule-switch:${candidate.task.id}:${candidate.plan.id}`;
       await Notifications.scheduleNotificationAsync({
@@ -3883,13 +3935,14 @@ export default function App() {
     showCompletionAffirmation('focus');
   };
 
-  const handleFocusTaskFinished = React.useCallback((session: FocusSession) => {
-    if (!session.taskId || focusTaskCompletionPromptedRef.current.has(session.id)) return;
+  const handleFocusTaskFinished = React.useCallback((session: FocusSession): boolean => {
+    if (!session.taskId || focusTaskCompletionPromptedRef.current.has(session.id)) return false;
     const target = tasksRef.current.find((task) => task.id === session.taskId);
-    if (!target || target.done || target.status === 'skipped') return;
+    if (!target || target.done || target.status === 'skipped') return false;
     focusTaskCompletionPromptedRef.current.add(session.id);
     setScheduleConflictPrompt(undefined);
     setFocusTaskCompletionPrompt(session);
+    return true;
   }, []);
 
   useEffect(() => {
@@ -5245,6 +5298,8 @@ export default function App() {
                }}
                liveActivityDisplayOptions={liveActivityDisplayOptions}
                onLiveActivityDisplayOptionsChange={setLiveActivityDisplayOptions}
+               liveActivityCustomization={liveActivityCustomization}
+               onLiveActivityCustomizationChange={setLiveActivityCustomization}
                chicPattern={effectiveChicPattern}
                chicCheckColor={chicCheckColor}
                chicPalette={chicPalette}
@@ -6005,7 +6060,7 @@ function TimeTabButton({ tab, active, designMode, chicPattern, chicPalette, them
      return <Pressable style={[styles.timeTab, styles.timeTabMinimal, isDark && styles.darkSurface, active && styles.timeTabActive, active && { backgroundColor: isDark ? '#26365F' : themeAccent, borderColor: isDark ? '#6F8DFF' : themeAccent }]} onPress={onPress}><Text numberOfLines={1} style={[styles.timeTabText, { color: isDark ? '#F4F7FC' : secondaryText }, active && styles.timeTabTextActive, active && styles.timeTabTextActiveMinimal]}>{label}</Text></Pressable>;
 }
 
-  function FocusMode({ tasks, designMode, chicPalette, backgroundImageUri, planTier, onPremium, customDurationMinutes, onCustomDurationChange, voiceStartRequest, focusPersistedState, onFocusStateChange, onFocusCompleted, onFocusTaskFinished, onFocusStarted, onFocusNotificationPermission, onFocusRunningChange, onFocusActivityChange, onBehaviorEvent, hapticsEnabled = true, previewCustomDurationOpen = false, previewMode = false }: { tasks: Task[]; designMode: DesignMode; chicPalette?: ChicThemePalette; backgroundImageUri?: string; planTier: PlanTier; onPremium?: (featureId?: PremiumGuideFeatureId) => void; customDurationMinutes?: number; onCustomDurationChange?: (minutes: number) => void; voiceStartRequest?: { durationMinutes: number; id: number }; focusPersistedState?: FocusPersistedState; onFocusStateChange?: (state?: FocusPersistedState) => void; onFocusCompleted: (session: FocusSession) => void; onFocusTaskFinished?: (session: FocusSession) => void; onFocusStarted?: () => void; onFocusNotificationPermission?: () => Promise<boolean>; onFocusRunningChange?: (running: boolean) => void; onFocusActivityChange?: (state?: { taskTitle?: string; endsAt?: string; elapsedStartAt?: string; elapsedSeconds?: number; remainingSeconds?: number; running?: boolean }) => void; onBehaviorEvent: (event: BehaviorEvent) => void; hapticsEnabled?: boolean; previewCustomDurationOpen?: boolean; previewMode?: boolean }) {
+  function FocusMode({ tasks, designMode, chicPalette, backgroundImageUri, planTier, onPremium, customDurationMinutes, onCustomDurationChange, voiceStartRequest, focusPersistedState, onFocusStateChange, onFocusCompleted, onFocusTaskFinished, onFocusStarted, onFocusNotificationPermission, onFocusRunningChange, onFocusActivityChange, onBehaviorEvent, hapticsEnabled = true, previewCustomDurationOpen = false, previewMode = false }: { tasks: Task[]; designMode: DesignMode; chicPalette?: ChicThemePalette; backgroundImageUri?: string; planTier: PlanTier; onPremium?: (featureId?: PremiumGuideFeatureId) => void; customDurationMinutes?: number; onCustomDurationChange?: (minutes: number) => void; voiceStartRequest?: { durationMinutes: number; id: number }; focusPersistedState?: FocusPersistedState; onFocusStateChange?: (state?: FocusPersistedState) => void; onFocusCompleted: (session: FocusSession) => void; onFocusTaskFinished?: (session: FocusSession) => boolean | void; onFocusStarted?: () => void; onFocusNotificationPermission?: () => Promise<boolean>; onFocusRunningChange?: (running: boolean) => void; onFocusActivityChange?: (state?: { taskTitle?: string; endsAt?: string; elapsedStartAt?: string; elapsedSeconds?: number; remainingSeconds?: number; running?: boolean }) => void; onBehaviorEvent: (event: BehaviorEvent) => void; hapticsEnabled?: boolean; previewCustomDurationOpen?: boolean; previewMode?: boolean }) {
   const availableTasks = React.useMemo(() => {
     const today = dateKey();
     const seenTitles = new Set<string>();
@@ -6090,10 +6145,12 @@ function TimeTabButton({ tab, active, designMode, chicPattern, chicPalette, them
     setSecondsLeft(0);
     pausedSecondsRef.current = 0;
     completionCallbackRef.current(session);
-    onFocusTaskFinished?.(session);
+    const prompted = onFocusTaskFinished?.(session) === true;
     void cancelFocusNotification(activeSession.id);
     triggerHaptic(hapticsEnabled, [0, 35, 70]);
-    Alert.alert('集中タイム終了', activeSession.taskTitle ? `「${activeSession.taskTitle}」に取り組めました。少し休憩しよう。` : '少し休憩しよう。');
+    if (!prompted) {
+      Alert.alert('集中タイム終了', activeSession.taskTitle ? `「${activeSession.taskTitle}」に取り組めました。少し休憩しよう。` : '少し休憩しよう。');
+    }
   }, [cancelFocusNotification, hapticsEnabled, onFocusRunningChange, onFocusStateChange, onFocusTaskFinished]);
 
   const stopActiveSession = React.useCallback(() => {
