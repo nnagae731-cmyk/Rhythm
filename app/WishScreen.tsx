@@ -66,6 +66,26 @@ function patternSymbol(pattern: ChicPattern) {
   return '✿';
 }
 
+function withWishDecorationAlpha(color: string, alpha: number) {
+  const match = /^#([0-9a-f]{6})$/i.exec(color);
+  if (!match) return color;
+  const value = match[1] ?? '';
+  const red = Number.parseInt(value.slice(0, 2), 16);
+  const green = Number.parseInt(value.slice(2, 4), 16);
+  const blue = Number.parseInt(value.slice(4, 6), 16);
+  return `rgba(${red},${green},${blue},${alpha})`;
+}
+
+function WishDecoration({ designMode, accent, compact = false }: { designMode: DesignMode; accent: string; compact?: boolean }) {
+  if (designMode === 'minimal' || designMode === 'dark') {
+    return <View pointerEvents="none" style={[styles.wishPinDecoration, compact && styles.wishPinDecorationCompact]}>
+      <View style={[styles.wishPinHead, { backgroundColor: accent, borderColor: withWishDecorationAlpha(accent, 0.55) }]} />
+      <View style={[styles.wishPinStem, { backgroundColor: withWishDecorationAlpha(accent, 0.75) }]} />
+    </View>;
+  }
+  return <View pointerEvents="none" style={[styles.wishTapeDecoration, compact && styles.wishTapeDecorationCompact, { backgroundColor: withWishDecorationAlpha(accent, 0.32), borderColor: withWishDecorationAlpha(accent, 0.55) }]} />;
+}
+
 function formatHistoryMonth(monthKey: string) {
   const match = /^(\d{4})-(\d{1,2})$/.exec(monthKey);
   return match ? `${match[1]}年${Number(match[2])}月` : monthKey;
@@ -271,6 +291,7 @@ export function WishScreen({ designMode: rawDesignMode, chicPalette, monthLabel,
           <View style={[styles.topVisual, { backgroundColor: surface, borderColor: border }]}>
             {topImageUri ? <Image source={{ uri: topImageUri }} resizeMode="cover" style={styles.topVisualImage} /> : null}
             <View pointerEvents="none" style={[styles.topVisualVeil, { backgroundColor: topImageUri ? '#101318' : surface, opacity: topImageUri ? 0.32 : 1 }]} />
+            <WishDecoration designMode={rawDesignMode} accent={accent} />
             <View style={styles.topVisualContent}>
               <Text style={[styles.topVisualMonth, { color: topImageUri ? '#FFFFFF' : textSecondary }, topImageUri && styles.topVisualTextOnImage]}>{monthLabel}</Text>
               {topDisplayedWish ? <View style={[styles.topVisualTitleWrap, { justifyContent: topVisualJustifyContent }]}><Text numberOfLines={2} style={[styles.topVisualGoal, { color: topImageUri ? '#FFFFFF' : textPrimary }, topImageUri && styles.topVisualTextOnImage]}>{topDisplayedWish.title}</Text></View> : null}
@@ -326,6 +347,7 @@ export function WishScreen({ designMode: rawDesignMode, chicPalette, monthLabel,
                 const isSelected = index === selectedWishIndex;
                 return <View key={wish.id} style={[styles.wishCardPage, { width: wishCardWidth, marginRight: index === wishes.length - 1 ? 0 : wishCardGap }]}>
                   <View style={[styles.wishCard, { backgroundColor: surface, borderColor: border }, !isSelected && styles.wishCardCompact]}>
+                    <WishDecoration designMode={rawDesignMode} accent={accent} compact />
                     <View style={styles.wishCardHeader}>
                       <View style={styles.itemBody}>
                         <Text style={[styles.wishCardEyebrow, { color: textSecondary }]}>{monthLabel}</Text>
@@ -425,9 +447,9 @@ const styles = StyleSheet.create({
   pageHeaderEyebrow: { fontSize: 11, fontWeight: '800', letterSpacing: 0.5, marginBottom: 2 },
   pageHeaderTitle: { fontSize: 20, fontWeight: '900' },
   pageHeaderLink: { fontSize: 12, fontWeight: '900' },
-  topVisual: { minHeight: 190, borderRadius: 24, borderWidth: 1, overflow: 'hidden', position: 'relative' },
-  topVisualImage: { ...StyleSheet.absoluteFillObject },
-  topVisualVeil: { ...StyleSheet.absoluteFillObject },
+  topVisual: { minHeight: 190, borderRadius: 24, borderWidth: 1, overflow: 'visible', position: 'relative' },
+  topVisualImage: { ...StyleSheet.absoluteFillObject, borderRadius: 24 },
+  topVisualVeil: { ...StyleSheet.absoluteFillObject, borderRadius: 24 },
   topVisualContent: { flex: 1, padding: 20, gap: 7 },
   topVisualTitleWrap: { flex: 1 },
   topVisualMonth: { fontSize: 11, fontWeight: '800', letterSpacing: 0.5 },
@@ -448,7 +470,13 @@ const styles = StyleSheet.create({
   heroMenu: { borderWidth: 1, borderRadius: 14, padding: 4, gap: 2 },
   heroMenuItem: { paddingHorizontal: 12, paddingVertical: 10, fontSize: 12, fontWeight: '800' },
   wishCardPage: { paddingBottom: 2 },
-  wishCard: { borderWidth: 1, borderRadius: 22, padding: 16, gap: 14 },
+  wishCard: { borderWidth: 1, borderRadius: 22, padding: 16, gap: 14, position: 'relative' },
+  wishPinDecoration: { position: 'absolute', top: -7, right: 20, width: 20, height: 28, alignItems: 'center', zIndex: 2 },
+  wishPinDecorationCompact: { top: -7, right: 14, transform: [{ scale: 0.78 }] },
+  wishPinHead: { width: 15, height: 15, borderRadius: 8, borderWidth: 1, shadowColor: '#000000', shadowOpacity: 0.14, shadowRadius: 2, shadowOffset: { width: 0, height: 1 }, elevation: 1 },
+  wishPinStem: { width: 3, height: 12, marginTop: -1, borderRadius: 2, transform: [{ rotate: '14deg' }] },
+  wishTapeDecoration: { position: 'absolute', top: -8, right: 18, width: 84, height: 22, borderWidth: 1, borderRadius: 3, transform: [{ rotate: '-6deg' }], shadowColor: '#000000', shadowOpacity: 0.08, shadowRadius: 2, shadowOffset: { width: 0, height: 1 }, elevation: 1, zIndex: 2 },
+  wishTapeDecorationCompact: { top: -7, right: 14, width: 62, height: 17, transform: [{ rotate: '5deg' }] },
   wishCardCompact: { paddingVertical: 13, gap: 9 },
   wishCardCompactSummary: { minHeight: 30, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
   wishCardHeader: { flexDirection: 'row', alignItems: 'flex-start', gap: 10 },

@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Alert, DevSettings, Image, Pressable, Switch, Text, TextInput, View } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { Alert, DevSettings, Image, InteractionManager, Modal, Pressable, ScrollView, Switch, Text, TextInput, View, useColorScheme } from 'react-native';
 import { BannerAd, BannerAdSize, TestIds } from 'react-native-google-mobile-ads';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { ChicCheckColor, ChicPattern, ChicThemePalette, DesignMode, getDesignCheckColorLabel, getThemeTokens } from '../theme';
@@ -14,6 +14,7 @@ import { STORAGE_KEY } from '../storage/rhythmState';
 import { ONBOARDING_STORAGE_KEY } from '../features/onboarding/onboardingStorage';
 import { REWARDED_ACCESS_STORAGE_KEY } from '../features/ads/rewardedAccessStorage';
 import { WidgetSettingsCard } from '../components/WidgetSettingsCard';
+import { WIDGET_TYPE_OPTIONS } from '../features/widget/widgetSettings';
 import type { WidgetEntitlementOverride } from '../features/widget/widgetSettings';
 import { LiveActivitySettingsSheet } from '../components/LiveActivitySettingsSheet';
 
@@ -65,6 +66,270 @@ function DesignCustomizeCard({ designMode, chicPalette, planTier, purchased, loc
   </View>;
 }
 
+function DesignStatusCards({ label, previewing, colors, purchased, planTier, onOpen }: { label: string; previewing: boolean; colors: { surface: string; border: string; text: string; muted: string; accent: string; soft: string }; purchased: boolean; planTier: PlanTier; onOpen?: () => void }) {
+  const hasAccess = planTier === 'premium' || purchased;
+  const customizeCard = <View style={{ flex: 1, minHeight: 72, paddingHorizontal: 12, paddingVertical: 10, borderRadius: 14, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface, justifyContent: 'center' }}><Text style={{ color: colors.muted, fontSize: 11, fontWeight: '800' }}>Customize</Text><Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.82} style={{ color: hasAccess ? colors.accent : colors.text, fontSize: 14, fontWeight: '900', marginTop: 4 }}>{hasAccess ? '購入済み' : '未購入 ›'}</Text></View>;
+  return <View style={{ flexDirection: 'row', gap: 9, marginTop: 10 }}>
+    <View style={{ flex: 1, minHeight: 72, paddingHorizontal: 12, paddingVertical: 10, borderRadius: 14, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface, justifyContent: 'center' }}><Text style={{ color: colors.muted, fontSize: 11, fontWeight: '800' }}>{previewing ? '試着中' : '現在'}</Text><Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.78} style={{ color: colors.text, fontSize: 14, fontWeight: '900', marginTop: 4 }}>{label}</Text></View>
+    {hasAccess || !onOpen ? customizeCard : <Pressable accessibilityRole="button" accessibilityLabel="Design Customizeを開く" onPress={onOpen} style={{ flex: 1 }}>{customizeCard}</Pressable>}
+  </View>;
+}
+
+function WidgetSettingsSheet({ visible, onClose, widgetSettings, onWidgetSettings, onPickWidgetPhoto, onUnlockWidgetPhoto, widgetPhotoUnlock, entitlementsResolved, onRemoveAffirmationPhoto, widgetColors, styles, designPattern, designCheckColor, PatternDecor, planTier, designCustomizePurchased, widgetEntitlementOverride, onWidgetEntitlementOverrideChange, onLockedWidget, onWidgetGuide }: {
+  visible: boolean;
+  onClose: () => void;
+  widgetSettings: WidgetSettings;
+  onWidgetSettings: (settings: WidgetSettings) => void;
+  onPickWidgetPhoto?: (widgetType?: WidgetType, override?: WidgetEntitlementOverride) => void;
+  onUnlockWidgetPhoto?: (widgetType: WidgetType, override?: WidgetEntitlementOverride) => void;
+  widgetPhotoUnlock?: { widgetType: WidgetType | null; expiresAt: string | null };
+  entitlementsResolved?: boolean;
+  onRemoveAffirmationPhoto?: (index?: number) => void;
+  widgetColors: { surface: string; border: string; primaryText: string; secondaryText: string; primaryAccent: string; softAccent: string; screenBackground: string };
+  styles: any;
+  designPattern: ChicPattern;
+  designCheckColor: ChicCheckColor;
+  PatternDecor: React.ComponentType<any>;
+  planTier: PlanTier;
+  designCustomizePurchased: boolean;
+  widgetEntitlementOverride?: WidgetEntitlementOverride;
+  onWidgetEntitlementOverrideChange?: (override: WidgetEntitlementOverride) => void;
+  onLockedWidget: (access: 'design' | 'premium') => void;
+  onWidgetGuide?: () => void;
+}) {
+  const currentWidget = WIDGET_TYPE_OPTIONS.find((item) => item.id === widgetSettings.widgetType);
+  const stableWidgetColors = React.useMemo(() => widgetColors, [widgetColors.surface, widgetColors.border, widgetColors.primaryText, widgetColors.secondaryText, widgetColors.primaryAccent, widgetColors.softAccent, widgetColors.screenBackground]);
+  const [contentReady, setContentReady] = useState(false);
+  useEffect(() => {
+    if (!visible) {
+      setContentReady(false);
+      return;
+    }
+    const task = InteractionManager.runAfterInteractions(() => setContentReady(true));
+    return () => task.cancel();
+  }, [visible]);
+  if (!visible) return null;
+  return <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
+    <View style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.28)' }}>
+      <View style={{ height: '92%', maxHeight: '92%', borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingTop: 10, backgroundColor: widgetColors.screenBackground }}>
+        <View style={{ alignSelf: 'center', width: 42, height: 4, borderRadius: 3, backgroundColor: widgetColors.border }} />
+        <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 18, paddingTop: 14, paddingBottom: 10 }}><View style={{ flex: 1 }}><Text style={{ color: widgetColors.primaryText, fontSize: 20, fontWeight: '900' }}>Widget</Text><Text style={{ color: widgetColors.secondaryText, fontSize: 11, marginTop: 3 }}>ホーム画面に表示する内容と見た目を設定</Text></View><Pressable accessibilityRole="button" accessibilityLabel="Widget設定を閉じる" onPress={onClose} style={{ width: 40, height: 40, alignItems: 'center', justifyContent: 'center' }}><Text style={{ color: widgetColors.secondaryText, fontSize: 26, fontWeight: '300' }}>×</Text></Pressable></View>
+        <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: 18, paddingBottom: 44 }} showsVerticalScrollIndicator={false}>
+          <View style={{ flexDirection: 'row', gap: 9, marginTop: 4 }}><View style={{ flex: 1, minHeight: 64, paddingHorizontal: 12, paddingVertical: 10, borderRadius: 14, borderWidth: 1, borderColor: widgetColors.border, backgroundColor: widgetColors.surface, justifyContent: 'center' }}><Text style={{ color: widgetColors.secondaryText, fontSize: 11, fontWeight: '800' }}>現在</Text><Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.78} style={{ color: widgetColors.primaryText, fontSize: 14, fontWeight: '900', marginTop: 4 }}>{currentWidget?.label ?? 'Widget'}</Text></View><View style={{ flex: 1, minHeight: 64, paddingHorizontal: 12, paddingVertical: 10, borderRadius: 14, borderWidth: 1, borderColor: widgetColors.border, backgroundColor: widgetColors.surface, justifyContent: 'center' }}><Text style={{ color: widgetColors.secondaryText, fontSize: 11, fontWeight: '800' }}>サイズ</Text><Text style={{ color: widgetColors.primaryText, fontSize: 14, fontWeight: '900', marginTop: 4 }}>{currentWidget?.sizes ?? '—'}</Text></View></View>
+          {contentReady ? <>
+            {onWidgetGuide ? <Pressable accessibilityRole="button" onPress={onWidgetGuide} style={{ marginTop: 10, minHeight: 42, borderRadius: 11, borderWidth: 1, borderColor: widgetColors.primaryAccent, alignItems: 'center', justifyContent: 'center' }}><Text style={{ color: widgetColors.primaryAccent, fontSize: 12, fontWeight: '800' }}>追加方法を見る</Text></Pressable> : null}
+            <WidgetSettingsCard settings={widgetSettings} onChange={onWidgetSettings} onPickPhoto={onPickWidgetPhoto} onUnlockWidgetPhoto={onUnlockWidgetPhoto} widgetPhotoUnlock={widgetPhotoUnlock} entitlementsResolved={entitlementsResolved} onRemoveAffirmationPhoto={onRemoveAffirmationPhoto} styles={styles} colors={stableWidgetColors} designPattern={designPattern} designCheckColor={designCheckColor} PatternDecor={PatternDecor} planTier={planTier} designCustomizePurchased={designCustomizePurchased} widgetEntitlementOverride={widgetEntitlementOverride} onWidgetEntitlementOverrideChange={onWidgetEntitlementOverrideChange} onLockedWidget={onLockedWidget} showSelectedPreview />
+          </> : <Text style={{ color: widgetColors.secondaryText, fontSize: 11, marginTop: 16 }}>Widget設定を読み込んでいます…</Text>}
+        </ScrollView>
+      </View>
+    </View>
+  </Modal>;
+}
+
+type DesignSettingsSheetProps = {
+  visible: boolean;
+  onClose: () => void;
+  selectedMode: DesignMode;
+  designMode: DesignMode;
+  chicPalette?: ChicThemePalette;
+  monoAppearance: 'auto' | 'light' | 'dark';
+  monoPattern: 'plain' | 'looseLeaf' | 'chic';
+  chicPattern: ChicPattern;
+  chicCheckColor: ChicCheckColor;
+  photoTheme: PhotoThemeSettings;
+  planTier: PlanTier;
+  designCustomizePurchased: boolean;
+  designCustomizePrice?: string;
+  designCustomizePriceStatus?: 'loading' | 'ready' | 'unavailable';
+  onDesignMode: (mode: DesignMode) => void;
+  onMonoAppearance: (appearance: 'auto' | 'light' | 'dark') => void;
+  onMonoPattern: (pattern: 'plain' | 'looseLeaf' | 'chic') => void;
+  onChicPattern: (pattern: ChicPattern) => void;
+  onChicCheckColor: (color: ChicCheckColor) => void;
+  onDesignPreview: (pattern: ChicPattern) => void;
+  onPickPhotoTheme: (target: PhotoThemePhotoTarget) => void;
+  onAdjustPhotoTheme: (target: Exclude<PhotoThemePhotoTarget, 'background' | 'focus'>) => void;
+  onClearPhotoTheme: (target: PhotoThemePhotoTarget) => void;
+  onPremium: (featureId?: PremiumGuideFeatureId) => void;
+  onOpenDesignCustomize?: () => void;
+  fullscreenPreview?: (onBack: () => void, sheetVisible: boolean) => React.ReactNode;
+  styles: any;
+  helpers: any;
+  components: any;
+};
+
+const designSheetBackgroundSources: Partial<Record<ChicPattern, number>> = {
+  stationery: require('../assets/themes/design-backgrounds/design-stationery-background.jpg'),
+  botanicalBackground: require('../assets/themes/design-backgrounds/design-botanical-background.jpg'),
+  ocean: require('../assets/themes/design-backgrounds/design-ocean-background.jpg'),
+  nightSky: require('../assets/themes/design-backgrounds/design-night-sky-background.jpg'),
+};
+
+function DesignAppliedPreview({ tab, selectedMode, designMode, systemColorScheme, monoAppearance, monoPattern, chicPattern, chicCheckColor, chicPalette, photoTheme, colors, styles, helpers, components }: { tab: 'mono' | 'chic' | 'photo'; selectedMode: DesignMode; designMode: DesignMode; systemColorScheme?: 'light' | 'dark' | null; monoAppearance: 'auto' | 'light' | 'dark'; monoPattern: 'plain' | 'looseLeaf' | 'chic'; chicPattern: ChicPattern; chicCheckColor: ChicCheckColor; chicPalette?: ChicThemePalette; photoTheme: PhotoThemeSettings; colors: { background: string; surface: string; border: string; text: string; muted: string; accent: string; soft: string; onAccent: string }; styles: any; helpers: any; components: any }) {
+  const { ChicPatternDecor, BThemeRibbonDecoration, CThemeRibbonDecoration } = components;
+  const savedPalette = helpers.getChicCheckColor(chicCheckColor);
+  const candidatePalette = tab === 'chic' && chicPattern === 'nightSky' && helpers.getNightSkyPalette
+    ? helpers.getNightSkyPalette(savedPalette)
+    : savedPalette;
+  const photoPalette = savedPalette;
+  const monoPreviewMode: 'minimal' | 'dark' = monoAppearance === 'dark'
+    ? 'dark'
+    : monoAppearance === 'light'
+      ? 'minimal'
+      : (systemColorScheme === 'dark' || (!systemColorScheme && designMode === 'dark')) ? 'dark' : 'minimal';
+  const previewMode: DesignMode = tab === 'photo' ? 'photo' : tab === 'chic' ? 'chic' : monoPreviewMode;
+  const monoColors = helpers.getThemeTokens(previewMode === 'dark' ? 'dark' : 'minimal', savedPalette.id).colors;
+  const previewTheme = tab === 'chic'
+    ? { background: candidatePalette.background, surface: candidatePalette.cardSurface, border: candidatePalette.border, text: candidatePalette.textPrimary, muted: candidatePalette.textSecondary, accent: candidatePalette.accent, soft: candidatePalette.accentSoft, onAccent: candidatePalette.onAccent }
+      : tab === 'mono'
+      ? { background: monoColors.screenBackground, surface: monoColors.surface, border: monoColors.border, text: monoColors.primaryText, muted: monoColors.secondaryText, accent: monoColors.primaryAccent, soft: monoColors.softAccent, onAccent: previewMode === 'dark' ? monoColors.screenBackground : '#FFFFFF' }
+      : { background: photoPalette.background, surface: photoPalette.cardSurface, border: photoPalette.border, text: photoPalette.textPrimary, muted: photoPalette.textSecondary, accent: photoPalette.accent, soft: photoPalette.accentSoft, onAccent: photoPalette.onAccent };
+  const isDarkPreview = previewMode === 'dark' || (tab === 'chic' && chicPattern === 'nightSky');
+  const imageSource = tab === 'chic' ? designSheetBackgroundSources[chicPattern] : undefined;
+  const visual = helpers.getChicPatternVisual(chicPattern, candidatePalette);
+  const cardText = isDarkPreview || tab === 'photo' ? '#F4F7FC' : previewTheme.text;
+  const cardMuted = isDarkPreview || tab === 'photo' ? '#B4C0D4' : previewTheme.muted;
+  const cardSurface = isDarkPreview || tab === 'photo' ? 'rgba(18,28,42,0.92)' : previewTheme.surface;
+  const cardBorder = isDarkPreview || tab === 'photo' ? 'rgba(220,225,230,0.42)' : previewTheme.border;
+  const photoPreviewUri = photoTheme.imageUri ?? photoTheme.topImageUris?.home ?? photoTheme.topImageOriginalUris?.home;
+  const background = tab === 'photo' ? previewTheme.background : imageSource ? '#101722' : previewMode === 'dark' ? '#171B24' : previewTheme.background;
+  const useDesignCard = tab === 'chic' || tab === 'photo';
+  const monoCardSurface = tab === 'mono' && monoPattern === 'looseLeaf'
+    ? (previewMode === 'dark' ? 'rgba(34,43,58,0.88)' : 'rgba(247,245,239,0.88)')
+    : tab === 'mono' && monoPattern === 'chic'
+      ? (previewMode === 'dark' ? 'rgba(31,48,70,0.86)' : 'rgba(246,245,240,0.88)')
+      : cardSurface;
+  return <View accessibilityLabel="デザイン適用イメージ" style={{ height: 214, marginTop: 12, borderRadius: 18, borderWidth: 1, borderColor: previewTheme.border, backgroundColor: background, overflow: 'hidden' }}>
+    {imageSource ? <Image source={imageSource} resizeMode="contain" style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, opacity: 0.92 }} /> : null}
+    {tab === 'mono' && monoPattern === 'looseLeaf' ? <View pointerEvents="none" style={{ position: 'absolute', left: 12, right: 12, top: 0, bottom: 0 }}>{[0, 1, 2, 3, 4].map((index) => <View key={index} style={{ position: 'absolute', left: 0, right: 0, top: 24 + index * 40, height: 1, backgroundColor: previewMode === 'dark' ? 'rgba(190,200,220,0.18)' : 'rgba(120,110,90,0.16)' }} />)}<View style={{ position: 'absolute', left: 11, top: 0, bottom: 0, width: 1, backgroundColor: previewMode === 'dark' ? 'rgba(220,150,160,0.28)' : 'rgba(190,120,125,0.28)' }} /></View> : null}
+    {tab === 'mono' && monoPattern === 'chic' ? <View pointerEvents="none" style={{ position: 'absolute', left: -24, top: 58, width: 240, height: 34, backgroundColor: previewMode === 'dark' ? 'rgba(42,61,86,0.7)' : 'rgba(210,208,199,0.6)', transform: [{ rotate: '-18deg' }] }} /> : null}
+    {tab === 'chic' && !imageSource ? <View pointerEvents="none" style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0 }}><ChicPatternDecor pattern={chicPattern} accent={visual.accent} warm={visual.warm} checkColor={chicCheckColor} preview /></View> : null}
+    {tab === 'photo' && photoPreviewUri ? <Image source={{ uri: photoPreviewUri }} resizeMode="cover" style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0 }} /> : null}
+    {tab === 'photo' ? <View pointerEvents="none" style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, backgroundColor: photoPreviewUri ? 'rgba(15,20,28,0.34)' : 'rgba(15,20,28,0.06)' }} /> : null}
+    {tab === 'photo' && !photoPreviewUri ? <View pointerEvents="none" style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, alignItems: 'center', justifyContent: 'center' }}><Text style={{ color: previewTheme.muted, fontSize: 11, fontWeight: '800' }}>写真を選ぶとここに表示されます</Text></View> : null}
+    <View pointerEvents="none" style={{ flex: 1, padding: 12 }}>
+      {tab === 'chic' && chicPattern === 'checkLavenderSatin' ? <BThemeRibbonDecoration compact /> : null}
+      {tab === 'chic' && chicPattern === 'checkBeigeNoir' ? <CThemeRibbonDecoration compact /> : null}
+      {useDesignCard ? <View style={[styles.todayHeroCard, styles.todayHeroCardChic, { flex: 1, backgroundColor: tab === 'photo' ? 'rgba(18,28,42,0.88)' : candidatePalette.cardSurface, borderColor: tab === 'photo' ? 'rgba(220,225,230,0.42)' : candidatePalette.border, shadowColor: candidatePalette.accent }]}>
+        <View style={styles.todayHeroChicLayout}>
+          <View style={[styles.todayHeroChicPlate, { backgroundColor: tab === 'photo' ? 'rgba(18,28,42,0.82)' : candidatePalette.cardSurface }]}>
+            <View style={[styles.todayChicMark, { backgroundColor: candidatePalette.accentSoft }]}><Text style={[styles.todayChicMarkText, { color: candidatePalette.accent }]}>✿</Text></View>
+            <Text style={[styles.todayHeroKicker, { color: tab === 'photo' ? '#D7DEEA' : candidatePalette.textSecondary }]}>今はこれ</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}><View style={[styles.check, { borderColor: candidatePalette.accent }]} /><Text numberOfLines={1} style={[styles.todayHeroCopy, { color: tab === 'photo' ? '#F4F7FC' : candidatePalette.textPrimary, flex: 1 }]}>今日のタスクを確認</Text></View>
+            <Text style={[styles.todayHeroStats, { color: tab === 'photo' ? '#B4C0D4' : candidatePalette.textSecondary }]}>完了 0　残り 1</Text>
+          </View>
+          <View style={styles.todayHeroJarWrap}><View style={styles.miniJarWrap}><View style={[styles.miniJarLid, { backgroundColor: candidatePalette.accent }]} /><View style={[styles.miniJar, styles.miniJarChicGlass, { borderColor: tab === 'photo' ? 'rgba(220,225,230,0.42)' : candidatePalette.border }]}><Text style={[styles.miniJarItem, { left: 8, bottom: 4, color: candidatePalette.accentSoft }]}>●</Text></View></View><Text style={[styles.todayHeroProgressLabel, { color: tab === 'photo' ? '#D7DEEA' : candidatePalette.textSecondary }]}>今日の進み</Text><Text style={[styles.todayHeroJarHint, { color: tab === 'photo' ? '#B4C0D4' : candidatePalette.textMuted }]}>今日できたことを確認</Text></View>
+        </View>
+        <View style={{ minHeight: 34, marginTop: 8, paddingHorizontal: 12, borderTopWidth: 1, borderTopColor: tab === 'photo' ? 'rgba(220,225,230,0.28)' : candidatePalette.border, borderRadius: 12, backgroundColor: candidatePalette.accentSoft, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}><Text style={{ color: candidatePalette.accent, fontSize: 11, fontWeight: '900' }}>集中する</Text><Text style={{ color: candidatePalette.accent, fontSize: 18 }}>›</Text></View>
+      </View> : <View style={[styles.todayHeroCard, styles.todayHeroCardMinimal, previewMode === 'dark' && styles.todayHeroCardMinimalDark, { flex: 1, backgroundColor: monoCardSurface, borderColor: cardBorder }]}>
+        <View style={styles.todayHeroMinimalLayout}>
+          <View style={styles.todayHeroMinimalLeft}><Text style={[styles.todayHeroMinimalKicker, previewMode === 'dark' && styles.todayHeroMinimalKickerDark]}>TODAY</Text><Text style={[styles.todayHeroMinimalNowLabel, previewMode === 'dark' && styles.todayHeroMinimalTextDark]}>今はこれ</Text><View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}><View style={[styles.check, previewMode === 'dark' && styles.checkDark]} /><Text numberOfLines={1} style={[styles.todayHeroMinimalTask, previewMode === 'dark' && styles.todayHeroMinimalTextDark, { color: cardText, flex: 1 }]}>今日のタスクを確認</Text></View><Text style={[styles.todayHeroMinimalStats, previewMode === 'dark' && styles.todayHeroMinimalStatsDark, { color: cardMuted }]}>完了 0 / 残り 1</Text></View>
+          <View style={styles.todayUnifiedAchievementMinimal}><Text style={[styles.todayHeroMinimalKicker, { color: previewTheme.accent }]}>達成グラフ</Text><Text style={[styles.todayHeroMinimalNumber, { color: cardText }]}>00</Text><View style={styles.minimalAchievementBars}>{Array.from({ length: 8 }, (_, index) => <View key={index} style={[styles.minimalAchievementBar, { backgroundColor: index === 0 ? previewTheme.accent : (previewMode === 'dark' ? '#2B3547' : monoColors.secondarySurface) }]} />)}</View><Text style={[styles.todayHeroMinimalStats, { color: cardMuted }]}>今日できたことを確認</Text></View>
+        </View>
+        <View style={{ minHeight: 34, marginTop: 8, borderTopWidth: 1, borderTopColor: previewTheme.border, borderRadius: 12, backgroundColor: previewTheme.soft, paddingHorizontal: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}><Text style={{ color: previewTheme.accent, fontSize: 11, fontWeight: '900' }}>集中する</Text><Text style={{ color: previewTheme.accent, fontSize: 18 }}>›</Text></View>
+      </View>}
+    </View>
+  </View>;
+}
+
+function DesignSettingsSheet({ visible, onClose, selectedMode, designMode, chicPalette, monoAppearance, monoPattern, chicPattern, chicCheckColor, photoTheme, planTier, designCustomizePurchased, designCustomizePrice, designCustomizePriceStatus, onDesignMode, onMonoAppearance, onMonoPattern, onChicPattern, onChicCheckColor, onDesignPreview, onPickPhotoTheme, onAdjustPhotoTheme, onClearPhotoTheme, onPremium, onOpenDesignCustomize, fullscreenPreview, styles, helpers, components }: DesignSettingsSheetProps) {
+  const { ChicPatternSelector, ThemeColorSelector, PremiumFeatureIcon } = components;
+  const systemColorScheme = useColorScheme();
+  const [tab, setTab] = useState<'mono' | 'chic' | 'photo'>(selectedMode === 'photo' ? 'photo' : selectedMode === 'chic' ? 'chic' : 'mono');
+  const [sheetView, setSheetView] = useState<'settings' | 'fullscreenPreview'>('settings');
+  useEffect(() => {
+    if (!visible) {
+      setSheetView('settings');
+      return;
+    }
+    setTab(selectedMode === 'photo' ? 'photo' : selectedMode === 'chic' ? 'chic' : 'mono');
+  }, [visible]);
+  const isDark = designMode === 'dark';
+  const base = helpers.getThemeTokens(designMode, chicPalette?.id ?? 'cool').colors;
+  const colors = {
+    background: designMode === 'chic' && chicPalette ? chicPalette.background : base.screenBackground,
+    surface: designMode === 'chic' && chicPalette ? chicPalette.cardSurface : base.surface,
+    border: designMode === 'chic' && chicPalette ? chicPalette.border : base.border,
+    text: designMode === 'chic' && chicPalette ? chicPalette.textPrimary : base.primaryText,
+    muted: designMode === 'chic' && chicPalette ? chicPalette.textSecondary : base.secondaryText,
+    accent: designMode === 'chic' && chicPalette ? chicPalette.accent : base.primaryAccent,
+    soft: designMode === 'chic' && chicPalette ? chicPalette.accentSoft : base.softAccent,
+    onAccent: designMode === 'chic' && chicPalette ? chicPalette.onAccent : (isDark ? base.screenBackground : '#FFFFFF'),
+  };
+  const monoPreviewMode: 'minimal' | 'dark' = monoAppearance === 'dark'
+    ? 'dark'
+    : monoAppearance === 'light'
+      ? 'minimal'
+      : (systemColorScheme === 'dark' || (!systemColorScheme && designMode === 'dark')) ? 'dark' : 'minimal';
+  const currentMonoLabel = monoAppearance === 'auto'
+    ? `Mono ${designMode === 'dark' ? 'Dark' : 'Light'}（自動）`
+    : monoAppearance === 'dark' ? 'Mono Dark' : 'Mono Light';
+  const selectedLabel = selectedMode === 'minimal' || selectedMode === 'dark'
+    ? currentMonoLabel
+      : selectedMode === 'photo'
+        ? `Photo / ${getDesignCheckColorLabel(chicCheckColor)}`
+        : chicPattern === 'nightSky'
+          ? 'Night Sky'
+          : chicPattern === 'stationery'
+            ? 'Stationery'
+            : chicPattern === 'botanicalBackground'
+              ? 'Botanical'
+                : chicPattern === 'ocean'
+                  ? 'Ocean'
+                  : `Design / ${getDesignCheckColorLabel(chicCheckColor)}`;
+  const previewCandidateLabel = tab === 'mono'
+    ? (`Mono ${monoPreviewMode === 'dark' ? 'Dark' : 'Light'} / ${monoPattern === 'plain' ? 'プレーン' : monoPattern === 'looseLeaf' ? 'ルーズリーフ' : 'シック'}`)
+    : tab === 'photo'
+      ? `Photo / ${getDesignCheckColorLabel(chicCheckColor)}`
+      : chicPattern === 'nightSky'
+        ? 'Night Sky'
+        : chicPattern === 'stationery'
+          ? 'Stationery'
+          : chicPattern === 'botanicalBackground'
+            ? 'Botanical'
+            : chicPattern === 'ocean'
+              ? 'Ocean'
+              : `Design / ${getDesignCheckColorLabel(chicCheckColor)}`;
+  const previewMatchesSaved = tab === 'mono'
+    ? ((selectedMode === 'minimal' || selectedMode === 'dark') && (monoAppearance === 'auto' || (monoAppearance === 'dark' && selectedMode === 'dark') || (monoAppearance === 'light' && selectedMode === 'minimal')))
+    : tab === 'photo'
+      ? selectedMode === 'photo'
+      : selectedMode === 'chic';
+  const compactDesignLabel = (value: string) => value.replace(' / ', '・').replace('（自動）', '・自動');
+  const statusLabel = compactDesignLabel(previewMatchesSaved ? selectedLabel : previewCandidateLabel);
+  const tabButton = (value: 'mono' | 'chic' | 'photo', label: string) => <Pressable accessibilityRole="tab" accessibilityState={{ selected: tab === value }} onPress={() => setTab(value)} style={{ flex: 1, minHeight: 40, alignItems: 'center', justifyContent: 'center', borderRadius: 11, backgroundColor: tab === value ? colors.soft : 'transparent', borderWidth: 1, borderColor: tab === value ? colors.accent : colors.border }}><Text style={{ color: tab === value ? colors.accent : colors.muted, fontSize: 12, fontWeight: '900' }}>{label}</Text></Pressable>;
+  const monoCard = (mode: 'minimal' | 'dark', label: string) => {
+    const active = selectedMode === mode && (monoAppearance === 'auto' ? monoPreviewMode === mode : (monoAppearance === 'dark' ? mode === 'dark' : mode === 'minimal'));
+    return <Pressable key={mode} accessibilityRole="button" accessibilityState={{ selected: active }} onPress={() => { onDesignMode(mode); onMonoAppearance(mode === 'dark' ? 'dark' : 'light'); }} style={{ flex: 1, minHeight: 132, padding: 10, borderRadius: 15, borderWidth: active ? 2 : 1, borderColor: active ? colors.accent : colors.border, backgroundColor: mode === 'dark' ? '#171B24' : colors.surface }}>
+      <View style={{ flex: 1, borderRadius: 10, padding: 10, justifyContent: 'space-between', backgroundColor: mode === 'dark' ? '#222B3A' : '#F7F5EF' }}><Text style={{ color: mode === 'dark' ? '#F4F7FC' : '#2F3542', fontSize: 11, fontWeight: '800' }}>Rhythm</Text><Text style={{ color: mode === 'dark' ? '#F4F7FC' : '#2F3542', fontSize: 16, fontWeight: '800' }}>今日のTask</Text><Text style={{ color: mode === 'dark' ? '#B4C0D4' : '#697386', fontSize: 10 }}>静かに整える</Text></View>
+      <Text style={{ marginTop: 8, color: active ? colors.accent : colors.muted, fontSize: 12, fontWeight: '900' }}>{label}{active ? '  ✓' : ''}</Text>
+    </Pressable>;
+  };
+  return <Modal visible={visible} animationType="slide" transparent onRequestClose={sheetView === 'fullscreenPreview' ? () => setSheetView('settings') : onClose}>
+    <View style={{ flex: 1, justifyContent: sheetView === 'fullscreenPreview' ? 'flex-start' : 'flex-end', backgroundColor: 'rgba(0,0,0,0.28)' }}>
+      <View style={sheetView === 'fullscreenPreview'
+        ? { flex: 1, height: '100%', maxHeight: '100%', backgroundColor: colors.background }
+        : { height: '92%', maxHeight: '92%', borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingTop: 10, backgroundColor: colors.background }}>
+        {fullscreenPreview ? <View style={{ flex: 1, display: sheetView === 'fullscreenPreview' ? 'flex' : 'none' }}>{fullscreenPreview(() => setSheetView('settings'), visible)}</View> : null}
+        <View style={{ flex: 1, display: sheetView === 'settings' ? 'flex' : 'none' }}>
+        <View style={{ alignSelf: 'center', width: 42, height: 4, borderRadius: 3, backgroundColor: colors.border }} />
+        <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 18, paddingTop: 14, paddingBottom: 10 }}><View style={{ flex: 1 }}><Text style={{ color: colors.text, fontSize: 20, fontWeight: '900' }}>デザインを変更</Text><Text style={{ color: colors.muted, fontSize: 11, marginTop: 3 }}>Mono・Design・Photoをここから選べます</Text></View><Pressable accessibilityRole="button" accessibilityLabel="閉じる" onPress={onClose} style={{ width: 40, height: 40, alignItems: 'center', justifyContent: 'center' }}><Text style={{ color: colors.muted, fontSize: 26, fontWeight: '300' }}>×</Text></Pressable></View>
+        <View style={{ flexDirection: 'row', gap: 8, paddingHorizontal: 18, paddingBottom: 12 }}>{tabButton('mono', 'Mono')}{tabButton('chic', 'Design')}{tabButton('photo', 'Photo')}</View>
+        <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: 18, paddingBottom: 72 }} showsVerticalScrollIndicator={false}>
+          <DesignAppliedPreview tab={tab} selectedMode={selectedMode} designMode={designMode} systemColorScheme={systemColorScheme} monoAppearance={monoAppearance} monoPattern={monoPattern} chicPattern={chicPattern} chicCheckColor={chicCheckColor} chicPalette={chicPalette} photoTheme={photoTheme} colors={colors} styles={styles} helpers={helpers} components={components} />
+          {fullscreenPreview && <Pressable accessibilityRole="button" accessibilityLabel="Today画面を全画面で試す" onPress={() => setSheetView('fullscreenPreview')} style={{ marginTop: 9, minHeight: 42, borderRadius: 12, borderWidth: 1, borderColor: colors.accent, backgroundColor: colors.soft, alignItems: 'center', justifyContent: 'center' }}><Text style={{ color: colors.accent, fontSize: 12, fontWeight: '900' }}>全画面で試す</Text></Pressable>}
+          <DesignStatusCards label={statusLabel} previewing={!previewMatchesSaved} colors={colors} purchased={designCustomizePurchased} planTier={planTier} onOpen={onOpenDesignCustomize ? onOpenDesignCustomize : () => onPremium('photo_design')} />
+          {tab === 'mono' && <View style={{ marginTop: 12 }}><Text style={{ color: colors.text, fontSize: 14, fontWeight: '900' }}>モノトーンテーマ</Text><Text style={{ color: colors.muted, fontSize: 11, marginTop: 4 }}>外観</Text><View style={{ flexDirection: 'row', gap: 8, marginTop: 7 }}>{(['auto', 'light', 'dark'] as const).map((appearance) => { const active = monoAppearance === appearance; const label = appearance === 'auto' ? '自動' : appearance === 'light' ? 'Light' : 'Dark'; return <Pressable key={appearance} accessibilityRole="button" accessibilityLabel={`Mono ${label}`} accessibilityState={{ selected: active }} onPress={() => { onDesignMode('minimal'); onMonoAppearance(appearance); }} style={{ flex: 1, minHeight: 38, alignItems: 'center', justifyContent: 'center', borderRadius: 10, borderWidth: active ? 2 : 1, borderColor: active ? colors.accent : colors.border, backgroundColor: active ? colors.soft : 'transparent' }}><Text style={{ color: active ? colors.accent : colors.muted, fontSize: 11, fontWeight: '900' }}>{label}</Text></Pressable>; })}</View><Text style={{ color: colors.muted, fontSize: 10, marginTop: 5 }}>{monoAppearance === 'auto' ? `iPhoneの外観に合わせています（現在は${monoPreviewMode === 'dark' ? 'ダーク' : 'ライト'}）` : monoAppearance === 'dark' ? '暗いMonoを固定' : '明るいMonoを固定'}</Text><View style={{ flexDirection: 'row', gap: 10, marginTop: 12 }}>{monoCard('minimal', 'Mono Light')}{monoCard('dark', 'Mono Dark')}</View><View style={{ marginTop: 12, padding: 12, borderRadius: 14, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface }}><Text style={{ color: colors.muted, fontSize: 11 }}>背景</Text><View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}>{(['plain', 'looseLeaf', 'chic'] as const).map((pattern) => { const active = monoPattern === pattern; const locked = pattern !== 'plain' && !(planTier === 'premium' || designCustomizePurchased); return <Pressable key={pattern} accessibilityRole="button" accessibilityState={{ selected: active, disabled: locked }} onPress={() => { if (locked) { onOpenDesignCustomize ? onOpenDesignCustomize() : onPremium('photo_design'); return; } onMonoPattern(pattern); }} style={{ flex: 1, minHeight: 38, alignItems: 'center', justifyContent: 'center', borderRadius: 10, borderWidth: active ? 2 : 1, borderColor: active ? colors.accent : colors.border, backgroundColor: active ? colors.soft : 'transparent', opacity: locked ? 0.58 : 1 }}><Text numberOfLines={1} style={{ color: active ? colors.accent : colors.muted, fontSize: 10, fontWeight: '800' }}>{pattern === 'plain' ? 'プレーン' : pattern === 'looseLeaf' ? 'ルーズリーフ' : 'シック'}</Text></Pressable>; })}</View></View></View>}
+          {tab === 'chic' && <View style={{ marginTop: 12 }}><View style={{ padding: 12, borderRadius: 14, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface }}><Text style={{ color: colors.text, fontSize: 13, fontWeight: '900' }}>テーマカラー</Text><Text style={{ color: colors.muted, fontSize: 11, marginTop: 3 }}>選択中のaccentをデザインに反映します</Text><View style={{ marginTop: 8 }}><ThemeColorSelector color={chicCheckColor} onChange={onChicCheckColor} designMode="chic" /></View></View><ChicPatternSelector designMode="chic" chicPattern={chicPattern} chicCheckColor={chicCheckColor} planTier={planTier} designCustomizePurchased={designCustomizePurchased} onPattern={(pattern: ChicPattern) => { onDesignMode('chic'); onChicPattern(pattern); }} onCheckColor={onChicCheckColor} onPremium={() => onPremium('photo_design')} onPreview={onDesignPreview} /></View>}
+          {tab === 'photo' && <View style={{ marginTop: 12 }}><View style={{ padding: 12, borderRadius: 14, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface }}><Text style={{ color: colors.text, fontSize: 13, fontWeight: '900' }}>テーマカラー</Text><Text style={{ color: colors.muted, fontSize: 11, marginTop: 3 }}>写真の上に重ねるUIのaccentを選べます</Text><View style={{ marginTop: 8 }}><ThemeColorSelector color={chicCheckColor} onChange={onChicCheckColor} designMode="photo" /></View></View><Text style={{ color: colors.text, fontSize: 14, fontWeight: '900', marginTop: 12 }}>写真を使う</Text><Text style={{ color: colors.muted, fontSize: 11, marginTop: 3 }}>好きな写真を背景にできます</Text><Pressable accessibilityRole="button" accessibilityLabel={photoTheme.imageUri ? '写真を変更' : '写真を選ぶ'} onPress={() => onPickPhotoTheme('background')} style={{ marginTop: 9, minHeight: 42, borderRadius: 11, backgroundColor: colors.accent, borderWidth: 1, borderColor: colors.accent, alignItems: 'center', justifyContent: 'center' }}><Text style={{ color: colors.onAccent, fontSize: 12, fontWeight: '900' }}>{photoTheme.imageUri ? '写真を変更' : '写真を選ぶ'}</Text></Pressable><Pressable accessibilityRole="button" onPress={() => onDesignMode('photo')} style={{ marginTop: 7, minHeight: 38, borderRadius: 11, backgroundColor: selectedMode === 'photo' ? colors.soft : 'transparent', borderWidth: 1, borderColor: colors.accent, alignItems: 'center', justifyContent: 'center' }}><Text style={{ color: colors.accent, fontSize: 11, fontWeight: '900' }}>{selectedMode === 'photo' ? '写真デザインを使用中' : '写真デザインを使う'}</Text></Pressable><PhotoThemeSettingsCard photoTheme={photoTheme} designMode={designMode} chicPalette={chicPalette} planTier={planTier} designCustomizePurchased={designCustomizePurchased} onPremium={onPremium} onPick={onPickPhotoTheme} onAdjust={onAdjustPhotoTheme} onClear={onClearPhotoTheme} styles={styles} /></View>}
+        </ScrollView>
+        <Pressable accessibilityRole="button" onPress={onClose} style={{ marginHorizontal: 18, marginBottom: 18, minHeight: 46, borderRadius: 13, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.accent }}><Text style={{ color: colors.onAccent, fontSize: 13, fontWeight: '900' }}>閉じる</Text></Pressable>
+        </View>
+      </View>
+    </View>
+  </Modal>;
+}
+
 export function SettingsScreen({
   tasks,
   timeline,
@@ -94,7 +359,6 @@ export function SettingsScreen({
   widgetSettings,
   onPickWidgetPhoto,
   onUnlockWidgetPhoto,
-  onRemoveWidgetPhotoBackground,
   widgetPhotoUnlock,
   entitlementsResolved,
   onRemoveAffirmationPhoto,
@@ -144,6 +408,7 @@ export function SettingsScreen({
   designCustomizePrice,
   designCustomizePriceStatus,
   onOpenDesignCustomize,
+  fullscreenPreview,
   initialAppearanceOpen = false,
   captureDesignOnly = false,
   planTier,
@@ -176,12 +441,11 @@ export function SettingsScreen({
   widgetSettings: WidgetSettings;
   onPickWidgetPhoto?: (widgetType?: WidgetType, override?: WidgetEntitlementOverride) => void;
   onUnlockWidgetPhoto?: (widgetType: WidgetType, override?: WidgetEntitlementOverride) => void;
-  onRemoveWidgetPhotoBackground?: (widgetType: WidgetType, override?: WidgetEntitlementOverride) => Promise<boolean>;
   widgetPhotoUnlock?: { widgetType: WidgetType | null; expiresAt: string | null };
   entitlementsResolved?: boolean;
   onRemoveAffirmationPhoto?: (index?: number) => void;
   onWidgetGuide?: () => void;
-  onRefreshWidget?: () => void;
+  onRefreshWidget?: () => void | Promise<void>;
   onWidgetSectionOpened?: () => void;
   onSize: (size: WidgetSize) => void;
   onWidgetSettings: (settings: WidgetSettings) => void;
@@ -231,6 +495,7 @@ export function SettingsScreen({
   designCustomizePrice?: string;
   designCustomizePriceStatus?: 'loading' | 'ready' | 'unavailable';
   onOpenDesignCustomize?: () => void;
+  fullscreenPreview?: (onBack: () => void, sheetVisible: boolean) => React.ReactNode;
   /** Opens the appearance section for the first-run design choice. */
   initialAppearanceOpen?: boolean;
   /** Development capture only: stop after the production design selector. */
@@ -241,16 +506,19 @@ export function SettingsScreen({
   components: any;
 }) {
   const { getChicPatternVisual, hasPremiumAccess, getChicCheckColor, countdownToClock, getUrgencyStatus, getNextBestAction, designModes, completionIcons, summarizePremiumTaskTemplate } = helpers;
-  const { BThemeRibbonDecoration, CThemeRibbonDecoration, ChicPatternDecor, ChicPatternSelector, ThemeColorSelector, SettingsDisclosure, NotificationManagerCard } = components;
+  const { BThemeRibbonDecoration, CThemeRibbonDecoration, ChicPatternDecor, ChicPatternSelector, ThemeColorSelector, SettingsDisclosure, NotificationManagerCard, PremiumFeatureIcon } = components;
   const [newTemplate, setNewTemplate] = useState('');
   const [liveActivitySettingsOpen, setLiveActivitySettingsOpen] = useState(false);
+  const [widgetRefreshing, setWidgetRefreshing] = useState(false);
+  const [widgetSheetOpen, setWidgetSheetOpen] = useState(false);
+  const [designSheetOpen, setDesignSheetOpen] = useState(initialAppearanceOpen || captureDesignOnly);
   const selectedMode = selectedDesignMode ?? designMode;
   const isDark = designMode === 'dark';
   const isDesign = selectedMode === 'chic' || selectedMode === 'photo';
   const isMono = selectedMode === 'minimal' || selectedMode === 'dark';
   const canUseMonoPaidPattern = planTier === 'premium' || designCustomizePurchased;
   const effectiveMonoPattern = (monoPattern === 'looseLeaf' || monoPattern === 'chic') && canUseMonoPaidPattern ? monoPattern : 'plain';
-  const [expandedSetting, setExpandedSetting] = useState<'appearance' | 'travelApps' | 'notifications' | 'quick' | 'widget' | 'premium' | 'about' | null>(captureDesignOnly || initialAppearanceOpen ? 'appearance' : null);
+  const [expandedSetting, setExpandedSetting] = useState<'appearance' | 'travelApps' | 'notifications' | 'quick' | 'premium' | 'about' | null>(captureDesignOnly || initialAppearanceOpen ? 'appearance' : null);
   const previewTasks = tasks.filter((task) => showCompleted || !task.done).slice(0, size === 'small' ? 2 : 3);
   const isCheckPattern = chicPattern === 'checkLavenderSatin' || chicPattern === 'checkBeigeNoir' || chicPattern === 'checkMauveFrame';
   const patternVisual = isCheckPattern ? getChicCheckColor(chicCheckColor) : getChicPatternVisual(chicPattern, chicPalette);
@@ -273,6 +541,19 @@ export function SettingsScreen({
     accent: baseTheme.primaryAccent,
     onAccent: '#FFFFFF',
   };
+  const designSummary = selectedMode === 'minimal' || selectedMode === 'dark'
+    ? (monoAppearance === 'auto' ? `Mono ${designMode === 'dark' ? 'Dark' : 'Light'}（自動）` : monoAppearance === 'dark' ? 'Mono Dark' : 'Mono Light')
+      : selectedMode === 'photo'
+        ? `Photo / ${checkColorLabel}`
+        : chicPattern === 'nightSky'
+          ? 'Night Sky'
+          : chicPattern === 'stationery'
+            ? 'Stationery'
+            : chicPattern === 'botanicalBackground'
+              ? 'Botanical'
+              : chicPattern === 'ocean'
+                ? 'Ocean'
+                : `Design / ${checkColorLabel}`;
   const resetDevelopmentData = () => {
     Alert.alert(
       '初回起動状態に戻す',
@@ -313,8 +594,46 @@ export function SettingsScreen({
         {onOpenCaptureStudio ? <Pressable onPress={onOpenCaptureStudio} style={{ minHeight: 42, marginTop: 10, borderRadius: 11, backgroundColor: isDark ? '#40506A' : '#EEF1F7', alignItems: 'center', justifyContent: 'center' }}><Text style={{ color: isDark ? '#F4F7FC' : '#33415D', fontSize: 12, fontWeight: '800' }}>Onboarding Capture Studio</Text></Pressable> : null}
         <Pressable onPress={resetDevelopmentData} style={{ minHeight: 42, marginTop: 10, borderRadius: 11, borderWidth: 1, borderColor: isDark ? '#8F9BB0' : '#C9D0DD', alignItems: 'center', justifyContent: 'center' }}><Text style={{ color: isDark ? '#F4F7FC' : '#33415D', fontSize: 12, fontWeight: '800' }}>初回起動状態に戻す</Text></Pressable>
       </View>}
-      <SettingsDisclosure designMode={designMode} chicPalette={chicPalette} title="見た目" subtitle="Mono / Design / 写真を選ぶ" expanded={expandedSetting === 'appearance'} onPress={() => setExpandedSetting((current) => current === 'appearance' ? null : 'appearance')}>
-      <View accessibilityLabel={isDesign ? `Design ${checkColorLabel}` : 'Mono'} style={[styles.modeCard, isDark && styles.darkSurface, isDesign && chicPalette && { backgroundColor: chicPalette.cardSurface, borderColor: chicPalette.border }]}>
+      {!captureDesignOnly && <View style={styles.settingsDisclosure}>
+        <Pressable accessibilityRole="button" accessibilityLabel="デザイン設定を開く" onPress={() => setDesignSheetOpen(true)} style={[styles.settingsDisclosureHeader, isDark && styles.darkSurface, isDesign && chicPalette && { backgroundColor: guideColors.surface, borderColor: guideColors.border }]}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, minWidth: 0 }}><View style={{ width: 32, alignItems: 'flex-start' }}><PremiumFeatureIcon name="palette" color={guideColors.accent} /></View><View style={{ flex: 1, minWidth: 0 }}><Text style={[styles.settingsDisclosureTitle, { color: guideColors.textPrimary }]}>デザイン</Text><Text style={[styles.settingsDisclosureSubtitle, { color: guideColors.textSecondary }]} numberOfLines={1}>{`現在：${designSummary}`}</Text></View></View>
+          <Text style={[styles.settingsDisclosureChevron, { color: guideColors.accent }]}>›</Text>
+        </Pressable>
+      </View>}
+      <DesignSettingsSheet
+        visible={designSheetOpen}
+        onClose={() => setDesignSheetOpen(false)}
+        selectedMode={selectedMode}
+        designMode={designMode}
+        chicPalette={chicPalette}
+        monoAppearance={monoAppearance}
+        monoPattern={monoPattern}
+        chicPattern={chicPattern}
+        chicCheckColor={chicCheckColor}
+        photoTheme={photoTheme}
+        planTier={planTier}
+        designCustomizePurchased={designCustomizePurchased}
+        designCustomizePrice={designCustomizePrice}
+        designCustomizePriceStatus={designCustomizePriceStatus}
+        onDesignMode={onDesignMode}
+        onMonoAppearance={onMonoAppearance}
+        onMonoPattern={onMonoPattern}
+        onChicPattern={onChicPattern}
+        onChicCheckColor={onChicCheckColor}
+        onDesignPreview={onDesignPreview}
+        onPickPhotoTheme={onPickPhotoTheme}
+        onAdjustPhotoTheme={onAdjustPhotoTheme}
+        onClearPhotoTheme={onClearPhotoTheme}
+        onPremium={onPremium}
+        onOpenDesignCustomize={onOpenDesignCustomize}
+        fullscreenPreview={fullscreenPreview}
+        styles={styles}
+        helpers={helpers}
+        components={components}
+      />
+      {false && <SettingsDisclosure icon="palette" designMode={designMode} chicPalette={chicPalette} title="見た目" subtitle="Mono / Design / 写真を選ぶ" expanded={expandedSetting === 'appearance'} onPress={() => setExpandedSetting((current) => current === 'appearance' ? null : 'appearance')}>
+      {!captureDesignOnly && <DesignCustomizeCard designMode={designMode} chicPalette={chicPalette} planTier={planTier} purchased={designCustomizePurchased} localizedPrice={designCustomizePrice} priceStatus={designCustomizePriceStatus} onOpen={onOpenDesignCustomize} onTry={() => onDesignPreview('floral')} />}
+      <View accessibilityLabel={isDesign ? `Design ${checkColorLabel}` : 'Mono'} style={[styles.modeCard, isDark && styles.darkSurface, isDesign && chicPalette && { backgroundColor: chicPalette?.cardSurface, borderColor: chicPalette?.border }]}>
         {selectedMode === 'chic' && chicPattern === 'checkLavenderSatin' && <BThemeRibbonDecoration compact />}
         {selectedMode === 'chic' && chicPattern === 'checkBeigeNoir' && <CThemeRibbonDecoration compact />}
         {selectedMode === 'chic' && <ChicPatternSelector designMode={designMode} chicPattern={chicPattern} chicCheckColor={chicCheckColor} planTier={planTier} designCustomizePurchased={designCustomizePurchased} onPattern={onChicPattern} onCheckColor={onChicCheckColor} onPremium={onPremium} onPreview={onDesignPreview} />}
@@ -346,7 +665,7 @@ export function SettingsScreen({
         </View>
       </View>}
         {isDesign && <View style={{ marginTop: 12 }}>
-          <Text style={[styles.fieldLabel, designMode === 'dark' && styles.darkAccentText, { color: designMode === 'dark' ? '#B4C0D4' : isDesign && chicPalette ? chicPalette.textPrimary : getChicCheckColor(chicCheckColor).textPrimary }]}>テーマカラー</Text>
+          <Text style={[styles.fieldLabel, designMode === 'dark' && styles.darkAccentText, { color: designMode === 'dark' ? '#B4C0D4' : isDesign && chicPalette ? chicPalette?.textPrimary : getChicCheckColor(chicCheckColor).textPrimary }]}>テーマカラー</Text>
           <ThemeColorSelector color={chicCheckColor} onChange={onChicCheckColor} designMode={designMode} />
         </View>}
         <Pressable style={[styles.savedTemplateLocked, selectedMode === 'photo' && styles.patternChoiceActive, isDesign && chicPalette && { backgroundColor: guideColors.surface, borderColor: guideColors.border }]} onPress={() => onDesignMode('photo')}>
@@ -360,90 +679,86 @@ export function SettingsScreen({
           <Text style={[styles.switchCopy, isDark && styles.darkMutedText, isDesign && chicPalette && { color: guideColors.textSecondary }]}>タスク完了時に表示するマーク</Text>
           <View style={styles.iconChoices}>{completionIcons.map((icon: string) => <Pressable key={icon} accessibilityRole="button" accessibilityLabel={`完了アイコン ${icon}`} style={[styles.iconChoice, { backgroundColor: isDesign && chicPalette ? chicPalette.surfaceSubtle : baseTheme.secondarySurface, borderColor: isDesign && chicPalette ? chicPalette.border : baseTheme.border }, completionIcon === icon && { backgroundColor: isDesign && chicPalette ? chicPalette.accentSoft : baseTheme.softAccent, borderColor: isDesign && chicPalette ? chicPalette.accent : baseTheme.primaryAccent }]} onPress={() => onCompletionIcon(icon)}><Text style={[styles.iconChoiceText, { color: isDesign && chicPalette ? chicPalette.textSecondary : baseTheme.secondaryText }, completionIcon === icon && { color: isDesign && chicPalette ? chicPalette.accent : baseTheme.primaryAccent }]}>{icon}</Text></Pressable>)}</View>
         </View>
-        {!captureDesignOnly && <DesignCustomizeCard designMode={designMode} chicPalette={chicPalette} planTier={planTier} purchased={designCustomizePurchased} localizedPrice={designCustomizePrice} priceStatus={designCustomizePriceStatus} onOpen={onOpenDesignCustomize} onTry={() => onDesignPreview('floral')} />}
-      </SettingsDisclosure>
-      {!captureDesignOnly && <>
-       <SettingsDisclosure designMode={designMode} chicPalette={chicPalette} title="ホーム画面のWidget" subtitle="追加・管理・使い方" expanded={expandedSetting === 'widget'} onPress={() => {
-         const opening = expandedSetting !== 'widget';
-         setExpandedSetting((current) => current === 'widget' ? null : 'widget');
-         if (opening) onWidgetSectionOpened?.();
-       }}>
-       <View style={[styles.settingsCard, { backgroundColor: guideColors.surface, borderColor: guideColors.border, borderWidth: 1 }]}>
-         <Text style={[styles.settingsTitle, { color: guideColors.textPrimary }]}>Widget</Text>
-         <Text style={[styles.switchCopy, { color: guideColors.textSecondary, marginTop: 6 }]}>ホーム画面から、RhythmPaceをもっと使いやすく。</Text>
-         <View style={{ flexDirection: 'row', gap: 8, marginTop: 12 }}>
-           <Pressable accessibilityRole="button" onPress={onWidgetGuide} style={{ flex: 1, minHeight: 42, borderRadius: 11, borderWidth: 1, borderColor: guideColors.accent, alignItems: 'center', justifyContent: 'center' }}><Text style={{ color: guideColors.accent, fontSize: 12, fontWeight: '800' }}>追加方法を見る</Text></Pressable>
-           <Pressable accessibilityRole="button" onPress={onRefreshWidget} style={{ flex: 1, minHeight: 42, borderRadius: 11, backgroundColor: guideColors.accent, alignItems: 'center', justifyContent: 'center' }}><Text style={{ color: guideColors.onAccent, fontSize: 12, fontWeight: '800' }}>Widgetを更新</Text></Pressable>
-         </View>
-       </View>
-       <WidgetSettingsCard
-         settings={widgetSettings}
-         onChange={onWidgetSettings}
-         onPickPhoto={onPickWidgetPhoto}
-         onUnlockWidgetPhoto={onUnlockWidgetPhoto}
-         onRemoveWidgetPhotoBackground={onRemoveWidgetPhotoBackground}
-         widgetPhotoUnlock={widgetPhotoUnlock}
-         entitlementsResolved={entitlementsResolved}
-         onRemoveAffirmationPhoto={onRemoveAffirmationPhoto}
-         styles={styles}
-         colors={isDesign && chicPalette ? {
-           surface: chicPalette.cardSurface,
-           border: chicPalette.border,
-           primaryText: chicPalette.textPrimary,
-           secondaryText: chicPalette.textSecondary,
-           primaryAccent: chicPalette.accent,
-           softAccent: chicPalette.accentSoft,
-           screenBackground: chicPalette.background,
-         } : {
-           surface: baseTheme.surface,
-           border: baseTheme.border,
-           primaryText: baseTheme.primaryText,
-           secondaryText: baseTheme.secondaryText,
-           primaryAccent: baseTheme.primaryAccent,
-           softAccent: baseTheme.softAccent,
-           screenBackground: baseTheme.screenBackground,
-         }}
-         // These completed image backgrounds are app-only Design patterns;
-         // keep the native Widget configuration on its existing safe patterns.
-         designPattern={isDesign && !(['stationery', 'botanicalBackground', 'ocean', 'nightSky'] as string[]).includes(chicPattern) ? chicPattern : 'plain'}
-         designCheckColor={chicCheckColor}
-         PatternDecor={ChicPatternDecor}
-         planTier={widgetPlanTier ?? planTier}
-         designCustomizePurchased={widgetDesignCustomizePurchased ?? designCustomizePurchased}
-         widgetEntitlementOverride={widgetEntitlementOverride}
-         onWidgetEntitlementOverrideChange={onWidgetEntitlementOverrideChange}
-         onLockedWidget={(access) => access === 'premium' ? onPremium('widget') : onOpenDesignCustomize ? onOpenDesignCustomize() : onPremium('photo_design')}
-       />
-       </SettingsDisclosure>
-       <SettingsDisclosure designMode={designMode} chicPalette={chicPalette} title="通知・フィードバック" subtitle="通知管理・触覚フィードバック" expanded={expandedSetting === 'notifications'} onPress={() => setExpandedSetting((current) => current === 'notifications' ? null : 'notifications')}>
-       <NotificationManagerCard designMode={designMode} chicPalette={chicPalette} />
-       <View style={[styles.settingsCard, isDark && styles.darkSurface, isDesign && chicPalette && { backgroundColor: guideColors.surface, borderColor: guideColors.border }]}>
-         <View style={styles.switchRow}><View style={{ flex: 1 }}><Text style={[styles.switchTitle, isDark && styles.darkBodyText, isDesign && chicPalette && { color: guideColors.textPrimary }]}>ライブアクティビティ</Text><Text style={[styles.switchCopy, isDark && styles.darkMutedText, isDesign && chicPalette && { color: guideColors.textSecondary }]}>ロック画面とDynamic Islandに「今はこれ」を表示します</Text>{planTier === 'premium' ? <Text style={[styles.switchCopy, isDark && styles.darkMutedText, isDesign && chicPalette && { color: guideColors.textSecondary }, { marginTop: 4 }]}>Premiumでは次の予定・出発・集中・アファメーションも表示します</Text> : designCustomizePurchased ? <Text style={[styles.switchCopy, isDark && styles.darkMutedText, isDesign && chicPalette && { color: guideColors.textSecondary }, { marginTop: 4 }]}>Design Customizeではアクセントカラーを変更できます</Text> : <Text style={[styles.switchCopy, isDark && styles.darkMutedText, isDesign && chicPalette && { color: guideColors.textSecondary }, { marginTop: 4 }]}>無料版は今やることの基本表示に対応しています</Text>}</View><Switch value={liveActivityEnabled} onValueChange={(value) => onLiveActivityEnabled?.(value)} trackColor={{ false: isDark ? '#40506A' : baseTheme.border, true: isDesign && chicPalette ? chicPalette.accent : baseTheme.primaryAccent }} thumbColor={liveActivityEnabled ? (isDesign && chicPalette ? chicPalette.onAccent : '#FFFFFF') : (isDark ? '#8F9BB0' : '#FFFFFF')} /></View>
-       </View>
-       {liveActivityDisplayOptions && onLiveActivityDisplayOptionsChange && liveActivityCustomization && onLiveActivityCustomizationChange ? <>
-         <Pressable accessibilityRole="button" onPress={() => setLiveActivitySettingsOpen(true)} style={[styles.settingsCard, isDark && styles.darkSurface, isDesign && chicPalette && { backgroundColor: guideColors.surface, borderColor: guideColors.border }, { marginTop: 10 }]}>
-           <View style={styles.switchRow}><View style={{ flex: 1 }}><Text style={[styles.switchTitle, isDark && styles.darkBodyText, isDesign && chicPalette && { color: guideColors.textPrimary }]}>表示内容・文字・チェック操作</Text><Text style={[styles.switchCopy, isDark && styles.darkMutedText, isDesign && chicPalette && { color: guideColors.textSecondary }]}>Live Activityの詳細設定を開く</Text></View><Text style={{ color: guideColors.accent, fontSize: 22, fontWeight: '800' }}>›</Text></View>
-         </Pressable>
-         <LiveActivitySettingsSheet
-           visible={liveActivitySettingsOpen}
-           options={liveActivityDisplayOptions}
-           customization={liveActivityCustomization}
-           onClose={() => setLiveActivitySettingsOpen(false)}
-           onSave={(nextOptions, nextCustomization) => { onLiveActivityDisplayOptionsChange(nextOptions); onLiveActivityCustomizationChange(nextCustomization); setLiveActivitySettingsOpen(false); }}
-           colors={{ background: isDesign && chicPalette ? chicPalette.background : baseTheme.screenBackground, surface: isDesign && chicPalette ? chicPalette.cardSurface : baseTheme.surface, secondarySurface: isDesign && chicPalette ? chicPalette.surfaceSubtle : baseTheme.secondarySurface, border: isDesign && chicPalette ? chicPalette.border : baseTheme.border, text: isDesign && chicPalette ? chicPalette.textPrimary : baseTheme.primaryText, muted: isDesign && chicPalette ? chicPalette.textSecondary : baseTheme.secondaryText, accent: isDesign && chicPalette ? chicPalette.accent : baseTheme.primaryAccent, soft: isDesign && chicPalette ? chicPalette.accentSoft : baseTheme.softAccent, onAccent: isDesign && chicPalette ? chicPalette.onAccent : (isDark ? baseTheme.screenBackground : '#FFFFFF') }}
-           canCustomize={planTier === 'premium' || designCustomizePurchased || (__DEV__ && widgetEntitlementOverride === 'premium')}
-           canInteractive={planTier === 'premium' || (__DEV__ && widgetEntitlementOverride === 'premium')}
-           taskTitle={tasks.find((task) => task.done !== true && task.isRoutine !== true)?.title}
-           nextTitle={timeline.arrival ? `次の予定 ${timeline.arrival}` : undefined}
-         />
-       </> : null}
-       {onPremiumTrialReminderEnabled ? <View style={[styles.settingsCard, isDark && styles.darkSurface, isDesign && chicPalette && { backgroundColor: guideColors.surface, borderColor: guideColors.border }]}><View style={styles.switchRow}><View style={{ flex: 1 }}><Text style={[styles.switchTitle, isDark && styles.darkBodyText, isDesign && chicPalette && { color: guideColors.textPrimary }]}>無料期間終了前のお知らせ</Text><Text style={[styles.switchCopy, isDark && styles.darkMutedText, isDesign && chicPalette && { color: guideColors.textSecondary }]}>StoreKitで終了日時を確認できた場合、前日に通知します</Text></View><Switch value={premiumTrialReminderEnabled !== false} onValueChange={onPremiumTrialReminderEnabled} trackColor={{ false: isDark ? '#40506A' : baseTheme.border, true: isDesign && chicPalette ? chicPalette.accent : baseTheme.primaryAccent }} thumbColor={premiumTrialReminderEnabled !== false ? (isDesign && chicPalette ? chicPalette.onAccent : '#FFFFFF') : (isDark ? '#8F9BB0' : '#FFFFFF')} /></View></View> : null}
+      </SettingsDisclosure>}
+       {!captureDesignOnly && <>
+        <SettingsDisclosure icon="widget" headerAction={<Pressable accessibilityRole="button" accessibilityLabel="Widgetを更新" accessibilityState={{ busy: widgetRefreshing, disabled: widgetRefreshing || !onRefreshWidget }} disabled={widgetRefreshing || !onRefreshWidget} onPress={() => {
+         if (widgetRefreshing || !onRefreshWidget) return;
+         setWidgetRefreshing(true);
+         void Promise.resolve().then(() => onRefreshWidget()).finally(() => setWidgetRefreshing(false));
+       }} style={{ width: 40, height: 40, alignItems: 'center', justifyContent: 'center' }}><PremiumFeatureIcon name="refresh" color={widgetRefreshing ? guideColors.accent : guideColors.textSecondary} /></Pressable>} designMode={designMode} chicPalette={chicPalette} title="ホーム画面のWidget" subtitle="追加・管理・使い方" expanded={false} onPress={() => {
+         setWidgetSheetOpen(true);
+         onWidgetSectionOpened?.();
+       }} />
+        <WidgetSettingsSheet
+          visible={widgetSheetOpen}
+          onClose={() => setWidgetSheetOpen(false)}
+          widgetSettings={widgetSettings}
+          onWidgetSettings={onWidgetSettings}
+          onPickWidgetPhoto={onPickWidgetPhoto}
+          onUnlockWidgetPhoto={onUnlockWidgetPhoto}
+          widgetPhotoUnlock={widgetPhotoUnlock}
+          entitlementsResolved={entitlementsResolved}
+          onRemoveAffirmationPhoto={onRemoveAffirmationPhoto}
+          widgetColors={isDesign && chicPalette ? {
+            surface: chicPalette.cardSurface,
+            border: chicPalette.border,
+            primaryText: chicPalette.textPrimary,
+            secondaryText: chicPalette.textSecondary,
+            primaryAccent: chicPalette.accent,
+            softAccent: chicPalette.accentSoft,
+            screenBackground: chicPalette.background,
+          } : {
+            surface: baseTheme.surface,
+            border: baseTheme.border,
+            primaryText: baseTheme.primaryText,
+            secondaryText: baseTheme.secondaryText,
+            primaryAccent: baseTheme.primaryAccent,
+            softAccent: baseTheme.softAccent,
+            screenBackground: baseTheme.screenBackground,
+          }}
+          styles={styles}
+          designPattern={isDesign && !(['stationery', 'botanicalBackground', 'ocean', 'nightSky'] as string[]).includes(chicPattern) ? chicPattern : 'plain'}
+          designCheckColor={chicCheckColor}
+          PatternDecor={ChicPatternDecor}
+          planTier={widgetPlanTier ?? planTier}
+          designCustomizePurchased={widgetDesignCustomizePurchased ?? designCustomizePurchased}
+          widgetEntitlementOverride={widgetEntitlementOverride}
+          onWidgetEntitlementOverrideChange={onWidgetEntitlementOverrideChange}
+          onLockedWidget={(access) => {
+            setWidgetSheetOpen(false);
+            setTimeout(() => {
+              if (access === 'premium') onPremium('widget');
+              else if (onOpenDesignCustomize) onOpenDesignCustomize();
+              else onPremium('photo_design');
+            }, 180);
+          }}
+          onWidgetGuide={() => {
+            setWidgetSheetOpen(false);
+            setTimeout(() => onWidgetGuide?.(), 180);
+          }}
+        />
+        <SettingsDisclosure icon="bellSparkle" headerAction={<View style={{ minWidth: 62, minHeight: 40, alignItems: 'flex-end', justifyContent: 'center' }}><Switch accessibilityRole="switch" accessibilityLabel="ライブアクティビティ" accessibilityState={{ checked: liveActivityEnabled }} value={liveActivityEnabled} onValueChange={(value) => onLiveActivityEnabled?.(value)} trackColor={{ false: isDark ? '#40506A' : baseTheme.border, true: isDesign && chicPalette ? chicPalette.accent : baseTheme.primaryAccent }} thumbColor={liveActivityEnabled ? (isDesign && chicPalette ? chicPalette.onAccent : '#FFFFFF') : (isDark ? '#8F9BB0' : '#FFFFFF')} /></View>} designMode={designMode} chicPalette={chicPalette} title="ライブアクティビティ" subtitle="ロック画面・Dynamic Islandの表示" expanded={false} onPress={() => setLiveActivitySettingsOpen(true)} />
+        {liveActivityDisplayOptions && onLiveActivityDisplayOptionsChange && liveActivityCustomization && onLiveActivityCustomizationChange ? <LiveActivitySettingsSheet
+          visible={liveActivitySettingsOpen}
+          options={liveActivityDisplayOptions}
+          customization={liveActivityCustomization}
+          onClose={() => setLiveActivitySettingsOpen(false)}
+          onSave={(nextOptions, nextCustomization) => { onLiveActivityDisplayOptionsChange(nextOptions); onLiveActivityCustomizationChange(nextCustomization); setLiveActivitySettingsOpen(false); }}
+          colors={{ background: isDesign && chicPalette ? chicPalette.background : baseTheme.screenBackground, surface: isDesign && chicPalette ? chicPalette.cardSurface : baseTheme.surface, secondarySurface: isDesign && chicPalette ? chicPalette.surfaceSubtle : baseTheme.secondarySurface, border: isDesign && chicPalette ? chicPalette.border : baseTheme.border, text: isDesign && chicPalette ? chicPalette.textPrimary : baseTheme.primaryText, muted: isDesign && chicPalette ? chicPalette.textSecondary : baseTheme.secondaryText, accent: isDesign && chicPalette ? chicPalette.accent : baseTheme.primaryAccent, soft: isDesign && chicPalette ? chicPalette.accentSoft : baseTheme.softAccent, onAccent: isDesign && chicPalette ? chicPalette.onAccent : (isDark ? baseTheme.screenBackground : '#FFFFFF') }}
+          canCustomize={planTier === 'premium' || designCustomizePurchased || (__DEV__ && widgetEntitlementOverride === 'premium')}
+          canInteractive={planTier === 'premium' || (__DEV__ && widgetEntitlementOverride === 'premium')}
+          taskTitle={tasks.find((task) => task.done !== true && task.isRoutine !== true)?.title}
+          nextTitle={timeline.arrival ? `次の予定 ${timeline.arrival}` : undefined}
+        /> : null}
+        <SettingsDisclosure icon="bell" designMode={designMode} chicPalette={chicPalette} title="通知・フィードバック" subtitle="通知管理・触覚フィードバック" expanded={expandedSetting === 'notifications'} onPress={() => setExpandedSetting((current) => current === 'notifications' ? null : 'notifications')}>
+        <NotificationManagerCard designMode={designMode} chicPalette={chicPalette} />
+        {onPremiumTrialReminderEnabled ? <View style={[styles.settingsCard, isDark && styles.darkSurface, isDesign && chicPalette && { backgroundColor: guideColors.surface, borderColor: guideColors.border }]}><View style={styles.switchRow}><View style={{ flex: 1 }}><Text style={[styles.switchTitle, isDark && styles.darkBodyText, isDesign && chicPalette && { color: guideColors.textPrimary }]}>無料期間終了前のお知らせ</Text><Text style={[styles.switchCopy, isDark && styles.darkMutedText, isDesign && chicPalette && { color: guideColors.textSecondary }]}>StoreKitで終了日時を確認できた場合、前日に通知します</Text></View><Switch value={premiumTrialReminderEnabled !== false} onValueChange={onPremiumTrialReminderEnabled} trackColor={{ false: isDark ? '#40506A' : baseTheme.border, true: isDesign && chicPalette ? chicPalette.accent : baseTheme.primaryAccent }} thumbColor={premiumTrialReminderEnabled !== false ? (isDesign && chicPalette ? chicPalette.onAccent : '#FFFFFF') : (isDark ? '#8F9BB0' : '#FFFFFF')} /></View></View> : null}
        <View style={[styles.settingsCard, isDark && styles.darkSurface, isDesign && chicPalette && { backgroundColor: guideColors.surface, borderColor: guideColors.border }]}><View style={styles.switchRow}><View style={{ flex: 1 }}><Text style={[styles.switchTitle, isDark && styles.darkBodyText, isDesign && chicPalette && { color: guideColors.textPrimary }]}>触覚フィードバック</Text><Text style={[styles.switchCopy, isDark && styles.darkMutedText, isDesign && chicPalette && { color: guideColors.textSecondary }]}>完了や集中開始を振動で知らせます</Text></View><Switch value={hapticsEnabled} onValueChange={(value) => onHapticsEnabled(value)} trackColor={{ false: isDark ? '#40506A' : baseTheme.border, true: isDesign && chicPalette ? chicPalette.accent : baseTheme.primaryAccent }} thumbColor={hapticsEnabled ? (isDesign && chicPalette ? chicPalette.onAccent : '#FFFFFF') : (isDark ? '#8F9BB0' : '#FFFFFF')} /></View></View>
        </SettingsDisclosure>
-       <SettingsDisclosure designMode={designMode} chicPalette={chicPalette} title="移動アプリ連携" subtitle="乗換・タクシーアプリを登録" expanded={expandedSetting === 'travelApps'} onPress={() => setExpandedSetting((current) => current === 'travelApps' ? null : 'travelApps')}>
+       <SettingsDisclosure icon="pin" designMode={designMode} chicPalette={chicPalette} title="移動アプリ連携" subtitle="乗換・タクシーアプリを登録" expanded={expandedSetting === 'travelApps'} onPress={() => setExpandedSetting((current) => current === 'travelApps' ? null : 'travelApps')}>
          <TravelAppsSettingsCard settings={travelApps} onChange={onTravelAppsChange} planTier={planTier} designMode={designMode} chicPalette={chicPalette} onPremium={onPremium} />
        </SettingsDisclosure>
-        <SettingsDisclosure designMode={designMode} chicPalette={chicPalette} title="ひな型" subtitle="よく使うタスクや設定を保存" expanded={expandedSetting === 'quick'} onPress={() => setExpandedSetting((current) => current === 'quick' ? null : 'quick')}>
+        <SettingsDisclosure icon="copy" designMode={designMode} chicPalette={chicPalette} title="ひな型" subtitle="よく使うタスクや設定を保存" expanded={expandedSetting === 'quick'} onPress={() => setExpandedSetting((current) => current === 'quick' ? null : 'quick')}>
       <View style={[styles.settingsCard, isDark && styles.darkSurface, isDesign && chicPalette && { backgroundColor: guideColors.surface, borderColor: guideColors.border }]}>
         <Text style={[styles.switchCopy, isDark && styles.darkMutedText, isDesign && chicPalette && { color: guideColors.textSecondary }]}>よく登録するタスクを自分用に保存できます</Text>
         <View style={styles.templateAddRow}><TextInput value={newTemplate} onChangeText={setNewTemplate} placeholder="例：水筒をバッグに入れる" placeholderTextColor={baseTheme.secondaryText} style={[styles.templateInput, { color: baseTheme.primaryText }]} /><Pressable style={[styles.templateAddButton, { backgroundColor: baseTheme.primaryAccent }]} onPress={() => { const clean = newTemplate.trim(); if (!clean) return; onAddTemplate(clean); setNewTemplate(''); }}><Text style={[styles.templateAddButtonText, { color: isDesign && chicPalette ? chicPalette.onAccent : isDark ? baseTheme.screenBackground : '#FFFFFF' }]}>追加</Text></Pressable></View>
@@ -456,11 +771,11 @@ export function SettingsScreen({
        </SettingsDisclosure>
        <View style={styles.settingsDisclosure}>
          <Pressable style={[styles.settingsDisclosureHeader, isDark && styles.darkSurface, isDesign && chicPalette && { backgroundColor: guideColors.surface, borderColor: guideColors.border }]} onPress={() => onPremium()} accessibilityRole="button">
-           <View style={{ flex: 1 }}><Text style={[styles.settingsDisclosureTitle, { color: isDesign && chicPalette ? guideColors.textPrimary : baseTheme.primaryText }]}>{planTier === 'premium' ? 'Premium利用中' : 'Rhythm Premium'}</Text><Text style={[styles.settingsDisclosureSubtitle, { color: isDesign && chicPalette ? guideColors.textSecondary : baseTheme.secondaryText }]}>{planTier === 'premium' ? 'Premiumの機能を利用中です' : 'もっとRhythmを便利に使う'}</Text></View>
+           <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, minWidth: 0 }}><View style={{ width: 32, alignItems: 'flex-start' }}><PremiumFeatureIcon name="sparkle" color={isDesign && chicPalette ? guideColors.accent : baseTheme.primaryAccent} /></View><View style={{ flex: 1, minWidth: 0 }}><Text style={[styles.settingsDisclosureTitle, { color: isDesign && chicPalette ? guideColors.textPrimary : baseTheme.primaryText }]}>{planTier === 'premium' ? 'Premium利用中' : 'Rhythm Premium'}</Text><Text style={[styles.settingsDisclosureSubtitle, { color: isDesign && chicPalette ? guideColors.textSecondary : baseTheme.secondaryText }]}>{planTier === 'premium' ? 'Premiumの機能を利用中です' : 'もっとRhythmを便利に使う'}</Text></View></View>
            <Text style={[styles.settingsDisclosureChevron, { color: isDesign && chicPalette ? guideColors.accent : baseTheme.primaryAccent }]}>›</Text>
          </Pressable>
        </View>
-       <SettingsDisclosure designMode={designMode} chicPalette={chicPalette} title="アプリについて" subtitle="使い方・レビュー" expanded={expandedSetting === 'about'} onPress={() => setExpandedSetting((current) => current === 'about' ? null : 'about')}>
+       <SettingsDisclosure icon="info" designMode={designMode} chicPalette={chicPalette} title="アプリについて" subtitle="使い方・レビュー" expanded={expandedSetting === 'about'} onPress={() => setExpandedSetting((current) => current === 'about' ? null : 'about')}>
          <Pressable style={[styles.guideCard, { backgroundColor: guideColors.surface, borderColor: guideColors.border, borderWidth: 1 }]} onPress={onGuide}><View><Text style={[styles.guideCardTitle, { color: guideColors.textPrimary }]}>使い方を見る</Text><Text style={[styles.guideCardCopy, { color: guideColors.textSecondary }]}>登録・振り分け・出発・集中の流れを見る</Text></View><Text style={[styles.guideCardArrow, { color: guideColors.accent }]}>›</Text></Pressable>
          <Pressable style={[styles.settingsCard, isDark && styles.darkSurface, isDesign && chicPalette && { backgroundColor: guideColors.surface, borderColor: guideColors.border }]} onPress={onReview}><Text style={[styles.settingsTitle, isDark && styles.darkBodyText, isDesign && chicPalette && { color: guideColors.textPrimary }]}>アプリを評価する</Text><Text style={[styles.switchCopy, isDark && styles.darkMutedText, isDesign && chicPalette && { color: guideColors.textSecondary }]}>短いレビューでRhythmの改善を応援できます</Text></Pressable>
        </SettingsDisclosure>

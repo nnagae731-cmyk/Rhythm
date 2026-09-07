@@ -1,5 +1,5 @@
 import React from 'react';
-import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { PlanTier } from '../premiumAccess';
 import { PremiumGuideFeatureId } from '../premiumGuide';
 import { PhotoThemePhotoTarget, PhotoThemeSettings, PhotoThemeTopSlot, ThemeMode } from '../types';
@@ -49,7 +49,7 @@ export function PhotoThemeSettingsCard({ photoTheme, designMode, chicPalette, pl
     <View style={localStyles.divider} />
     <Text style={[styles.fieldLabel, isDark && styles.darkAccentText]}>画面ごとのトップ画像</Text>
     <Text style={[localStyles.note, { color: themeColors.textSecondary }]}>今日・予定・分析・叶えたいこと・設定の5画面に、それぞれ1枚ずつ設定できます。</Text>
-    <View style={localStyles.slotGrid}>
+    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={localStyles.slotRow}>
       {topSlots.map((slot) => {
         const uri = photoTheme.topImageUris?.[slot.id] ?? photoTheme.topImageOriginalUris?.[slot.id];
         return <View key={slot.id} style={localStyles.slotCard}>
@@ -62,7 +62,7 @@ export function PhotoThemeSettingsCard({ photoTheme, designMode, chicPalette, pl
           </View>
         </View>;
       })}
-    </View>
+    </ScrollView>
 
     <View style={localStyles.divider} />
     <Text style={[styles.fieldLabel, isDark && styles.darkAccentText]}>集中タイマーの背景</Text>
@@ -83,8 +83,8 @@ const localStyles = StyleSheet.create({
   clearText: { color: '#B85060', fontSize: 12, fontWeight: '900' },
   note: { color: '#7B7180', fontSize: 10, lineHeight: 16, fontWeight: '700', marginBottom: 12 },
   divider: { height: 1, backgroundColor: '#E8DCE3', marginVertical: 14 },
-  slotGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  slotCard: { width: '31%', minHeight: 120, padding: 7, borderRadius: 12, borderWidth: 1, borderColor: '#E2D5DD', backgroundColor: '#FFFDFC' },
+  slotRow: { flexDirection: 'row', gap: 8, paddingRight: 4 },
+  slotCard: { width: 132, minHeight: 120, padding: 7, borderRadius: 12, borderWidth: 1, borderColor: '#E2D5DD', backgroundColor: '#FFFDFC' },
   slotPreview: { width: '100%', aspectRatio: 2.5, borderRadius: 8, backgroundColor: '#EEE7E8' },
   slotEmpty: { width: '100%', aspectRatio: 2.5, borderRadius: 8, alignItems: 'center', justifyContent: 'center', backgroundColor: '#F8EFF2' },
   slotEmptyText: { color: '#A98797', fontSize: 20, fontWeight: '400' },

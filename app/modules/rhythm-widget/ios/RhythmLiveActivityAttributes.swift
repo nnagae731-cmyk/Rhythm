@@ -18,6 +18,11 @@ public struct RhythmLiveActivityAttributes: ActivityAttributes {
       public var checked: Bool
       public init(id: String, text: String, checked: Bool) { self.id = id; self.text = text; self.checked = checked }
     }
+    public struct TaskItem: Codable, Hashable {
+      public var id: String
+      public var title: String
+      public init(id: String, title: String) { self.id = id; self.title = title }
+    }
     public struct DisplayOptions: Codable, Hashable {
       public var currentTask: Bool
       public var nextSchedule: Bool
@@ -61,6 +66,8 @@ public struct RhythmLiveActivityAttributes: ActivityAttributes {
     public var displayOptions: DisplayOptions
     public var interactiveChecks: Bool
     public var currentTaskId: String?
+    public var currentTasks: [TaskItem]?
+    public var currentTaskRemainingCount: Int
     public var currentTaskListItems: [ListItem]?
     public var affirmationTexts: [String]?
     public var affirmationRotationMode: AffirmationRotationMode
@@ -76,7 +83,7 @@ public struct RhythmLiveActivityAttributes: ActivityAttributes {
                 affirmationText: String? = nil,
                 accentHex: String = "#FFFFFF",
                 displayOptions: DisplayOptions = .all,
-                interactiveChecks: Bool = false, currentTaskId: String? = nil, currentTaskListItems: [ListItem]? = nil,
+                interactiveChecks: Bool = false, currentTaskId: String? = nil, currentTasks: [TaskItem]? = nil, currentTaskRemainingCount: Int = 0, currentTaskListItems: [ListItem]? = nil,
                 affirmationTexts: [String]? = nil, affirmationRotationMode: AffirmationRotationMode = .fixed,
                 affirmationRotationIntervalMinutes: Int = 60, affirmationRotationAnchor: Date? = nil,
                 fontDesign: FontDesign = .default, fontSize: FontSize = .medium) {
@@ -97,6 +104,8 @@ public struct RhythmLiveActivityAttributes: ActivityAttributes {
       self.displayOptions = displayOptions
       self.interactiveChecks = interactiveChecks
       self.currentTaskId = currentTaskId
+      self.currentTasks = currentTasks
+      self.currentTaskRemainingCount = max(0, currentTaskRemainingCount)
       self.currentTaskListItems = currentTaskListItems
       self.affirmationTexts = affirmationTexts
       self.affirmationRotationMode = affirmationRotationMode
@@ -107,7 +116,7 @@ public struct RhythmLiveActivityAttributes: ActivityAttributes {
     }
 
     private enum CodingKeys: String, CodingKey {
-      case mode, tier, currentTaskTitle, nextScheduleTitle, nextScheduleAt, departureAt, focusTaskTitle, focusEndsAt, focusElapsedStartAt, focusElapsedSeconds, focusRemainingSeconds, focusRunning, affirmationText, accentHex, displayOptions, interactiveChecks, currentTaskId, currentTaskListItems, affirmationTexts, affirmationRotationMode, affirmationRotationIntervalMinutes, affirmationRotationAnchor, fontDesign, fontSize
+      case mode, tier, currentTaskTitle, nextScheduleTitle, nextScheduleAt, departureAt, focusTaskTitle, focusEndsAt, focusElapsedStartAt, focusElapsedSeconds, focusRemainingSeconds, focusRunning, affirmationText, accentHex, displayOptions, interactiveChecks, currentTaskId, currentTasks, currentTaskRemainingCount, currentTaskListItems, affirmationTexts, affirmationRotationMode, affirmationRotationIntervalMinutes, affirmationRotationAnchor, fontDesign, fontSize
     }
 
     public init(from decoder: Decoder) throws {
@@ -129,6 +138,8 @@ public struct RhythmLiveActivityAttributes: ActivityAttributes {
       displayOptions = try container.decodeIfPresent(DisplayOptions.self, forKey: .displayOptions) ?? .all
       interactiveChecks = try container.decodeIfPresent(Bool.self, forKey: .interactiveChecks) ?? false
       currentTaskId = try container.decodeIfPresent(String.self, forKey: .currentTaskId)
+      currentTasks = try container.decodeIfPresent([TaskItem].self, forKey: .currentTasks)
+      currentTaskRemainingCount = max(0, try container.decodeIfPresent(Int.self, forKey: .currentTaskRemainingCount) ?? 0)
       currentTaskListItems = try container.decodeIfPresent([ListItem].self, forKey: .currentTaskListItems)
       affirmationTexts = try container.decodeIfPresent([String].self, forKey: .affirmationTexts)
       affirmationRotationMode = try container.decodeIfPresent(AffirmationRotationMode.self, forKey: .affirmationRotationMode) ?? .fixed
@@ -157,6 +168,8 @@ public struct RhythmLiveActivityAttributes: ActivityAttributes {
       try container.encode(displayOptions, forKey: .displayOptions)
       try container.encode(interactiveChecks, forKey: .interactiveChecks)
       try container.encodeIfPresent(currentTaskId, forKey: .currentTaskId)
+      try container.encodeIfPresent(currentTasks, forKey: .currentTasks)
+      try container.encode(currentTaskRemainingCount, forKey: .currentTaskRemainingCount)
       try container.encodeIfPresent(currentTaskListItems, forKey: .currentTaskListItems)
       try container.encodeIfPresent(affirmationTexts, forKey: .affirmationTexts)
       try container.encode(affirmationRotationMode, forKey: .affirmationRotationMode)

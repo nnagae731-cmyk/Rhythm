@@ -77,7 +77,14 @@ private enum RhythmLiveActivityCopy {
   }
 
   static func hasActiveCurrent(_ state: RhythmLiveActivityAttributes.ContentState) -> Bool {
-    (state.tier != .premium || state.displayOptions.currentTask) && hasText(state.currentTaskTitle)
+    (state.tier != .premium || state.displayOptions.currentTask) && !taskItems(for: state).isEmpty
+  }
+
+  static func taskItems(for state: RhythmLiveActivityAttributes.ContentState) -> [RhythmLiveActivityAttributes.ContentState.TaskItem] {
+    let items = (state.currentTasks ?? []).filter { hasText($0.title) }.prefix(3).map { $0 }
+    if !items.isEmpty { return items }
+    guard let title = state.currentTaskTitle, hasText(title) else { return [] }
+    return [.init(id: state.currentTaskId ?? "legacy-current-task", title: title)]
   }
 
   static func isAffirmationOnly(_ state: RhythmLiveActivityAttributes.ContentState, now: Date = Date()) -> Bool {
@@ -109,8 +116,8 @@ private enum RhythmLiveActivityCopy {
     if hasActiveDeparture(state),
        let title = state.nextScheduleTitle?.trimmingCharacters(in: .whitespacesAndNewlines), !title.isEmpty { return title }
     if hasActiveNext(state), let title = state.nextScheduleTitle?.trimmingCharacters(in: .whitespacesAndNewlines), !title.isEmpty { return title }
-    if hasActiveCurrent(state),
-       let title = state.currentTaskTitle?.trimmingCharacters(in: .whitespacesAndNewlines), !title.isEmpty { return title }
+    if let title = taskItems(for: state).first?.title.trimmingCharacters(in: .whitespacesAndNewlines), !title.isEmpty,
+       (state.tier != .premium || state.displayOptions.currentTask) { return title }
     if state.tier == .premium, state.displayOptions.affirmation,
        let text = affirmationText(for: state), !text.isEmpty { return text }
     return "今日のRhythm"
@@ -212,9 +219,8 @@ private struct RhythmLiveActivityDetail: View {
         }
       } else if RhythmLiveActivityCopy.isAffirmationOnly(state) && !suppressAffirmationOnly {
         RhythmLiveActivityAffirmation(text: RhythmLiveActivityCopy.affirmationText(for: state), state: state)
-      }
-      if state.tier == .premium && state.interactiveChecks && RhythmLiveActivityCopy.hasActiveCurrent(state), let taskId = state.currentTaskId {
-        RhythmLiveActivityInteractiveTask(state: state, taskId: taskId)
+      } else if RhythmLiveActivityCopy.hasActiveCurrent(state) {
+        RhythmLiveActivityTaskList(state: state)
       }
     }
     .font(.system(size: 13 * RhythmLiveActivityCopy.textScale(for: state)))
@@ -235,17 +241,28 @@ private struct RhythmLiveActivityAffirmation: View {
 }
 
 @available(iOS 16.1, *)
-private struct RhythmLiveActivityInteractiveTask: View {
+private struct RhythmLiveActivityTaskList: View {
   let state: RhythmLiveActivityAttributes.ContentState
-  let taskId: String
 
   var body: some View {
-    if #available(iOSApplicationExtension 17.0, *) {
-      VStack(alignment: .leading, spacing: 3) {
-        Button(intent: RhythmCompleteTaskIntent(taskId: taskId)) {
-          Label { Text(state.currentTaskTitle ?? "タスク").lineLimit(1) } icon: { Image(systemName: "circle") }
+    VStack(alignment: .leading, spacing: 3) {
+      ForEach(Array(RhythmLiveActivityCopy.taskItems(for: state).prefix(3)), id: \.id) { task in
+        if #available(iOSApplicationExtension 17.0, *), state.tier == .premium, state.interactiveChecks {
+          Button(intent: RhythmCompleteTaskIntent(taskId: task.id)) {
+            Label { Text(task.title).lineLimit(1) } icon: { Image(systemName: "circle") }
+          }
+          .buttonStyle(.plain)
+        } else {
+          Label { Text(task.title).lineLimit(1) } icon: { Image(systemName: "circle") }
         }
-        .buttonStyle(.plain)
+      }
+      if state.currentTaskRemainingCount > 0 {
+        Text("＋あと\(state.currentTaskRemainingCount)件")
+          .font(.caption2)
+          .foregroundStyle(.secondary)
+      }
+      if #available(iOSApplicationExtension 17.0, *), state.tier == .premium, state.interactiveChecks,
+         let taskId = RhythmLiveActivityCopy.taskItems(for: state).first?.id {
         ForEach((state.currentTaskListItems ?? []).prefix(3), id: \.id) { item in
           Button(intent: RhythmToggleListItemIntent(taskId: taskId, listItemId: item.id, completed: !item.checked)) {
             Label { Text(item.text).lineLimit(1) } icon: { Image(systemName: item.checked ? "checkmark.square.fill" : "square") }
@@ -253,9 +270,9 @@ private struct RhythmLiveActivityInteractiveTask: View {
           .buttonStyle(.plain)
         }
       }
-      .font(.system(size: 12 * RhythmLiveActivityCopy.textScale(for: state)))
-      .fontDesign(RhythmLiveActivityCopy.fontDesign(for: state))
     }
+    .font(.system(size: 12 * RhythmLiveActivityCopy.textScale(for: state)))
+    .fontDesign(RhythmLiveActivityCopy.fontDesign(for: state))
   }
 }
 

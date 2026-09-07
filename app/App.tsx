@@ -26,7 +26,7 @@ import { TaskModal } from './components/TaskModal';
 import { BulkTaskModal } from './components/BulkTaskModal';
 import { DeparturePlanForm } from './components/DeparturePlanForm';
 import { AffirmationSettingsCard, MAX_AFFIRMATIONS } from './components/AffirmationSettingsCard';
-import { PremiumModal } from './components/PremiumModal';
+import { PremiumFeatureIcon, PremiumModal, type PremiumFeatureIconName } from './components/PremiumModal';
 import { PremiumTrialStarted, useRhythmStoreKit } from './features/purchases/useRhythmStoreKit';
 import { STORE_PRODUCT_IDS } from './features/purchases/storeProducts';
 import { RewardedAccessModal, RewardedAccessResult } from './components/RewardedAccessModal';
@@ -45,18 +45,18 @@ import { Affirmation, AffirmationCustomText, AppNotice, AppNoticeCategory, Calen
 import { initialPlan } from './storage/rhythmState';
 import { DEFAULT_TRAVEL_APP_SETTINGS, normalizeTravelAppSettings, TravelAppSettings } from './features/travel/travelApps';
 import { loadRhythmState, saveRhythmState } from './storage/rhythmStorage';
-import { acknowledgeRhythmWidgetPendingActions, buildRhythmWidgetSnapshot, generateRhythmWidgetPhotoCutout, getRhythmWidgetPendingActions, isRhythmWidgetPhotoBackgroundRemovalAvailable, saveRhythmAffirmationPhoto, saveRhythmWidgetPhoto, saveRhythmWidgetPhotoCutout, saveRhythmWidgetPhotoForWidget, saveRhythmWidgetSnapshot } from './features/widget/rhythmWidgetSnapshot';
+import { acknowledgeRhythmWidgetPendingActions, buildRhythmWidgetSnapshot, getRhythmWidgetPendingActions, saveRhythmAffirmationPhoto, saveRhythmWidgetPhoto, saveRhythmWidgetPhotoForWidget, saveRhythmWidgetSnapshot } from './features/widget/rhythmWidgetSnapshot';
 import { DEFAULT_WIDGET_SETTINGS, getWidgetCustomization, normalizeWidgetSettings, WIDGET_TYPE_OPTIONS } from './features/widget/widgetSettings';
 import type { WidgetEntitlementOverride } from './features/widget/widgetSettings';
 import { categories, priorities, completionIcons, categoryColors as baseCategoryColors, designModes, getLateRiskMessage, getNextBestAction, getUrgencyStatus, urgencyLevel } from './features/tasks/taskUtils';
-import { planScheduledAt, selectCurrentTask } from './features/tasks/taskSelectors';
+import { planScheduledAt, selectCurrentTask, selectCurrentTasks } from './features/tasks/taskSelectors';
 import { createSharedEventPacket, createSharedEventToken, encodeSharedEventLink, normalizeSharedEvent, parseSharedEventLink, upsertSharedEvent } from './features/shared/sharedUtils';
 import { getMonthlyWishState, normalizeWishMonthsForSave, wishMonthKey } from './features/wish/wishUtils';
 import { cancelPendingTaskNotifications, cancelPendingTaskNotificationsUnsafe } from './features/tasks/taskNotifications';
 import { cancelPendingDepartureNotifications, cancelPendingDepartureNotificationsUnsafe } from './features/departure/departureNotifications';
 import { enqueueNotificationOperation } from './features/notifications/notificationOperationQueue';
 import { getDeparturePlanMode, getPlanScheduledTime, isArrivalReversePlan, isDepartureReminderPlan, normalizeDeparturePlanForSave } from './features/departure/departurePlanMode';
-import { DEFAULT_LIVE_ACTIVITY_CUSTOMIZATION, DEFAULT_LIVE_ACTIVITY_DISPLAY_OPTIONS, endRhythmLiveActivity, normalizeRhythmLiveActivityCustomization, normalizeRhythmLiveActivityDisplayOptions, startOrUpdateRhythmLiveActivity, type RhythmLiveActivityPayload } from './features/widget/rhythmLiveActivity';
+import { DEFAULT_LIVE_ACTIVITY_CUSTOMIZATION, DEFAULT_LIVE_ACTIVITY_DISPLAY_OPTIONS, endRhythmLiveActivity, getRhythmLiveActivityStatus, normalizeRhythmLiveActivityCustomization, normalizeRhythmLiveActivityDisplayOptions, startOrUpdateRhythmLiveActivity, type RhythmLiveActivityPayload } from './features/widget/rhythmLiveActivity';
 import { WishScreen } from './WishScreen';
 import { VoiceInputModal } from './components/VoiceInputModal';
 import { VoiceParseResult } from './features/voiceParser';
@@ -67,13 +67,14 @@ import type { RoutineArchive } from './types';
 import { SharedEventScreen } from './SharedEventScreen';
 import { TopImageCropModal } from './components/TopImageCropModal';
 import { cropRectToPixels, displayToNormalizedRect, getContainBounds, getInitialCropRect, NormalizedCropRect } from './features/photo/topImageCrop';
-import { deleteManagedPhotoUri, isPersistedPhotoAvailable, persistPhotoUri } from './features/photo/persistentPhoto';
+import { deleteManagedPhotoUri, persistPhotoUri } from './features/photo/persistentPhoto';
 import { canUseNotifications, getNotificationPermissionAction, getNotificationPermissionStatus, requestRhythmNotificationPermission } from './features/notifications/notificationPermission';
 import { addHours, canCreateWish, canCreateWishAction, canImportCalendar, canStartPremiumDesignTrial, isPremiumDesignTrialActive, isPremiumDesignUnlocked, isWidgetPhotoUnlockActive } from './features/ads/rewardedAccessLogic';
 import { getRequiredAds, REWARDED_AD_RULES, RewardedFeatureId } from './features/ads/rewardedAccess';
 import { DEFAULT_REWARDED_ACCESS_STATE, loadRewardedAccessState, RewardedAccessState, saveRewardedAccessState } from './features/ads/rewardedAccessStorage';
 import { cancelFocusCompletionNotification, cancelPendingFocusCompletionNotifications, scheduleFocusCompletionNotification } from './features/focus/focusNotifications';
 import { cancelPremiumTrialReminder, schedulePremiumTrialReminder } from './features/notifications/premiumTrialReminder';
+import { buildAffirmationContent, buildCompletionFeedbackContent, buildDeadlineTitle, buildDepartureFollowUpContent, buildDepartureReminderContent, buildDepartureStageContent, buildScheduleSwitchContent, buildTaskActionContent, buildTaskReminderTitle, buildRoutineRemainingContent } from './features/notifications/notificationContent';
 import { cancelPendingAffirmationNotifications, cancelPendingAffirmationNotificationsUnsafe } from './features/notifications/affirmationNotifications';
 import { FOCUS_NAVIGATION_GUARD_COPY, getFocusNavigationDecision } from './features/focus/focusUsagePolicy';
 import {
@@ -95,10 +96,32 @@ import {
   StyleSheet,
   Text,
   TextInput,
+  useWindowDimensions,
   View,
   Vibration,
   type DimensionValue,
 } from 'react-native';
+
+function logPremiumDiagnostic(event: string, details: Record<string, unknown> = {}) {
+  if (!__DEV__) return;
+  console.log(`[PremiumDiagnostic] ${event}`, {
+    timestamp: new Date().toISOString(),
+    plan: 'unknown',
+    purchaseStatus: 'unknown',
+    planTier: 'unknown',
+    modalVisible: false,
+    entitlementsResolved: false,
+    pending: false,
+    ...details,
+  });
+}
+
+function getFocusCompletionAlertCopy(taskTitle?: string) {
+  return {
+    title: '集中タイム終了',
+    message: taskTitle ? `「${taskTitle}」に取り組めました。少し休憩しよう。` : '少し休憩しよう。',
+  };
+}
 
 const colors = {
   background: '#F8F5EF',
@@ -117,13 +140,7 @@ const ROUTINE_ARCHIVE_RETENTION_DAYS = 90;
 
 // Stable local notices. Their IDs are intentionally independent from the
 // persisted read state so a future push/remote source can reuse the same UI.
-const INITIAL_APP_NOTICES: AppNotice[] = [
-  { id: 'feature-tomorrow-review-202609', category: 'feature', title: '明日の準備が使えるようになりました', body: '夜にRhythmを開くと、今日残っていることと明日の予定を整理できます。無理なく明日の流れを整えられます。', publishedAt: '2026-09-06T09:00:00+09:00', targetScreen: 'home' },
-  { id: 'feature-focus-complete-202609', category: 'feature', title: '集中したあと、そのまま完了できます', body: 'Taskに集中したあと、「完了・もう少し・後で」を選べるようになりました。', publishedAt: '2026-09-05T09:00:00+09:00', targetScreen: 'timeline', targetParams: { timelineTab: 'focus' } },
-  { id: 'feature-schedule-conflict-202609', category: 'feature', title: '予定に近いTaskをお知らせします', body: 'Taskが予定の準備時間や出発時間に重なりそうな時、Rhythmが先に気づかせます。', publishedAt: '2026-09-04T09:00:00+09:00', targetScreen: 'timeline' },
-  { id: 'update-schedule-switch-202609', category: 'update', title: '次の予定への切り替えをお知らせします', body: '予定の準備や出発が近づいた時、今のTaskを切り替えるタイミングを通知します。', publishedAt: '2026-09-03T09:00:00+09:00', targetScreen: 'timeline' },
-  { id: 'update-routine-remaining-202609', category: 'update', title: '夜のRoutine残りを確認できます', body: '夜になって今日のRoutineが残っている時だけ、1日1回お知らせします。', publishedAt: '2026-09-02T09:00:00+09:00' },
-];
+const INITIAL_APP_NOTICES: AppNotice[] = [];
 
 const APP_NOTICE_CATEGORY_LABELS: Record<AppNoticeCategory, string> = {
   feature: '新機能',
@@ -185,11 +202,11 @@ type ImageDesignPattern = 'stationery' | 'botanicalBackground' | 'ocean' | 'nigh
 // pixels are never tinted or overlaid by the selected nine-color theme. The
 // smaller previewSource is used only by settings/preview swatches so opening
 // those surfaces does not decode every full-screen original at once.
-const designBackgroundAssets: Record<ImageDesignPattern, { source: number; previewSource: number; background: string }> = {
-  stationery: { source: require('./assets/themes/design-backgrounds/design-stationery-background.jpg'), previewSource: require('./assets/themes/design-backgrounds/design-stationery-preview.jpg'), background: '#F8F7F2' },
-  botanicalBackground: { source: require('./assets/themes/design-backgrounds/design-botanical-background.jpg'), previewSource: require('./assets/themes/design-backgrounds/design-botanical-preview.jpg'), background: '#F8F8F4' },
-  ocean: { source: require('./assets/themes/design-backgrounds/design-ocean-background.jpg'), previewSource: require('./assets/themes/design-backgrounds/design-ocean-preview.jpg'), background: '#EAF8FA' },
-  nightSky: { source: require('./assets/themes/design-backgrounds/design-night-sky-background.jpg'), previewSource: require('./assets/themes/design-backgrounds/design-night-sky-preview.jpg'), background: '#101722' },
+const designBackgroundAssets: Record<ImageDesignPattern, { source: number; previewSource: number; background: string; width: number; height: number }> = {
+  stationery: { source: require('./assets/themes/design-backgrounds/design-stationery-background.jpg'), previewSource: require('./assets/themes/design-backgrounds/design-stationery-preview.jpg'), background: '#F8F7F2', width: 590, height: 1280 },
+  botanicalBackground: { source: require('./assets/themes/design-backgrounds/design-botanical-background.jpg'), previewSource: require('./assets/themes/design-backgrounds/design-botanical-preview.jpg'), background: '#F8F8F4', width: 590, height: 1280 },
+  ocean: { source: require('./assets/themes/design-backgrounds/design-ocean-background.jpg'), previewSource: require('./assets/themes/design-backgrounds/design-ocean-preview.jpg'), background: '#EAF8FA', width: 589, height: 1280 },
+  nightSky: { source: require('./assets/themes/design-backgrounds/design-night-sky-background.jpg'), previewSource: require('./assets/themes/design-backgrounds/design-night-sky-preview.jpg'), background: '#101722', width: 589, height: 1280 },
 };
 
 function isImageDesignPattern(pattern: ChicPattern): pattern is ImageDesignPattern {
@@ -226,7 +243,7 @@ async function playCompletionSound() {
   }
   try {
     await Notifications.scheduleNotificationAsync({
-      content: { title: 'タスク完了', sound: 'default', data: { completionFeedback: true } },
+      content: { ...buildCompletionFeedbackContent(), sound: 'default', data: { completionFeedback: true } },
       trigger: { type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL, seconds: 1, repeats: false },
     });
   } catch {
@@ -765,8 +782,7 @@ async function scheduleAffirmationNotification(affirmation: Affirmation) {
   return Notifications.scheduleNotificationAsync({
     identifier: `affirmation:${affirmation.id}`,
     content: {
-      title: '今日の言葉',
-      body: affirmation.text,
+      ...buildAffirmationContent(affirmation.text),
       data: { affirmationId: affirmation.id, kind: 'affirmation' },
       sound: 'default',
     },
@@ -779,6 +795,7 @@ async function scheduleAffirmationNotification(affirmation: Affirmation) {
 }
 
 export default function App() {
+  const { width: screenWidth } = useWindowDimensions();
   const onboarding = useOnboarding();
   const [screen, setScreen] = useState<Screen>('home');
   const [focusNavigationNotice, setFocusNavigationNotice] = useState(false);
@@ -837,7 +854,6 @@ export default function App() {
   const [widgetSettings, setWidgetSettings] = useState<WidgetSettings>(DEFAULT_WIDGET_SETTINGS);
   const widgetPhotoSyncedUriRef = React.useRef<string | undefined>(undefined);
   const widgetCustomPhotoSyncedUrisRef = React.useRef<Record<string, string>>({});
-  const widgetCustomCutoutSyncedUrisRef = React.useRef<Record<string, string>>({});
   const widgetAffirmationPhotoSyncedUrisRef = React.useRef<Record<number, string>>({});
   const widgetSnapshotSerializedRef = React.useRef<string | undefined>(undefined);
   const widgetSnapshotInFlightRef = React.useRef<{ requestId: number; serialized: string } | undefined>(undefined);
@@ -945,9 +961,13 @@ export default function App() {
   const pendingScheduleConflictRef = React.useRef<ScheduleConflict | undefined>(undefined);
   const scheduleConflictKeysRef = React.useRef(new Set<string>());
   const [premiumOpen, setPremiumOpen] = useState(false);
+  const premiumOpenRef = React.useRef(false);
+  premiumOpenRef.current = premiumOpen;
   const [designCustomizeOpen, setDesignCustomizeOpen] = useState(false);
   const [designCustomizePurchased, setDesignCustomizePurchased] = useState(false);
   const [premiumTargetFeature, setPremiumTargetFeature] = useState<PremiumGuideFeatureId>(DEFAULT_PREMIUM_GUIDE_FEATURE);
+  const purchaseDiagnosticPendingRef = React.useRef(false);
+  const purchaseDiagnosticActiveRef = React.useRef(false);
   const [storePremiumAccess, setStorePremiumAccess] = useState(false);
   const [storeDesignCustomizeAccess, setStoreDesignCustomizeAccess] = useState(false);
   const [designPreviewPattern, setDesignPreviewPattern] = useState<ChicPattern>();
@@ -980,8 +1000,13 @@ export default function App() {
       : designCustomizePurchased;
   const planTierRef = React.useRef<PlanTier>(planTier);
   const handleStoreDesignEntitlement = React.useCallback((active: boolean) => {
+    logPremiumDiagnostic('PREMIUM_ENTITLEMENT_CHANGED', { plan: active ? 'design' : 'free', purchaseStatus: 'entitlement', planTier: planTierRef.current, modalVisible: premiumOpenRef.current, entitlementsResolved: false, pending: purchaseDiagnosticPendingRef.current });
     setStoreDesignCustomizeAccess(active);
     if (active) setDesignCustomizePurchased(true);
+  }, []);
+  const handleStorePremiumEntitlement = React.useCallback((active: boolean) => {
+    logPremiumDiagnostic('PREMIUM_ENTITLEMENT_CHANGED', { plan: active ? 'premium' : 'free', purchaseStatus: 'entitlement', planTier: planTierRef.current, modalVisible: premiumOpenRef.current, entitlementsResolved: false, pending: purchaseDiagnosticPendingRef.current });
+    setStorePremiumAccess(active);
   }, []);
   const choosePremiumTrialReminder = React.useCallback((trial: PremiumTrialStarted, enabled: boolean) => {
     const noticeKey = `${trial.productId}:${trial.trialEndAt}`;
@@ -1017,22 +1042,46 @@ export default function App() {
     const noticeKey = `${trial.productId}:${trial.trialEndAt}`;
     if (premiumTrialNoticeShownRef.current === noticeKey) return;
     premiumTrialNoticeShownRef.current = noticeKey;
+    logPremiumDiagnostic('PREMIUM_TRIAL_ALERT_REQUESTED', { plan: 'monthly', purchaseStatus: 'trial_started', planTier: planTierRef.current, modalVisible: premiumOpenRef.current, entitlementsResolved: false, pending: purchaseDiagnosticPendingRef.current });
     const monthlyPrice = trial.displayPrice ?? 'App Storeに表示された価格';
     Alert.alert(
       'Premiumを開始しました',
       `7日間無料で利用できます。\n無料期間終了後は${monthlyPrice} / 月で自動更新されます。\n\n無料期間終了の前日にお知らせしますか？\n終了約24時間前に通知します。`,
       [
-        { text: 'お知らせする', onPress: () => choosePremiumTrialReminder(trial, true) },
-        { text: '今回はしない', style: 'cancel', onPress: () => choosePremiumTrialReminder(trial, false) },
+        { text: 'お知らせする', onPress: () => { logPremiumDiagnostic('PREMIUM_TRIAL_ALERT_DISMISSED', { choice: 'enabled', plan: 'monthly', purchaseStatus: 'trial_choice', planTier: planTierRef.current, modalVisible: premiumOpenRef.current, entitlementsResolved: false, pending: purchaseDiagnosticPendingRef.current }); choosePremiumTrialReminder(trial, true); } },
+        { text: '今回はしない', style: 'cancel', onPress: () => { logPremiumDiagnostic('PREMIUM_TRIAL_ALERT_DISMISSED', { choice: 'disabled', plan: 'monthly', purchaseStatus: 'trial_choice', planTier: planTierRef.current, modalVisible: premiumOpenRef.current, entitlementsResolved: false, pending: purchaseDiagnosticPendingRef.current }); choosePremiumTrialReminder(trial, false); } },
       ],
     );
   }, [choosePremiumTrialReminder]);
   const storeKit = useRhythmStoreKit({
-    onPremiumEntitlement: setStorePremiumAccess,
+    onPremiumEntitlement: handleStorePremiumEntitlement,
     onDesignCustomizeEntitlement: handleStoreDesignEntitlement,
     onPremiumTrialStarted: handlePremiumTrialStarted,
   });
   const storeKitEntitlementsResolved = !storeKit.configured || storeKit.entitlementsResolved;
+  useEffect(() => {
+    logPremiumDiagnostic('PREMIUM_MODAL_VISIBLE', { plan: planTier, purchaseStatus: purchaseDiagnosticPendingRef.current ? 'processing' : 'idle', planTier, modalVisible: premiumOpen, entitlementsResolved: storeKitEntitlementsResolved, pending: purchaseDiagnosticPendingRef.current });
+  }, [planTier, premiumOpen, storeKitEntitlementsResolved]);
+  const purchasePremiumWithDiagnostics = React.useCallback(async (plan: 'monthly' | 'annual') => {
+    purchaseDiagnosticPendingRef.current = true;
+    purchaseDiagnosticActiveRef.current = true;
+    logPremiumDiagnostic('PURCHASE_START', { plan, purchaseStatus: 'processing', planTier, modalVisible: premiumOpenRef.current, entitlementsResolved: storeKitEntitlementsResolved, pending: true });
+    try {
+      const result = await storeKit.purchasePremium(plan);
+      logPremiumDiagnostic('PREMIUM_PURCHASE_STATUS', { plan, purchaseStatus: result.success ? 'success' : 'failed', planTier: planTierRef.current, modalVisible: premiumOpenRef.current, entitlementsResolved: storeKitEntitlementsResolved, pending: false });
+      return result.success;
+    } finally {
+      purchaseDiagnosticPendingRef.current = false;
+    }
+  }, [planTier, storeKit, storeKitEntitlementsResolved]);
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', (nextState) => {
+      if (nextState !== 'active' || !purchaseDiagnosticActiveRef.current) return;
+      purchaseDiagnosticActiveRef.current = false;
+      logPremiumDiagnostic('APP_INTERACTION_RECOVERED', { plan: planTierRef.current, purchaseStatus: 'foreground', planTier: planTierRef.current, modalVisible: premiumOpenRef.current, entitlementsResolved: storeKitEntitlementsResolved, pending: purchaseDiagnosticPendingRef.current });
+    });
+    return () => subscription.remove();
+  }, [storeKitEntitlementsResolved]);
   const premiumTrialReminderAvailable = planTier === 'premium'
     && typeof storeKit.premiumTrialEndAt === 'number'
     && storeKit.premiumTrialEndAt > now.getTime();
@@ -1699,8 +1748,7 @@ export default function App() {
       setWidgetSettings((current) => {
         if (widgetType) {
           const previous = current.widgetCustomizations?.[widgetType];
-          if (previous?.cutoutUri) deleteManagedPhotoUri(previous.cutoutUri, [persistentUri]);
-          const customizations = { ...(current.widgetCustomizations ?? {}), [widgetType]: { ...(previous ?? {}), photoUri: persistentUri, cutoutUri: undefined, photoLayout: previous?.photoLayout ?? current.photoLayout } };
+          const customizations = { ...(current.widgetCustomizations ?? {}), [widgetType]: { ...(previous ?? {}), photoUri: persistentUri, photoLayout: previous?.photoLayout ?? current.photoLayout } };
           return { ...current, style: 'photo', widgetCustomizations: customizations };
         }
         deleteManagedPhotoUri(current.photoUri, [persistentUri, ...(current.affirmationPhotoUris ?? [])]);
@@ -1711,61 +1759,6 @@ export default function App() {
       Alert.alert('写真を保存できませんでした', 'もう一度選び直してください。');
     }
   }, [hasDesignCustomizeAccess, planTier, requestWidgetPhotoUnlock, rewardedAccess]);
-  const removeWidgetPhotoBackground = React.useCallback(async (widgetType: WidgetType, override?: WidgetEntitlementOverride) => {
-    const showCutoutFailure = () => Alert.alert('切り抜けませんでした', 'この写真はうまく切り抜けませんでした。別の写真を試してください。');
-    const customization = getWidgetCustomization(widgetSettings, widgetType);
-    if (!customization.photoUri) {
-      Alert.alert('写真を選択してください', '先にWidget用の写真を選んでください。');
-      return false;
-    }
-    const overrideFree = __DEV__ && override === 'free';
-    const overrideDesign = __DEV__ && (override === 'design' || override === 'premium');
-    const effectivePlanTier: PlanTier = override === 'premium' ? 'premium' : overrideFree || override === 'design' ? 'free' : planTier;
-    const effectiveDesignAccess = overrideDesign || ((override == null || override === 'actual') && hasDesignCustomizeAccess);
-    const unlockActive = isWidgetPhotoUnlockActive(rewardedAccess, widgetType, new Date());
-    if (effectivePlanTier !== 'premium' && !effectiveDesignAccess && !unlockActive) return false;
-    if (__DEV__) console.log('[BackgroundRemoval][JS] start', { widgetType });
-    try {
-      const available = await isRhythmWidgetPhotoBackgroundRemovalAvailable();
-      if (!available) {
-        Alert.alert('背景削除を利用できません', '背景削除はiOS 17以降で利用できます。');
-        return false;
-      }
-      const generated = await generateRhythmWidgetPhotoCutout(customization.photoUri, widgetType);
-      if (!generated) {
-        showCutoutFailure();
-        return false;
-      }
-      const persistentUri = persistPhotoUri(generated, `widget-cutout-${widgetType}`);
-      if (__DEV__) {
-        console.log('[BackgroundRemoval][JS] persistentUri', persistentUri);
-        console.log('[BackgroundRemoval][JS] persistentExists', isPersistedPhotoAvailable(persistentUri));
-      }
-      if (!isPersistedPhotoAvailable(persistentUri)) {
-        showCutoutFailure();
-        return false;
-      }
-      const previous = widgetSettings.widgetCustomizations?.[widgetType]?.cutoutUri;
-      if (previous && previous !== persistentUri) deleteManagedPhotoUri(previous, [persistentUri]);
-      setWidgetSettings((current) => {
-        const existing = current.widgetCustomizations?.[widgetType] ?? {};
-        return {
-          ...current,
-          style: 'photo',
-          widgetCustomizations: {
-            ...(current.widgetCustomizations ?? {}),
-            [widgetType]: { ...existing, photoUri: existing.photoUri ?? customization.photoUri, cutoutUri: persistentUri, photoLayout: 'cutout' },
-          },
-        };
-      });
-      if (__DEV__) console.log('[BackgroundRemoval][JS] stateSaved', { widgetType });
-      return true;
-    } catch (error) {
-      if (__DEV__) console.warn('[BackgroundRemoval][JS] failed', error);
-      showCutoutFailure();
-      return false;
-    }
-  }, [hasDesignCustomizeAccess, planTier, rewardedAccess, widgetSettings]);
   const applyPhotoDesign = React.useCallback(() => {
     if (!designPreviewPhotoUri) {
       Alert.alert('写真を選択してください', '写真で試すから画像を選んでください。');
@@ -1792,6 +1785,62 @@ export default function App() {
     void saveRewardedAccessState(next);
     applyPhotoDesign();
   }, [applyPhotoDesign, designPreviewPhotoUri, rewardedAccess]);
+  const applyDesignTryOn = React.useCallback((selection: DesignTryOnSelection) => {
+    if (selection.mode === 'minimal' || selection.mode === 'dark') {
+      const monoPatternLocked = selection.monoPattern !== 'plain' && planTier !== 'premium' && !hasDesignCustomizeAccess;
+      if (monoPatternLocked) {
+        openPremiumFeature('photo_design');
+        return;
+      }
+      setDesignMode('minimal');
+      setMonoAppearance(selection.monoAppearance);
+      setMonoPattern(selection.monoPattern);
+      if (!onboardingDesignSelectionPending) void onboarding.complete('design');
+      completeInitialDesignSelection();
+      return;
+    }
+    if (selection.mode === 'chic') {
+      const hasPatternAccess = selection.pattern === 'plain'
+        || planTier === 'premium'
+        || hasDesignCustomizeAccess
+        || isPremiumDesignUnlocked(rewardedAccess, now)
+        || isPremiumDesignTrialActive(rewardedAccess, now);
+      if (!hasPatternAccess) {
+        setDesignPreviewMode('chic');
+        setDesignPreviewPattern(selection.pattern);
+        if (canStartPremiumDesignTrial(rewardedAccess)) startDesignTrial(selection.pattern);
+        else setDesignTrialNoticeOpen(true);
+        return;
+      }
+      setChicCheckColor(selection.color);
+      setDesignMode('chic');
+      setChicPattern(selection.pattern);
+      if (!onboardingDesignSelectionPending) void onboarding.complete('design');
+      completeInitialDesignSelection();
+      return;
+    }
+    if (!selection.photoUri) {
+      setDesignPreviewMode('photo');
+      setDesignPreviewPattern('plain');
+      void pickPhotoForDesignPreview();
+      return;
+    }
+    const hasPhotoAccess = planTier === 'premium'
+      || hasDesignCustomizeAccess
+      || activeDesignTrialId === 'photo'
+      || isPremiumDesignUnlocked(rewardedAccess, now);
+    if (!hasPhotoAccess) {
+      setDesignPreviewMode('photo');
+      setDesignPreviewPattern('plain');
+      setDesignPreviewPhotoUri(selection.photoUri);
+      setDesignTrialNoticeOpen(true);
+      return;
+    }
+    setChicCheckColor(selection.color);
+    setDesignMode('photo');
+    if (!onboardingDesignSelectionPending) void onboarding.complete('design');
+    completeInitialDesignSelection();
+  }, [activeDesignTrialId, canStartPremiumDesignTrial, completeInitialDesignSelection, hasDesignCustomizeAccess, isPremiumDesignUnlocked, now, onboarding, onboardingDesignSelectionPending, openPremiumFeature, pickPhotoForDesignPreview, planTier, rewardedAccess, startDesignTrial]);
   const pickPhotoTheme = React.useCallback(async (target: PhotoThemePhotoTarget, options?: { bypassRewarded?: boolean }) => {
     if (planTier !== 'premium' && !hasDesignCustomizeAccess) {
       if (target === 'background' && !rewardedAccess.photoCustomization.backgroundUnlocked) {
@@ -2176,8 +2225,7 @@ export default function App() {
         await Notifications.scheduleNotificationAsync({
           identifier: `departure:${target.id}:${stage}:${notificationDate.toISOString()}`,
           content: {
-            title: phase === 'preparation' ? '準備、始められそう？' : '出発、できそう？',
-            body: body ?? target.title,
+            ...buildDepartureFollowUpContent(phase, body ?? target.title),
             categoryIdentifier: phase === 'preparation' ? 'PREPARATION_ACTIONS' : 'DEPARTURE_ACTIONS',
             data: { departurePlanId: target.id, departureDate: target.date, departureStage: stage },
             sound: 'default',
@@ -2605,8 +2653,7 @@ export default function App() {
           await Notifications.scheduleNotificationAsync({
             identifier: nextNotificationInstanceId,
             content: {
-              title: action === 'SNOOZE' ? 'そろそろ、どう？' : 'あとで確認する時間です',
-              body: response.notification.request.content.body ?? 'タスクを確認しましょう',
+              ...buildTaskActionContent(action, response.notification.request.content.body ?? 'タスクを確認しましょう'),
               categoryIdentifier: 'TASK_ACTIONS',
               data: { taskId, notificationInstanceId: nextNotificationInstanceId },
             },
@@ -2788,7 +2835,11 @@ export default function App() {
     const requestedCustomization = normalizeRhythmLiveActivityCustomization(liveActivityCustomization);
     // Free Live Activity keeps its existing basic typography. Design Customize
     // and Premium may use the persisted typography settings.
-    const customization = tier === 'free' ? { ...DEFAULT_LIVE_ACTIVITY_CUSTOMIZATION } : requestedCustomization;
+    const customization = tier === 'free'
+      ? { ...DEFAULT_LIVE_ACTIVITY_CUSTOMIZATION }
+      : tier === 'premium'
+        ? requestedCustomization
+        : { ...requestedCustomization, interactiveChecks: false, affirmationRotationMode: 'fixed' as const };
     // Live Activity keeps the saved nine-color accent even while the app is
     // rendered with Night Sky's fixed foreground palette.
     const accentHex = tier === 'free' ? '#FFFFFF' : selectedChicPalette.accent;
@@ -2834,13 +2885,18 @@ export default function App() {
     const candidates = tasks
       .filter((task) => task.isRoutine !== true && !task.done && task.status !== 'skipped' && (task.bucket ?? 'now') === 'now')
       .filter((task) => !task.scheduledDate || task.scheduledDate <= today);
-    const current = tier !== 'premium' || displayOptions.currentTask ? selectCurrentTask(candidates, now) : undefined;
+    const showCurrentTasks = tier !== 'premium' || displayOptions.currentTask;
+    const rankedCurrentTasks = showCurrentTasks ? selectCurrentTasks(candidates, now) : [];
+    const current = rankedCurrentTasks[0] ?? (showCurrentTasks ? selectCurrentTask(candidates, now) : undefined);
+    const displayTasks = rankedCurrentTasks.slice(0, 3);
     const next = tier === 'premium' && (displayOptions.nextSchedule || displayOptions.departureCountdown) ? nextDeparturePlan : undefined;
     if (!current && !next && !affirmationText) return undefined;
     return {
       tier,
       mode: 'normal',
       currentTaskTitle: current?.title,
+      currentTasks: displayTasks.length ? displayTasks.map((task) => ({ id: task.id, title: task.title })) : undefined,
+      currentTaskRemainingCount: Math.max(0, rankedCurrentTasks.length - displayTasks.length),
       nextScheduleTitle: tier === 'premium' && (displayOptions.nextSchedule || displayOptions.departureCountdown) ? next?.title : undefined,
       nextScheduleAt: tier === 'premium' && displayOptions.nextSchedule && next ? planScheduledAt(next).toISOString() : undefined,
       departureAt: tier === 'premium' && displayOptions.departureCountdown && next && getPlanCountdownAt(next).getTime() > now.getTime() ? getPlanCountdownAt(next).toISOString() : undefined,
@@ -2850,9 +2906,9 @@ export default function App() {
       affirmationRotationIntervalMinutes: customization.affirmationRotationIntervalMinutes,
       affirmationRotationAnchor: rotationAnchor,
       interactiveChecks: tier === 'premium' && customization.interactiveChecks,
-      currentTaskId: tier === 'premium' && customization.interactiveChecks ? current?.id : undefined,
-      currentTaskListItems: tier === 'premium' && customization.interactiveChecks && current?.listItems?.length
-        ? current.listItems.slice(0, 3).map((item) => ({ id: item.id, text: item.text, checked: item.checked }))
+      currentTaskId: tier === 'premium' && customization.interactiveChecks ? displayTasks[0]?.id : undefined,
+      currentTaskListItems: tier === 'premium' && customization.interactiveChecks && displayTasks[0]?.listItems?.length
+        ? displayTasks[0].listItems.slice(0, 3).map((item) => ({ id: item.id, text: item.text, checked: item.checked }))
         : undefined,
       fontDesign: customization.fontDesign,
       fontSize: customization.fontSize,
@@ -2862,16 +2918,49 @@ export default function App() {
   }, [affirmationCustomTexts, affirmations, focusActivity, focusState, focusTimerActive, hasDesignCustomizeAccess, hydrated, liveActivityCustomization, liveActivityDisplayOptions, liveActivityEnabled, nextDeparturePlan, now, planTier, selectedChicPalette.accent, storeKitEntitlementsResolved, tasks, widgetEntitlementOverride]);
 
   useEffect(() => {
+    if (!__DEV__) return;
+    if (!hydrated) {
+      console.log('[LiveActivity] payload skipped: hydration pending');
+    } else if (!liveActivityEnabled) {
+      console.log('[LiveActivity] payload skipped: switch disabled');
+    } else if (!storeKitEntitlementsResolved) {
+      console.log('[LiveActivity] payload skipped: entitlements unresolved');
+    } else if (!liveActivityPayload) {
+      console.log('[LiveActivity] payload skipped: no eligible focus/task/schedule/affirmation');
+    } else {
+      console.log('[LiveActivity] payload created = true');
+    }
+  }, [hydrated, liveActivityPayload, storeKitEntitlementsResolved]);
+
+  useEffect(() => {
+    if (__DEV__) {
+      console.log('[LiveActivity] sync-state', {
+        hydrated,
+        enabled: liveActivityEnabled,
+        entitlementsResolved: storeKitEntitlementsResolved,
+        payloadAvailable: Boolean(liveActivityPayload),
+        serializedRefSet: liveActivitySerializedRef.current !== undefined,
+      });
+    }
     if (!hydrated || !storeKitEntitlementsResolved) return;
     const serialized = liveActivityPayload ? JSON.stringify(liveActivityPayload) : undefined;
     if (serialized === liveActivitySerializedRef.current) return;
     liveActivitySerializedRef.current = serialized;
-    if (!serialized) {
+    if (!serialized || !liveActivityPayload) {
+      if (__DEV__) console.log('[LiveActivity] sync-action', { action: 'end', reason: 'payload-unavailable' });
       void endRhythmLiveActivity();
       return;
     }
-    void startOrUpdateRhythmLiveActivity(liveActivityPayload!).catch(() => undefined);
-  }, [hydrated, liveActivityPayload, storeKitEntitlementsResolved]);
+    const payload = liveActivityPayload;
+    if (__DEV__) console.log('[LiveActivity] sync-action', { action: 'start-or-update', mode: payload.mode, tier: payload.tier });
+    void startOrUpdateRhythmLiveActivity(payload).then(async (result) => {
+      if (__DEV__) console.log('[LiveActivity] sync-complete', { action: 'start-or-update', result });
+      if (__DEV__) {
+        const status = await getRhythmLiveActivityStatus();
+        console.log('[LiveActivity] status', status);
+      }
+    });
+  }, [hydrated, liveActivityEnabled, liveActivityPayload, storeKitEntitlementsResolved]);
 
   const syncRhythmWidgetSnapshot = React.useCallback(async () => {
     // The first-run tour is deliberately read-only; its temporary data must
@@ -2894,7 +2983,7 @@ export default function App() {
       }
       if (widgetPhotoSyncedUriRef.current === selectedPhotoUri) photoFileName = 'rhythm-widget-photo.jpg';
     }
-    const widgetCustomizations: Record<string, { photoFileName?: string; cutoutFileName?: string; photoLayout?: WidgetSettings['photoLayout']; monoTemplate?: WidgetSettings['monoTemplate'] }> = {};
+    const widgetCustomizations: Record<string, { photoFileName?: string; photoLayout?: WidgetSettings['photoLayout']; monoTemplate?: WidgetSettings['monoTemplate'] }> = {};
     for (const { id } of WIDGET_TYPE_OPTIONS) {
       const storedCustomization = widgetSettings.widgetCustomizations?.[id];
       const customization = getWidgetCustomization(widgetSettings, id);
@@ -2905,7 +2994,6 @@ export default function App() {
         continue;
       }
       let widgetPhotoFileName: string | undefined;
-      let widgetCutoutFileName: string | undefined;
       if (storedCustomization?.photoUri) {
         const previousUri = widgetCustomPhotoSyncedUrisRef.current[id];
         let copied = previousUri === storedCustomization.photoUri;
@@ -2922,25 +3010,9 @@ export default function App() {
         // shared appearance photo without inflating the snapshot.
         widgetPhotoFileName = photoFileName;
       }
-      if (storedCustomization?.cutoutUri) {
-        const previousCutoutUri = widgetCustomCutoutSyncedUrisRef.current[id];
-        let copied = previousCutoutUri === storedCustomization.cutoutUri;
-        if (!copied) {
-          copied = await saveRhythmWidgetPhotoCutout(storedCustomization.cutoutUri, id).catch((error) => {
-            if (__DEV__) console.log('[BackgroundRemoval][JS] appGroupCopy', { widgetType: id, success: false, error: error instanceof Error ? error.message : String(error) });
-            return false;
-          });
-        }
-        if (copied) {
-          widgetCustomCutoutSyncedUrisRef.current[id] = storedCustomization.cutoutUri;
-          widgetCutoutFileName = `rhythm-widget-cutout-${id}.png`;
-          if (previousCutoutUri !== storedCustomization.cutoutUri) photoWasCopied = true;
-        }
-      }
-      if (widgetPhotoFileName || widgetCutoutFileName || storedCustomization?.photoLayout || storedCustomization?.monoTemplate) {
+      if (widgetPhotoFileName || storedCustomization?.photoLayout || storedCustomization?.monoTemplate) {
         widgetCustomizations[id] = {
           ...(widgetPhotoFileName ? { photoFileName: widgetPhotoFileName } : {}),
-          ...(widgetCutoutFileName ? { cutoutFileName: widgetCutoutFileName } : {}),
           ...(customization.photoLayout ? { photoLayout: customization.photoLayout } : {}),
           ...(customization.monoTemplate ? { monoTemplate: customization.monoTemplate } : {}),
         };
@@ -2948,12 +3020,6 @@ export default function App() {
     }
     Object.keys(widgetCustomPhotoSyncedUrisRef.current).forEach((id) => {
       if (!widgetSettings.widgetCustomizations?.[id as WidgetType]?.photoUri) delete widgetCustomPhotoSyncedUrisRef.current[id];
-    });
-    Object.keys(widgetCustomCutoutSyncedUrisRef.current).forEach((id) => {
-      if (!widgetSettings.widgetCustomizations?.[id as WidgetType]?.cutoutUri) {
-        deleteManagedPhotoUri(widgetCustomCutoutSyncedUrisRef.current[id]);
-        delete widgetCustomCutoutSyncedUrisRef.current[id];
-      }
     });
     const affirmationPhotoUris = (widgetSettings.affirmationPhotoUris ?? []).slice(0, 3);
     const affirmationPhotoFileNames: string[] = [];
@@ -3010,14 +3076,27 @@ export default function App() {
       // add these slots without changing the snapshot schema again.
       affirmationPhotoFileNames,
     });
-    const serialized = JSON.stringify(snapshot);
     if (__DEV__) {
-      const cutoutFileNames = Object.entries(widgetCustomizations)
-        .filter(([, customization]) => Boolean(customization.cutoutFileName))
-        .map(([id, customization]) => ({ id, fileName: customization.cutoutFileName }));
-      if (cutoutFileNames.length > 0) console.log('[BackgroundRemoval][JS] snapshotCutoutFileName', cutoutFileNames);
+      const today = dateKey(now);
+      const monthKey = today.slice(0, 7);
+      const weekDates = new Set((snapshot.calendarWeek?.days ?? []).map((day) => day.date));
+      const summarizePlan = (item: DeparturePlan) => ({ title: item.title, date: item.date, time: item.allDay ? '終日' : (getPlanScheduledTime(item) || item.arrival || undefined) });
+      const calendarMonthItems = departurePlans.filter((item) => item.date.startsWith(monthKey)).map(summarizePlan);
+      const calendarWeekItems = departurePlans.filter((item) => weekDates.has(item.date)).map(summarizePlan);
+      const calendarTodayItems = departurePlans.filter((item) => item.date === today).map(summarizePlan);
+      console.log('[CalendarDiagnostic] WIDGET_SNAPSHOT_BEFORE_SAVE', {
+        timestamp: new Date().toISOString(),
+        departurePlansCount: departurePlans.length,
+        calendarPlansCount: snapshot.calendarPlans?.length ?? 0,
+        calendarMonthScheduleCount: snapshot.calendarMonth?.days.reduce((sum, day) => sum + day.scheduleCount, 0) ?? 0,
+        calendarWeekScheduleCount: snapshot.calendarWeek?.days.reduce((sum, day) => sum + day.schedules.length, 0) ?? 0,
+        today: calendarTodayItems.slice(0, 24),
+        week: calendarWeekItems.slice(0, 24),
+        month: calendarMonthItems.slice(0, 24),
+      });
     }
-    // Async photo/cutout preparation can finish out of order. Only the most
+    const serialized = JSON.stringify(snapshot);
+    // Async photo preparation can finish out of order. Only the most
     // recently requested snapshot may enter the save queue; otherwise an old
     // request could overwrite a newer theme/task state after it completes.
     if (requestId !== widgetSnapshotRequestRef.current) return;
@@ -3027,6 +3106,7 @@ export default function App() {
       if (requestId !== widgetSnapshotRequestRef.current) return;
       try {
         const saved = await saveRhythmWidgetSnapshot(snapshot);
+        if (__DEV__) console.log('[CalendarDiagnostic] WIDGET_SNAPSHOT_WRITE', { timestamp: new Date().toISOString(), success: saved, departurePlansCount: departurePlans.length, calendarPlansCount: snapshot.calendarPlans?.length ?? 0 });
         if (saved && requestId === widgetSnapshotRequestRef.current) widgetSnapshotSerializedRef.current = serialized;
       } catch (error) {
         // Expo Go has no WidgetKit module. Native failures should not affect app state.
@@ -3041,7 +3121,7 @@ export default function App() {
     const queuedPersist = widgetSnapshotSaveChainRef.current.then(persist, persist);
     widgetSnapshotSaveChainRef.current = queuedPersist.catch(() => undefined);
     await queuedPersist;
-  }, [affirmationCustomTexts, affirmations, chicCheckColor, designMode, departureCheckIns, departurePlans, effectiveChicPattern, hasDesignCustomizeAccess, hydrated, onboarding.state.firstRunStage, planTier, rewardedAccess.widgetPhotoCustomization, storeKitEntitlementsResolved, tasks, widgetPhotoSyncedUriRef, widgetCustomCutoutSyncedUrisRef, widgetCustomPhotoSyncedUrisRef, widgetSettings, wishMonths, wishTopImageUri]);
+  }, [affirmationCustomTexts, affirmations, chicCheckColor, designMode, departureCheckIns, departurePlans, effectiveChicPattern, hasDesignCustomizeAccess, hydrated, onboarding.state.firstRunStage, planTier, rewardedAccess.widgetPhotoCustomization, storeKitEntitlementsResolved, tasks, widgetPhotoSyncedUriRef, widgetCustomPhotoSyncedUrisRef, widgetSettings, wishMonths, wishTopImageUri]);
 
   const openWidgetGuide = React.useCallback(() => {
     setWidgetGuideVisible(true);
@@ -3083,9 +3163,9 @@ export default function App() {
   const openWidgetSection = React.useCallback(() => {
     if (!onboarding.isCompleted('widgetGuide')) setWidgetGuideVisible(true);
   }, [onboarding]);
-  const refreshWidgetFromSettings = React.useCallback(() => {
-    void syncRhythmWidgetSnapshot().then(() => Alert.alert('Widgetを更新しました', '最新の予定とタスクを同期しました。')).catch(() => Alert.alert('Widgetを更新できませんでした', '時間をおいてもう一度お試しください。'));
-  }, [syncRhythmWidgetSnapshot]);
+  const refreshWidgetFromSettings = React.useCallback(() => syncRhythmWidgetSnapshot()
+    .then(() => Alert.alert('Widgetを更新しました', '最新の予定とタスクを同期しました。'))
+    .catch(() => Alert.alert('Widgetを更新できませんでした', '時間をおいてもう一度お試しください。')), [syncRhythmWidgetSnapshot]);
 
   useEffect(() => {
     void syncRhythmWidgetSnapshot().catch((error) => {
@@ -3350,9 +3430,8 @@ export default function App() {
       const identifier = `schedule-switch:${candidate.task.id}:${candidate.plan.id}`;
       await Notifications.scheduleNotificationAsync({
         identifier,
-        content: {
-          title: 'そろそろ次の予定へ切り替える時間',
-          body: `あと15分で「${candidate.plan.title}」の${candidate.kind === 'preparation' ? '準備' : candidate.kind === 'departure' ? '出発' : '予定'}時間です。「${candidate.task.title}」をそろそろ切り上げますか？`,
+            content: {
+          ...buildScheduleSwitchContent(candidate.plan.title, candidate.kind, candidate.task.title),
           sound: 'default',
           data: { kind: 'schedule_switch', taskId: candidate.task.id, departurePlanId: candidate.plan.id, notificationInstanceId: identifier, boundaryKind: candidate.kind, boundaryAt: candidate.boundaryAt.toISOString() },
         },
@@ -3382,8 +3461,7 @@ export default function App() {
       await Notifications.scheduleNotificationAsync({
         identifier,
         content: {
-          title: 'そろそろ次の予定へ切り替える時間',
-          body: `あと15分で「${candidate.plan.title}」の${candidate.kind === 'preparation' ? '準備' : candidate.kind === 'departure' ? '出発' : '予定'}時間です。「${candidate.task.title}」をそろそろ切り上げますか？`,
+          ...buildScheduleSwitchContent(candidate.plan.title, candidate.kind, candidate.task.title),
           sound: 'default',
           data: { kind: 'schedule_switch', taskId: candidate.task.id, departurePlanId: candidate.plan.id, notificationInstanceId: identifier, boundaryKind: candidate.kind, boundaryAt: candidate.boundaryAt.toISOString() },
         },
@@ -3450,7 +3528,7 @@ export default function App() {
       await Notifications.scheduleNotificationAsync({
         identifier: notificationInstanceId,
         content: {
-          title: index === 0 ? '終わった？' : index === offsets.length - 1 ? 'まだなら、今確認しよう' : 'そろそろ終われそう？',
+          title: buildTaskReminderTitle(index, offsets.length),
           body: task.title,
           categoryIdentifier: 'TASK_ACTIONS',
           data: { taskId: task.id, notificationInstanceId, notificationKind: 'task_reminder', nudgeIndex: index },
@@ -3473,12 +3551,11 @@ export default function App() {
     const deadline = dateForReminder(task.deadlineDate, task.deadlineTime);
     const notificationDate = new Date(deadline.getTime() - task.deadlineNotifyBefore * 60_000);
     if (notificationDate.getTime() <= Date.now()) return;
-    const timing = task.deadlineNotifyBefore === 0 ? '期限時刻です' : `期限まであと${task.deadlineNotifyBefore >= 60 ? `${task.deadlineNotifyBefore / 60}時間` : `${task.deadlineNotifyBefore}分`}`;
     const notificationInstanceId = `deadline:${task.id}:${notificationDate.toISOString()}`;
     await Notifications.scheduleNotificationAsync({
       identifier: notificationInstanceId,
       content: {
-        title: timing,
+        title: buildDeadlineTitle(task.deadlineNotifyBefore),
         body: task.title,
         categoryIdentifier: 'TASK_ACTIONS',
         data: { taskId: task.id, notificationInstanceId, notificationKind: 'deadline' },
@@ -3508,8 +3585,7 @@ export default function App() {
         if (departureAt.getTime() <= Date.now()) return;
         await Notifications.scheduleNotificationAsync({
           content: {
-            title: '出発時刻です',
-            body: targetPlan.title,
+            ...buildDepartureReminderContent(targetPlan.title),
             sound: 'default',
             data: { departurePlanId: targetPlan.id, departureDate: targetPlan.date, departureStage: 'departure_reminder' },
           },
@@ -3527,32 +3603,27 @@ export default function App() {
       {
         id: 'wake_up',
         before: targetPlan.travelMinutes + targetPlan.bufferMinutes + targetPlan.preparationMinutes + 10,
-        title: '起きて、準備の時間です',
-        body: `${formatLiveTime(moments.prepare)}から準備を始める予定です`,
+        ...buildDepartureStageContent('wake_up', targetPlan.title, formatLiveTime(moments.prepare), formatLiveTime(moments.leave), formatLiveTime(moments.arrival)),
       },
       {
         id: 'prepare',
         before: targetPlan.travelMinutes + targetPlan.bufferMinutes + targetPlan.preparationMinutes,
-        title: '準備、始めた？',
-        body: `${formatLiveTime(moments.leave)}に出発すると安心です`,
+        ...buildDepartureStageContent('prepare', targetPlan.title, formatLiveTime(moments.prepare), formatLiveTime(moments.leave), formatLiveTime(moments.arrival)),
       },
       {
         id: 'ten_minutes',
         before: targetPlan.travelMinutes + targetPlan.bufferMinutes + 10,
-        title: 'そろそろ出発しよう',
-        body: `${targetPlan.title}の持ち物を確認しよう`,
+        ...buildDepartureStageContent('ten_minutes', targetPlan.title, formatLiveTime(moments.prepare), formatLiveTime(moments.leave), formatLiveTime(moments.arrival)),
       },
       {
         id: 'leave_now',
         before: targetPlan.travelMinutes + targetPlan.bufferMinutes,
-        title: '出発した？',
-        body: `${formatLiveTime(moments.arrival)}到着予定です`,
+        ...buildDepartureStageContent('leave_now', targetPlan.title, formatLiveTime(moments.prepare), formatLiveTime(moments.leave), formatLiveTime(moments.arrival)),
       },
       {
         id: 'late_warning',
         before: Math.max(0, targetPlan.travelMinutes + targetPlan.bufferMinutes - 5),
-        title: 'まだなら、今出よう',
-        body: '急いで出発するか、予定を組み直してください',
+        ...buildDepartureStageContent('late_warning', targetPlan.title, formatLiveTime(moments.prepare), formatLiveTime(moments.leave), formatLiveTime(moments.arrival)),
       },
       ];
 
@@ -3735,9 +3806,8 @@ export default function App() {
       const identifier = `routine-remaining:${day}`;
       await Notifications.scheduleNotificationAsync({
         identifier,
-        content: {
-          title: '今日のRoutineが残っています',
-          body: `今日のRoutineがあと${currentCount}件残っています。無理のないところまでやっておきますか？`,
+      content: {
+          ...buildRoutineRemainingContent(currentCount),
           sound: 'default',
           data: { kind: 'routine_remaining', routineDate: day, routineCount: currentCount, notificationInstanceId: identifier },
         },
@@ -3985,8 +4055,8 @@ export default function App() {
   const renderWishCapturePreview = (premium: boolean): React.ReactNode => {
     const wishId = 'capture-preview-wish';
     const actions: WishAction[] = [
-      { id: 'capture-preview-action-1', wishId, title: '寝る前に10分読む', completed: premium },
-      ...(premium ? [{ id: 'capture-preview-action-2', wishId, title: '通勤中に5ページ読む', completed: false }] : []),
+      { id: 'capture-preview-action-1', wishId, title: '少し時間をとる', completed: premium },
+      ...(premium ? [{ id: 'capture-preview-action-2', wishId, title: 'できる範囲で続ける', completed: false }] : []),
     ];
     return (
       <View pointerEvents="none" style={{ width: '100%', height: premium ? 740 : 620 }}>
@@ -3997,7 +4067,7 @@ export default function App() {
           monthLabel="2026年8月"
           state={{
             monthlyGoal: '毎日少しでも自分の時間をつくる',
-            wishes: [{ id: wishId, title: '週に1冊、本を読む', completed: false, createdAt: '2026-01-01T00:00:00.000Z' }],
+            wishes: [{ id: wishId, title: '自分の時間をつくる', completed: false, createdAt: '2026-01-01T00:00:00.000Z' }],
             actions,
             review: {},
           }}
@@ -4067,11 +4137,11 @@ export default function App() {
       return next;
     })();
     const previewTasks: Task[] = [
-      { id: 'premium-preview-task-1', title: '資料をまとめる', done: false, category: '仕事', priority: '中', scheduledDate: previewDate, scheduledTime: '09:00', bucket: 'now' },
-      { id: 'premium-preview-task-4', title: '買い物', done: false, category: '家事', priority: '低', scheduledDate: previewDate, scheduledTime: '11:30', bucket: 'later' },
-      { id: 'premium-preview-task-2', title: '洗濯をする', done: true, status: 'completed', category: '家事', priority: '中', scheduledDate: previewDate, scheduledTime: '14:00', completedAt: new Date(Date.now() - 86400000).toISOString(), bucket: 'later' },
-      { id: 'premium-preview-task-5', title: 'ジム', done: false, category: '健康', priority: '中', scheduledDate: previewDate, scheduledTime: '18:30', bucket: 'now' },
-      { id: 'premium-preview-task-3', title: 'シーツを洗濯する', done: true, status: 'completed', category: '家事', priority: '中', scheduledDate: previewDate, completedAt: new Date(Date.now() - 86400000 * 4).toISOString(), bucket: 'later' },
+      { id: 'premium-preview-task-1', title: '今日のタスクを確認', done: false, category: '仕事', priority: '中', scheduledDate: previewDate, scheduledTime: '09:00', bucket: 'now' },
+      { id: 'premium-preview-task-4', title: '予定を確認', done: false, category: 'その他', priority: '低', scheduledDate: previewDate, scheduledTime: '11:30', bucket: 'later' },
+      { id: 'premium-preview-task-2', title: '完了したタスク', done: true, status: 'completed', category: 'その他', priority: '中', scheduledDate: previewDate, scheduledTime: '14:00', completedAt: new Date(Date.now() - 86400000).toISOString(), bucket: 'later' },
+      { id: 'premium-preview-task-5', title: '今日の予定', done: false, category: 'その他', priority: '中', scheduledDate: previewDate, scheduledTime: '18:30', bucket: 'now' },
+      { id: 'premium-preview-task-3', title: '完了したタスク', done: true, status: 'completed', category: 'その他', priority: '中', scheduledDate: previewDate, completedAt: new Date(Date.now() - 86400000 * 4).toISOString(), bucket: 'later' },
     ];
     // Keep the read-only showcase relative to the current time so a stale
     // fixed clock never renders an absurd multi-hour countdown.
@@ -4080,39 +4150,39 @@ export default function App() {
     const previewEndAt = new Date(previewArrivalAt.getTime() + 60 * 60 * 1000);
     const previewClock = (value: Date) => `${String(value.getHours()).padStart(2, '0')}:${String(value.getMinutes()).padStart(2, '0')}`;
     const previewPlanDate = dateKey(previewArrivalAt);
-    const previewPlans: DeparturePlan[] = [{ id: 'premium-preview-plan', title: '資料提出', destination: '天神○○ビル', date: previewPlanDate, arrival: previewClock(previewArrivalAt), departureTime: previewClock(previewDepartureAt), endAt: previewClock(previewEndAt), travelMinutes: 30, preparationMinutes: 15, bufferMinutes: 10, planMode: 'arrival_reverse' }];
+    const previewPlans: DeparturePlan[] = [{ id: 'premium-preview-plan', title: '予定', destination: '予定の場所', date: previewPlanDate, arrival: previewClock(previewArrivalAt), departureTime: previewClock(previewDepartureAt), endAt: previewClock(previewEndAt), travelMinutes: 30, preparationMinutes: 15, bufferMinutes: 10, planMode: 'arrival_reverse' }];
     const previewCalendarOptions = [
       { id: 'preview-personal-calendar', title: '個人', type: 'local' },
       { id: 'preview-work-calendar', title: '仕事', type: 'local' },
     ] as Calendar.Calendar[];
     const previewCalendarEvents = [
-      { id: 'preview-calendar-hospital', calendarId: 'preview-personal-calendar', title: '病院', startDate: `${previewDate}T10:00:00`, endDate: `${previewDate}T11:00:00`, allDay: false },
-      { id: 'preview-calendar-meeting', calendarId: 'preview-work-calendar', title: '打ち合わせ', startDate: `${previewDate}T14:00:00`, endDate: `${previewDate}T15:00:00`, allDay: false },
-      { id: 'preview-calendar-hair', calendarId: 'preview-personal-calendar', title: '美容院', startDate: `${previewDate}T18:00:00`, endDate: `${previewDate}T19:00:00`, allDay: false },
+      { id: 'preview-calendar-hospital', calendarId: 'preview-personal-calendar', title: '予定', startDate: `${previewDate}T10:00:00`, endDate: `${previewDate}T11:00:00`, allDay: false },
+      { id: 'preview-calendar-meeting', calendarId: 'preview-work-calendar', title: '予定', startDate: `${previewDate}T14:00:00`, endDate: `${previewDate}T15:00:00`, allDay: false },
+      { id: 'preview-calendar-hair', calendarId: 'preview-personal-calendar', title: '予定', startDate: `${previewDate}T18:00:00`, endDate: `${previewDate}T19:00:00`, allDay: false },
     ] as Calendar.Event[];
     const monthDate = (day: number) => dateKey(new Date(now.getFullYear(), now.getMonth(), day, 9, 0, 0, 0));
     const monthPreviewTasks: Task[] = [
-      { id: 'premium-month-task-1', title: '買い物完了', done: true, status: 'completed', category: '家事', priority: '中', scheduledDate: monthDate(12), completedAt: `${monthDate(12)}T18:00:00`, bucket: 'later' },
-      { id: 'premium-month-task-2', title: '資料作成完了', done: true, status: 'completed', category: '仕事', priority: '高', scheduledDate: monthDate(27), completedAt: `${monthDate(27)}T17:00:00`, bucket: 'later' },
-      { id: 'premium-month-task-3', title: 'ジムに行く', done: false, category: '健康', priority: '中', scheduledDate: monthDate(24), scheduledTime: '19:00', bucket: 'now' },
+      { id: 'premium-month-task-1', title: '完了したタスク', done: true, status: 'completed', category: 'その他', priority: '中', scheduledDate: monthDate(12), completedAt: `${monthDate(12)}T18:00:00`, bucket: 'later' },
+      { id: 'premium-month-task-2', title: '完了したタスク', done: true, status: 'completed', category: 'その他', priority: '高', scheduledDate: monthDate(27), completedAt: `${monthDate(27)}T17:00:00`, bucket: 'later' },
+      { id: 'premium-month-task-3', title: '今日のタスク', done: false, category: 'その他', priority: '中', scheduledDate: monthDate(24), scheduledTime: '19:00', bucket: 'now' },
     ];
     const monthPreviewPlans: DeparturePlan[] = [
-      { id: 'premium-month-plan-1', title: '病院', destination: '天神○○ビル', date: monthDate(3), arrival: '10:00', travelMinutes: 0, preparationMinutes: 0, bufferMinutes: 0, planMode: 'calendar_only' },
-      { id: 'premium-month-plan-2', title: '資料提出', destination: '天神○○ビル', date: monthDate(8), arrival: '14:00', travelMinutes: 0, preparationMinutes: 0, bufferMinutes: 0, planMode: 'calendar_only' },
-      { id: 'premium-month-plan-3', title: '美容院', destination: '駅前サロン', date: monthDate(15), arrival: '18:00', travelMinutes: 0, preparationMinutes: 0, bufferMinutes: 0, planMode: 'calendar_only' },
-      { id: 'premium-month-plan-4', title: '打ち合わせ', destination: 'オフィス', date: monthDate(19), arrival: '14:00', travelMinutes: 0, preparationMinutes: 0, bufferMinutes: 0, planMode: 'calendar_only' },
+      { id: 'premium-month-plan-1', title: '予定', destination: '予定の場所', date: monthDate(3), arrival: '10:00', travelMinutes: 0, preparationMinutes: 0, bufferMinutes: 0, planMode: 'calendar_only' },
+      { id: 'premium-month-plan-2', title: 'タスク', destination: '予定の場所', date: monthDate(8), arrival: '14:00', travelMinutes: 0, preparationMinutes: 0, bufferMinutes: 0, planMode: 'calendar_only' },
+      { id: 'premium-month-plan-3', title: '予定', destination: '予定の場所', date: monthDate(15), arrival: '18:00', travelMinutes: 0, preparationMinutes: 0, bufferMinutes: 0, planMode: 'calendar_only' },
+      { id: 'premium-month-plan-4', title: '予定', destination: '予定の場所', date: monthDate(19), arrival: '14:00', travelMinutes: 0, preparationMinutes: 0, bufferMinutes: 0, planMode: 'calendar_only' },
     ];
     const monthPreviewCalendarEvents = [
-      { id: 'premium-month-external-1', calendarId: 'preview-personal-calendar', title: '病院', startDate: `${monthDate(3)}T10:00:00`, endDate: `${monthDate(3)}T11:00:00`, allDay: false },
-      { id: 'premium-month-external-2', calendarId: 'preview-work-calendar', title: '打ち合わせ', startDate: `${monthDate(19)}T14:00:00`, endDate: `${monthDate(19)}T15:00:00`, allDay: false },
+      { id: 'premium-month-external-1', calendarId: 'preview-personal-calendar', title: '予定', startDate: `${monthDate(3)}T10:00:00`, endDate: `${monthDate(3)}T11:00:00`, allDay: false },
+      { id: 'premium-month-external-2', calendarId: 'preview-work-calendar', title: '予定', startDate: `${monthDate(19)}T14:00:00`, endDate: `${monthDate(19)}T15:00:00`, allDay: false },
     ] as Calendar.Event[];
     const routinePreviewTasks: Task[] = [
-      { id: 'premium-routine-reading', title: '読書', done: true, status: 'completed', category: 'その他', priority: '中', scheduledDate: previewDate, completedAt: new Date().toISOString(), createdAt: new Date(Date.now() - 14 * 86400000).toISOString(), isRoutine: true, routineId: 'premium-routine-reading', bucket: 'now' },
-      { id: 'premium-routine-stretch', title: 'ストレッチ', done: true, status: 'completed', category: '健康', priority: '中', scheduledDate: previewDate, completedAt: new Date().toISOString(), createdAt: new Date(Date.now() - 9 * 86400000).toISOString(), isRoutine: true, routineId: 'premium-routine-stretch', bucket: 'now' },
+      { id: 'premium-routine-reading', title: 'ルーティン', done: true, status: 'completed', category: 'その他', priority: '中', scheduledDate: previewDate, completedAt: new Date().toISOString(), createdAt: new Date(Date.now() - 14 * 86400000).toISOString(), isRoutine: true, routineId: 'premium-routine-reading', bucket: 'now' },
+      { id: 'premium-routine-stretch', title: 'ルーティン', done: true, status: 'completed', category: 'その他', priority: '中', scheduledDate: previewDate, completedAt: new Date().toISOString(), createdAt: new Date(Date.now() - 9 * 86400000).toISOString(), isRoutine: true, routineId: 'premium-routine-stretch', bucket: 'now' },
     ];
     const routinePreviewEvents: BehaviorEvent[] = [
-      ...Array.from({ length: 12 }, (_, index) => { const day = new Date(now); day.setDate(day.getDate() - 12 + index); const key = dateKey(day); return { id: `premium-routine-reading-${index}`, eventKey: `premium-routine-reading-${index}`, type: 'task_completed' as const, occurredAt: `${key}T20:00:00`, source: 'manual' as const, version: 1 as const, routineId: 'premium-routine-reading', routineTitleSnapshot: '読書', taskId: 'premium-routine-reading', taskTitleSnapshot: '読書', actualAt: `${key}T20:00:00`, taskCompletionDate: key }; }),
-      ...Array.from({ length: 5 }, (_, index) => { const day = new Date(now); day.setDate(day.getDate() - 6 + index); const key = dateKey(day); return { id: `premium-routine-stretch-${index}`, eventKey: `premium-routine-stretch-${index}`, type: 'task_completed' as const, occurredAt: `${key}T07:30:00`, source: 'manual' as const, version: 1 as const, routineId: 'premium-routine-stretch', routineTitleSnapshot: 'ストレッチ', taskId: 'premium-routine-stretch', taskTitleSnapshot: 'ストレッチ', actualAt: `${key}T07:30:00`, taskCompletionDate: key }; }),
+      ...Array.from({ length: 12 }, (_, index) => { const day = new Date(now); day.setDate(day.getDate() - 12 + index); const key = dateKey(day); return { id: `premium-routine-reading-${index}`, eventKey: `premium-routine-reading-${index}`, type: 'task_completed' as const, occurredAt: `${key}T20:00:00`, source: 'manual' as const, version: 1 as const, routineId: 'premium-routine-reading', routineTitleSnapshot: 'ルーティン', taskId: 'premium-routine-reading', taskTitleSnapshot: 'ルーティン', actualAt: `${key}T20:00:00`, taskCompletionDate: key }; }),
+      ...Array.from({ length: 5 }, (_, index) => { const day = new Date(now); day.setDate(day.getDate() - 6 + index); const key = dateKey(day); return { id: `premium-routine-stretch-${index}`, eventKey: `premium-routine-stretch-${index}`, type: 'task_completed' as const, occurredAt: `${key}T07:30:00`, source: 'manual' as const, version: 1 as const, routineId: 'premium-routine-stretch', routineTitleSnapshot: 'ルーティン', taskId: 'premium-routine-stretch', taskTitleSnapshot: 'ルーティン', actualAt: `${key}T07:30:00`, taskCompletionDate: key }; }),
     ];
     const previewEvents: BehaviorEvent[] = [
       { id: 'premium-preview-complete', eventKey: 'premium-preview-complete', type: 'task_completed', occurredAt: new Date().toISOString(), source: 'manual', version: 1, taskId: previewTasks.find((task) => task.id === 'premium-preview-task-2')!.id, taskTitleSnapshot: previewTasks.find((task) => task.id === 'premium-preview-task-2')!.title, actualAt: new Date().toISOString(), taskCompletionDate: previewDate },
@@ -4148,7 +4218,7 @@ export default function App() {
       helpers={{ dateKey, formatLiveTime, getThemeTokens: getThemedThemeTokens }}
       components={{ AchievementVessel, CalendarMarkPicker }}
       previewMode={kind === 'records' || kind === 'history'}
-      previewSearchQuery={kind === 'history' ? '洗濯' : undefined}
+      previewSearchQuery={kind === 'history' ? 'タスク' : undefined}
       previewJournal={kind === 'records'}
     />;
     // The enclosing PremiumPreviewViewport measures and scales this complete
@@ -4162,7 +4232,7 @@ export default function App() {
       return readonly(<View pointerEvents="none">{renderDesignShowcasePreview()}<View style={{ marginTop: 10 }}>{renderAppearanceSettingsPreview()}</View></View>);
     }
     if (kind === 'voice') {
-      return readonly(<View pointerEvents="none" style={{ padding: 18, alignItems: 'center' }}><Text style={{ color: themedColors.muted, fontSize: 12, fontWeight: '800' }}>共通音声入力</Text><View style={{ marginTop: 12, width: 70, height: 70, borderRadius: 35, backgroundColor: themedColors.violet, alignItems: 'center', justifyContent: 'center' }}><Text style={{ color: uiDesignMode === 'dark' ? theme.colors.screenBackground : '#FFFFFF', fontSize: 28 }}>⌕</Text></View><Text style={{ color: themedColors.ink, fontSize: 14, fontWeight: '900', marginTop: 10 }}>明日の18時に美容院</Text><Text style={{ color: themedColors.muted, fontSize: 11, marginTop: 4 }}>予定として整理 → 確認して保存</Text></View>, 430);
+      return readonly(<View pointerEvents="none" style={{ padding: 18, alignItems: 'center' }}><Text style={{ color: themedColors.muted, fontSize: 12, fontWeight: '800' }}>共通音声入力</Text><View style={{ marginTop: 12, width: 70, height: 70, borderRadius: 35, backgroundColor: themedColors.violet, alignItems: 'center', justifyContent: 'center' }}><Text style={{ color: uiDesignMode === 'dark' ? theme.colors.screenBackground : '#FFFFFF', fontSize: 28 }}>⌕</Text></View><Text style={{ color: themedColors.ink, fontSize: 14, fontWeight: '900', marginTop: 10 }}>明日の予定を追加</Text><Text style={{ color: themedColors.muted, fontSize: 11, marginTop: 4 }}>予定として整理 → 確認して保存</Text></View>, 430);
     }
     if (kind === 'nudge') return readonly(<NotificationManagerCard designMode={uiDesignMode} chicPalette={chicPalette} readOnly />, 560, 0);
     if (kind === 'travel_apps') return readonly(<TravelAppsSettingsCard settings={travelApps} onChange={() => undefined} planTier="premium" designMode={uiDesignMode} chicPalette={chicPalette} onPremium={() => undefined} readOnlyPreview />, 560);
@@ -4248,7 +4318,7 @@ export default function App() {
         template: 'gallery',
         palette: 'lavender',
         phrase: '自分のペースで進める',
-        bestMemory: '資料をまとめる時間を作れた',
+        bestMemory: '今日の時間を大切にできた',
       };
       return readonly(<View style={{ alignItems: 'center', paddingVertical: 12 }}><MonthlyReflectionCardView model={reflectionModel} cardRef={React.createRef<View>()} onReady={() => undefined} /></View>, 560);
     }
@@ -4283,8 +4353,8 @@ export default function App() {
         previewSection="savedTemplates"
         templates={[]}
         savedTemplates={[
-          { id: 'premium-preview-template-1', version: 1, createdAt: '2026-01-01T00:00:00.000Z', title: '病院訪問の準備', category: '予定', priority: '高', repeatRule: 'none', nudgeMode: 'once', navigationEnabled: true, preparationMinutes: 30, travelMinutes: 40, bufferMinutes: 15, listItems: [{ id: 'preview-template-list-1', text: '診察券を入れる', checked: false, order: 0 }] },
-          { id: 'premium-preview-template-2', version: 1, createdAt: '2026-01-02T00:00:00.000Z', title: '出張前チェック', category: '仕事', priority: '高', repeatRule: 'none', nudgeMode: 'once', navigationEnabled: false, listItems: [{ id: 'preview-template-list-2', text: '資料と充電器を確認', checked: false, order: 0 }] },
+          { id: 'premium-preview-template-1', version: 1, createdAt: '2026-01-01T00:00:00.000Z', title: '明日の準備', category: '予定', priority: '高', repeatRule: 'none', nudgeMode: 'once', navigationEnabled: true, preparationMinutes: 30, travelMinutes: 40, bufferMinutes: 15, listItems: [{ id: 'preview-template-list-1', text: '必要なものを確認', checked: false, order: 0 }] },
+          { id: 'premium-preview-template-2', version: 1, createdAt: '2026-01-02T00:00:00.000Z', title: '事前チェック', category: 'その他', priority: '高', repeatRule: 'none', nudgeMode: 'once', navigationEnabled: false, listItems: [{ id: 'preview-template-list-2', text: '必要なものを確認', checked: false, order: 0 }] },
           { id: 'premium-preview-template-3', version: 1, createdAt: '2026-01-03T00:00:00.000Z', title: '朝の支度', category: 'その他', priority: '中', repeatRule: 'daily', nudgeMode: 'once', navigationEnabled: false, listItems: [{ id: 'preview-template-list-3', text: '水分をとる', checked: false, order: 0 }] },
         ]}
         designMode={uiDesignMode}
@@ -4327,14 +4397,14 @@ export default function App() {
   const renderOnboardingCaptureStep = (id: IntroCardId | 'customize'): React.ReactNode => {
     const previewDate = dateKey(now);
     const captureTasks: Task[] = [
-      { id: 'capture-task-1', title: '資料をまとめる', done: false, category: '仕事', priority: '中', scheduledDate: previewDate, scheduledTime: '09:00', bucket: 'now' },
-      { id: 'capture-task-2', title: 'スーパーに寄る', done: false, category: '家事', priority: '低', scheduledDate: previewDate, bucket: 'later' },
-      { id: 'capture-task-3', title: '美容室を予約する', done: true, status: 'completed', category: '予定', priority: '高', scheduledDate: previewDate, completedAt: new Date().toISOString(), bucket: 'waiting' },
+      { id: 'capture-task-1', title: '今日のタスクを確認', done: false, category: '仕事', priority: '中', scheduledDate: previewDate, scheduledTime: '09:00', bucket: 'now' },
+      { id: 'capture-task-2', title: '今日の用事', done: false, category: 'その他', priority: '低', scheduledDate: previewDate, bucket: 'later' },
+      { id: 'capture-task-3', title: '予定を確認', done: true, status: 'completed', category: '予定', priority: '高', scheduledDate: previewDate, completedAt: new Date().toISOString(), bucket: 'waiting' },
     ];
     const completedCaptureTasks: Task[] = [
-      { id: 'capture-completed-1', title: '資料をまとめる', done: true, status: 'completed', category: '仕事', priority: '中', scheduledDate: previewDate, completedAt: new Date().toISOString(), bucket: 'now' },
-      { id: 'capture-completed-2', title: 'メールを返信する', done: true, status: 'completed', category: '仕事', priority: '低', scheduledDate: previewDate, completedAt: new Date().toISOString(), bucket: 'later' },
-      { id: 'capture-completed-3', title: '洗濯をする', done: true, status: 'completed', category: '家事', priority: '中', scheduledDate: previewDate, completedAt: new Date().toISOString(), bucket: 'later' },
+      { id: 'capture-completed-1', title: '今日のタスクを確認', done: true, status: 'completed', category: '仕事', priority: '中', scheduledDate: previewDate, completedAt: new Date().toISOString(), bucket: 'now' },
+      { id: 'capture-completed-2', title: '完了したタスク', done: true, status: 'completed', category: 'その他', priority: '低', scheduledDate: previewDate, completedAt: new Date().toISOString(), bucket: 'later' },
+      { id: 'capture-completed-3', title: '完了したタスク', done: true, status: 'completed', category: 'その他', priority: '中', scheduledDate: previewDate, completedAt: new Date().toISOString(), bucket: 'later' },
     ];
     const renderHomePreview = (tasks: Task[], initialTab: 'now' | 'list' = 'now') => <HomeScreen
       tasks={tasks}
@@ -4374,14 +4444,14 @@ export default function App() {
       helpers={{ deadlineLabel, getUrgencyStatus, getLateRiskMessage, dateForReminder, dateKey, formatLiveTime, isCheckChicPattern, todayInputValue, getThemeTokens: getThemedThemeTokens }}
     />;
     const schedulePreviewPlans: DeparturePlan[] = [
-      { id: 'capture-schedule-1', title: '資料をまとめる', destination: 'オフィス', date: previewDate, arrival: '10:00', planMode: 'calendar_only', travelMinutes: 0, preparationMinutes: 0, bufferMinutes: 0 },
-      { id: 'capture-schedule-2', title: '買い物', destination: 'スーパー', date: previewDate, arrival: '12:00', planMode: 'calendar_only', travelMinutes: 0, preparationMinutes: 0, bufferMinutes: 0 },
-      { id: 'capture-schedule-3', title: '病院', destination: '病院', date: previewDate, arrival: '14:00', planMode: 'calendar_only', travelMinutes: 0, preparationMinutes: 0, bufferMinutes: 0 },
+      { id: 'capture-schedule-1', title: '今日のタスク', destination: '予定の場所', date: previewDate, arrival: '10:00', planMode: 'calendar_only', travelMinutes: 0, preparationMinutes: 0, bufferMinutes: 0 },
+      { id: 'capture-schedule-2', title: '予定', destination: '予定の場所', date: previewDate, arrival: '12:00', planMode: 'calendar_only', travelMinutes: 0, preparationMinutes: 0, bufferMinutes: 0 },
+      { id: 'capture-schedule-3', title: '予定', destination: '予定の場所', date: previewDate, arrival: '14:00', planMode: 'calendar_only', travelMinutes: 0, preparationMinutes: 0, bufferMinutes: 0 },
     ];
     if (id === 'schedule') return <View pointerEvents="none" style={{ width: '100%', padding: 12 }}><DailyScheduleTimeline date={previewDate} tasks={[]} plans={schedulePreviewPlans} externalEvents={[]} now={now} designMode={uiDesignMode} chicPalette={chicPalette} planTier="premium" onEditTask={() => undefined} onEditPlan={() => undefined} visibleStartHour={9} visibleEndHour={14} /></View>;
     if (id === 'widget' || id === 'widgetAdd' || id === 'widgetEdit') {
       const widgetColors = getThemeTokens(uiDesignMode, chicPalette.id).colors;
-      return <View pointerEvents="none" style={{ width: '100%', padding: 12 }}><View style={{ gap: 8 }}><View style={{ flexDirection: 'row', gap: 8 }}><View style={{ flex: 1.3, minHeight: 92, borderRadius: 14, padding: 12, backgroundColor: widgetColors.surface, borderWidth: 1, borderColor: widgetColors.border }}><Text style={{ color: widgetColors.secondaryText, fontSize: 10, fontWeight: '800' }}>今はこれ</Text><Text numberOfLines={1} style={{ color: widgetColors.primaryText, fontSize: 15, fontWeight: '900', marginTop: 8 }}>資料をまとめる</Text><Text style={{ color: widgetColors.primaryAccent, fontSize: 11, marginTop: 5 }}>25 min</Text></View><View style={{ flex: 1, minHeight: 92, borderRadius: 14, padding: 12, backgroundColor: widgetColors.softAccent, borderWidth: 1, borderColor: widgetColors.border }}><Text style={{ color: widgetColors.secondaryText, fontSize: 10, fontWeight: '800' }}>音声入力</Text><Text style={{ color: widgetColors.primaryAccent, fontSize: 24, marginTop: 10 }}>◉</Text></View></View><View style={{ flexDirection: 'row', gap: 8 }}><View style={{ flex: 1, minHeight: 76, borderRadius: 14, padding: 12, backgroundColor: widgetColors.surface, borderWidth: 1, borderColor: widgetColors.border }}><Text style={{ color: widgetColors.secondaryText, fontSize: 10, fontWeight: '800' }}>次の予定</Text><Text style={{ color: widgetColors.primaryText, fontSize: 13, fontWeight: '900', marginTop: 7 }}>18:00 美容院</Text></View><View style={{ flex: 1.3, minHeight: 76, borderRadius: 14, padding: 12, backgroundColor: widgetColors.surface, borderWidth: 1, borderColor: widgetColors.border }}><Text style={{ color: widgetColors.secondaryText, fontSize: 10, fontWeight: '800' }}>今日の言葉</Text><Text numberOfLines={2} style={{ color: widgetColors.primaryText, fontSize: 12, fontWeight: '900', marginTop: 6 }}>私は私のペースで進めばいい</Text></View></View></View></View>;
+      return <View pointerEvents="none" style={{ width: '100%', padding: 12 }}><View style={{ gap: 8 }}><View style={{ flexDirection: 'row', gap: 8 }}><View style={{ flex: 1.3, minHeight: 92, borderRadius: 14, padding: 12, backgroundColor: widgetColors.surface, borderWidth: 1, borderColor: widgetColors.border }}><Text style={{ color: widgetColors.secondaryText, fontSize: 10, fontWeight: '800' }}>今はこれ</Text><Text numberOfLines={1} style={{ color: widgetColors.primaryText, fontSize: 15, fontWeight: '900', marginTop: 8 }}>今日のタスクを確認</Text><Text style={{ color: widgetColors.primaryAccent, fontSize: 11, marginTop: 5 }}>25 min</Text></View><View style={{ flex: 1, minHeight: 92, borderRadius: 14, padding: 12, backgroundColor: widgetColors.softAccent, borderWidth: 1, borderColor: widgetColors.border }}><Text style={{ color: widgetColors.secondaryText, fontSize: 10, fontWeight: '800' }}>音声入力</Text><Text style={{ color: widgetColors.primaryAccent, fontSize: 24, marginTop: 10 }}>◉</Text></View></View><View style={{ flexDirection: 'row', gap: 8 }}><View style={{ flex: 1, minHeight: 76, borderRadius: 14, padding: 12, backgroundColor: widgetColors.surface, borderWidth: 1, borderColor: widgetColors.border }}><Text style={{ color: widgetColors.secondaryText, fontSize: 10, fontWeight: '800' }}>次の予定</Text><Text style={{ color: widgetColors.primaryText, fontSize: 13, fontWeight: '900', marginTop: 7 }}>18:00 予定</Text></View><View style={{ flex: 1.3, minHeight: 76, borderRadius: 14, padding: 12, backgroundColor: widgetColors.surface, borderWidth: 1, borderColor: widgetColors.border }}><Text style={{ color: widgetColors.secondaryText, fontSize: 10, fontWeight: '800' }}>今日の言葉</Text><Text numberOfLines={2} style={{ color: widgetColors.primaryText, fontSize: 12, fontWeight: '900', marginTop: 6 }}>私は私のペースで進めばいい</Text></View></View></View></View>;
     }
     if (id === 'focus') return renderPremiumReadOnlyPreview('calendar', true, { initialTab: 'focus', previewMode: false, previewCustomDurationOpen: false });
     if (id === 'recovery') return <View style={{ width: '100%', justifyContent: 'center', paddingVertical: 12, backgroundColor: getThemeTokens(uiDesignMode, chicPalette.id).colors.screenBackground }}>{renderPremiumReadOnlyPreview('recovery')}</View>;
@@ -4392,7 +4462,7 @@ export default function App() {
     }
     if (id === 'voice') {
       const voiceTheme = getThemeTokens(uiDesignMode, chicPalette.id).colors;
-      return <View pointerEvents="none" style={{ width: '100%', padding: 14, borderRadius: 16, backgroundColor: voiceTheme.surface, borderWidth: 1, borderColor: voiceTheme.border }}><Text style={{ color: voiceTheme.secondaryText, fontSize: 11, fontWeight: '800' }}>右上のマイク</Text><View style={{ marginTop: 12, alignItems: 'center' }}><View style={{ width: 64, height: 64, borderRadius: 32, backgroundColor: voiceTheme.primaryAccent, alignItems: 'center', justifyContent: 'center' }}><Text style={{ color: uiDesignMode === 'dark' ? voiceTheme.screenBackground : '#FFFFFF', fontSize: 26 }}>⌕</Text></View><Text style={{ color: voiceTheme.primaryText, fontSize: 13, fontWeight: '900', marginTop: 8 }}>話しかけてください</Text></View><View style={{ marginTop: 14, padding: 11, borderRadius: 11, borderWidth: 1, borderColor: voiceTheme.border }}><Text style={{ color: voiceTheme.primaryText, fontSize: 13, fontWeight: '800' }}>明日の18時に美容院</Text><Text style={{ color: voiceTheme.secondaryText, fontSize: 10, marginTop: 4 }}>予定として整理します</Text></View></View>;
+      return <View pointerEvents="none" style={{ width: '100%', padding: 14, borderRadius: 16, backgroundColor: voiceTheme.surface, borderWidth: 1, borderColor: voiceTheme.border }}><Text style={{ color: voiceTheme.secondaryText, fontSize: 11, fontWeight: '800' }}>右上のマイク</Text><View style={{ marginTop: 12, alignItems: 'center' }}><View style={{ width: 64, height: 64, borderRadius: 32, backgroundColor: voiceTheme.primaryAccent, alignItems: 'center', justifyContent: 'center' }}><Text style={{ color: uiDesignMode === 'dark' ? voiceTheme.screenBackground : '#FFFFFF', fontSize: 26 }}>⌕</Text></View><Text style={{ color: voiceTheme.primaryText, fontSize: 13, fontWeight: '900', marginTop: 8 }}>話しかけてください</Text></View><View style={{ marginTop: 14, padding: 11, borderRadius: 11, borderWidth: 1, borderColor: voiceTheme.border }}><Text style={{ color: voiceTheme.primaryText, fontSize: 13, fontWeight: '800' }}>明日の予定を追加</Text><Text style={{ color: voiceTheme.secondaryText, fontSize: 10, marginTop: 4 }}>予定として整理します</Text></View></View>;
     }
     if (id === 'today') {
       return renderHomePreview(captureTasks);
@@ -4448,8 +4518,8 @@ export default function App() {
       planTier={planTier}
       captureDesignOnly
       styles={styles}
-      helpers={{ colors: themedColors, getThemeTokens: getThemedThemeTokens, getChicPatternVisual, hasPremiumAccess, getChicCheckColor, chicCheckColorChoices, countdownToClock, getUrgencyStatus, getNextBestAction, designModes, completionIcons, summarizePremiumTaskTemplate }}
-      components={{ BThemeRibbonDecoration, CThemeRibbonDecoration, ChicPatternDecor, ChicPatternSelector, ThemeColorSelector, SettingsDisclosure, NotificationManagerCard }}
+      helpers={{ colors: themedColors, getThemeTokens: getThemedThemeTokens, getChicPatternVisual, getNightSkyPalette, hasPremiumAccess, getChicCheckColor, chicCheckColorChoices, countdownToClock, getUrgencyStatus, getNextBestAction, designModes, completionIcons, summarizePremiumTaskTemplate }}
+      components={{ BThemeRibbonDecoration, CThemeRibbonDecoration, ChicPatternDecor, ChicPatternSelector, ThemeColorSelector, SettingsDisclosure, NotificationManagerCard, PremiumFeatureIcon }}
     />;
     return undefined;
   };
@@ -4457,12 +4527,12 @@ export default function App() {
   const renderGuideCaptureStep = (id: Exclude<OnboardingFeatureId, 'intro'>): React.ReactNode => {
     const previewDate = dateKey(now);
     const guideTasks: Task[] = [
-      { id: 'guide-task-1', title: '資料をまとめる', done: false, category: '仕事', priority: '中', scheduledDate: previewDate, scheduledTime: '09:00', bucket: 'now' },
-      { id: 'guide-task-2', title: '洗濯をする', done: true, status: 'completed', category: '家事', priority: '中', scheduledDate: previewDate, completedAt: new Date().toISOString(), bucket: 'later' },
-      { id: 'guide-task-3', title: 'スーパーに寄る', done: false, category: '家事', priority: '低', scheduledDate: previewDate, bucket: 'waiting' },
+      { id: 'guide-task-1', title: '今日のタスクを確認', done: false, category: '仕事', priority: '中', scheduledDate: previewDate, scheduledTime: '09:00', bucket: 'now' },
+      { id: 'guide-task-2', title: '完了したタスク', done: true, status: 'completed', category: 'その他', priority: '中', scheduledDate: previewDate, completedAt: new Date().toISOString(), bucket: 'later' },
+      { id: 'guide-task-3', title: '今日の用事', done: false, category: 'その他', priority: '低', scheduledDate: previewDate, bucket: 'waiting' },
     ];
-    const guidePlan: DeparturePlan = { id: 'guide-plan', title: '資料提出', destination: '天神○○ビル', date: previewDate, arrival: '14:00', departureTime: '13:15', endAt: '15:00', travelMinutes: 30, preparationMinutes: 15, bufferMinutes: 10, planMode: 'arrival_reverse' };
-    const renderTaskForm = (task?: Task) => <View pointerEvents="none" style={[styles.premiumPreview, { minHeight: 460, overflow: 'hidden' }]}><TaskModal visible task={task} templates={['資料をまとめる', 'スーパーに寄る']} savedTemplates={[]} designMode={uiDesignMode} chicPalette={chicPalette} planTier="premium" onPremium={() => undefined} onClose={() => undefined} onSave={() => undefined} styles={styles} helpers={{ getThemeTokens: getThemedThemeTokens, todayInputValue, hasPremiumAccess, dateForReminder, dateKey, formatLiveTime, colors: themedColors, summarizePremiumTaskTemplate }} components={{ CompactNumberSetting }} readOnlyPreview /></View>;
+    const guidePlan: DeparturePlan = { id: 'guide-plan', title: '予定', destination: '予定の場所', date: previewDate, arrival: '14:00', departureTime: '13:15', endAt: '15:00', travelMinutes: 30, preparationMinutes: 15, bufferMinutes: 10, planMode: 'arrival_reverse' };
+    const renderTaskForm = (task?: Task) => <View pointerEvents="none" style={[styles.premiumPreview, { minHeight: 460, overflow: 'hidden' }]}><TaskModal visible task={task} templates={['今日のタスク', '今日の用事']} savedTemplates={[]} designMode={uiDesignMode} chicPalette={chicPalette} planTier="premium" onPremium={() => undefined} onClose={() => undefined} onSave={() => undefined} styles={styles} helpers={{ getThemeTokens: getThemedThemeTokens, todayInputValue, hasPremiumAccess, dateForReminder, dateKey, formatLiveTime, colors: themedColors, summarizePremiumTaskTemplate }} components={{ CompactNumberSetting }} readOnlyPreview /></View>;
     const renderPlanForm = () => <View pointerEvents="none" style={[styles.premiumPreview, { minHeight: 620, overflow: 'hidden' }]}><DeparturePlanForm plan={guidePlan} plans={[guidePlan]} behaviorEvents={[]} designMode={uiDesignMode} chicPattern={effectiveChicPattern} chicPalette={chicPalette} planTier="premium" onChange={() => undefined} onSubmit={() => undefined} onClose={() => undefined} onPremium={() => undefined} dateKey={dateKey} formatLiveDate={formatLiveDate} formatLiveTime={formatLiveTime} dateForReminder={dateForReminder} getDepartureMoments={getDepartureMoments} getMapSearchTarget={getMapSearchTarget} openMapSearch={() => undefined} travelApps={travelApps} onOpenTravelAppSettings={() => undefined} /></View>;
     let production: React.ReactNode;
     if (id === 'todo') production = renderTaskForm();
@@ -4560,9 +4630,9 @@ export default function App() {
   const guideDemoTasks = useMemo<Task[]>(() => {
     const demoDate = dateKey();
     return [
-      { id: 'guide-demo-now', title: '資料をまとめる', done: false, status: 'active', category: '仕事', priority: '高', bucket: 'now', scheduledDate: demoDate },
-      { id: 'guide-demo-later', title: 'スーパーに寄る', done: false, status: 'active', category: '家事', priority: '中', bucket: 'later', scheduledDate: demoDate },
-      { id: 'guide-demo-complete', title: '朝のメールを確認', done: true, status: 'completed', category: '仕事', priority: '低', bucket: 'now', scheduledDate: demoDate, completedAt: new Date(Date.now() - 3_600_000).toISOString() },
+      { id: 'guide-demo-now', title: '今日のタスクを確認', done: false, status: 'active', category: '仕事', priority: '高', bucket: 'now', scheduledDate: demoDate },
+      { id: 'guide-demo-later', title: '今日の用事', done: false, status: 'active', category: 'その他', priority: '中', bucket: 'later', scheduledDate: demoDate },
+      { id: 'guide-demo-complete', title: '完了したタスク', done: true, status: 'completed', category: 'その他', priority: '低', bucket: 'now', scheduledDate: demoDate, completedAt: new Date(Date.now() - 3_600_000).toISOString() },
     ];
   }, []);
   const [guideDemoTasksState, setGuideDemoTasksState] = useState<Task[]>([]);
@@ -4585,20 +4655,20 @@ export default function App() {
     });
   }, []);
   const activeGuideDemoTasks = firstRunDemoActive && !guideDemoInitializedRef.current ? guideDemoTasks : guideDemoTasksState;
-  const guideDemoPlan: DeparturePlan = { id: 'guide-demo-plan', title: '資料提出', destination: '天神○○ビル', date: dateKey(now), arrival: '18:00', travelMinutes: 30, preparationMinutes: 15, bufferMinutes: 10, planMode: 'arrival_reverse' };
+  const guideDemoPlan: DeparturePlan = { id: 'guide-demo-plan', title: '予定', destination: '予定の場所', date: dateKey(now), arrival: '18:00', travelMinutes: 30, preparationMinutes: 15, bufferMinutes: 10, planMode: 'arrival_reverse' };
   const guideDemoCalendarOptions = useMemo(() => [
     { id: 'guide-demo-personal-calendar', title: '個人', type: 'local' },
     { id: 'guide-demo-work-calendar', title: '仕事', type: 'local' },
   ] as Calendar.Calendar[], []);
   const guideDemoCalendarEvents = useMemo(() => [
-    { id: 'guide-demo-calendar-hospital', calendarId: 'guide-demo-personal-calendar', title: '病院', startDate: `${dateKey(now)}T10:00:00`, endDate: `${dateKey(now)}T11:00:00`, allDay: false },
-    { id: 'guide-demo-calendar-meeting', calendarId: 'guide-demo-work-calendar', title: '打ち合わせ', startDate: `${dateKey(now)}T14:00:00`, endDate: `${dateKey(now)}T15:00:00`, allDay: false },
-    { id: 'guide-demo-calendar-hair', calendarId: 'guide-demo-personal-calendar', title: '美容院', startDate: `${dateKey(now)}T18:00:00`, endDate: `${dateKey(now)}T19:00:00`, allDay: false },
+    { id: 'guide-demo-calendar-hospital', calendarId: 'guide-demo-personal-calendar', title: '予定', startDate: `${dateKey(now)}T10:00:00`, endDate: `${dateKey(now)}T11:00:00`, allDay: false },
+    { id: 'guide-demo-calendar-meeting', calendarId: 'guide-demo-work-calendar', title: '予定', startDate: `${dateKey(now)}T14:00:00`, endDate: `${dateKey(now)}T15:00:00`, allDay: false },
+    { id: 'guide-demo-calendar-hair', calendarId: 'guide-demo-personal-calendar', title: '予定', startDate: `${dateKey(now)}T18:00:00`, endDate: `${dateKey(now)}T19:00:00`, allDay: false },
   ] as Calendar.Event[], [now]);
   const guideDemoWishState: MonthlyWishState = {
     monthlyGoal: '毎日少しでも自分の時間をつくる',
-    wishes: [{ id: 'guide-demo-wish', title: '週に1冊、本を読む', completed: false, createdAt: now.toISOString() }],
-    actions: [{ id: 'guide-demo-action', wishId: 'guide-demo-wish', title: '寝る前に10分読む', completed: false }],
+    wishes: [{ id: 'guide-demo-wish', title: '自分の時間をつくる', completed: false, createdAt: now.toISOString() }],
+    actions: [{ id: 'guide-demo-action', wishId: 'guide-demo-wish', title: '少し時間をとる', completed: false }],
     review: {},
   };
   const guideDemoAffirmations: Affirmation[] = [{ id: 'guide-demo-affirmation', text: '私は自分のペースで続けられる', time: '09:00', enabled: true, createdAt: now.toISOString() }];
@@ -4867,8 +4937,8 @@ export default function App() {
   ) : null;
   const premiumGuideRecoveryPlan: DeparturePlan = {
     id: 'premium-guide-recovery',
-    title: '資料提出',
-    destination: '天神○○ビル',
+    title: '予定',
+    destination: '予定の場所',
     date: dateKey(now),
     arrival: '18:00',
     travelMinutes: 30,
@@ -4882,6 +4952,10 @@ export default function App() {
   const backgroundVeilOpacity = designMode === 'photo' ? 0.28 : (effectiveChicPattern === 'floral' || effectiveChicPattern === 'floralSoft' || effectiveChicPattern === 'floralSeasonal' || effectiveChicPattern === 'floralDark' ? 0.18 : 0.12);
   const backgroundVeilColor = designMode === 'photo' ? theme.colors.screenBackground : chicPalette.background;
   const imageDesignBackground = designMode === 'chic' && isImageDesignPattern(effectiveChicPattern) ? designBackgroundAssets[effectiveChicPattern] : undefined;
+  const imageDesignBackgroundSize = imageDesignBackground ? {
+    width: screenWidth,
+    height: screenWidth * (imageDesignBackground.height / imageDesignBackground.width),
+  } : undefined;
   const headerChicPalette = designMode === 'chic' && effectiveChicPattern === 'nightSky'
     ? { ...chicPalette, textPrimary: '#F4F7FC', textSecondary: '#D6DEEA' }
     : chicPalette;
@@ -4937,16 +5011,17 @@ export default function App() {
   };
 
   return (
-    <SafeAreaView style={[styles.safe, uiDesignMode === 'minimal' && styles.safeMinimal, uiDesignMode === 'dark' && styles.safeDark, designMode === 'photo' && styles.safePhoto, !hydrated && { opacity: 0 }, { backgroundColor: imageDesignBackground?.background ?? (uiDesignMode === 'chic' ? getChicPatternVisual(effectiveChicPattern, chicPalette).background : theme.colors.screenBackground) }]}>
+    <View style={{ flex: 1, backgroundColor: imageDesignBackground?.background ?? (uiDesignMode === 'chic' ? getChicPatternVisual(effectiveChicPattern, chicPalette).background : theme.colors.screenBackground) }}>
+      {imageDesignBackground && imageDesignBackgroundSize && <View pointerEvents="none" style={[StyleSheet.absoluteFillObject, { overflow: 'hidden', backgroundColor: imageDesignBackground.background }]}><Image source={imageDesignBackground.source} style={[imageDesignBackgroundSize, { position: 'absolute', top: 0, alignSelf: 'center' }]} /></View>}
+      <SafeAreaView style={[styles.safe, uiDesignMode === 'minimal' && styles.safeMinimal, uiDesignMode === 'dark' && styles.safeDark, designMode === 'photo' && styles.safePhoto, !hydrated && { opacity: 0 }, { backgroundColor: 'transparent' }]}>
       <StatusBar style={uiDesignMode === 'dark' || (designMode === 'chic' && effectiveChicPattern === 'nightSky') ? 'light' : 'dark'} />
       {isMonoDesign && effectiveMonoPattern === 'looseLeaf' && <MonoLooseLeafBackground dark={uiDesignMode === 'dark'} />}
       {isMonoDesign && effectiveMonoPattern === 'chic' && <MonoChicBackground dark={uiDesignMode === 'dark'} />}
-      {imageDesignBackground && <View pointerEvents="none" style={[StyleSheet.absoluteFillObject, { overflow: 'hidden', backgroundColor: imageDesignBackground.background }]}><Image source={imageDesignBackground.source} resizeMode="stretch" style={StyleSheet.absoluteFillObject} /></View>}
       {photoBackgroundUri && <View pointerEvents="none" style={styles.photoThemeBackgroundWrap}><Image source={{ uri: photoBackgroundUri }} resizeMode="cover" style={styles.photoThemeBackground} /></View>}
       <View style={styles.app} pointerEvents={hydrated ? 'auto' : 'none'}>
         <BThemeRibbonPreload />
         <CThemeRibbonPreload />
-        {uiDesignMode === 'chic' && !photoThemeEnabled && <View pointerEvents="none" style={StyleSheet.absoluteFillObject}><ChicPatternDecor pattern={effectiveChicPattern} accent={chicPalette.accent} warm={chicPalette.accentSoft} checkColor={chicCheckColor} /></View>}
+        {uiDesignMode === 'chic' && !photoThemeEnabled && !isImageDesignPattern(effectiveChicPattern) && <View pointerEvents="none" style={StyleSheet.absoluteFillObject}><ChicPatternDecor pattern={effectiveChicPattern} accent={chicPalette.accent} warm={chicPalette.accentSoft} checkColor={chicCheckColor} /></View>}
         {backgroundVeilVisible && <View pointerEvents="none" style={[StyleSheet.absoluteFillObject, { backgroundColor: backgroundVeilColor, opacity: backgroundVeilOpacity }]} />}
         {photoTopImageUri && screen !== 'wish' ? <><Header designMode={uiDesignMode} now={now} compact chicPalette={headerChicPalette} onVoice={handleHeaderVoice} onPremium={planTier === 'premium' ? undefined : () => openPremiumFeature('voice')} onNotifications={screen === 'settings' ? () => setNoticeCenterOpen(true) : undefined} hasUnreadNotifications={screen === 'settings' && unreadNoticeCount > 0} /><View style={styles.photoThemeTopImage}><Image source={{ uri: photoTopImageUri }} resizeMode="contain" style={styles.photoThemeTopImageContent} /></View></> : <Header designMode={uiDesignMode} now={now} chicPalette={headerChicPalette} onVoice={handleHeaderVoice} onPremium={planTier === 'premium' ? undefined : () => openPremiumFeature('voice')} onNotifications={screen === 'settings' ? () => setNoticeCenterOpen(true) : undefined} hasUnreadNotifications={screen === 'settings' && unreadNoticeCount > 0} />}
         {completionAffirmation && <Animated.View pointerEvents="none" style={{ position: 'absolute', top: 72, left: 20, right: 20, zIndex: 30, opacity: completionAffirmationOpacity, alignItems: 'center' }}><View style={{ maxWidth: 340, paddingHorizontal: 18, paddingVertical: 12, borderRadius: 18, backgroundColor: uiDesignMode === 'dark' ? '#20293A' : uiDesignMode === 'chic' ? chicPalette.cardSurface : '#FFFFFF', borderWidth: 1, borderColor: uiDesignMode === 'dark' ? '#40506A' : uiDesignMode === 'chic' ? chicPalette.border : '#E5E0E5', shadowColor: '#000', shadowOpacity: 0.12, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 4 }}><Text style={{ textAlign: 'center', color: uiDesignMode === 'dark' ? '#F4F7FC' : uiDesignMode === 'chic' ? chicPalette.textPrimary : '#282538', fontSize: 14, fontWeight: '600' }}>{completionAffirmation}</Text></View></Animated.View>}
@@ -5305,12 +5380,11 @@ export default function App() {
                chicPalette={chicPalette}
                affirmations={affirmations}
                affirmationCustomTexts={affirmationCustomTexts}
-               photoTheme={photoTheme}
-               travelApps={travelApps}
+              photoTheme={photoTheme}
+              travelApps={travelApps}
               widgetSettings={widgetSettings}
               onPickWidgetPhoto={pickWidgetPhoto}
               onUnlockWidgetPhoto={requestWidgetPhotoUnlock}
-              onRemoveWidgetPhotoBackground={removeWidgetPhotoBackground}
               widgetPhotoUnlock={rewardedAccess.widgetPhotoCustomization}
               entitlementsResolved={!storeKit.configured || storeKit.entitlementsResolved}
               onRemoveAffirmationPhoto={(index) => setWidgetSettings((current) => {
@@ -5370,6 +5444,18 @@ export default function App() {
                 completeInitialDesignSelection();
               }}
                onDesignPreview={(pattern) => { setDesignPreviewMode('chic'); setDesignPreviewPattern(pattern); }}
+                fullscreenPreview={(onBack, sheetVisible) => <DesignTryOnModal
+                  visible={sheetVisible}
+                  initialMode={designMode === 'photo' ? 'photo' : isMonoDesign ? resolvedMonoMode : designMode}
+                  initialPattern={effectiveChicPattern}
+                  initialColor={chicCheckColor}
+                  initialMonoAppearance={monoAppearance}
+                  initialMonoPattern={effectiveMonoPattern}
+                  photoUri={photoTheme.imageUri}
+                  systemColorScheme={systemColorScheme}
+                  onClose={onBack}
+                  onApply={applyDesignTryOn}
+                />}
                onChicCheckColor={(color) => { setChicCheckColor(color); if (!onboardingDesignSelectionPending) void onboarding.complete('design'); completeInitialDesignSelection(); }}
                onSaveAffirmation={saveAffirmation}
                onDeleteAffirmation={deleteAffirmation}
@@ -5418,11 +5504,11 @@ export default function App() {
                onResetWidgetPhotoUnlock={__DEV__ ? resetWidgetPhotoUnlockForDevelopment : undefined}
                designCustomizePrice={storeKit.designProduct?.displayPrice}
                designCustomizePriceStatus={storeKit.status}
-               onOpenDesignCustomize={() => setDesignCustomizeOpen(true)}
-               initialAppearanceOpen={onboardingDesignSelectionPending}
+              onOpenDesignCustomize={() => setDesignCustomizeOpen(true)}
+              initialAppearanceOpen={onboardingDesignSelectionPending}
                           styles={styles}
-              helpers={{ colors: themedColors, getThemeTokens: getThemedThemeTokens, getChicPatternVisual, hasPremiumAccess, getChicCheckColor, chicCheckColorChoices, countdownToClock, getUrgencyStatus, getNextBestAction, designModes, completionIcons, summarizePremiumTaskTemplate }}
-              components={{ BThemeRibbonDecoration, CThemeRibbonDecoration, ChicPatternDecor, ChicPatternSelector, ThemeColorSelector, SettingsDisclosure, NotificationManagerCard }}
+              helpers={{ colors: themedColors, getThemeTokens: getThemedThemeTokens, getChicPatternVisual, getNightSkyPalette, hasPremiumAccess, getChicCheckColor, chicCheckColorChoices, countdownToClock, getUrgencyStatus, getNextBestAction, designModes, completionIcons, summarizePremiumTaskTemplate }}
+              components={{ BThemeRibbonDecoration, CThemeRibbonDecoration, ChicPatternDecor, ChicPatternSelector, ThemeColorSelector, SettingsDisclosure, NotificationManagerCard, PremiumFeatureIcon }}
             />
           )}
 
@@ -5653,7 +5739,7 @@ export default function App() {
         helpers={{ getThemeTokens: getThemedThemeTokens, todayInputValue, hasPremiumAccess, dateForReminder, dateKey, formatLiveTime, colors: themedColors, summarizePremiumTaskTemplate }}
         components={{ CompactNumberSetting }}
       />}
-      <PremiumModal visible={premiumOpen} initialFeatureId={premiumTargetFeature} designMode={uiDesignMode} chicPalette={chicPalette} planTier={planTier} isDevelopment={__DEV__} onMockPlanTier={handleMockPlanTier} onClose={() => setPremiumOpen(false)} styles={styles} helpers={{ getThemeTokens: getThemedThemeTokens }} renderReadOnlyPreview={renderPremiumReadOnlyPreview} products={storeKit.products} productStatus={storeKit.status} purchaseError={storeKit.errorMessage} onPurchasePlan={async (plan) => (await storeKit.purchasePremium(plan)).success} onRestorePurchase={() => { void restorePremiumPurchase(); }} />
+      <PremiumModal visible={premiumOpen} initialFeatureId={premiumTargetFeature} designMode={uiDesignMode} chicPalette={chicPalette} planTier={planTier} isDevelopment={__DEV__} onMockPlanTier={handleMockPlanTier} onClose={() => { logPremiumDiagnostic('PREMIUM_MODAL_DISMISSED', { plan: planTier, purchaseStatus: purchaseDiagnosticPendingRef.current ? 'processing' : 'idle', planTier, modalVisible: premiumOpen, entitlementsResolved: storeKitEntitlementsResolved, pending: purchaseDiagnosticPendingRef.current }); setPremiumOpen(false); }} styles={styles} helpers={{ getThemeTokens: getThemedThemeTokens }} renderReadOnlyPreview={renderPremiumReadOnlyPreview} products={storeKit.products} productStatus={storeKit.status} purchaseError={storeKit.errorMessage} onPurchasePlan={purchasePremiumWithDiagnostics} onRestorePurchase={() => { void restorePremiumPurchase(); }} />
       <VoiceUsageLimitModal
         visible={voiceUsageLimitOpen}
         designMode={uiDesignMode}
@@ -5782,7 +5868,8 @@ export default function App() {
         designMode={uiDesignMode}
         chicPalette={chicPalette}
       />
-    </SafeAreaView>
+      </SafeAreaView>
+    </View>
   );
 }
 
@@ -5921,6 +6008,96 @@ function AppNoticeCenter({ visible, notices, readNoticeIds, palette, onRead, onN
 }
 
 type DesignPreviewMode = 'minimal' | 'dark' | 'chic' | 'photo';
+type DesignTryOnSelection = {
+  mode: DesignPreviewMode;
+  pattern: ChicPattern;
+  color: ChicCheckColor;
+  photoUri?: string;
+  monoAppearance: 'auto' | 'light' | 'dark';
+  monoPattern: MonoPattern;
+};
+
+// Temporary, read-only design try-on. It mounts the production HomeScreen
+// renderer with in-memory sample data and never writes app state.
+function DesignTryOnModal({ visible, initialMode, initialPattern, initialColor, initialMonoAppearance, initialMonoPattern, photoUri, systemColorScheme, onClose, onApply }: {
+  visible: boolean;
+  initialMode: DesignPreviewMode;
+  initialPattern: ChicPattern;
+  initialColor: ChicCheckColor;
+  initialMonoAppearance: 'auto' | 'light' | 'dark';
+  initialMonoPattern: MonoPattern;
+  photoUri?: string;
+  systemColorScheme?: 'light' | 'dark' | null;
+  onClose: () => void;
+  onApply: (selection: DesignTryOnSelection) => void;
+}) {
+  const [mode, setMode] = useState<DesignPreviewMode>(initialMode);
+  const [pattern, setPattern] = useState<ChicPattern>(initialPattern);
+  const [color, setColor] = useState<ChicCheckColor>(initialColor);
+  const [monoAppearance, setMonoAppearance] = useState<'auto' | 'light' | 'dark'>(initialMonoAppearance);
+  const [monoPattern, setMonoPattern] = useState<MonoPattern>(initialMonoPattern);
+  useEffect(() => {
+    if (!visible) return;
+    setMode(initialMode); setPattern(initialPattern); setColor(initialColor);
+    setMonoAppearance(initialMonoAppearance); setMonoPattern(initialMonoPattern);
+  }, [visible, initialColor, initialMode, initialMonoAppearance, initialMonoPattern, initialPattern]);
+  const resolvedMonoMode: 'minimal' | 'dark' = monoAppearance === 'dark' ? 'dark' : monoAppearance === 'light' ? 'minimal' : systemColorScheme === 'dark' ? 'dark' : 'minimal';
+  const homeMode: DesignMode = mode === 'photo' || mode === 'chic' ? 'chic' : resolvedMonoMode;
+  const basePalette = getDesignCheckThemeTokens(color);
+  const previewPalette = mode === 'chic' && pattern === 'nightSky' ? getNightSkyPalette(basePalette) : basePalette;
+  const imageBackground = mode === 'chic' && isImageDesignPattern(pattern) ? designBackgroundAssets[pattern] : undefined;
+  const sampleNow = new Date();
+  const sampleDate = dateKey(sampleNow);
+  const sampleTasks: Task[] = [
+    { id: '__design_tryon_current', title: '今日のタスクを確認', done: false, status: 'active', category: '仕事', priority: '中', scheduledDate: sampleDate, scheduledTime: '10:00', endAt: '10:30', bucket: 'now' },
+    { id: '__design_tryon_later', title: '今日の用事', done: false, status: 'active', category: 'その他', priority: '低', scheduledDate: sampleDate, bucket: 'later' },
+  ];
+  const samplePlans: DeparturePlan[] = [{ id: '__design_tryon_plan', title: '予定', destination: '予定の場所', date: sampleDate, arrival: '14:00', travelMinutes: 15, preparationMinutes: 10, bufferMinutes: 5, planMode: 'arrival_reverse' }];
+  const previewBackground = mode === 'photo' ? previewPalette.background : imageBackground?.background ?? (mode === 'chic' ? previewPalette.background : getThemeTokens(homeMode, color).colors.screenBackground);
+  const renderBackground = mode === 'photo' && photoUri
+    ? <><Image source={{ uri: photoUri }} resizeMode="cover" style={StyleSheet.absoluteFillObject} /><View pointerEvents="none" style={[StyleSheet.absoluteFillObject, { backgroundColor: 'rgba(15,20,28,0.34)' }]} /></>
+    : imageBackground ? <Image source={imageBackground.source} resizeMode="contain" style={StyleSheet.absoluteFillObject} />
+      : mode === 'chic' ? <ChicPatternDecor pattern={pattern} accent={previewPalette.accent} warm={previewPalette.accentSoft} checkColor={color} />
+        : monoPattern === 'looseLeaf' ? <MonoLooseLeafBackground dark={homeMode === 'dark'} /> : monoPattern === 'chic' ? <MonoChicBackground dark={homeMode === 'dark'} /> : null;
+  const homePreview = <View pointerEvents="none" style={{ flex: 1, paddingHorizontal: 16, paddingTop: 8 }}>
+    <HomeScreen
+      tasks={sampleTasks} allTasks={sampleTasks} now={sampleNow} designMode={homeMode} chicPalette={previewPalette} completionIcon="✓"
+      selectionMode={false} selectedTaskIds={[]} onAdd={() => undefined} onOpenFocus={() => undefined} initialTab="now"
+      onOpenTodayRecord={() => undefined} onOpenSchedule={() => undefined} onToggle={() => undefined} onToggleSubtask={() => undefined}
+      onUpdateTaskList={() => undefined} onCompleteParent={() => undefined} onRestore={() => undefined} onEdit={() => undefined}
+      onToggleSelection={() => undefined} onSelectionMode={() => undefined} onClearSelection={() => undefined} onCompleteSelected={() => undefined}
+      onDeleteSelected={() => undefined} onDelete={() => undefined} onSkip={() => undefined} onRemoveRoutine={() => undefined}
+      onDuplicate={() => undefined} onSaveTemplate={() => undefined} onPostpone={() => undefined} departurePlans={samplePlans} onBucket={() => undefined}
+      styles={styles}
+      renderTodayWinStrip={(todayTasks) => <TodayWinStrip tasks={todayTasks} designMode={homeMode} chicPattern={mode === 'chic' ? pattern : 'plain'} chicPalette={previewPalette} onRestore={() => undefined} />}
+      helpers={{ deadlineLabel, getUrgencyStatus, getLateRiskMessage, dateForReminder, dateKey, formatLiveTime, isCheckChicPattern, todayInputValue, getThemeTokens: (design: DesignMode) => getThemeTokens(design, color) }}
+    />
+  </View>;
+  const applySelection = () => {
+    onApply({ mode: mode === 'photo' ? 'photo' : mode, pattern: mode === 'chic' ? pattern : 'plain', color, photoUri, monoAppearance, monoPattern });
+    onClose();
+  };
+  const designImageChoices: Array<{ id: ImageDesignPattern; label: string }> = [{ id: 'stationery', label: 'ステーショナリー' }, { id: 'botanicalBackground', label: 'ボタニカル' }, { id: 'ocean', label: 'オーシャン' }, { id: 'nightSky', label: 'ナイトスカイ' }];
+  const monoChoices: Array<{ id: MonoPattern; label: string }> = [{ id: 'plain', label: 'プレーン' }, { id: 'looseLeaf', label: 'ルーズリーフ' }, { id: 'chic', label: 'シック' }];
+  return <SafeAreaView style={{ flex: 1, backgroundColor: previewBackground }}><View style={{ flex: 1, overflow: 'hidden' }}>
+      {renderBackground}
+      <View style={{ flex: 1 }}>
+        <View style={{ minHeight: 54, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 18, borderBottomWidth: 1, borderBottomColor: previewPalette.border, backgroundColor: previewPalette.cardSurface }}>
+          <View><Text style={{ color: previewPalette.textPrimary, fontSize: 17, fontWeight: '900' }}>Todayを試着</Text><Text style={{ color: previewPalette.textSecondary, fontSize: 11, marginTop: 2 }}>試着中・正式設定はまだ変更されません</Text></View>
+          <Pressable accessibilityRole="button" accessibilityLabel="試着を閉じる" onPress={onClose} style={{ minWidth: 42, minHeight: 42, alignItems: 'center', justifyContent: 'center' }}><Text style={{ color: previewPalette.accent, fontSize: 25 }}>×</Text></Pressable>
+        </View>
+        <View style={{ flex: 1 }}>{homePreview}</View>
+        <View style={{ maxHeight: 286, paddingTop: 10, paddingBottom: 8, paddingHorizontal: 14, borderTopWidth: 1, borderTopColor: previewPalette.border, backgroundColor: previewPalette.cardSurface }}>
+          <View style={{ flexDirection: 'row', gap: 7, marginBottom: 8 }}>{(['minimal', 'chic', 'photo'] as const).map((tab) => { const active = tab === 'minimal' ? mode === 'minimal' || mode === 'dark' : mode === tab; return <Pressable key={tab} accessibilityRole="button" accessibilityState={{ selected: active }} onPress={() => setMode(tab === 'minimal' ? 'minimal' : tab)} style={{ flex: 1, minHeight: 34, borderRadius: 10, borderWidth: 1, borderColor: active ? previewPalette.accent : previewPalette.border, backgroundColor: active ? previewPalette.accentSoft : previewPalette.surface, alignItems: 'center', justifyContent: 'center' }}><Text style={{ color: active ? previewPalette.accentStrong : previewPalette.textSecondary, fontSize: 12, fontWeight: '900' }}>{tab === 'minimal' ? 'Mono' : tab === 'chic' ? 'Design' : 'Photo'}</Text></Pressable>; })}</View>
+          {(mode === 'minimal' || mode === 'dark') && <><View style={{ flexDirection: 'row', gap: 7, marginBottom: 8 }}>{(['auto', 'light', 'dark'] as const).map((item) => <Pressable key={item} onPress={() => setMonoAppearance(item)} style={{ paddingHorizontal: 12, minHeight: 30, borderRadius: 9, borderWidth: 1, borderColor: monoAppearance === item ? previewPalette.accent : previewPalette.border, backgroundColor: monoAppearance === item ? previewPalette.accentSoft : previewPalette.surface, justifyContent: 'center' }}><Text style={{ color: monoAppearance === item ? previewPalette.accentStrong : previewPalette.textSecondary, fontSize: 11, fontWeight: '800' }}>{item === 'auto' ? '自動' : item === 'light' ? 'Light' : 'Dark'}</Text></Pressable>)}</View><ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingBottom: 8 }}>{monoChoices.map((item) => <Pressable key={item.id} accessibilityRole="button" accessibilityState={{ selected: monoPattern === item.id }} onPress={() => setMonoPattern(item.id)} style={{ width: 108, minHeight: 42, borderRadius: 10, borderWidth: monoPattern === item.id ? 2 : 1, borderColor: monoPattern === item.id ? previewPalette.accent : previewPalette.border, backgroundColor: previewPalette.surface, alignItems: 'center', justifyContent: 'center' }}><Text style={{ color: monoPattern === item.id ? previewPalette.accentStrong : previewPalette.textSecondary, fontSize: 11, fontWeight: '800' }}>{item.label}</Text></Pressable>)}</ScrollView></>}
+          {mode === 'chic' && <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingBottom: 8 }}>{designImageChoices.map((item) => { const active = pattern === item.id; return <Pressable key={item.id} accessibilityRole="button" accessibilityState={{ selected: active }} onPress={() => setPattern(item.id)} style={{ width: 106, minHeight: 58, borderRadius: 10, borderWidth: active ? 2 : 1, borderColor: active ? previewPalette.accent : previewPalette.border, overflow: 'hidden', backgroundColor: designBackgroundAssets[item.id].background }}><Image source={designBackgroundAssets[item.id].previewSource} resizeMode="cover" style={{ width: '100%', height: 34 }} /><Text style={{ color: active ? previewPalette.accentStrong : previewPalette.textSecondary, fontSize: 10, fontWeight: '800', textAlign: 'center', paddingVertical: 4 }}>{item.label}</Text></Pressable>; })}</ScrollView>}
+          {mode === 'photo' && <View style={{ flexDirection: 'row', alignItems: 'center', minHeight: 52, marginBottom: 8, paddingHorizontal: 10, borderRadius: 10, borderWidth: 1, borderColor: previewPalette.border, backgroundColor: previewPalette.surface }}>{photoUri ? <Image source={{ uri: photoUri }} resizeMode="cover" style={{ width: 54, height: 36, borderRadius: 7 }} /> : <View style={{ width: 54, height: 36, borderRadius: 7, backgroundColor: previewPalette.accentSoft }} />}<Text style={{ color: previewPalette.textSecondary, fontSize: 11, marginLeft: 9 }}>{photoUri ? '保存済み写真を試着中' : '写真を選択するとPreviewできます'}</Text></View>}
+          {mode !== 'minimal' && mode !== 'dark' && <ThemeColorSelector color={color} onChange={setColor} designMode="chic" />}
+          <Pressable accessibilityRole="button" accessibilityLabel="このデザインを使う" onPress={applySelection} style={{ minHeight: 42, borderRadius: 12, marginTop: 8, backgroundColor: previewPalette.accent, alignItems: 'center', justifyContent: 'center' }}><Text style={{ color: previewPalette.onAccent, fontSize: 13, fontWeight: '900' }}>このデザインを使う</Text></Pressable>
+        </View>
+      </View>
+    </View></SafeAreaView>;
+}
 
 function DesignPreviewModal({ visible, initialPattern, initialMode = 'chic', chicCheckColor, planTier, designCustomizePurchased = false, photoUri, onPickPhoto, onClose, onUse, onTrial }: { visible: boolean; initialPattern?: ChicPattern; initialMode?: DesignPreviewMode; chicCheckColor: ChicCheckColor; planTier: PlanTier; designCustomizePurchased?: boolean; photoUri?: string; onPickPhoto: () => void; onClose: () => void; onUse: (mode: DesignPreviewMode, pattern?: ChicPattern) => void; onTrial?: (mode: DesignPreviewMode, pattern?: ChicPattern) => void }) {
   const [mode, setMode] = useState<DesignPreviewMode>('chic');
@@ -5979,14 +6156,14 @@ function DesignPreviewModal({ visible, initialPattern, initialMode = 'chic', chi
         <View style={designPreviewStyles.modeRow}>
           {([{ id: 'minimal', label: 'Mono Light' }, { id: 'dark', label: 'Mono Dark' }, { id: 'chic', label: 'Design' }, { id: 'photo', label: 'Photo' }] as { id: DesignPreviewMode; label: string }[]).map((item) => <Pressable key={item.id} style={[designPreviewStyles.modeChip, { borderColor: uiPreview.border }, mode === item.id && { borderColor: uiPreview.accent, backgroundColor: uiPreview.soft }]} onPress={() => setMode(item.id)}><Text style={[designPreviewStyles.modeChipText, { color: uiPreview.muted }, mode === item.id && { color: uiPreview.accentStrong }]}>{item.label}</Text></Pressable>)}
         </View>
-        {mode === 'chic' && <View style={designPreviewStyles.patternRow}>{previewPatterns.map((item) => { const imageAsset = isImageDesignPattern(item.id) ? designBackgroundAssets[item.id] : undefined; return <Pressable key={item.id} style={[designPreviewStyles.patternChip, pattern === item.id && { borderColor: palette.accent, backgroundColor: palette.accentSoft }]} onPress={() => setPattern(item.id)}>{imageAsset ? <Image source={imageAsset.previewSource} resizeMode="stretch" style={designPreviewStyles.patternDot} /> : <View style={[designPreviewStyles.patternDot, { backgroundColor: item.id === 'plain' ? palette.accent : getChicPatternVisual(item.id, palette).accent }]} />}<Text numberOfLines={1} style={[designPreviewStyles.patternText, pattern === item.id && { color: palette.accentStrong }]}>{item.label}</Text></Pressable>; })}</View>}
+        {mode === 'chic' && <View style={designPreviewStyles.patternRow}>{previewPatterns.map((item) => { const imageAsset = isImageDesignPattern(item.id) ? designBackgroundAssets[item.id] : undefined; return <Pressable key={item.id} style={[designPreviewStyles.patternChip, pattern === item.id && { borderColor: palette.accent, backgroundColor: palette.accentSoft }]} onPress={() => setPattern(item.id)}>{imageAsset ? <Image source={imageAsset.previewSource} resizeMode="contain" style={designPreviewStyles.patternDot} /> : <View style={[designPreviewStyles.patternDot, { backgroundColor: item.id === 'plain' ? palette.accent : getChicPatternVisual(item.id, palette).accent }]} />}<Text numberOfLines={1} style={[designPreviewStyles.patternText, pattern === item.id && { color: palette.accentStrong }]}>{item.label}</Text></Pressable>; })}</View>}
         <View style={[designPreviewStyles.preview, { backgroundColor: mode === 'photo' ? '#202020' : uiPreview.background, borderColor: uiPreview.border }]}>
           {isFreeFloralSoftPreview ? <View style={designPreviewStyles.floralSoftPreviewCard}>
             {floralSoftPreviewStatus !== 'loaded' && <View style={[StyleSheet.absoluteFillObject, designPreviewStyles.floralSoftPreviewFallback, { backgroundColor: uiPreview.soft }]}>{floralSoftPreviewStatus === 'error' ? <Text style={[designPreviewStyles.floralSoftPreviewError, { color: uiPreview.muted }]}>プレビューを表示できませんでした</Text> : <ActivityIndicator color={uiPreview.accent} />}</View>}
             <Image source={designFloralAssets.floralSoft.previewSource ?? designFloralAssets.floralSoft.source} resizeMode="contain" onLoadStart={() => setFloralSoftPreviewStatus('loading')} onLoad={() => setFloralSoftPreviewStatus('loaded')} onError={() => setFloralSoftPreviewStatus('error')} style={[designPreviewStyles.floralSoftPreviewImage, floralSoftPreviewStatus !== 'loaded' && { opacity: 0 }]} />
             <View style={[designPreviewStyles.floralSoftPreviewNotice, { backgroundColor: uiPreview.surface, borderTopColor: uiPreview.border }]}><Text style={[designPreviewStyles.floralSoftPreviewName, { color: uiPreview.text }]}>花柄2</Text><Text style={[designPreviewStyles.floralSoftPreviewPremium, { color: uiPreview.accent }]}>Premium限定デザイン</Text><Text style={[designPreviewStyles.floralSoftPreviewCopy, { color: uiPreview.muted }]}>このデザインを使うにはPremium登録が必要です</Text></View>
           </View> : <>
-            {mode === 'chic' && (isImageDesignPattern(pattern) ? <View pointerEvents="none" style={StyleSheet.absoluteFillObject}><Image source={designBackgroundAssets[pattern].source} resizeMode="stretch" style={StyleSheet.absoluteFillObject} /></View> : <View pointerEvents="none" style={StyleSheet.absoluteFillObject}><ChicPatternDecor pattern={pattern} accent={previewVisual.accent} warm={previewVisual.warm} checkColor={chicCheckColor} preview previewTopCrop={pattern === 'floralSoft'} /></View>)}
+            {mode === 'chic' && (isImageDesignPattern(pattern) ? <View pointerEvents="none" style={StyleSheet.absoluteFillObject}><Image source={designBackgroundAssets[pattern].source} resizeMode="contain" style={StyleSheet.absoluteFillObject} /></View> : <View pointerEvents="none" style={StyleSheet.absoluteFillObject}><ChicPatternDecor pattern={pattern} accent={previewVisual.accent} warm={previewVisual.warm} checkColor={chicCheckColor} preview previewTopCrop={pattern === 'floralSoft'} /></View>)}
           {mode === 'photo' && photoUri ? <Image source={{ uri: photoUri }} resizeMode="cover" style={designPreviewStyles.photoBackground} /> : null}
           <TodayWinStrip
             tasks={[]}
@@ -6149,7 +6326,8 @@ function TimeTabButton({ tab, active, designMode, chicPattern, chicPalette, them
     void cancelFocusNotification(activeSession.id);
     triggerHaptic(hapticsEnabled, [0, 35, 70]);
     if (!prompted) {
-      Alert.alert('集中タイム終了', activeSession.taskTitle ? `「${activeSession.taskTitle}」に取り組めました。少し休憩しよう。` : '少し休憩しよう。');
+      const copy = getFocusCompletionAlertCopy(activeSession.taskTitle);
+      Alert.alert(copy.title, copy.message);
     }
   }, [cancelFocusNotification, hapticsEnabled, onFocusRunningChange, onFocusStateChange, onFocusTaskFinished]);
 
@@ -6896,7 +7074,7 @@ function ChicPatternSelector({ designMode, chicPattern, chicCheckColor, planTier
         const selected = chicPattern === item.id;
         const imageAsset = isImageDesignPattern(item.id) ? designBackgroundAssets[item.id] : undefined;
         return <Pressable key={item.id} style={[styles.patternChoice, { backgroundColor: choicePalette.cardSurface, borderColor: selected ? choicePalette.accent : choicePalette.border }, selected && { borderWidth: 2 }]} onPress={() => { if (locked) { onPreview(item.id); return; } onPattern(item.id); }}>
-          <View style={[styles.patternSwatch, styles.patternSwatchLarge, { backgroundColor: imageAsset?.background ?? patternBase, borderColor: choicePalette.border, borderWidth: 1 }]}>{imageAsset ? <Image source={imageAsset.previewSource} resizeMode="stretch" style={StyleSheet.absoluteFillObject} /> : <ChicPatternDecor pattern={item.id} accent={visual.accent} warm={patternStripe} density="compact" checkColor={chicCheckColor} preview previewTopCrop={item.id === 'floralSoft'} />}</View>
+          <View style={[styles.patternSwatch, styles.patternSwatchLarge, { backgroundColor: imageAsset?.background ?? patternBase, borderColor: choicePalette.border, borderWidth: 1 }]}>{imageAsset ? <Image source={imageAsset.previewSource} resizeMode="contain" style={StyleSheet.absoluteFillObject} /> : <ChicPatternDecor pattern={item.id} accent={visual.accent} warm={patternStripe} density="compact" checkColor={chicCheckColor} preview previewTopCrop={item.id === 'floralSoft'} />}</View>
           <Text numberOfLines={2} ellipsizeMode="clip" style={[styles.patternChoiceText, { color: selected ? choicePalette.accentStrong : choicePalette.textSecondary }]}>{displayPatternLabels[item.id] ?? item.label}{locked ? ' 🔒' : ''}</Text>
         </Pressable>;
       })}
@@ -6930,18 +7108,28 @@ function ThemeColorSelector({ color, onChange, designMode }: { color: ChicCheckC
   </View>;
 }
 
-function SettingsDisclosure({ title, subtitle, expanded, onPress, children, designMode, chicPalette }: { title: string; subtitle: string; expanded: boolean; onPress: () => void; children: React.ReactNode; designMode?: DesignMode; chicPalette?: ChicThemePalette }) {
+function SettingsDisclosure({ title, subtitle, expanded, onPress, children, designMode, chicPalette, icon, headerAction }: { title: string; subtitle: string; expanded: boolean; onPress: () => void; children: React.ReactNode; designMode?: DesignMode; chicPalette?: ChicThemePalette; icon?: PremiumFeatureIconName; headerAction?: React.ReactNode }) {
   const isDark = designMode === 'dark';
   const isChic = designMode === 'chic' && !!chicPalette;
   const theme = getThemeTokens(designMode ?? 'minimal', chicPalette?.id ?? 'cool').colors;
   const textPrimary = isChic ? chicPalette!.textPrimary : theme.primaryText;
   const textSecondary = isChic ? chicPalette!.textSecondary : theme.secondaryText;
   const accent = isChic ? chicPalette!.accent : theme.primaryAccent;
+  const headerStyle = [styles.settingsDisclosureHeader, isDark && styles.darkSurface, isChic && { backgroundColor: chicPalette!.cardSurface, borderColor: chicPalette!.border }];
+  const headerContent = <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, minWidth: 0 }}>
+    {icon ? <View style={{ width: 32, alignItems: 'flex-start' }}><PremiumFeatureIcon name={icon} color={expanded ? accent : textSecondary} /></View> : null}
+    <View style={{ flex: 1, minWidth: 0 }}><Text style={[styles.settingsDisclosureTitle, { color: textPrimary }]}>{title}</Text><Text style={[styles.settingsDisclosureSubtitle, { color: textSecondary }]}>{subtitle}</Text></View>
+  </View>;
+  const chevron = <Text style={[styles.settingsDisclosureChevron, { color: accent }]}>{expanded ? '⌃' : '⌄'}</Text>;
   return <View style={styles.settingsDisclosure}>
-    <Pressable style={[styles.settingsDisclosureHeader, isDark && styles.darkSurface, isChic && { backgroundColor: chicPalette!.cardSurface, borderColor: chicPalette!.border }]} onPress={onPress} accessibilityRole="button" accessibilityState={{ expanded }}>
-      <View style={{ flex: 1 }}><Text style={[styles.settingsDisclosureTitle, { color: textPrimary }]}>{title}</Text><Text style={[styles.settingsDisclosureSubtitle, { color: textSecondary }]}>{subtitle}</Text></View>
-      <Text style={[styles.settingsDisclosureChevron, { color: accent }]}>{expanded ? '⌃' : '⌄'}</Text>
-    </Pressable>
+    {headerAction ? <View style={headerStyle}>
+      <Pressable style={{ flex: 1, minWidth: 0 }} onPress={onPress} accessibilityRole="button" accessibilityState={{ expanded }}>{headerContent}</Pressable>
+      {headerAction}
+      <Pressable style={{ minWidth: 32, minHeight: 40, alignItems: 'flex-end', justifyContent: 'center', paddingLeft: 4 }} onPress={onPress} accessibilityRole="button" accessibilityState={{ expanded }}>{chevron}</Pressable>
+    </View> : <Pressable style={headerStyle} onPress={onPress} accessibilityRole="button" accessibilityState={{ expanded }}>
+      {headerContent}
+      {chevron}
+    </Pressable>}
     {expanded && <View style={styles.settingsDisclosureBody}>{children}</View>}
   </View>;
 }
@@ -7101,7 +7289,7 @@ function TodayWinStrip({ tasks, designMode, chicPattern, chicPalette, onRestore,
             <View style={styles.todayHeroMinimalLeft}>
               <Text style={[styles.todayHeroMinimalKicker, designMode === 'dark' && styles.todayHeroMinimalKickerDark]}>TODAY</Text>
               <Text style={[styles.todayHeroMinimalNowLabel, designMode === 'dark' && styles.todayHeroMinimalTextDark]}>今はこれ</Text>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}><Pressable disabled={!nextNowTask || !onToggleTask} onPress={(event) => { event.stopPropagation(); if (nextNowTask) onToggleTask?.(nextNowTask.id); }} style={[styles.check, designMode === 'dark' && styles.checkDark, nextNowTaskChecked && styles.checkDone, nextNowTaskSelected && styles.selectionChecked]}><Text style={styles.checkMark}>{nextNowTaskChecked ? '✓' : ''}</Text></Pressable><Pressable disabled={!nextNowTask || !onOpenTaskActions} onPress={(event) => { event.stopPropagation(); if (nextNowTask) onOpenTaskActions?.(nextNowTask); }} style={{ flex: 1 }}><Text numberOfLines={2} style={[styles.todayHeroMinimalTask, designMode === 'dark' && styles.todayHeroMinimalTextDark]}>{nextNowTask ? nextNowTask.title : remainingNow === 0 ? '今日の分は完了。いい感じ' : '次にやる1つをここで決めます'}</Text></Pressable></View>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}><Pressable disabled={!nextNowTask || !onToggleTask} onPress={(event) => { event.stopPropagation(); if (nextNowTask) onToggleTask?.(nextNowTask.id); }} style={[styles.check, designMode === 'dark' && styles.checkDark, nextNowTaskChecked && styles.checkDone, nextNowTaskSelected && styles.selectionChecked]}><Text style={styles.checkMark}>{nextNowTaskChecked ? '✓' : ''}</Text></Pressable><Pressable disabled={!nextNowTask || !onOpenTaskActions} onPress={(event) => { event.stopPropagation(); if (nextNowTask) onOpenTaskActions?.(nextNowTask); }} style={{ flex: 1 }}><Text numberOfLines={2} adjustsFontSizeToFit={scheduledToday.length === 0} minimumFontScale={0.9} style={[styles.todayHeroMinimalTask, designMode === 'dark' && styles.todayHeroMinimalTextDark]}>{nextNowTask ? nextNowTask.title : scheduledToday.length === 0 ? '今日はまだ未登録' : remainingNow === 0 ? '今日の分は完了。いい感じ' : '次にやる1つをここで決めます'}</Text></Pressable></View>
               <Text style={[styles.todayHeroMinimalStats, designMode === 'dark' && styles.todayHeroMinimalStatsDark]}>完了 {count} / 残り {remainingNow}</Text>
             </View>
             <Pressable accessibilityRole="button" accessibilityLabel="今日できたことを確認" onPress={() => { onOpenCompleted?.(); setDetailsOpen(true); }} style={styles.todayUnifiedAchievementMinimal}>
@@ -7128,7 +7316,7 @@ function TodayWinStrip({ tasks, designMode, chicPattern, chicPalette, onRestore,
           <View style={[styles.todayHeroChicPlate, { backgroundColor: chicPalette.cardSurface }] }>
             <View style={[styles.todayChicMark, { backgroundColor: chicPalette.accentSoft }]}><Text style={[styles.todayChicMarkText, { color: chicPalette.accent }]}>✿</Text></View>
             <Text style={[styles.todayHeroKicker, { color: chicPalette.textSecondary }]}>今はこれ</Text>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}><Pressable disabled={!nextNowTask || !onToggleTask} onPress={(event) => { event.stopPropagation(); if (nextNowTask) onToggleTask?.(nextNowTask.id); }} style={[styles.check, nextNowTaskChecked && styles.checkDone, nextNowTaskSelected && { backgroundColor: chicPalette.accent, borderColor: chicPalette.accent }, { borderColor: chicPalette.accent }]}><Text style={styles.checkMark}>{nextNowTaskChecked ? '✓' : ''}</Text></Pressable><Pressable disabled={!nextNowTask || !onOpenTaskActions} onPress={(event) => { event.stopPropagation(); if (nextNowTask) onOpenTaskActions?.(nextNowTask); }} style={{ flex: 1 }}><Text numberOfLines={2} style={[styles.todayHeroCopy, { color: chicPalette.textPrimary }]}>{nextNowTask ? nextNowTask.title : remainingNow === 0 ? '今日の分は完了。いい感じ' : '次にやる1つをここで決めます'}</Text></Pressable></View>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}><Pressable disabled={!nextNowTask || !onToggleTask} onPress={(event) => { event.stopPropagation(); if (nextNowTask) onToggleTask?.(nextNowTask.id); }} style={[styles.check, nextNowTaskChecked && styles.checkDone, nextNowTaskSelected && { backgroundColor: chicPalette.accent, borderColor: chicPalette.accent }, { borderColor: chicPalette.accent }]}><Text style={styles.checkMark}>{nextNowTaskChecked ? '✓' : ''}</Text></Pressable><Pressable disabled={!nextNowTask || !onOpenTaskActions} onPress={(event) => { event.stopPropagation(); if (nextNowTask) onOpenTaskActions?.(nextNowTask); }} style={{ flex: 1 }}><Text numberOfLines={2} adjustsFontSizeToFit={scheduledToday.length === 0} minimumFontScale={0.9} style={[styles.todayHeroCopy, { color: chicPalette.textPrimary }]}>{nextNowTask ? nextNowTask.title : scheduledToday.length === 0 ? '今日はまだ未登録' : remainingNow === 0 ? '今日の分は完了。いい感じ' : '次にやる1つをここで決めます'}</Text></Pressable></View>
             <Text style={[styles.todayHeroStats, { color: chicPalette.textSecondary }]}>完了 {count}　残り {remainingNow}</Text>
           </View>
           <Pressable accessibilityRole="button" accessibilityLabel="今日できたことを確認" onPress={() => { onOpenCompleted?.(); setDetailsOpen(true); }} style={styles.todayHeroJarWrap}>

@@ -21,6 +21,20 @@ type PendingPurchase = {
   resolve: (result: StorePurchaseResult) => void;
 };
 
+function logStoreKitDiagnostic(event: string, details: Record<string, unknown> = {}) {
+  if (!__DEV__) return;
+  console.log(`[PremiumDiagnostic] ${event}`, {
+    timestamp: new Date().toISOString(),
+    plan: 'unknown',
+    purchaseStatus: 'unknown',
+    planTier: 'unknown',
+    modalVisible: false,
+    entitlementsResolved: false,
+    pending: false,
+    ...details,
+  });
+}
+
 export type PremiumTrialStarted = {
   productId: string;
   trialEndAt: number;
@@ -96,6 +110,12 @@ export function useRhythmStoreKit({
       paymentMode: purchaseIOS.offerIOS?.paymentMode,
       expirationDateIOS: purchaseIOS.expirationDateIOS,
     });
+    logStoreKitDiagnostic('STOREKIT_PURCHASE_RESULT', {
+      plan: purchase.productId === STORE_PRODUCT_IDS.premiumAnnual ? 'annual' : purchase.productId === STORE_PRODUCT_IDS.premiumMonthly ? 'monthly' : purchase.productId === STORE_PRODUCT_IDS.designCustomize ? 'design' : 'unknown',
+      purchaseStatus: purchase.purchaseState,
+      entitlementsResolved,
+      pending: Boolean(pendingPurchaseRef.current),
+    });
     if (!isSuccessfulPurchase(purchase)) return;
     const productId = purchase.productId;
     const isPremium = productId === STORE_PRODUCT_IDS.premiumMonthly || productId === STORE_PRODUCT_IDS.premiumAnnual;
@@ -104,7 +124,9 @@ export function useRhythmStoreKit({
       // Both subscriptions and the non-consumable are finished only after the
       // StoreKit purchase event has arrived. No reward is granted on cancel or
       // on a request that never produces a successful transaction.
+      logStoreKitDiagnostic('FINISH_TRANSACTION_START', { plan: isPremium ? (productId === STORE_PRODUCT_IDS.premiumAnnual ? 'annual' : 'monthly') : isDesign ? 'design' : 'unknown', purchaseStatus: purchase.purchaseState, entitlementsResolved, pending: Boolean(pendingPurchaseRef.current) });
       await finishTransaction({ purchase, isConsumable: false });
+      logStoreKitDiagnostic('FINISH_TRANSACTION_END', { plan: isPremium ? (productId === STORE_PRODUCT_IDS.premiumAnnual ? 'annual' : 'monthly') : isDesign ? 'design' : 'unknown', purchaseStatus: purchase.purchaseState, entitlementsResolved, pending: Boolean(pendingPurchaseRef.current) });
       if (isPremium) onPremiumEntitlement(true);
       if (isDesign) onDesignCustomizeEntitlement(true);
       // The introductory offer belongs to the monthly SKU.  Do not show the
@@ -115,6 +137,7 @@ export function useRhythmStoreKit({
         ? getFreeTrialEndAt(purchase)
         : undefined;
       if (trialEndAt) {
+        logStoreKitDiagnostic('PREMIUM_TRIAL_DETECTED', { plan: 'monthly', purchaseStatus: purchase.purchaseState, entitlementsResolved, pending: Boolean(pendingPurchaseRef.current) });
         setPremiumTrialEndAt(trialEndAt);
         onPremiumTrialStarted?.({
           productId,
@@ -124,14 +147,16 @@ export function useRhythmStoreKit({
         if (__DEV__) console.log('[StoreKit] premium free trial', { productId, trialEndAt: new Date(trialEndAt).toISOString(), offer: (purchase as Purchase & { offerIOS?: unknown }).offerIOS });
       }
       pendingPurchaseRef.current?.resolve({ success: isPremium || isDesign });
+      logStoreKitDiagnostic('STOREKIT_PENDING_CHANGED', { pending: false, plan: isPremium ? (productId === STORE_PRODUCT_IDS.premiumAnnual ? 'annual' : 'monthly') : isDesign ? 'design' : 'unknown', purchaseStatus: 'resolved', entitlementsResolved });
     } catch (error) {
       const message = error instanceof Error ? error.message : '購入を完了できませんでした。';
       setErrorMessage(message);
       pendingPurchaseRef.current?.resolve({ success: false, error: message });
+      logStoreKitDiagnostic('FINISH_TRANSACTION_END', { plan: isPremium ? (productId === STORE_PRODUCT_IDS.premiumAnnual ? 'annual' : 'monthly') : isDesign ? 'design' : 'unknown', purchaseStatus: 'error', entitlementsResolved, pending: false });
     } finally {
       pendingPurchaseRef.current = undefined;
     }
-  }, [onDesignCustomizeEntitlement, onPremiumEntitlement, onPremiumTrialStarted]);
+  }, [entitlementsResolved, onDesignCustomizeEntitlement, onPremiumEntitlement, onPremiumTrialStarted]);
 
   const handlePurchaseError = useCallback((error: { code?: ErrorCode; message?: string }) => {
     // User cancellation is an expected outcome and should not be rendered as
@@ -140,8 +165,10 @@ export function useRhythmStoreKit({
       setErrorMessage(error.message || '購入を完了できませんでした。');
     }
     pendingPurchaseRef.current?.resolve({ success: false, error: error.message || '購入を完了できませんでした。' });
+    logStoreKitDiagnostic('STOREKIT_PURCHASE_RESULT', { plan: 'unknown', purchaseStatus: error.code === ErrorCode.UserCancelled ? 'cancelled' : 'error', entitlementsResolved, pending: false });
+    logStoreKitDiagnostic('STOREKIT_PENDING_CHANGED', { pending: false, plan: 'unknown', purchaseStatus: 'rejected', entitlementsResolved });
     pendingPurchaseRef.current = undefined;
-  }, []);
+  }, [entitlementsResolved]);
 
   const {
     connected,
@@ -285,8 +312,10 @@ export function useRhythmStoreKit({
       return Promise.resolve({ success: false, error });
     }
     setErrorMessage(undefined);
+    logStoreKitDiagnostic('PURCHASE_START', { plan, purchaseStatus: 'processing', entitlementsResolved, pending: true });
     return new Promise((resolve) => {
       pendingPurchaseRef.current = { resolve };
+      logStoreKitDiagnostic('STOREKIT_PENDING_CHANGED', { pending: true, plan, purchaseStatus: 'processing', entitlementsResolved });
       void requestPurchase({
         request: Platform.OS === 'ios' ? { apple: { sku: productId } } : { google: { skus: [productId] } },
         type: 'subs',
@@ -330,8 +359,10 @@ export function useRhythmStoreKit({
       setStatus('ready');
     }
     setErrorMessage(undefined);
+    logStoreKitDiagnostic('PURCHASE_START', { plan: 'design', purchaseStatus: 'processing', entitlementsResolved, pending: true });
     return new Promise((resolve) => {
       pendingPurchaseRef.current = { resolve };
+      logStoreKitDiagnostic('STOREKIT_PENDING_CHANGED', { pending: true, plan: 'design', purchaseStatus: 'processing', entitlementsResolved });
       if (__DEV__) console.log('[StoreKit] requestPurchase Design Customize', { productId, type: 'in-app' });
       void requestPurchase({
         request: Platform.OS === 'ios' ? { apple: { sku: productId } } : { google: { skus: [productId] } },

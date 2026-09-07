@@ -14,6 +14,10 @@ struct RhythmLiveActivityAttributes: ActivityAttributes {
       var text: String
       var checked: Bool
     }
+    struct TaskItem: Codable, Hashable {
+      var id: String
+      var title: String
+    }
     struct DisplayOptions: Codable, Hashable {
       var currentTask: Bool
       var nextSchedule: Bool
@@ -55,6 +59,8 @@ struct RhythmLiveActivityAttributes: ActivityAttributes {
     var displayOptions: DisplayOptions
     var interactiveChecks: Bool
     var currentTaskId: String?
+    var currentTasks: [TaskItem]?
+    var currentTaskRemainingCount: Int
     var currentTaskListItems: [ListItem]?
     var affirmationTexts: [String]?
     var affirmationRotationMode: AffirmationRotationMode
@@ -63,7 +69,7 @@ struct RhythmLiveActivityAttributes: ActivityAttributes {
     var fontDesign: FontDesign
     var fontSize: FontSize
 
-    init(mode: Mode, tier: Tier = .free, currentTaskTitle: String? = nil, nextScheduleTitle: String? = nil, nextScheduleAt: Date? = nil, departureAt: Date? = nil, focusTaskTitle: String? = nil, focusEndsAt: Date? = nil, focusElapsedStartAt: Date? = nil, focusElapsedSeconds: Int? = nil, focusRemainingSeconds: Int? = nil, focusRunning: Bool = false, affirmationText: String? = nil, accentHex: String = "#FFFFFF", displayOptions: DisplayOptions = .all, interactiveChecks: Bool = false, currentTaskId: String? = nil, currentTaskListItems: [ListItem]? = nil, affirmationTexts: [String]? = nil, affirmationRotationMode: AffirmationRotationMode = .fixed, affirmationRotationIntervalMinutes: Int = 60, affirmationRotationAnchor: Date? = nil, fontDesign: FontDesign = .default, fontSize: FontSize = .medium) {
+    init(mode: Mode, tier: Tier = .free, currentTaskTitle: String? = nil, nextScheduleTitle: String? = nil, nextScheduleAt: Date? = nil, departureAt: Date? = nil, focusTaskTitle: String? = nil, focusEndsAt: Date? = nil, focusElapsedStartAt: Date? = nil, focusElapsedSeconds: Int? = nil, focusRemainingSeconds: Int? = nil, focusRunning: Bool = false, affirmationText: String? = nil, accentHex: String = "#FFFFFF", displayOptions: DisplayOptions = .all, interactiveChecks: Bool = false, currentTaskId: String? = nil, currentTasks: [TaskItem]? = nil, currentTaskRemainingCount: Int = 0, currentTaskListItems: [ListItem]? = nil, affirmationTexts: [String]? = nil, affirmationRotationMode: AffirmationRotationMode = .fixed, affirmationRotationIntervalMinutes: Int = 60, affirmationRotationAnchor: Date? = nil, fontDesign: FontDesign = .default, fontSize: FontSize = .medium) {
       self.mode = mode
       self.tier = tier
       self.currentTaskTitle = currentTaskTitle
@@ -81,6 +87,8 @@ struct RhythmLiveActivityAttributes: ActivityAttributes {
       self.displayOptions = displayOptions
       self.interactiveChecks = interactiveChecks
       self.currentTaskId = currentTaskId
+      self.currentTasks = currentTasks
+      self.currentTaskRemainingCount = max(0, currentTaskRemainingCount)
       self.currentTaskListItems = currentTaskListItems
       self.affirmationTexts = affirmationTexts
       self.affirmationRotationMode = affirmationRotationMode
@@ -91,7 +99,7 @@ struct RhythmLiveActivityAttributes: ActivityAttributes {
     }
 
     private enum CodingKeys: String, CodingKey {
-      case mode, tier, currentTaskTitle, nextScheduleTitle, nextScheduleAt, departureAt, focusTaskTitle, focusEndsAt, focusElapsedStartAt, focusElapsedSeconds, focusRemainingSeconds, focusRunning, affirmationText, accentHex, displayOptions, interactiveChecks, currentTaskId, currentTaskListItems, affirmationTexts, affirmationRotationMode, affirmationRotationIntervalMinutes, affirmationRotationAnchor, fontDesign, fontSize
+      case mode, tier, currentTaskTitle, nextScheduleTitle, nextScheduleAt, departureAt, focusTaskTitle, focusEndsAt, focusElapsedStartAt, focusElapsedSeconds, focusRemainingSeconds, focusRunning, affirmationText, accentHex, displayOptions, interactiveChecks, currentTaskId, currentTasks, currentTaskRemainingCount, currentTaskListItems, affirmationTexts, affirmationRotationMode, affirmationRotationIntervalMinutes, affirmationRotationAnchor, fontDesign, fontSize
     }
 
     // Old activities did not carry tier/affirmation. Defaults keep an
@@ -115,6 +123,8 @@ struct RhythmLiveActivityAttributes: ActivityAttributes {
       displayOptions = try container.decodeIfPresent(DisplayOptions.self, forKey: .displayOptions) ?? .all
       interactiveChecks = try container.decodeIfPresent(Bool.self, forKey: .interactiveChecks) ?? false
       currentTaskId = try container.decodeIfPresent(String.self, forKey: .currentTaskId)
+      currentTasks = try container.decodeIfPresent([TaskItem].self, forKey: .currentTasks)
+      currentTaskRemainingCount = max(0, try container.decodeIfPresent(Int.self, forKey: .currentTaskRemainingCount) ?? 0)
       currentTaskListItems = try container.decodeIfPresent([ListItem].self, forKey: .currentTaskListItems)
       affirmationTexts = try container.decodeIfPresent([String].self, forKey: .affirmationTexts)
       affirmationRotationMode = try container.decodeIfPresent(AffirmationRotationMode.self, forKey: .affirmationRotationMode) ?? .fixed
@@ -143,6 +153,8 @@ struct RhythmLiveActivityAttributes: ActivityAttributes {
       try container.encode(displayOptions, forKey: .displayOptions)
       try container.encode(interactiveChecks, forKey: .interactiveChecks)
       try container.encodeIfPresent(currentTaskId, forKey: .currentTaskId)
+      try container.encodeIfPresent(currentTasks, forKey: .currentTasks)
+      try container.encode(currentTaskRemainingCount, forKey: .currentTaskRemainingCount)
       try container.encodeIfPresent(currentTaskListItems, forKey: .currentTaskListItems)
       try container.encodeIfPresent(affirmationTexts, forKey: .affirmationTexts)
       try container.encode(affirmationRotationMode, forKey: .affirmationRotationMode)

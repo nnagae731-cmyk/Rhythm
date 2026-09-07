@@ -24,7 +24,6 @@ type WidgetSettingsCardProps = {
   onChange: (settings: WidgetSettings) => void;
   onPickPhoto?: (widgetType?: WidgetType, override?: WidgetEntitlementOverride) => void;
   onUnlockWidgetPhoto?: (widgetType: WidgetType, override?: WidgetEntitlementOverride) => void;
-  onRemoveWidgetPhotoBackground?: (widgetType: WidgetType, override?: WidgetEntitlementOverride) => Promise<boolean>;
   widgetPhotoUnlock?: { widgetType: WidgetType | null; expiresAt: string | null };
   onRemoveAffirmationPhoto?: (index?: number) => void;
   colors: { surface: string; border: string; primaryText: string; secondaryText: string; primaryAccent: string; softAccent: string; screenBackground: string };
@@ -38,6 +37,7 @@ type WidgetSettingsCardProps = {
   widgetEntitlementOverride?: WidgetEntitlementOverride;
   onWidgetEntitlementOverrideChange?: (override: WidgetEntitlementOverride) => void;
   onLockedWidget?: (access: 'design' | 'premium') => void;
+  showSelectedPreview?: boolean;
 };
 
 const displayOptionsByType: Record<WidgetSettings['widgetType'], ReadonlyArray<{ key: WidgetDisplayOption; label: string }>> = {
@@ -67,7 +67,15 @@ const displayOptionsByType: Record<WidgetSettings['widgetType'], ReadonlyArray<{
 
 type WidgetPreviewSize = 'small' | 'medium' | 'large';
 
-function WidgetTypePreview({ type, style, fontDesign = 'default', photoUri, cutoutUri, photoLayout = 'background', colors, designPattern, designCheckColor, PatternDecor, previewSize }: { type: WidgetSettings['widgetType']; style: WidgetSettings['style']; fontDesign?: WidgetSettings['fontDesign']; photoUri?: string; cutoutUri?: string; photoLayout?: WidgetSettings['photoLayout']; colors: WidgetSettingsCardProps['colors']; designPattern?: ChicPattern; designCheckColor?: ChicCheckColor; PatternDecor?: React.ComponentType<any>; previewSize?: WidgetPreviewSize }) {
+function WidgetTypePreview({ type, style, fontDesign = 'default', photoUri, photoLayout = 'background', colors, designPattern, designCheckColor, PatternDecor, previewSize, renderMode = 'full' }: { type: WidgetSettings['widgetType']; style: WidgetSettings['style']; fontDesign?: WidgetSettings['fontDesign']; photoUri?: string; photoLayout?: WidgetSettings['photoLayout']; colors: WidgetSettingsCardProps['colors']; designPattern?: ChicPattern; designCheckColor?: ChicCheckColor; PatternDecor?: React.ComponentType<any>; previewSize?: WidgetPreviewSize; renderMode?: 'full' | 'thumbnail' }) {
+  const thumbnail = renderMode === 'thumbnail';
+  if (thumbnail) {
+    const option = WIDGET_TYPE_OPTIONS.find((item) => item.id === type);
+    return <View style={{ minHeight: 82, padding: 10, borderRadius: 11, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.screenBackground, overflow: 'hidden' }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}><Text numberOfLines={1} style={{ flex: 1, color: colors.primaryText, fontSize: 12, fontWeight: '900' }}>{option?.label ?? 'Widget'}</Text><View style={{ width: 22, height: 22, borderRadius: 7, borderWidth: 1, borderColor: colors.primaryAccent, backgroundColor: colors.softAccent }} /></View>
+      <View style={{ marginTop: 10, gap: 5 }}><View style={{ width: '72%', height: 5, borderRadius: 3, backgroundColor: colors.primaryText, opacity: 0.7 }} /><View style={{ width: '54%', height: 4, borderRadius: 2, backgroundColor: colors.secondaryText, opacity: 0.65 }} /><View style={{ width: '84%', height: 4, borderRadius: 2, backgroundColor: colors.primaryAccent, opacity: 0.72 }} /></View>
+    </View>;
+  }
   const fontFamily = reactNativeFontFamily(fontDesign ?? 'default');
   const line = (label: string, value: string) => <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}><Text style={{ color: colors.secondaryText, fontSize: 10, fontFamily }}>{label}</Text><Text style={{ color: colors.primaryText, fontSize: 11, fontWeight: '800', flexShrink: 1, fontFamily }}>{value}</Text></View>;
   // Monthly is Large-only; keep the in-app sample a complete month with a
@@ -85,9 +93,7 @@ function WidgetTypePreview({ type, style, fontDesign = 'default', photoUri, cuto
   const photoCardWidth = compact ? 54 : previewSize === 'large' ? 92 : 68;
   const photoCardHeight = compact ? 70 : previewSize === 'large' ? 116 : 88;
   const photoCircleSize = compact ? 50 : previewSize === 'large' ? 86 : 64;
-  // A cutout layout is only a cutout when Vision produced the managed PNG;
-  // never present the original photo as a misleading full/opaque cutout.
-  const photoSourceUri = photoLayout === 'cutout' ? cutoutUri : photoUri;
+  const photoSourceUri = photoUri;
   const floralPattern = designPattern === 'floral' ? 'vintageBloom' : designPattern === 'floralSoft' ? 'botanicalLine' : designPattern === 'floralSeasonal' || designPattern === 'floralDark' ? 'sheerFloral' : undefined;
   const floralAssetSource = floralPattern ? getWidgetFloralAssetSource(floralPattern, previewSize ?? 'medium') : undefined;
   const previewBackground = designPattern && floralPattern ? getDesignPatternThemeTokens(designPattern, 'cool').background : colors.screenBackground;
@@ -97,35 +103,40 @@ function WidgetTypePreview({ type, style, fontDesign = 'default', photoUri, cuto
     {style === 'photo' && photoSourceUri && photoLayout === 'top' && <Image source={{ uri: photoSourceUri }} resizeMode="cover" style={{ position: 'absolute', left: 0, right: 0, top: isCalendarType ? undefined : 0, bottom: isCalendarType ? 0 : undefined, height: photoTopHeight, opacity: 0.9 }} />}
     {style === 'photo' && photoSourceUri && photoLayout === 'card' && <Image source={{ uri: photoSourceUri }} resizeMode="cover" style={{ position: 'absolute', right: 12, top: isCalendarType ? undefined : 14, bottom: isCalendarType ? 10 : undefined, width: photoCardWidth, height: photoCardHeight, borderRadius: 5, borderWidth: 3, borderColor: '#FFFFFF', transform: [{ rotate: '3deg' }], opacity: 0.95 }} />}
     {style === 'photo' && photoSourceUri && photoLayout === 'circle' && <Image source={{ uri: photoSourceUri }} resizeMode="cover" style={{ position: 'absolute', right: 12, top: isCalendarType ? undefined : 18, bottom: isCalendarType ? 12 : undefined, width: photoCircleSize, height: photoCircleSize, borderRadius: photoCircleSize / 2, borderWidth: 3, borderColor: '#FFFFFF', opacity: 0.95 }} />}
-    {style === 'photo' && photoSourceUri && photoLayout === 'cutout' && <Image source={{ uri: photoSourceUri }} resizeMode="contain" style={{ position: 'absolute', right: compact ? 12 : previewSize === 'large' ? 20 : 16, top: compact ? '16%' : '10%', width: compact ? '48%' : previewSize === 'large' ? '52%' : '46%', height: compact ? '68%' : '80%' }} />}
     {style === 'photo' && photoSourceUri && <View pointerEvents="none" style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, backgroundColor: photoLayout === 'background' ? 'rgba(255,255,255,0.3)' : 'transparent' }} />}
     {floralAssetSource && <View pointerEvents="none" style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0 }}><Image source={floralAssetSource} resizeMode="contain" style={{ width: '100%', height: '100%' }} /></View>}
     {style !== 'photo' && PatternDecor && designPattern && designPattern !== 'plain' && !floralPattern && <View pointerEvents="none" style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, opacity: 0.32 }}><PatternDecor pattern={designPattern} accent={colors.primaryAccent} warm={colors.softAccent} checkColor={designCheckColor} preview /></View>}
     <View style={{ gap: 7 }}>
-      {type === 'current' && <><Text style={{ color: colors.secondaryText, fontSize: 10, fontWeight: '700', fontFamily }}>今はこれ</Text><Text style={{ color: colors.primaryText, fontSize: 16, fontWeight: '900', fontFamily }}>資料をまとめる</Text><Text style={{ color: colors.secondaryText, fontSize: 10, fontFamily }}>15:10開始</Text></>}
-      {type === 'next' && <><Text style={{ color: colors.secondaryText, fontSize: 10, fontWeight: '700', fontFamily }}>次の予定</Text><Text style={{ color: colors.primaryText, fontSize: 18, fontWeight: '900', fontFamily }}>18:00　美容院</Text><Text style={{ color: colors.primaryAccent, fontSize: 11, fontWeight: '800', fontFamily }}>出発まで 1時間42分</Text></>}
-      {type === 'combined' && <><Text style={{ color: colors.secondaryText, fontSize: 10, fontWeight: '700', fontFamily }}>今はこれ</Text><Text style={{ color: colors.primaryText, fontSize: 14, fontWeight: '900', fontFamily }}>資料をまとめる</Text><View style={{ borderTopWidth: 1, borderTopColor: colors.border, marginVertical: 1 }} /><Text style={{ color: colors.secondaryText, fontSize: 10, fontWeight: '700', fontFamily }}>次の予定　18:00 美容院</Text><Text style={{ color: colors.primaryAccent, fontSize: 10, fontWeight: '800', fontFamily }}>出発まで 1時間42分</Text></>}
+      {type === 'current' && <><Text style={{ color: colors.secondaryText, fontSize: 10, fontWeight: '700', fontFamily }}>今はこれ</Text><Text style={{ color: colors.primaryText, fontSize: 16, fontWeight: '900', fontFamily }}>今日のタスクを確認</Text><Text style={{ color: colors.secondaryText, fontSize: 10, fontFamily }}>15:10開始</Text></>}
+      {type === 'next' && <><Text style={{ color: colors.secondaryText, fontSize: 10, fontWeight: '700', fontFamily }}>次の予定</Text><Text style={{ color: colors.primaryText, fontSize: 18, fontWeight: '900', fontFamily }}>18:00　予定</Text><Text style={{ color: colors.primaryAccent, fontSize: 11, fontWeight: '800', fontFamily }}>出発まで 1時間42分</Text></>}
+      {type === 'combined' && <><Text style={{ color: colors.secondaryText, fontSize: 10, fontWeight: '700', fontFamily }}>今はこれ</Text><Text style={{ color: colors.primaryText, fontSize: 14, fontWeight: '900', fontFamily }}>今日のタスクを確認</Text><View style={{ borderTopWidth: 1, borderTopColor: colors.border, marginVertical: 1 }} /><Text style={{ color: colors.secondaryText, fontSize: 10, fontWeight: '700', fontFamily }}>次の予定　18:00 予定</Text><Text style={{ color: colors.primaryAccent, fontSize: 10, fontWeight: '800', fontFamily }}>出発まで 1時間42分</Text></>}
       {type === 'monthly' && <><Text style={{ color: colors.primaryText, fontSize: 12, fontWeight: '900' }}>2026年6月</Text><View style={{ flexDirection: 'row' }}>{calendarWeekdays.map((weekday) => <View key={weekday} style={{ width: '14.285%', alignItems: 'center' }}><Text style={{ color: colors.secondaryText, fontSize: 8, fontWeight: '700' }}>{weekday}</Text></View>)}</View><View style={{ flexDirection: 'row', flexWrap: 'wrap' }}>{Array.from({ length: calendarLeadingEmptyCount }, (_, index) => <View key={`empty-${index}`} style={{ width: '14.285%', minHeight: 19 }} />)}{calendarDays.map((day, index) => { const dayNumber = index + 1; const highlighted = dayNumber === 16; return <View key={day} style={{ width: '14.285%', alignItems: 'center', paddingVertical: 1, borderRadius: 8, backgroundColor: highlighted ? colors.softAccent : 'transparent' }}><Text style={{ color: highlighted ? colors.primaryAccent : colors.secondaryText, fontSize: 8, fontWeight: highlighted ? '900' : '600' }}>{day}</Text>{[3, 9, 16, 20].includes(dayNumber) && <View style={{ width: 3, height: 3, borderRadius: 2, backgroundColor: colors.primaryAccent, marginTop: 1 }} />}</View>; })}</View></>}
-      {type === 'weekly' && <><Text style={{ color: colors.primaryText, fontSize: 12, fontWeight: '900' }}>今週の予定</Text>{line('月', '09:00 会議')}{line('火', '10:30 資料提出')}{line('水', '15:00 打ち合わせ')}{line('金', '18:00 美容院')}</>}
-      {type === 'today' && <><Text style={{ color: colors.primaryText, fontSize: 12, fontWeight: '900' }}>今日  6月24日（火）</Text>{line('09:00', '会議')}{line('10:30', '資料提出')}{line('18:00', '美容院')}</>}
-      {type === 'checklist' && <><Text style={{ color: colors.primaryText, fontSize: 12, fontWeight: '900' }}>ToDoメモ</Text>{line('✓', '財布')}{line('□', '鍵')}{line('□', '充電器')}</>}
-      {type === 'goal' && <><Text style={{ color: colors.secondaryText, fontSize: 10, fontWeight: '700' }}>叶えたいこと</Text><Text style={{ color: colors.primaryText, fontSize: 17, fontWeight: '900' }}>旅行のために貯金</Text><View style={{ height: 6, borderRadius: 3, backgroundColor: colors.border, overflow: 'hidden' }}><View style={{ width: '60%', height: '100%', borderRadius: 3, backgroundColor: colors.primaryAccent }} /></View><Text style={{ color: colors.primaryAccent, fontSize: 11, fontWeight: '800' }}>進捗 60%</Text></>}
+      {type === 'weekly' && <><Text style={{ color: colors.primaryText, fontSize: 12, fontWeight: '900' }}>今週の予定</Text>{line('月', '09:00 予定')}{line('火', '10:30 タスク')}{line('水', '15:00 予定')}{line('金', '18:00 予定')}</>}
+      {type === 'today' && <><Text style={{ color: colors.primaryText, fontSize: 12, fontWeight: '900' }}>今日  6月24日（火）</Text>{line('09:00', '予定')}{line('10:30', 'タスク')}{line('18:00', '予定')}</>}
+      {type === 'checklist' && <><Text style={{ color: colors.primaryText, fontSize: 12, fontWeight: '900' }}>ToDoメモ</Text>{line('✓', '買い物')}{line('□', '片づけ')}{line('□', '明日の準備')}</>}
+      {type === 'goal' && <><Text style={{ color: colors.secondaryText, fontSize: 10, fontWeight: '700' }}>叶えたいこと</Text><Text style={{ color: colors.primaryText, fontSize: 17, fontWeight: '900' }}>今月の目標</Text><View style={{ height: 6, borderRadius: 3, backgroundColor: colors.border, overflow: 'hidden' }}><View style={{ width: '60%', height: '100%', borderRadius: 3, backgroundColor: colors.primaryAccent }} /></View><Text style={{ color: colors.primaryAccent, fontSize: 11, fontWeight: '800' }}>進捗 60%</Text></>}
       {type === 'voice' && <><View style={{ alignItems: 'center', gap: 4 }}><View style={{ width: 42, height: 42, borderRadius: 21, backgroundColor: colors.softAccent, borderWidth: 1, borderColor: colors.primaryAccent, alignItems: 'center', justifyContent: 'center' }}><Text style={{ color: colors.primaryAccent, fontSize: 21 }}>♩</Text></View><Text style={{ color: colors.primaryText, fontSize: 14, fontWeight: '900' }}>音声入力</Text><Text style={{ color: colors.secondaryText, fontSize: 10 }}>タップして話す</Text></View></>}
       {type === 'affirmation' && <><Text style={{ color: colors.secondaryText, fontSize: 10, fontWeight: '700' }}>今日の言葉</Text><Text style={{ color: colors.primaryText, fontSize: 15, lineHeight: 22, fontWeight: '800' }}>「私は私のペースで進めばいい」</Text></>}
     </View>
   </View>;
 }
 
-export function WidgetSettingsCard({ settings, onChange, onPickPhoto, onUnlockWidgetPhoto, onRemoveWidgetPhotoBackground, widgetPhotoUnlock, onRemoveAffirmationPhoto, colors, styles, designPattern, designCheckColor, PatternDecor, planTier = 'free', designCustomizePurchased = false, entitlementsResolved = true, widgetEntitlementOverride = 'actual', onWidgetEntitlementOverrideChange, onLockedWidget }: WidgetSettingsCardProps) {
+const MemoizedWidgetTypePreview = React.memo(WidgetTypePreview);
+
+export function WidgetSettingsCard({ settings, onChange, onPickPhoto, onUnlockWidgetPhoto, widgetPhotoUnlock, onRemoveAffirmationPhoto, colors, styles, designPattern, designCheckColor, PatternDecor, planTier = 'free', designCustomizePurchased = false, entitlementsResolved = true, widgetEntitlementOverride = 'actual', onWidgetEntitlementOverrideChange, onLockedWidget, showSelectedPreview = false }: WidgetSettingsCardProps) {
   const { width: windowWidth } = useWindowDimensions();
   const galleryWidth = Math.min(windowWidth - 44, 560);
   const cardWidth = Math.max(210, Math.round(galleryWidth * 0.8));
   const effectivePlanTier: PlanTier = __DEV__ && widgetEntitlementOverride === 'premium' ? 'premium' : __DEV__ && (widgetEntitlementOverride === 'free' || widgetEntitlementOverride === 'design') ? 'free' : planTier;
   const effectiveDesignCustomizePurchased = __DEV__ && (widgetEntitlementOverride === 'design' || widgetEntitlementOverride === 'premium') ? true : __DEV__ && widgetEntitlementOverride === 'free' ? false : designCustomizePurchased;
   const [showAffirmationDetails, setShowAffirmationDetails] = React.useState(false);
+  // The gallery preview is initialized from the saved type when this card is
+  // mounted for a sheet open. Detail-modal visibility stays separate so that
+  // opening the sheet does not also open an editor. After a gallery tap, the
+  // working preview selection remains stable across prop updates.
   const [selectedWidgetType, setSelectedWidgetType] = React.useState<WidgetType | null>(null);
+  const [previewWidgetType, setPreviewWidgetType] = React.useState<WidgetType>(settings.widgetType);
   const [selectedPreviewSize, setSelectedPreviewSize] = React.useState<WidgetPreviewSize>('medium');
-  const [cutoutBusy, setCutoutBusy] = React.useState(false);
   const update = (patch: Partial<WidgetSettings>) => onChange({ ...settings, ...patch });
   const canUseWidget = (access: 'free' | 'design' | 'premium') => access === 'free' || effectivePlanTier === 'premium' || (access === 'design' && effectiveDesignCustomizePurchased);
   const accessLabel = (access: 'free' | 'design' | 'premium') => access === 'free' ? 'Free' : access === 'design' ? 'Design' : 'Premium';
@@ -135,18 +146,22 @@ export function WidgetSettingsCard({ settings, onChange, onPickPhoto, onUnlockWi
   const selectedOwnCustomization = selectedWidgetType ? settings.widgetCustomizations?.[selectedWidgetType] : undefined;
   const widgetPhotoUnlockActive = effectivePlanTier === 'free' && Boolean(widgetPhotoUnlock?.widgetType && widgetPhotoUnlock.expiresAt && new Date(widgetPhotoUnlock.expiresAt).getTime() > Date.now());
   const selectedPhotoUnlockActive = Boolean(selectedWidgetType && widgetPhotoUnlockActive && widgetPhotoUnlock?.widgetType === selectedWidgetType);
+  const selectedPhotoUri = selectedCustomization?.photoUri;
+  const selectedPreviewStyle: WidgetSettings['style'] = settings.style;
   const selectedPhotoCustomizationAllowed = effectivePlanTier === 'premium' || effectiveDesignCustomizePurchased || selectedPhotoUnlockActive;
   const remainingPhotoUnlockDays = widgetPhotoUnlock?.expiresAt ? Math.max(1, Math.ceil((new Date(widgetPhotoUnlock.expiresAt).getTime() - Date.now()) / (24 * 60 * 60 * 1000))) : 0;
   const selectedPreviewSizes = selectedWidget ? selectedWidget.sizes.split('/').map((value) => value.trim().toUpperCase()).filter((value): value is 'S' | 'M' | 'L' => value === 'S' || value === 'M' || value === 'L').map((value) => value === 'S' ? 'small' as const : value === 'M' ? 'medium' as const : 'large' as const) : [];
   // Keep all Widget kinds visible in the in-app catalogue. Entitlements
   // control the lock state and purchase route, not catalogue visibility.
-  const visibleWidgetIds = WIDGET_TYPE_OPTIONS.map((item) => item.id);
+  const visibleWidgetOptions = React.useMemo(() => WIDGET_TYPE_OPTIONS, []);
+  const currentWidgetOption = React.useMemo(() => visibleWidgetOptions.find((item) => item.id === previewWidgetType), [previewWidgetType, visibleWidgetOptions]);
+  const currentWidgetCustomization = React.useMemo(() => getWidgetCustomization(settings, previewWidgetType), [settings, previewWidgetType]);
+  const currentPreviewPhotoUri = currentWidgetCustomization.photoUri;
+  const currentPreviewStyle: WidgetSettings['style'] = settings.style;
+  const currentPreviewSize: WidgetPreviewSize = currentWidgetOption?.sizes.includes('L') && !currentWidgetOption.sizes.includes('M') ? 'large' : 'medium';
   React.useEffect(() => {
     if (selectedPreviewSizes.length > 0 && !selectedPreviewSizes.includes(selectedPreviewSize)) setSelectedPreviewSize(selectedPreviewSizes[0] ?? 'medium');
   }, [selectedWidgetType, selectedPreviewSizes.join('|'), selectedPreviewSize]);
-  React.useEffect(() => {
-    if (!entitlementsResolved) setSelectedWidgetType(null);
-  }, [entitlementsResolved]);
   const updateSelectedCustomization = (patch: Partial<WidgetCustomization>) => {
     if (!selectedWidgetType) return;
     const current = settings.widgetCustomizations?.[selectedWidgetType] ?? {};
@@ -157,8 +172,8 @@ export function WidgetSettingsCard({ settings, onChange, onPickPhoto, onUnlockWi
     const current = settings.widgetCustomizations?.[selectedWidgetType];
     const next = { ...(settings.widgetCustomizations ?? {}) };
     if (current) {
-      if (current.cutoutUri) deleteManagedPhotoUri(current.cutoutUri);
-      const { photoUri: _photoUri, cutoutUri: _cutoutUri, ...remaining } = current;
+      if (current.photoUri) deleteManagedPhotoUri(current.photoUri);
+      const { photoUri: _photoUri, ...remaining } = current;
       if (Object.keys(remaining).length > 0) next[selectedWidgetType] = remaining;
       else delete next[selectedWidgetType];
     }
@@ -179,15 +194,14 @@ export function WidgetSettingsCard({ settings, onChange, onPickPhoto, onUnlockWi
       <Text style={[styles.settingsTitle, { color: colors.primaryText }]}>Widgetギャラリー</Text>
       {!entitlementsResolved ? <Text style={{ color: colors.secondaryText, fontSize: 11, marginTop: 14 }}>利用状況を確認中…</Text> : <View style={{ marginTop: 14 }}>
         {__DEV__ && <View style={{ marginBottom: 12, padding: 10, borderRadius: 11, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.screenBackground }}><Text style={{ color: colors.secondaryText, fontSize: 10, fontWeight: '800' }}>開発用・Widget権限確認</Text><View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 7 }}>{([{ id: 'actual', label: '実際の購入状態' }, { id: 'free', label: 'Freeとして確認' }, { id: 'design', label: 'Design Customizeとして確認' }, { id: 'premium', label: 'Premiumとして確認' }] as const).map((item) => <Pressable key={item.id} accessibilityRole="button" onPress={() => onWidgetEntitlementOverrideChange?.(item.id)} style={{ paddingHorizontal: 8, paddingVertical: 6, borderRadius: 999, borderWidth: 1, borderColor: widgetEntitlementOverride === item.id ? colors.primaryAccent : colors.border, backgroundColor: widgetEntitlementOverride === item.id ? colors.softAccent : colors.surface }}><Text style={{ color: widgetEntitlementOverride === item.id ? colors.primaryAccent : colors.secondaryText, fontSize: 10, fontWeight: '800' }}>{item.label}</Text></Pressable>)}</View></View>}
+        {showSelectedPreview && currentWidgetOption ? <View style={{ marginBottom: 14, padding: 10, borderRadius: 13, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.screenBackground }}><Text style={{ color: colors.secondaryText, fontSize: 10, fontWeight: '800' }}>選択中のプレビュー</Text><View style={{ marginTop: 8 }}><MemoizedWidgetTypePreview type={currentWidgetOption.id} style={currentPreviewStyle} fontDesign={settings.fontDesign} photoUri={currentPreviewPhotoUri} photoLayout={currentWidgetCustomization.photoLayout} colors={colors} designPattern={designPattern} designCheckColor={designCheckColor} PatternDecor={PatternDecor} previewSize={currentPreviewSize} /></View></View> : null}
         <View style={{ flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', gap: 8 }}><Text style={{ color: colors.primaryText, fontSize: 14, fontWeight: '900' }}>Widgetギャラリー</Text><Text style={{ color: colors.secondaryText, fontSize: 10, fontWeight: '600' }}>全10種類</Text></View>
         <ScrollView horizontal nestedScrollEnabled directionalLockEnabled decelerationRate="fast" snapToInterval={cardWidth + 10} snapToAlignment="start" showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 10, paddingLeft: 2, paddingRight: 12 }} style={{ marginTop: 9 }}>
-          {visibleWidgetIds.map((id) => {
-            const option = WIDGET_TYPE_OPTIONS.find((item) => item.id === id);
-            if (!option) return null;
+          {visibleWidgetOptions.map((option) => {
             const available = canUseWidget(option.access);
             const customization = getWidgetCustomization(settings, option.id);
-            return <Pressable key={option.id} accessibilityRole="button" accessibilityLabel={`${option.label}。${option.description}。対応サイズ ${option.sizes}。${accessLabel(option.access)}${available ? '' : '。ロック中'}`} onPress={() => { if (!available) { onLockedWidget?.(option.access === 'premium' ? 'premium' : 'design'); return; } setSelectedWidgetType(option.id); }} style={{ width: cardWidth, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface, borderRadius: 15, padding: 10 }}>
-              <WidgetTypePreview type={option.id} style={settings.style} fontDesign={settings.fontDesign} photoUri={customization.photoUri} cutoutUri={customization.cutoutUri} photoLayout={customization.photoLayout} colors={colors} designPattern={designPattern} designCheckColor={designCheckColor} PatternDecor={PatternDecor} previewSize={option.id === 'monthly' ? 'large' : undefined} />
+            return <Pressable key={option.id} accessibilityRole="button" accessibilityLabel={`${option.label}。${option.description}。対応サイズ ${option.sizes}。${accessLabel(option.access)}${available ? '' : '。ロック中'}`} onPress={() => { if (!available) { onLockedWidget?.(option.access === 'premium' ? 'premium' : 'design'); return; } setPreviewWidgetType(option.id); setSelectedWidgetType(option.id); }} style={{ width: cardWidth, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface, borderRadius: 15, padding: 10 }}>
+              <MemoizedWidgetTypePreview type={option.id} style={settings.style} fontDesign={settings.fontDesign} photoUri={customization.photoUri} photoLayout={customization.photoLayout} colors={colors} designPattern={designPattern} designCheckColor={designCheckColor} PatternDecor={PatternDecor} previewSize="small" renderMode="thumbnail" />
               <View style={{ paddingHorizontal: 2, paddingTop: 10 }}>
                 <Text style={{ color: colors.primaryText, fontSize: 15, lineHeight: 20, fontWeight: '900' }}>{option.label}</Text>
                 <Text numberOfLines={2} style={{ color: colors.secondaryText, fontSize: 11, lineHeight: 16, marginTop: 3 }}>{option.description}</Text>
@@ -200,12 +214,13 @@ export function WidgetSettingsCard({ settings, onChange, onPickPhoto, onUnlockWi
 
       <Modal visible={Boolean(selectedWidget)} transparent animationType="slide" onRequestClose={() => setSelectedWidgetType(null)}>
         <Pressable onPress={() => setSelectedWidgetType(null)} style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(20, 24, 34, 0.3)', paddingHorizontal: 12, paddingBottom: 12 }}>
-          <Pressable onPress={(event) => event.stopPropagation()} style={{ maxHeight: '88%', borderRadius: 22, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface, padding: 18 }}>
+          <Pressable onPress={(event) => event.stopPropagation()} style={{ height: '88%', maxHeight: '88%', flexShrink: 1, borderRadius: 22, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface, padding: 18 }}>
             {selectedWidget && selectedWidgetType && selectedCustomization && <>
               <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}><View style={{ flex: 1 }}><Text style={{ color: colors.primaryText, fontSize: 18, fontWeight: '900' }}>{selectedWidget.label}</Text><Text style={{ color: colors.secondaryText, fontSize: 11, marginTop: 3 }}>このWidgetだけの写真とレイアウト</Text></View><Pressable accessibilityRole="button" accessibilityLabel="閉じる" onPress={() => setSelectedWidgetType(null)} hitSlop={10}><Text style={{ color: colors.secondaryText, fontSize: 22 }}>×</Text></Pressable></View>
+              <ScrollView style={{ flexShrink: 1 }} contentContainerStyle={{ paddingBottom: 32 }} showsVerticalScrollIndicator keyboardShouldPersistTaps="handled">
               {!selectedAvailable ? <View style={{ marginTop: 16, padding: 14, borderRadius: 13, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.screenBackground }}><Text style={{ color: colors.primaryText, fontSize: 13, fontWeight: '800' }}>このWidgetは現在ロックされています</Text><Text style={{ color: colors.secondaryText, fontSize: 11, lineHeight: 17, marginTop: 5 }}>{selectedWidget.access === 'premium' ? 'Premiumで利用できます。' : 'Design Customizeで利用できます。'}</Text></View> : <>
               {selectedPreviewSizes.length > 1 && <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7, marginTop: 12 }}><Text style={{ color: colors.secondaryText, fontSize: 11, fontWeight: '800' }}>Preview</Text>{selectedPreviewSizes.map((size) => <Pressable key={size} onPress={() => setSelectedPreviewSize(size)} style={{ minWidth: 34, paddingVertical: 6, paddingHorizontal: 8, borderRadius: 999, borderWidth: 1, borderColor: selectedPreviewSize === size ? colors.primaryAccent : colors.border, backgroundColor: selectedPreviewSize === size ? colors.softAccent : colors.surface, alignItems: 'center' }}><Text style={{ color: selectedPreviewSize === size ? colors.primaryAccent : colors.secondaryText, fontSize: 10, fontWeight: '800' }}>{size === 'small' ? 'S' : size === 'medium' ? 'M' : 'L'}</Text></Pressable>)}</View>}
-              <WidgetTypePreview type={selectedWidget.id} style={settings.style} fontDesign={settings.fontDesign} photoUri={selectedCustomization.photoUri} cutoutUri={selectedCustomization.cutoutUri} photoLayout={selectedCustomization.photoLayout} colors={colors} designPattern={designPattern} designCheckColor={designCheckColor} PatternDecor={PatternDecor} previewSize={selectedWidget.id === 'monthly' ? 'large' : selectedPreviewSize} />
+              <MemoizedWidgetTypePreview type={selectedWidget.id} style={selectedPreviewStyle} fontDesign={settings.fontDesign} photoUri={selectedPhotoUri} photoLayout={selectedCustomization.photoLayout} colors={colors} designPattern={designPattern} designCheckColor={designCheckColor} PatternDecor={PatternDecor} previewSize={selectedWidget.id === 'monthly' ? 'large' : selectedPreviewSize} />
               <Text style={{ color: colors.secondaryText, fontSize: 12, fontWeight: '800', marginTop: 14 }}>文字の種類</Text>
               <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 7, marginTop: 8 }}>
                 {WIDGET_FONT_DESIGN_OPTIONS.map((option) => {
@@ -217,17 +232,16 @@ export function WidgetSettingsCard({ settings, onChange, onPickPhoto, onUnlockWi
               <Text style={{ color: colors.secondaryText, fontSize: 12, fontWeight: '800', marginTop: 14 }}>写真</Text>
               {effectivePlanTier === 'free' && !effectiveDesignCustomizePurchased && !selectedPhotoUnlockActive && <View style={{ marginTop: 8, padding: 10, borderRadius: 10, backgroundColor: colors.screenBackground, borderWidth: 1, borderColor: colors.border }}><Text style={{ color: colors.secondaryText, fontSize: 10, lineHeight: 15 }}>{widgetPhotoUnlockActive ? '別のFree Widgetで写真利用中です。' : '広告を1回見ると、このWidgetで写真を7日間使えます。'}</Text>{!widgetPhotoUnlockActive && onUnlockWidgetPhoto ? <Pressable accessibilityRole="button" onPress={requestSelectedWidgetPhotoUnlock} style={{ marginTop: 8, minHeight: 36, paddingHorizontal: 10, borderRadius: 9, backgroundColor: colors.softAccent, alignItems: 'center', justifyContent: 'center' }}><Text style={{ color: colors.primaryAccent, fontSize: 11, fontWeight: '800' }}>広告を見て7日間使う</Text></Pressable> : null}</View>}
               {selectedPhotoUnlockActive && <Text style={{ color: colors.primaryAccent, fontSize: 10, fontWeight: '800', marginTop: 7 }}>広告で写真利用中・あと{remainingPhotoUnlockDays}日</Text>}
-              {selectedCustomization.photoUri ? <Image source={{ uri: selectedCustomization.photoUri }} resizeMode="cover" style={{ width: '100%', height: 118, borderRadius: 12, marginTop: 8 }} /> : <Text style={{ color: colors.secondaryText, fontSize: 11, marginTop: 8 }}>このWidgetには写真が設定されていません。</Text>}
+              {selectedPhotoUri ? <Image source={{ uri: selectedPhotoUri }} resizeMode="cover" style={{ width: '100%', height: 118, borderRadius: 12, marginTop: 8 }} /> : <Text style={{ color: colors.secondaryText, fontSize: 11, marginTop: 8 }}>このWidgetには写真が設定されていません。</Text>}
               {selectedCustomization.photoUri && !selectedOwnCustomization?.photoUri && <Text style={{ color: colors.secondaryText, fontSize: 10, marginTop: 6 }}>共通のWidget写真を使用中です。写真を選ぶとこのWidget専用に設定できます。</Text>}
               {selectedPhotoCustomizationAllowed && <>
-                 <View style={{ flexDirection: 'row', gap: 8, marginTop: 10 }}><Pressable onPress={() => onPickPhoto?.(selectedWidgetType, __DEV__ ? widgetEntitlementOverride : undefined)} style={{ flex: 1, minHeight: 42, borderRadius: 11, backgroundColor: colors.primaryAccent, alignItems: 'center', justifyContent: 'center' }}><Text style={{ color: '#FFFFFF', fontSize: 12, fontWeight: '800' }}>{selectedCustomization.photoUri ? '写真を変更' : '写真を選ぶ'}</Text></Pressable>{selectedOwnCustomization?.photoUri && <Pressable onPress={removeSelectedPhoto} style={{ minWidth: 72, minHeight: 42, borderRadius: 11, borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center' }}><Text style={{ color: colors.secondaryText, fontSize: 11, fontWeight: '800' }}>削除</Text></Pressable>}</View>
-                  {selectedCustomization.photoUri && !selectedCustomization.cutoutUri && onRemoveWidgetPhotoBackground && <Pressable accessibilityRole="button" accessibilityLabel="写真の背景を削除" disabled={cutoutBusy} onPress={async () => { setCutoutBusy(true); try { await onRemoveWidgetPhotoBackground(selectedWidgetType, __DEV__ ? widgetEntitlementOverride : undefined); } finally { setCutoutBusy(false); } }} style={{ marginTop: 9, minHeight: 40, borderRadius: 10, borderWidth: 1, borderColor: colors.primaryAccent, alignItems: 'center', justifyContent: 'center', opacity: cutoutBusy ? 0.6 : 1 }}><Text style={{ color: colors.primaryAccent, fontSize: 11, fontWeight: '800' }}>{cutoutBusy ? '背景を削除しています…' : '背景を削除'}</Text></Pressable>}
-                 {selectedCustomization.cutoutUri && <Text style={{ color: colors.primaryAccent, fontSize: 10, fontWeight: '700', marginTop: 6 }}>切り抜き済み。元の写真は保持されています。</Text>}
+                 <View style={{ flexDirection: 'row', gap: 8, marginTop: 10 }}><Pressable onPress={() => onPickPhoto?.(selectedWidgetType, __DEV__ ? widgetEntitlementOverride : undefined)} style={{ flex: 1, minHeight: 42, borderRadius: 11, backgroundColor: colors.primaryAccent, alignItems: 'center', justifyContent: 'center' }}><Text style={{ color: '#FFFFFF', fontSize: 12, fontWeight: '800' }}>{selectedPhotoUri ? '写真を変更' : '写真を選ぶ'}</Text></Pressable>{selectedOwnCustomization?.photoUri && <Pressable onPress={removeSelectedPhoto} style={{ minWidth: 72, minHeight: 42, borderRadius: 11, borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center' }}><Text style={{ color: colors.secondaryText, fontSize: 11, fontWeight: '800' }}>削除</Text></Pressable>}</View>
                 <Text style={{ color: colors.secondaryText, fontSize: 12, fontWeight: '800', marginTop: 14 }}>写真レイアウト</Text>
                 <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingVertical: 8 }}><View style={{ flexDirection: 'row', gap: 8 }}>{WIDGET_PHOTO_LAYOUT_OPTIONS.map((layout) => { const selected = (selectedCustomization.photoLayout ?? 'background') === layout.id; return <Pressable key={layout.id} onPress={() => updateSelectedCustomization({ photoLayout: layout.id })} style={{ width: 72, minHeight: 54, borderRadius: 10, borderWidth: selected ? 2 : 1, borderColor: selected ? colors.primaryAccent : colors.border, backgroundColor: selected ? colors.softAccent : colors.screenBackground, alignItems: 'center', justifyContent: 'center' }}><Text style={{ color: selected ? colors.primaryAccent : colors.secondaryText, fontSize: 11, fontWeight: '800' }}>{layout.label}</Text><Text style={{ color: colors.secondaryText, fontSize: 9, marginTop: 3 }}>{layout.id}</Text></Pressable>; })}</View></ScrollView>
               </>}
               <Text style={{ color: colors.secondaryText, fontSize: 10, lineHeight: 15, marginTop: 4 }}>写真とレイアウトはこのWidget専用に保存されます。</Text>
               </>}
+              </ScrollView>
             </>}
           </Pressable>
         </Pressable>

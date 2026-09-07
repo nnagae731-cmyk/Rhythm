@@ -1,4 +1,5 @@
 import * as Notifications from 'expo-notifications';
+import { buildFocusCompletionContent } from '../notifications/notificationContent';
 
 export const FOCUS_COMPLETION_NOTIFICATION_KIND =
   'focus_timer_complete';
@@ -43,10 +44,7 @@ export async function scheduleFocusCompletionNotification({
 
   return Notifications.scheduleNotificationAsync({
     content: {
-      title: '集中タイム終了',
-      body: cleanTaskTitle
-        ? `「${cleanTaskTitle}」の集中時間が終了しました。`
-        : '集中時間が終了しました。',
+      ...buildFocusCompletionContent(cleanTaskTitle),
       sound: 'default',
       data: {
         kind: FOCUS_COMPLETION_NOTIFICATION_KIND,

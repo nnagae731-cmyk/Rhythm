@@ -366,6 +366,12 @@ private extension RhythmWidgetModule {
 #if canImport(ActivityKit)
 @available(iOS 16.1, *)
 private extension RhythmWidgetModule {
+  static func liveActivityDiagnostic(_ message: String) {
+    #if DEBUG
+    print("[RhythmLiveActivity] \(message)")
+    #endif
+  }
+
   static let liveActivityDateFormatter: ISO8601DateFormatter = {
     let formatter = ISO8601DateFormatter()
     formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
@@ -374,12 +380,17 @@ private extension RhythmWidgetModule {
 
   static func liveActivityAvailable() -> Bool {
     guard #available(iOS 16.1, *) else { return false }
-    return ActivityAuthorizationInfo().areActivitiesEnabled
+    let available = ActivityAuthorizationInfo().areActivitiesEnabled
+    liveActivityDiagnostic("availability=\(available)")
+    return available
   }
 
   static func decodeLiveActivityState(payload: String) -> RhythmLiveActivityAttributes.ContentState? {
     guard let data = payload.data(using: .utf8),
-          let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return nil }
+          let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+      liveActivityDiagnostic("decode failed: invalid JSON payload")
+      return nil
+    }
     let mode = RhythmLiveActivityAttributes.ContentState.Mode(rawValue: object["mode"] as? String ?? "normal") ?? .normal
     let tier = RhythmLiveActivityAttributes.ContentState.Tier(rawValue: object["tier"] as? String ?? "free") ?? .free
     let displayObject = object["displayOptions"] as? [String: Any]
@@ -399,9 +410,15 @@ private extension RhythmWidgetModule {
       let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
       return trimmed.isEmpty ? nil : String(trimmed.prefix(300))
     }
-    let currentTaskListItems = (object["currentTaskListItems"] as? [[String: Any])?.compactMap { item -> RhythmLiveActivityAttributes.ContentState.ListItem? in
+    let currentTaskListItems = (object["currentTaskListItems"] as? [[String: Any]])?.compactMap { item -> RhythmLiveActivityAttributes.ContentState.ListItem? in
       guard let id = item["id"] as? String, let value = item["text"] as? String else { return nil }
       return .init(id: String(id.prefix(120)), text: String(value.prefix(160)), checked: item["checked"] as? Bool ?? false)
+    }.prefix(3).map { $0 }
+    let currentTasks = (object["currentTasks"] as? [[String: Any]])?.compactMap { item -> RhythmLiveActivityAttributes.ContentState.TaskItem? in
+      guard let id = item["id"] as? String, let value = item["title"] as? String else { return nil }
+      let trimmedTitle = value.trimmingCharacters(in: .whitespacesAndNewlines)
+      guard !trimmedTitle.isEmpty else { return nil }
+      return .init(id: String(id.prefix(120)), title: String(trimmedTitle.prefix(240)))
     }.prefix(3).map { $0 }
     let affirmationTexts = (object["affirmationTexts"] as? [String])?.map { String($0.trimmingCharacters(in: .whitespacesAndNewlines).prefix(240)) }.filter { !$0.isEmpty }.prefix(8).map { $0 }
     let rotationMode = RhythmLiveActivityAttributes.ContentState.AffirmationRotationMode(rawValue: object["affirmationRotationMode"] as? String ?? "fixed") ?? .fixed
@@ -427,6 +444,8 @@ private extension RhythmWidgetModule {
       displayOptions: displayOptions,
       interactiveChecks: object["interactiveChecks"] as? Bool ?? false,
       currentTaskId: text("currentTaskId"),
+      currentTasks: currentTasks,
+      currentTaskRemainingCount: max(0, object["currentTaskRemainingCount"] as? Int ?? 0),
       currentTaskListItems: currentTaskListItems,
       affirmationTexts: affirmationTexts,
       affirmationRotationMode: rotationMode,
@@ -457,9 +476,21 @@ private extension RhythmWidgetModule {
   }
 
   static func startOrUpdateLiveActivity(payload: String) async -> Bool {
-    guard #available(iOS 16.1, *), let state = decodeLiveActivityState(payload: payload), liveActivityAvailable() else { return false }
+    guard #available(iOS 16.1, *) else {
+      liveActivityDiagnostic("start skipped: iOS < 16.1")
+      return false
+    }
+    guard let state = decodeLiveActivityState(payload: payload) else {
+      liveActivityDiagnostic("start skipped: state decode failed")
+      return false
+    }
+    guard liveActivityAvailable() else {
+      liveActivityDiagnostic("start skipped: ActivityKit authorization disabled")
+      return false
+    }
     do {
       let activities = Activity<RhythmLiveActivityAttributes>.activities
+      liveActivityDiagnostic("start/update begin: existingActivities=\(activities.count)")
       if let activity = activities.first {
         if #available(iOS 16.2, *) {
           try await activity.update(activityContent(state))
@@ -475,18 +506,19 @@ private extension RhythmWidgetModule {
             await duplicate.end(using: nil, dismissalPolicy: .immediate)
           }
         }
+        liveActivityDiagnostic("update succeeded: id=\(activity.id)")
       } else {
         if #available(iOS 16.2, *) {
-          _ = try Activity.request(attributes: RhythmLiveActivityAttributes(), content: activityContent(state), pushType: nil)
+          let activity = try Activity.request(attributes: RhythmLiveActivityAttributes(), content: activityContent(state), pushType: nil)
+          liveActivityDiagnostic("request succeeded: id=\(activity.id)")
         } else {
-          _ = try Activity.request(attributes: RhythmLiveActivityAttributes(), contentState: state, pushType: nil)
+          let activity = try Activity.request(attributes: RhythmLiveActivityAttributes(), contentState: state, pushType: nil)
+          liveActivityDiagnostic("request succeeded: id=\(activity.id)")
         }
       }
       return true
     } catch {
-      #if DEBUG
-      print("[RhythmLiveActivity] start/update failed: \(error)")
-      #endif
+      liveActivityDiagnostic("start/update failed: \(error)")
       return false
     }
   }
@@ -529,8 +561,12 @@ private extension RhythmWidgetModule {
 
   static func liveActivityStatus() -> String {
     guard #available(iOS 16.1, *) else { return "{\"available\":false,\"active\":false}" }
-    let active = !Activity<RhythmLiveActivityAttributes>.activities.isEmpty
-    return "{\"available\":\(liveActivityAvailable()),\"active\":\(active)}"
+    let activities = Activity<RhythmLiveActivityAttributes>.activities
+    let active = !activities.isEmpty
+    let ids = activities.map(\.id).joined(separator: ",")
+    let available = liveActivityAvailable()
+    liveActivityDiagnostic("status available=\(available) activeCount=\(activities.count) ids=\(ids)")
+    return "{\"available\":\(available),\"active\":\(active)}"
   }
 }
 #else

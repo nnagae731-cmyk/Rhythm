@@ -1,5 +1,6 @@
 import * as Notifications from 'expo-notifications';
 import { enqueueNotificationOperation } from './notificationOperationQueue';
+import { buildPremiumTrialReminderContent } from './notificationContent';
 
 export const PREMIUM_TRIAL_REMINDER_ID = 'premium-trial-reminder';
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;
@@ -33,8 +34,7 @@ export async function schedulePremiumTrialReminder(trialEndAt: number): Promise<
     await Notifications.scheduleNotificationAsync({
       identifier: PREMIUM_TRIAL_REMINDER_ID,
       content: {
-        title: 'Premiumの無料期間は明日までです',
-        body: '継続・解約状況はApp Storeで確認できます。',
+        ...buildPremiumTrialReminderContent(),
         data: { kind: 'premium_trial_reminder' },
       },
       trigger: {

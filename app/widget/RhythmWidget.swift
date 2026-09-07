@@ -816,6 +816,22 @@ struct RhythmWidgetProvider: AppIntentTimelineProvider {
 
   private func applying(_ configuration: RhythmWidgetIntent, to snapshot: WidgetSnapshot) -> WidgetSnapshot {
     guard let stored = snapshot.appearance else { return snapshot }
+    let customizationKey: String? = {
+      switch widgetKind {
+      case "RhythmCurrentTaskWidget": return "current"
+      case "RhythmNextScheduleWidget": return "next"
+      case "RhythmWidget": return "combined"
+      case "RhythmMonthlyCalendarWidget": return "monthly"
+      case "RhythmWeeklyCalendarWidget": return "weekly"
+      case "RhythmTodayScheduleWidget": return "today"
+      case "RhythmChecklistWidget": return "checklist"
+      case "RhythmGoalWidget": return "goal"
+      case "RhythmVoiceWidget": return "voice"
+      case "RhythmAffirmationWidget": return "affirmation"
+      default: return nil
+      }
+    }()
+    let customization = customizationKey.flatMap { snapshot.widgetCustomizations?[$0] }
     // IntentDefinition reserves index 0 for `unknown`. Treat it as a safe
     // default instead of allowing an unknown enum value to reach the view.
     let style: WidgetSnapshot.Style = {
@@ -823,7 +839,11 @@ struct RhythmWidgetProvider: AppIntentTimelineProvider {
       case .photo: return .photo
       case .design: return .color
       case .mono, .unknown: return .mono
-      case .appDefault: return stored.style
+      case .appDefault:
+        // A per-widget photo selected in the app is an effective Photo style
+        // when the installed widget follows the app default. An explicit
+        // native Mono/Design/Photo selection below still wins.
+        return customization?.photoFileName != nil || customization?.cutoutFileName != nil ? .photo : stored.style
       @unknown default: return .mono
       }
     }()
@@ -889,22 +909,6 @@ struct RhythmWidgetProvider: AppIntentTimelineProvider {
       if let pattern, ["floral", "floralSoft", "floralSeasonal", "floralDark"].contains(pattern) { return nil }
       return designCheckColor ?? stored.designCheckColor ?? "cool"
     }()
-    let customizationKey: String? = {
-      switch widgetKind {
-      case "RhythmCurrentTaskWidget": return "current"
-      case "RhythmNextScheduleWidget": return "next"
-      case "RhythmWidget": return "combined"
-      case "RhythmMonthlyCalendarWidget": return "monthly"
-      case "RhythmWeeklyCalendarWidget": return "weekly"
-      case "RhythmTodayScheduleWidget": return "today"
-      case "RhythmChecklistWidget": return "checklist"
-      case "RhythmGoalWidget": return "goal"
-      case "RhythmVoiceWidget": return "voice"
-      case "RhythmAffirmationWidget": return "affirmation"
-      default: return nil
-      }
-    }()
-    let customization = customizationKey.flatMap { snapshot.widgetCustomizations?[$0] }
     let resolvedPhotoFileName = customization?.photoFileName ?? stored.photoFileName
     let resolvedCutoutFileName = customization?.cutoutFileName ?? stored.cutoutFileName
     // An explicit native selection wins. The appDefault/unknown sentinel
@@ -1936,7 +1940,11 @@ private struct MonthlyCalendarWidgetView: View {
                   }
                   Text(verbatim: "\(day.day)")
                     .font((isLarge ? Font.caption : Font.caption2).weight(day.isToday ? .bold : .regular))
-                    .foregroundStyle(day.isToday ? Color.white : palette.foreground)
+                    // Use the palette background as the contrast color for
+                    // the accent-filled today marker. This keeps Mono Dark's
+                    // white accent readable without introducing a theme-
+                    // specific hardcoded text color.
+                    .foregroundStyle(day.isToday ? palette.background : palette.foreground)
                     .lineLimit(1)
                     .minimumScaleFactor(0.7)
                 }
@@ -1979,14 +1987,14 @@ private struct WeeklyCalendarWidgetView: View {
         VStack(alignment: .leading, spacing: 6) {
           Text("今週の予定").font(.headline.weight(.semibold)).foregroundStyle(palette.foreground)
           if family == .systemLarge {
-            VStack(spacing: 4) {
+            VStack(spacing: 6) {
               ForEach(Array(week.days.enumerated()), id: \.offset) { _, day in
-                HStack(alignment: .top, spacing: 8) {
-                  Text("\(day.weekday) \(day.day)").font(.caption.weight(day.isToday ? .bold : .regular)).foregroundStyle(day.isToday ? palette.accent : palette.secondary).lineLimit(1).minimumScaleFactor(0.7).frame(width: 44, alignment: .leading)
+                HStack(alignment: .top, spacing: 10) {
+                  Text("\(day.weekday) \(day.day)").font(.subheadline.weight(day.isToday ? .bold : .regular)).foregroundStyle(day.isToday ? palette.accent : palette.secondary).lineLimit(1).minimumScaleFactor(0.7).frame(width: 52, alignment: .leading)
                   if day.schedules.isEmpty { Text("—").font(.caption).foregroundStyle(palette.secondary) }
                   else {
-                    VStack(alignment: .leading, spacing: 1) {
-                      Text(day.schedules.first?.title ?? "予定").font(.caption).foregroundStyle(palette.foreground).lineLimit(1)
+                    VStack(alignment: .leading, spacing: 2) {
+                      Text(day.schedules.first?.title ?? "予定").font(.subheadline.weight(.medium)).foregroundStyle(palette.foreground).lineLimit(1).minimumScaleFactor(0.7)
                       if day.schedules.count > 1 { Text("ほか\(day.schedules.count - 1)件").font(.caption).foregroundStyle(palette.secondary) }
                     }
                   }

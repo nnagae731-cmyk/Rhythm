@@ -62,7 +62,6 @@ export const WIDGET_PHOTO_LAYOUT_OPTIONS: ReadonlyArray<{ id: WidgetPhotoLayout;
   { id: 'top', label: '上部' },
   { id: 'card', label: 'カード' },
   { id: 'circle', label: '丸型' },
-  { id: 'cutout', label: '切り抜き' },
 ];
 
 export const WIDGET_MONO_TEMPLATE_OPTIONS: ReadonlyArray<{ id: WidgetMonoTemplate; label: string }> = [
@@ -158,10 +157,13 @@ export function normalizeWidgetSettings(value: unknown): WidgetSettings {
 /** Resolves a widget's new per-kind photo first, while retaining the legacy shared photo fallback. */
 export function getWidgetCustomization(settings: WidgetSettings, widgetType: WidgetType): WidgetCustomization {
   const customization = settings.widgetCustomizations?.[widgetType];
+  const storedLayout = customization?.photoLayout ?? settings.photoLayout;
+  // Older persisted records may contain the removed cutout layout. Keep the
+  // legacy field decodable, but expose it to the current UI as a normal photo.
+  const photoLayout = storedLayout === 'cutout' ? 'background' : storedLayout;
   return {
     photoUri: customization?.photoUri ?? settings.photoUri,
-    cutoutUri: customization?.cutoutUri,
-    photoLayout: customization?.photoLayout ?? settings.photoLayout,
+    photoLayout,
     monoTemplate: customization?.monoTemplate ?? settings.monoTemplate,
   };
 }
