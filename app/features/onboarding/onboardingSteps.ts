@@ -67,7 +67,8 @@ export type IntroCardId =
   | 'records'
   | 'widget'
   | 'widgetAdd'
-  | 'widgetEdit';
+  | 'widgetEdit'
+  | 'customize';
 
 export type OnboardingStep = {
   id: OnboardingFeatureId;
@@ -85,50 +86,29 @@ export type IntroCard = {
 
 export const INTRO_CARDS: IntroCard[] = [
   {
-    id: 'quickTodo',
-    title: '思いついたら、すぐ追加',
-    description: 'やることを思いついた時に、すぐ残せます。',
-  },
-
-  {
     id: 'today',
-    title: '今日やることが、ひと目でわかる',
-    description: '「今はこれ」から、次にやることを確認できます。',
+    title: '今日やることが、ひと目でわかる。',
+    description: 'タスクも予定も、今日必要なものをまとめて確認。',
   },
-
-  {
-    id: 'schedule',
-    title: '予定には、間に合うように',
-    description: '準備や移動も含めて動くタイミングを確認できます。',
-  },
-
   {
     id: 'voice',
-    title: '話すだけで、Rhythmに入る',
-    description: '右上のマイクから話すと、ToDoや予定をフォームへ整理できます。',
+    title: '思いついたら、声で追加。',
+    description: '話すだけで、タスクや予定をすぐ追加できます。',
   },
-
   {
     id: 'focus',
-    title: '今やるひとつに集中',
-    description: 'やることが決まったら、そのまま集中タイムへ。',
-  },
-
-  {
-    id: 'recovery',
-    title: '崩れても、ここから立て直せる',
-    description: '遅れた時も、今の状況から次にできることを選べます。',
-  },
-
-  {
-    id: 'records',
-    title: 'できたことも、ちゃんと残る',
-    description: '完了したことを振り返って、今日の積み重ねを確認できます。',
+    title: '集中も、習慣も、続けやすく。',
+    description: '今やることに集中して、続けたいことも少しずつ。',
   },
   {
     id: 'widget',
-    title: 'ホーム画面から、すぐ動ける。',
-    description: 'ホーム画面を見るだけで、今やることや次の予定を確認。タップすれば音声入力やアファメーションもすぐ使えます。自分の写真やデザインもWidgetごとに選べます。',
+    title: 'アプリを開かなくても、次がわかる。',
+    description: 'ホーム画面やロック画面から、次にやることを確認できます。',
+  },
+  {
+    id: 'customize',
+    title: '毎日見たくなる、自分の画面に。',
+    description: '背景や色を選んで、自分が使いやすい見た目に。',
   },
 ];
 
@@ -136,18 +116,18 @@ export const INTRO_CARDS: IntroCard[] = [
 export const WIDGET_GUIDE_CARDS: IntroCard[] = [
   {
     id: 'widgetAdd',
-    title: 'Widgetをホーム画面に追加しよう',
+    title: 'ウィジェットをホーム画面に追加しよう',
     description: 'ホーム画面を長押しして、「＋」からRhythmPaceを選びます。',
   },
   {
     id: 'widget',
-    title: '好きなWidgetを選ぶ',
+    title: '好きなウィジェットを選ぶ',
     description: '今やること、予定、カレンダー、音声入力など、必要な情報をホーム画面で確認できます。',
   },
   {
     id: 'widgetEdit',
-    title: '見た目もWidgetごとに変えられる',
-    description: '追加したWidgetを長押しして「ウィジェットを編集」を選ぶと、Mono / Design / Photoから好きな見た目を選べます。',
+    title: '見た目もウィジェットごとに変えられる',
+    description: '追加したウィジェットを長押しして「ウィジェットを編集」を選ぶと、シンプル・デザイン・写真から好きな見た目を選べます。',
   },
 ];
 

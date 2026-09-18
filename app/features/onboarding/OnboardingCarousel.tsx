@@ -109,7 +109,7 @@ export function OnboardingCarousel({
   designMode = ONBOARDING_DESIGN_MODE,
   chicPalette,
   cards = INTRO_CARDS,
-  brandName = 'RhythmPace',
+  brandName = 'はじめに',
 }: Props) {
   const { width, height } = useWindowDimensions();
   const compact = height < 700;

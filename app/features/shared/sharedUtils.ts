@@ -4,7 +4,6 @@ import { dateKey } from '../tasks/taskUtils';
 export const sharedActionStatuses: SharedActionStatus[] = ['未準備', '準備中', '今から出る', '移動中', '少し遅れそう', '到着した', '参加できない'];
 export const sharedAttendanceStatuses: SharedAttendanceStatus[] = ['参加', '不参加'];
 export const sharedDeparturePoints = [
-  { id: 'current' as const, label: '現在地' },
   { id: 'home' as const, label: '自宅' },
   { id: 'custom' as const, label: '指定した場所' },
 ];
@@ -135,5 +134,5 @@ export function getOrCreateParticipantId(map: Record<string, string>, token: str
 }
 
 export function ensureParticipantPrefs(map: Record<string, SharedParticipantPrefs>, token: string): SharedParticipantPrefs {
-  return map[token] ?? { departurePoint: 'current' };
+  return map[token] ?? { departurePoint: 'home' };
 }

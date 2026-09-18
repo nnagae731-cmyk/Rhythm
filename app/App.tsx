@@ -41,7 +41,7 @@ import { RecoveryModal } from './components/RecoveryModal';
 import { DesignCustomizeModal } from './components/DesignCustomizeModal';
 import { TravelAppsSettingsCard } from './components/TravelAppsSettingsCard';
 import { styles } from './styles/appStyles';
-import { Affirmation, AffirmationCustomText, AppNotice, AppNoticeCategory, CalendarMarks, Category, DeparturePlan, DeparturePreparationStatus, DevDesignCustomizeOverride, FocusPersistedState, LiveActivityCustomizationSettings, LiveActivityDisplayOptions, MonthlyReflectionCard, MonthlyReview, MonthlyWishState, MonoPattern, NudgeMode, PersistedState, PhotoThemePhotoTarget, PhotoThemeSettings, Priority, RepeatRule, Screen, SharedEvent, SharedParticipantPrefs, Subtask, Task, TaskBucket, TaskListItem, ThemeMode, TimeTab, UrgencyStatus, WidgetSettings, WidgetSize, WidgetType, WishAction, WishMonthMap } from './types';
+import { Affirmation, AffirmationCustomText, AppNotice, AppNoticeCategory, CalendarMarks, Category, DeparturePlan, DeparturePreparationStatus, FocusPersistedState, LiveActivityCustomizationSettings, LiveActivityDisplayOptions, MonthlyReflectionCard, MonthlyReview, MonthlyWishState, MonoPattern, NudgeMode, PersistedState, PhotoThemePhotoTarget, PhotoThemeSettings, Priority, RepeatRule, Screen, SharedEvent, SharedParticipantPrefs, Subtask, Task, TaskBucket, TaskListItem, ThemeMode, TimeTab, UrgencyStatus, WidgetSettings, WidgetSize, WidgetType, WishAction, WishMonthMap } from './types';
 import { initialPlan } from './storage/rhythmState';
 import { DEFAULT_TRAVEL_APP_SETTINGS, normalizeTravelAppSettings, TravelAppSettings } from './features/travel/travelApps';
 import { loadRhythmState, saveRhythmState } from './storage/rhythmStorage';
@@ -973,19 +973,26 @@ export default function App() {
   const [designPreviewPattern, setDesignPreviewPattern] = useState<ChicPattern>();
   const [designPreviewMode, setDesignPreviewMode] = useState<DesignPreviewMode>('chic');
   const [designPreviewPhotoUri, setDesignPreviewPhotoUri] = useState<string>();
+  const [designPreviewMonoPattern, setDesignPreviewMonoPattern] = useState<MonoPattern>();
   const [captureStudioOpen, setCaptureStudioOpen] = useState(false);
   const [onboardingDesignSelectionPending, setOnboardingDesignSelectionPending] = useState(false);
   const [designTrialNoticeOpen, setDesignTrialNoticeOpen] = useState(false);
   const pendingDesignApplyRef = React.useRef<(() => void) | undefined>(undefined);
+  const applyPendingDesignAfterEntitlement = React.useCallback(() => {
+    const pending = pendingDesignApplyRef.current;
+    if (!pending) return;
+    pendingDesignApplyRef.current = undefined;
+    setDesignTrialNoticeOpen(false);
+    setDesignCustomizeOpen(false);
+    setPremiumOpen(false);
+    pending();
+  }, []);
   const [hydrated, setHydrated] = useState(false);
   const configuredPlanTier: PlanTier = process.env.EXPO_PUBLIC_RHYTHM_PLAN === 'premium' ? 'premium' : 'free';
   // Development-only override for validating both purchase states before the
   // App Store product is configured. It is intentionally session-scoped and
   // never persisted over the user's saved data.
   const [devPlanTierOverride, setDevPlanTierOverride] = useState<PlanTier | null>(null);
-  // Development-only Design Customize state used to exercise purchase-gated
-  // UI without mutating StoreKit transactions or persisted purchase history.
-  const [devDesignCustomizeOverride, setDevDesignCustomizeOverride] = useState<DevDesignCustomizeOverride>('actual');
   const planTier: PlanTier = devPlanTierOverride ?? (configuredPlanTier === 'premium' || storePremiumAccess ? 'premium' : 'free');
   const [widgetEntitlementOverride, setWidgetEntitlementOverride] = useState<WidgetEntitlementOverride>('actual');
   const widgetPlanTier: PlanTier = __DEV__ && widgetEntitlementOverride === 'premium'
@@ -997,17 +1004,19 @@ export default function App() {
     ? true
     : __DEV__ && widgetEntitlementOverride === 'free'
       ? false
-      : designCustomizePurchased;
+      : storeDesignCustomizeAccess;
   const planTierRef = React.useRef<PlanTier>(planTier);
   const handleStoreDesignEntitlement = React.useCallback((active: boolean) => {
     logPremiumDiagnostic('PREMIUM_ENTITLEMENT_CHANGED', { plan: active ? 'design' : 'free', purchaseStatus: 'entitlement', planTier: planTierRef.current, modalVisible: premiumOpenRef.current, entitlementsResolved: false, pending: purchaseDiagnosticPendingRef.current });
     setStoreDesignCustomizeAccess(active);
     if (active) setDesignCustomizePurchased(true);
-  }, []);
+    if (active) applyPendingDesignAfterEntitlement();
+  }, [applyPendingDesignAfterEntitlement]);
   const handleStorePremiumEntitlement = React.useCallback((active: boolean) => {
     logPremiumDiagnostic('PREMIUM_ENTITLEMENT_CHANGED', { plan: active ? 'premium' : 'free', purchaseStatus: 'entitlement', planTier: planTierRef.current, modalVisible: premiumOpenRef.current, entitlementsResolved: false, pending: purchaseDiagnosticPendingRef.current });
     setStorePremiumAccess(active);
-  }, []);
+    if (active) applyPendingDesignAfterEntitlement();
+  }, [applyPendingDesignAfterEntitlement]);
   const choosePremiumTrialReminder = React.useCallback((trial: PremiumTrialStarted, enabled: boolean) => {
     const noticeKey = `${trial.productId}:${trial.trialEndAt}`;
     pendingPremiumTrialChoiceRef.current = noticeKey;
@@ -1106,55 +1115,15 @@ export default function App() {
       if (__DEV__) console.log('[Notifications] Premium trial reminder unavailable', error);
     });
   }, [hydrated, premiumTrialReminderEnabled, storeKit.premiumTrialEndAt, storeKitEntitlementsResolved]);
-  // Keep StoreKit/persisted values as the actual entitlement source, then
-  // apply the DEV-only QA override at this single effective-access boundary.
-  // Premium always includes Design Customize, even while another DEV plan is
-  // selected. The override is session-only and never persisted.
-  const actualDesignCustomizeAccess = planTier === 'premium'
-    || (storeKit.designConfigured ? storeKit.designEntitlementResolved && storeDesignCustomizeAccess : __DEV__ && designCustomizePurchased);
-  const hasDesignCustomizeAccess = !__DEV__ || devDesignCustomizeOverride === 'actual'
-    ? actualDesignCustomizeAccess
-    : planTier === 'premium' || devDesignCustomizeOverride === 'purchased';
-  // Keep a saved Loose Leaf preference intact for future entitlement changes,
-  // but never render the paid pattern while the current user lacks access.
-  const effectiveMonoPattern: MonoPattern = (monoPattern === 'looseLeaf' || monoPattern === 'chic') && hasDesignCustomizeAccess ? monoPattern : 'plain';
-  const resetDesignCustomizeForDevelopment = React.useCallback(() => {
-    if (!__DEV__) return;
-    Alert.alert(
-      'Design Customize状態をリセット',
-      'Design Customizeを未購入として確認できる状態に戻します。StoreKitの購入履歴は変更されません。',
-      [
-        { text: 'キャンセル', style: 'cancel' },
-        {
-          text: '未購入として確認',
-          style: 'destructive',
-          onPress: () => {
-            setDesignCustomizePurchased(false);
-            // This is only the app-side mirror. StoreKit remains the source of
-            // truth and may report the purchase again on its next refresh;
-            // the DEV override continues to mask it until changed to actual.
-            setStoreDesignCustomizeAccess(false);
-            setDevDesignCustomizeOverride('free');
-            setRewardedAccess((current) => {
-              const next: RewardedAccessState = {
-                ...current,
-                premiumDesign: { ...DEFAULT_REWARDED_ACCESS_STATE.premiumDesign },
-                premiumDesignTrial: { ...DEFAULT_REWARDED_ACCESS_STATE.premiumDesignTrial },
-                premiumDesignNoticeSeenFor: DEFAULT_REWARDED_ACCESS_STATE.premiumDesignNoticeSeenFor,
-                premiumDesignTrialCredits: {},
-              };
-              void saveRewardedAccessState(next);
-              return next;
-            });
-            // A previously selected paid visual should not remain active while
-            // the app is being inspected as a Free user. Keep user photos and
-            // all unrelated rewarded access intact.
-            if (designMode === 'chic' || designMode === 'photo') setDesignMode('minimal');
-          },
-        },
-      ],
-    );
-  }, [designMode]);
+  // StoreKit is the source of truth for Design Customize. Premium includes
+  // the same access, while an unconfigured StoreKit environment never grants
+  // access from legacy persisted mirrors or development-only state.
+  const storeDesignCustomizeEntitlement = storeKit.designConfigured
+    && storeKit.designEntitlementResolved
+    && storeDesignCustomizeAccess;
+  const hasDesignCustomizeAccess = planTier === 'premium' || storeDesignCustomizeEntitlement;
+  // Mono plain is free. Loose Leaf and Chic use the same Design access/trial
+  // boundary as the paid Design/Photo choices; their preview remains free.
   const resetWidgetPhotoUnlockForDevelopment = React.useCallback(() => {
     if (!__DEV__) return;
     Alert.alert(
@@ -1182,8 +1151,14 @@ export default function App() {
   const activeDesignTrialId = planTier !== 'premium' && (isPremiumDesignTrialActive(rewardedAccess, now) || isPremiumDesignUnlocked(rewardedAccess, now))
     ? rewardedAccess.premiumDesignTrial.designId
     : null;
-  const activeDesignTrial = activeDesignTrialId && activeDesignTrialId !== 'photo' ? activeDesignTrialId as ChicPattern : null;
-  const photoDesignTemporaryAccess = hasDesignCustomizeAccess || activeDesignTrialId === 'photo' || isPremiumDesignUnlocked(rewardedAccess, now);
+  const hasMonoPatternAccess = (pattern: MonoPattern) => pattern === 'plain'
+    || planTier === 'premium'
+    || hasDesignCustomizeAccess
+    || isPremiumDesignUnlocked(rewardedAccess, now)
+    || isPremiumDesignTrialActive(rewardedAccess, now);
+  const effectiveMonoPattern: MonoPattern = hasMonoPatternAccess(monoPattern) ? monoPattern : 'plain';
+  const activeDesignTrial = activeDesignTrialId && activeDesignTrialId !== 'photo' && designMode === 'chic' ? activeDesignTrialId as ChicPattern : null;
+  const photoDesignTemporaryAccess = hasDesignCustomizeAccess || isPremiumDesignTrialActive(rewardedAccess, now) || isPremiumDesignUnlocked(rewardedAccess, now);
   const photoThemeEnabled = designMode === 'photo' && (hasDesignCustomizeAccess || photoDesignTemporaryAccess || rewardedAccess.photoCustomization.backgroundUnlocked || rewardedAccess.photoCustomization.focusUnlocked || rewardedAccess.photoCustomization.topExtraSlotsUnlocked > 0);
   const uiDesignMode: Exclude<DesignMode, 'photo'> = designMode === 'photo'
     ? 'chic'
@@ -1405,6 +1380,28 @@ export default function App() {
     setPremiumTargetFeature(featureId);
     setPremiumOpen(true);
   }, []);
+  // Design access has one shared entry point so the settings card, Design/Photo
+  // sheet and full-screen try-on cannot silently hide the existing rewarded
+  // path. Viewing remains free; this only decides which existing access UI to
+  // open before a design is applied.
+  const openDesignAccess = React.useCallback(() => {
+    if (planTier === 'premium' || hasDesignCustomizeAccess) {
+      setDesignCustomizeOpen(true);
+      return;
+    }
+    if (isPremiumDesignTrialActive(rewardedAccess, now) || isPremiumDesignUnlocked(rewardedAccess, now)) {
+      setDesignPreviewMode('chic');
+      setDesignPreviewPattern(chicPattern === 'plain' ? 'floral' : chicPattern);
+      return;
+    }
+    if (canStartPremiumDesignTrial(rewardedAccess)) {
+      setDesignPreviewMode('chic');
+      setDesignPreviewPattern(chicPattern === 'plain' ? 'floral' : chicPattern);
+      return;
+    }
+    pendingDesignApplyRef.current = undefined;
+    setDesignTrialNoticeOpen(true);
+  }, [chicPattern, hasDesignCustomizeAccess, now, planTier, rewardedAccess]);
   const openVoiceInput = React.useCallback((autoStart = false) => {
     // The demo and previews never consume a user's allowance.
     if (planTier === 'premium' || onboarding.state.firstRunStage === 'demo') {
@@ -1423,9 +1420,13 @@ export default function App() {
   }, [onboarding.state.firstRunStage, planTier, voiceUsage]);
   openVoiceInputRef.current = openVoiceInput;
   const consumeVoiceInput = React.useCallback(() => {
-    if (planTier === 'premium' || onboarding.state.firstRunStage === 'demo') return;
+    if (planTier === 'premium' || onboarding.state.firstRunStage === 'demo') {
+      void onboarding.complete('voice');
+      return;
+    }
     setVoiceUsage((current) => consumeVoiceUsage(current, dateKey()));
-  }, [onboarding.state.firstRunStage, planTier]);
+    void onboarding.complete('voice');
+  }, [onboarding, onboarding.state.firstRunStage, planTier]);
   const grantVoiceReward = React.useCallback(async (): Promise<boolean> => {
     if (planTier === 'premium' || voiceRewardBusyRef.current) return false;
     const current = normalizeVoiceUsage(voiceUsage, dateKey());
@@ -1464,14 +1465,7 @@ export default function App() {
       else if (result.error) Alert.alert('購入を完了できませんでした', 'App Storeの商品情報を取得できませんでした。時間をおいてもう一度お試しください。');
       return;
     }
-    if (!__DEV__) {
-      Alert.alert('購入を利用できません', 'App Storeの商品情報を確認できません。時間をおいてもう一度お試しください。');
-      return;
-    }
-    Alert.alert('開発用購入確認', 'Design Customizeを購入済みにしますか？', [
-      { text: 'キャンセル', style: 'cancel' },
-      { text: '購入成功', onPress: () => setDesignCustomizePurchased(true) },
-    ]);
+    Alert.alert('購入を利用できません', 'App Storeの商品情報を確認できません。時間をおいてもう一度お試しください。');
   }, [storeKit]);
   const restoreDesignCustomizePurchase = React.useCallback(async () => {
     if (storeKit.designConfigured) {
@@ -1486,16 +1480,8 @@ export default function App() {
       }
       return;
     }
-    if (!__DEV__) {
-      Alert.alert('購入を復元できません', 'App Storeの商品情報を確認できません。時間をおいてもう一度お試しください。');
-      return;
-    }
-    if (designCustomizePurchased) {
-      Alert.alert('購入を復元しました', 'Design Customizeを利用できます。');
-      return;
-    }
-    Alert.alert('復元できる購入はありません', 'App Store接続後に購入履歴を確認できます。');
-  }, [designCustomizePurchased, storeKit]);
+    Alert.alert('購入を復元できません', 'App Storeの商品情報を確認できません。時間をおいてもう一度お試しください。');
+  }, [storeKit]);
   const restorePremiumPurchase = React.useCallback(async () => {
     if (!storeKit.configured) {
       Alert.alert('購入を復元できません', 'App Storeの商品情報を確認できません。時間をおいてもう一度お試しください。');
@@ -1536,10 +1522,11 @@ export default function App() {
     markDesignNoticeSeen(expiry);
     setDesignTrialNoticeOpen(true);
   }, [chicPattern, designMode, designTrialNoticeOpen, hasDesignCustomizeAccess, isPremiumDesignUnlocked, markDesignNoticeSeen, now, planTier, rewardedAccess]);
-  const startDesignTrial = React.useCallback((pattern: ChicPattern) => {
+  const startDesignTrial = React.useCallback((pattern: ChicPattern, color: ChicCheckColor = chicCheckColor) => {
     if (hasDesignCustomizeAccess) {
       setDesignMode('chic');
       setChicPattern(pattern);
+      setChicCheckColor(color);
       setDesignPreviewPattern(undefined);
       if (!onboardingDesignSelectionPending) void onboarding.complete('design');
       return;
@@ -1547,6 +1534,7 @@ export default function App() {
     if (isPremiumDesignTrialActive(rewardedAccess, now) || isPremiumDesignUnlocked(rewardedAccess, now)) {
       setDesignMode('chic');
       setChicPattern(pattern);
+      setChicCheckColor(color);
       setDesignPreviewPattern(undefined);
       if (!onboardingDesignSelectionPending) void onboarding.complete('design');
       return;
@@ -1560,11 +1548,35 @@ export default function App() {
     setRewardedAccess(next);
     void saveRewardedAccessState(next);
     setDesignMode('chic');
+    setChicCheckColor(color);
     setDesignPreviewPattern(undefined);
     if (!onboardingDesignSelectionPending) void onboarding.complete('design');
-  }, [hasDesignCustomizeAccess, now, onboarding, onboardingDesignSelectionPending, planTier, rewardedAccess]);
+  }, [chicCheckColor, hasDesignCustomizeAccess, now, onboarding, onboardingDesignSelectionPending, rewardedAccess]);
+  const startMonoDesignTrial = React.useCallback((pattern: 'looseLeaf' | 'chic', appearance: 'auto' | 'light' | 'dark' = monoAppearance) => {
+    if (hasDesignCustomizeAccess || isPremiumDesignUnlocked(rewardedAccess, now) || isPremiumDesignTrialActive(rewardedAccess, now)) {
+      setDesignMode('minimal');
+      setMonoAppearance(appearance);
+      setMonoPattern(pattern);
+      setDesignPreviewMonoPattern(undefined);
+      if (!onboardingDesignSelectionPending) void onboarding.complete('design');
+      return;
+    }
+    if (!canStartPremiumDesignTrial(rewardedAccess)) {
+      setDesignTrialNoticeOpen(true);
+      return;
+    }
+    const next: RewardedAccessState = { ...rewardedAccess, premiumDesignTrial: { used: true, designId: pattern, expiresAt: addHours(new Date(), 24) } };
+    setRewardedAccess(next);
+    void saveRewardedAccessState(next);
+    setDesignMode('minimal');
+    setMonoAppearance(appearance);
+    setMonoPattern(pattern);
+    setDesignPreviewMonoPattern(undefined);
+    pendingDesignApplyRef.current = undefined;
+    if (!onboardingDesignSelectionPending) void onboarding.complete('design');
+  }, [hasDesignCustomizeAccess, monoAppearance, now, onboarding, onboardingDesignSelectionPending, planTier, rewardedAccess]);
   const requestDesignReward = React.useCallback(async () => {
-    if (planTier === 'premium' || rewardedAccess.premiumDesignTrial.designId == null) return false;
+    if (planTier === 'premium') return false;
     if (rewardedDesignBusyRef.current) return false;
     rewardedDesignBusyRef.current = true;
     try {
@@ -1708,15 +1720,21 @@ export default function App() {
     if (affirmationOperationGenerationRef.current[affirmation.id] !== generation) return;
     setAffirmations((current) => current.filter((item) => item.id !== affirmation.id));
   }, []);
-  const pickPhotoForDesignPreview = React.useCallback(async () => {
+  const pickPhotoForDesignPreview = React.useCallback(async (openPreviewAfterPick = false) => {
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!permission.granted) {
       Alert.alert('写真へのアクセスが必要です', '許可すると写真デザインを試着できます。');
       return;
     }
-    const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], allowsEditing: false, quality: 0.85 });
+    const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], allowsEditing: true, quality: 0.85 });
     const selectedUri = result.canceled ? undefined : result.assets[0]?.uri;
-    if (selectedUri) setDesignPreviewPhotoUri(selectedUri);
+    if (selectedUri) {
+      setDesignPreviewPhotoUri(selectedUri);
+      if (openPreviewAfterPick) {
+        setDesignPreviewMode('photo');
+        setDesignPreviewPattern('plain');
+      }
+    }
   }, []);
 
   const pickWidgetPhoto = React.useCallback(async (widgetType?: WidgetType, override?: WidgetEntitlementOverride) => {
@@ -1759,42 +1777,60 @@ export default function App() {
       Alert.alert('写真を保存できませんでした', 'もう一度選び直してください。');
     }
   }, [hasDesignCustomizeAccess, planTier, requestWidgetPhotoUnlock, rewardedAccess]);
-  const applyPhotoDesign = React.useCallback(() => {
-    if (!designPreviewPhotoUri) {
+  const applyPhotoDesign = React.useCallback((photoUriOverride?: string, colorOverride?: ChicCheckColor) => {
+    const selectedPhotoUri = photoUriOverride ?? designPreviewPhotoUri;
+    if (!selectedPhotoUri) {
       Alert.alert('写真を選択してください', '写真で試すから画像を選んでください。');
       return;
     }
     try {
-      const persistentUri = persistPhotoUri(designPreviewPhotoUri, 'design-background');
+      const persistentUri = persistPhotoUri(selectedPhotoUri, 'design-background');
       setPhotoTheme((current) => {
         deleteManagedPhotoUri(current.imageUri, [persistentUri, current.focusBackgroundUri, ...Object.values(current.topImageUris ?? {}), ...Object.values(current.topImageOriginalUris ?? {})]);
         return { ...current, placement: 'background', imageUri: persistentUri };
       });
+      if (colorOverride) setChicCheckColor(colorOverride);
       setDesignMode('photo');
       setDesignPreviewPattern(undefined);
       setDesignPreviewPhotoUri(undefined);
+      setDesignPreviewMonoPattern(undefined);
       if (!onboardingDesignSelectionPending) void onboarding.complete('design');
     } catch {
       Alert.alert('写真を保存できませんでした', 'もう一度選び直してください。');
     }
   }, [designPreviewPhotoUri, onboarding, onboardingDesignSelectionPending]);
-  const startPhotoDesignTrial = React.useCallback(() => {
-    if (!designPreviewPhotoUri) return;
+  const startPhotoDesignTrial = React.useCallback((photoUriOverride?: string, colorOverride?: ChicCheckColor) => {
+    const selectedPhotoUri = photoUriOverride ?? designPreviewPhotoUri;
+    if (!selectedPhotoUri) return;
     const next: RewardedAccessState = { ...rewardedAccess, premiumDesignTrial: { used: true, designId: 'photo', expiresAt: addHours(new Date(), 24) } };
     setRewardedAccess(next);
     void saveRewardedAccessState(next);
-    applyPhotoDesign();
+    applyPhotoDesign(selectedPhotoUri, colorOverride);
   }, [applyPhotoDesign, designPreviewPhotoUri, rewardedAccess]);
   const applyDesignTryOn = React.useCallback((selection: DesignTryOnSelection) => {
     if (selection.mode === 'minimal' || selection.mode === 'dark') {
-      const monoPatternLocked = selection.monoPattern !== 'plain' && planTier !== 'premium' && !hasDesignCustomizeAccess;
-      if (monoPatternLocked) {
-        openPremiumFeature('photo_design');
+      if (!hasMonoPatternAccess(selection.monoPattern)) {
+        setDesignPreviewMonoPattern(selection.monoPattern);
+        pendingDesignApplyRef.current = () => {
+          setDesignMode('minimal');
+          setMonoAppearance(selection.monoAppearance);
+          setMonoPattern(selection.monoPattern);
+          setDesignPreviewMonoPattern(undefined);
+          if (!onboardingDesignSelectionPending) void onboarding.complete('design');
+          completeInitialDesignSelection();
+        };
+        if (canStartPremiumDesignTrial(rewardedAccess)) {
+          startMonoDesignTrial(selection.monoPattern as 'looseLeaf' | 'chic', selection.monoAppearance);
+          completeInitialDesignSelection();
+        } else {
+          setDesignTrialNoticeOpen(true);
+        }
         return;
       }
       setDesignMode('minimal');
       setMonoAppearance(selection.monoAppearance);
       setMonoPattern(selection.monoPattern);
+      setDesignPreviewMonoPattern(undefined);
       if (!onboardingDesignSelectionPending) void onboarding.complete('design');
       completeInitialDesignSelection();
       return;
@@ -1808,13 +1844,22 @@ export default function App() {
       if (!hasPatternAccess) {
         setDesignPreviewMode('chic');
         setDesignPreviewPattern(selection.pattern);
-        if (canStartPremiumDesignTrial(rewardedAccess)) startDesignTrial(selection.pattern);
+        pendingDesignApplyRef.current = () => {
+          setChicCheckColor(selection.color);
+          setDesignMode('chic');
+          setChicPattern(selection.pattern);
+          setDesignPreviewPattern(undefined);
+          if (!onboardingDesignSelectionPending) void onboarding.complete('design');
+          completeInitialDesignSelection();
+        };
+        if (canStartPremiumDesignTrial(rewardedAccess)) startDesignTrial(selection.pattern, selection.color);
         else setDesignTrialNoticeOpen(true);
         return;
       }
       setChicCheckColor(selection.color);
       setDesignMode('chic');
       setChicPattern(selection.pattern);
+      setDesignPreviewMonoPattern(undefined);
       if (!onboardingDesignSelectionPending) void onboarding.complete('design');
       completeInitialDesignSelection();
       return;
@@ -1827,12 +1872,18 @@ export default function App() {
     }
     const hasPhotoAccess = planTier === 'premium'
       || hasDesignCustomizeAccess
-      || activeDesignTrialId === 'photo'
+      || isPremiumDesignTrialActive(rewardedAccess, now)
       || isPremiumDesignUnlocked(rewardedAccess, now);
     if (!hasPhotoAccess) {
       setDesignPreviewMode('photo');
       setDesignPreviewPattern('plain');
+      if (canStartPremiumDesignTrial(rewardedAccess)) {
+        startPhotoDesignTrial(selection.photoUri, selection.color);
+        completeInitialDesignSelection();
+        return;
+      }
       setDesignPreviewPhotoUri(selection.photoUri);
+      pendingDesignApplyRef.current = () => applyPhotoDesign(selection.photoUri, selection.color);
       setDesignTrialNoticeOpen(true);
       return;
     }
@@ -1840,14 +1891,18 @@ export default function App() {
     setDesignMode('photo');
     if (!onboardingDesignSelectionPending) void onboarding.complete('design');
     completeInitialDesignSelection();
-  }, [activeDesignTrialId, canStartPremiumDesignTrial, completeInitialDesignSelection, hasDesignCustomizeAccess, isPremiumDesignUnlocked, now, onboarding, onboardingDesignSelectionPending, openPremiumFeature, pickPhotoForDesignPreview, planTier, rewardedAccess, startDesignTrial]);
+  }, [activeDesignTrialId, applyPhotoDesign, canStartPremiumDesignTrial, completeInitialDesignSelection, hasDesignCustomizeAccess, hasMonoPatternAccess, isPremiumDesignUnlocked, now, onboarding, onboardingDesignSelectionPending, pickPhotoForDesignPreview, planTier, rewardedAccess, startDesignTrial, startMonoDesignTrial, startPhotoDesignTrial]);
   const pickPhotoTheme = React.useCallback(async (target: PhotoThemePhotoTarget, options?: { bypassRewarded?: boolean }) => {
+    const hasWholePhotoAccess = planTier === 'premium'
+      || hasDesignCustomizeAccess
+      || isPremiumDesignTrialActive(rewardedAccess, now)
+      || isPremiumDesignUnlocked(rewardedAccess, now);
     if (planTier !== 'premium' && !hasDesignCustomizeAccess) {
-      if (target === 'background' && !rewardedAccess.photoCustomization.backgroundUnlocked) {
+      if (target === 'background' && !rewardedAccess.photoCustomization.backgroundUnlocked && !hasWholePhotoAccess) {
         openRewardedPrompt('photoBackground', '背景に写真を使う', '広告を見ると、好きな写真をRhythmの背景に設定できます。', () => { void pickPhotoTheme(target); });
         return;
       }
-      if (target === 'focus' && !rewardedAccess.photoCustomization.focusUnlocked) {
+      if (target === 'focus' && !rewardedAccess.photoCustomization.focusUnlocked && !hasWholePhotoAccess) {
         openRewardedPrompt('photoFocus', '集中画面に写真を使う', '広告を見ると、集中タイムの背景に好きな写真を設定できます。', () => { void pickPhotoTheme(target); });
         return;
       }
@@ -1904,7 +1959,7 @@ export default function App() {
         return { ...current, focusBackgroundUri: persistentUri };
       });
     }
-  }, [hasDesignCustomizeAccess, openRewardedPrompt, photoTheme, planTier, rewardedAccess]);
+  }, [hasDesignCustomizeAccess, isPremiumDesignUnlocked, now, openRewardedPrompt, photoTheme, planTier, rewardedAccess]);
 
   const adjustTopPhoto = React.useCallback((target: Exclude<PhotoThemePhotoTarget, 'background' | 'focus'>) => {
     const originalUri = photoTheme.topImageOriginalUris?.[target] ?? photoTheme.topImageUris?.[target];
@@ -4496,7 +4551,6 @@ export default function App() {
                onMonoAppearance={() => undefined}
       onMonoPattern={() => undefined}
       onHapticsEnabled={() => undefined}
-      onReview={() => undefined}
       onChicPattern={() => undefined}
       onDesignPreview={() => undefined}
       onChicCheckColor={() => undefined}
@@ -4512,7 +4566,6 @@ export default function App() {
       savedTemplates={[]}
       onAddTemplate={() => undefined}
       onDeleteTemplate={() => undefined}
-      onGuide={() => undefined}
       onPremium={() => undefined}
       onDeleteSavedTemplate={() => undefined}
       planTier={planTier}
@@ -4624,6 +4677,18 @@ export default function App() {
   const firstIncompleteGuide = onboarding.ready && onboarding.isCompleted('intro') && (firstRunDemoActive || premiumTourReady)
     ? activeGuideTour.find((feature) => !onboarding.isCompleted(feature))
     : undefined;
+  // Contextual guides are intentionally one-at-a-time for regular users. They
+  // appear on the real screen when that feature is first opened, and never
+  // start the old multi-screen demo tour.
+  const contextualGuideFeature: Exclude<OnboardingFeatureId, 'intro'> | undefined = !firstRunDemoActive && !premiumTourReady && onboarding.ready && onboarding.isCompleted('intro')
+    ? screen === 'home' && !onboarding.isCompleted('todo')
+      ? 'todo'
+      : screen === 'timeline' && timelineInitialTab === 'focus' && !onboarding.isCompleted('focus')
+        ? 'focus'
+        : screen === 'analysis' && analysisInitialTab === 'routine' && !onboarding.isCompleted('routine')
+          ? 'routine'
+          : undefined
+    : undefined;
   // The first-run tour uses an in-memory snapshot so the screens remain
   // meaningful even for a brand-new account.  It is never passed to the
   // persistence callbacks and is discarded when the tour reaches design.
@@ -4677,14 +4742,17 @@ export default function App() {
   // Resume an interrupted first-run experience at the design step after a
   // restart.  The persisted stage is optional, so older users are untouched.
   React.useEffect(() => {
-    if (!onboarding.ready || onboarding.introVisible) return;
+    // The design handoff is valid only after the intro was completed. This
+    // keeps a stale/legacy stage from opening the Design sheet for a new user
+    // before the five-page introduction (or after an early skip).
+    if (!onboarding.ready || onboarding.introVisible || !onboarding.isCompleted('intro')) return;
     if (onboarding.state.firstRunStage === 'design' && !onboardingDesignSelectionPending) {
       setOnboardingDesignSelectionPending(true);
       setCurrentGuideFeature(undefined);
       setPendingGuideFeature(undefined);
       setScreen('settings');
     }
-  }, [onboarding.introVisible, onboarding.ready, onboarding.state.firstRunStage, onboardingDesignSelectionPending]);
+  }, [onboarding.introVisible, onboarding.isCompleted, onboarding.ready, onboarding.state.firstRunStage, onboardingDesignSelectionPending]);
 
   const navigateToGuideFeature = React.useCallback((feature: Exclude<OnboardingFeatureId, 'intro'>) => {
     setAddOpen(false);
@@ -4778,6 +4846,13 @@ export default function App() {
     let completedState: typeof onboarding.state = onboarding.state;
     try {
       if (!onboarding.isCompleted(feature)) completedState = await onboarding.complete(feature);
+      // Contextual guides complete in place. Only the legacy first-run or
+      // Premium tour may advance to another destination.
+      if (!firstRunDemoActive && !premiumTourReady) {
+        setCurrentGuideFeature(undefined);
+        releaseGuideTransition();
+        return;
+      }
       const next = activeGuideTour.find((item) => !completedState.completed[item]);
       if (!next) {
         setCurrentGuideFeature(undefined);
@@ -4800,21 +4875,22 @@ export default function App() {
     } finally {
       if (!waitingForTarget) releaseGuideTransition();
     }
-  }, [activeGuideTour, guideTransitioning, navigateToGuideFeature, onboarding, pendingGuideFeature, planTier, releaseGuideTransition]);
+  }, [activeGuideTour, firstRunDemoActive, guideTransitioning, navigateToGuideFeature, onboarding, pendingGuideFeature, planTier, premiumTourReady, releaseGuideTransition]);
 
   React.useEffect(() => {
     if (!onboarding.ready || onboarding.introVisible || onboardingDesignSelectionPending || guideTransitioning || pendingGuideFeature) return;
     if (!currentGuideFeature) {
-      if (firstIncompleteGuide) {
-        setCurrentGuideFeature(firstIncompleteGuide);
-        navigateToGuideFeature(firstIncompleteGuide);
+      const nextGuide = firstIncompleteGuide ?? contextualGuideFeature;
+      if (nextGuide) {
+        setCurrentGuideFeature(nextGuide);
+        navigateToGuideFeature(nextGuide);
       }
       return;
     }
     if (!activeGuideTour.includes(currentGuideFeature) || onboarding.isCompleted(currentGuideFeature)) {
       void advanceGuide(currentGuideFeature);
     }
-  }, [activeGuideTour, advanceGuide, currentGuideFeature, firstIncompleteGuide, guideTransitioning, navigateToGuideFeature, onboarding, onboardingDesignSelectionPending, pendingGuideFeature]);
+  }, [activeGuideTour, advanceGuide, contextualGuideFeature, currentGuideFeature, firstIncompleteGuide, guideTransitioning, navigateToGuideFeature, onboarding, onboardingDesignSelectionPending, pendingGuideFeature]);
 
   React.useEffect(() => {
     if (!pendingGuideFeature) return;
@@ -4931,7 +5007,7 @@ export default function App() {
     schedule: 'スケジュール', planRegistration: '予定を登録', focus: '集中', calendarImport: 'カレンダー', analysis: '分析', routine: 'ルーティン', history: '履歴', voice: '右上のマイク',
     wish: '叶えたいこと', affirmation: 'アファメーション', photoLog: '今日の記録', recovery: '立て直し',
   };
-  const productionGuideCard = productionGuideFeature && !guideTransitioning ? <OnboardingHint key={productionGuideFeature} inline featureId={productionGuideFeature} designMode={uiDesignMode} chicPalette={chicPalette} targetLabel={guideTargetLabels[productionGuideFeature]} onAction={productionGuideAction} onDismiss={() => completeTourGuide(productionGuideFeature)} onNext={() => completeTourGuide(productionGuideFeature)} onExitTour={exitGuideTour} /> : null;
+  const productionGuideCard = productionGuideFeature && !guideTransitioning ? <OnboardingHint key={productionGuideFeature} inline featureId={productionGuideFeature} designMode={uiDesignMode} chicPalette={chicPalette} targetLabel={guideTargetLabels[productionGuideFeature]} onAction={productionGuideAction} onDismiss={() => completeTourGuide(productionGuideFeature)} onNext={() => completeTourGuide(productionGuideFeature)} onExitTour={firstRunDemoActive || premiumTourReady ? exitGuideTour : undefined} /> : null;
   const productionGuideOverlay = productionGuideFeature && !guideTransitioning && !planEditorOpen && !openTodayReview && !addOpen && !editingTask && !recoveryTargetPlanId && productionGuideFeature !== 'recovery' ? (
     <View pointerEvents="box-none" style={{ position: 'absolute', left: 12, right: 12, bottom: 78, zIndex: 40 }}>{productionGuideCard}</View>
   ) : null;
@@ -5268,6 +5344,9 @@ export default function App() {
               chicPattern={effectiveChicPattern}
               chicPalette={chicPalette}
               planTier={planTier}
+              canUseMonoPaidPattern={hasMonoPatternAccess(monoPattern)}
+              designPreviewPhotoUri={designPreviewPhotoUri}
+              designPreviewMonoPattern={designPreviewMonoPattern}
               completionIcon={completionIcon}
               initialTab={timelineInitialTab}
               previewMode={firstRunDemoActive}
@@ -5430,30 +5509,38 @@ export default function App() {
                  completeInitialDesignSelection();
                }}
                onMonoPattern={(pattern) => {
+                 if (!hasMonoPatternAccess(pattern)) {
+                   setDesignPreviewMode(resolvedMonoMode);
+                   setDesignPreviewMonoPattern(pattern);
+                   return;
+                 }
                  setMonoPattern(pattern);
                  if (!onboardingDesignSelectionPending) void onboarding.complete('design');
                  completeInitialDesignSelection();
                }}
+               onMonoPreview={(pattern) => {
+                 setDesignPreviewMode(resolvedMonoMode);
+                 setDesignPreviewMonoPattern(pattern);
+               }}
                onHapticsEnabled={handleHapticsEnabled}
-               onReview={() => void requestAppReview()}
-              onChicPattern={(pattern) => {
-                const feature = pattern === 'plain' ? undefined : getChicPatternFeatureId(pattern);
-                if (feature && !hasPremiumAccess(planTier, feature) && !hasDesignCustomizeAccess) { openPremiumFeature(); return; }
-                setChicPattern(pattern);
-                if (!onboardingDesignSelectionPending) void onboarding.complete('design');
+               onChicPattern={(pattern) => {
+                 const feature = pattern === 'plain' ? undefined : getChicPatternFeatureId(pattern);
+                 if (feature && !hasPremiumAccess(planTier, feature) && !hasDesignCustomizeAccess) { openPremiumFeature(); return; }
+                 setChicPattern(pattern);
+                 if (!onboardingDesignSelectionPending) void onboarding.complete('design');
                 completeInitialDesignSelection();
               }}
                onDesignPreview={(pattern) => { setDesignPreviewMode('chic'); setDesignPreviewPattern(pattern); }}
                 fullscreenPreview={(onBack, sheetVisible) => <DesignTryOnModal
                   visible={sheetVisible}
-                  initialMode={designMode === 'photo' ? 'photo' : isMonoDesign ? resolvedMonoMode : designMode}
-                  initialPattern={effectiveChicPattern}
+                  initialMode={designPreviewPhotoUri ? 'photo' : designMode === 'photo' ? 'photo' : isMonoDesign ? resolvedMonoMode : designMode}
+                  initialPattern={designPreviewPattern ?? effectiveChicPattern}
                   initialColor={chicCheckColor}
                   initialMonoAppearance={monoAppearance}
-                  initialMonoPattern={effectiveMonoPattern}
-                  photoUri={photoTheme.imageUri}
+                  initialMonoPattern={designPreviewMonoPattern ?? effectiveMonoPattern}
+                  photoUri={designPreviewPhotoUri ?? photoTheme.imageUri}
                   systemColorScheme={systemColorScheme}
-                  onClose={onBack}
+                  onClose={() => { setDesignPreviewMonoPattern(undefined); onBack(); }}
                   onApply={applyDesignTryOn}
                 />}
                onChicCheckColor={(color) => { setChicCheckColor(color); if (!onboardingDesignSelectionPending) void onboarding.complete('design'); completeInitialDesignSelection(); }}
@@ -5462,6 +5549,7 @@ export default function App() {
                onSaveAffirmationCustomText={saveAffirmationCustomText}
                onDeleteAffirmationCustomText={deleteAffirmationCustomText}
                onPickPhotoTheme={(target) => void pickPhotoTheme(target)}
+               onPickPhotoPreview={() => void pickPhotoForDesignPreview(true)}
                onAdjustPhotoTheme={(target) => adjustTopPhoto(target)}
                onClearPhotoTheme={(target) => setPhotoTheme((current) => {
                  if (target === 'background') {
@@ -5492,19 +5580,16 @@ export default function App() {
               savedTemplates={savedTaskTemplates}
               onAddTemplate={(title) => setTaskTemplates((current) => current.includes(title) ? current : [...current, title])}
               onDeleteTemplate={(title) => setTaskTemplates((current) => current.filter((item) => item !== title))}
-              onGuide={onboarding.openIntro}
               onPremium={openPremiumFeature}
                onDeleteSavedTemplate={deleteSavedTaskTemplate}
                onOpenCaptureStudio={__DEV__ ? () => setCaptureStudioOpen(true) : undefined}
                designCustomizePurchased={hasDesignCustomizeAccess}
-               devDesignCustomizeOverride={__DEV__ ? devDesignCustomizeOverride : 'actual'}
-               storeDesignCustomizeAccess={__DEV__ ? storeDesignCustomizeAccess : undefined}
-               onDevDesignCustomizeOverrideChange={__DEV__ ? setDevDesignCustomizeOverride : undefined}
-               onResetDesignCustomizeOverride={__DEV__ ? resetDesignCustomizeForDevelopment : undefined}
+               canUseMonoPaidPattern={planTier === 'premium' || hasDesignCustomizeAccess || isPremiumDesignUnlocked(rewardedAccess, now) || isPremiumDesignTrialActive(rewardedAccess, now)}
                onResetWidgetPhotoUnlock={__DEV__ ? resetWidgetPhotoUnlockForDevelopment : undefined}
-               designCustomizePrice={storeKit.designProduct?.displayPrice}
-               designCustomizePriceStatus={storeKit.status}
+              designCustomizePrice={storeKit.designProduct?.displayPrice}
+              designCustomizePriceStatus={storeKit.status}
               onOpenDesignCustomize={() => setDesignCustomizeOpen(true)}
+              onOpenDesignAccess={openDesignAccess}
               initialAppearanceOpen={onboardingDesignSelectionPending}
                           styles={styles}
               helpers={{ colors: themedColors, getThemeTokens: getThemedThemeTokens, getChicPatternVisual, getNightSkyPalette, hasPremiumAccess, getChicCheckColor, chicCheckColorChoices, countdownToClock, getUrgencyStatus, getNextBestAction, designModes, completionIcons, summarizePremiumTaskTemplate }}
@@ -5643,7 +5728,13 @@ export default function App() {
         chicPalette={chicPalette}
         onReward={handleRewardedPromptReward}
         onClose={() => { rewardedPromptCompletionRef.current = undefined; setRewardedPrompt(null); }}
-        onPremium={() => { setRewardedPrompt(null); openPremiumFeature(); }}
+        onPremium={() => {
+          const designFeature = rewardedPrompt.featureId === 'photoBackground' || rewardedPrompt.featureId === 'photoFocus' || rewardedPrompt.featureId === 'photoTop' || rewardedPrompt.featureId === 'premiumDesign' || rewardedPrompt.featureId === 'premiumDesignTrialExpired';
+          setRewardedPrompt(null);
+          if (designFeature) setDesignCustomizeOpen(true);
+          else openPremiumFeature();
+        }}
+        premiumLabel={rewardedPrompt.featureId === 'photoBackground' || rewardedPrompt.featureId === 'photoFocus' || rewardedPrompt.featureId === 'photoTop' || rewardedPrompt.featureId === 'premiumDesign' || rewardedPrompt.featureId === 'premiumDesignTrialExpired' ? 'デザインカスタマイズを購入' : undefined}
       />}
 
       <Modal visible={focusNavigationNotice} transparent animationType="fade" onRequestClose={() => setFocusNavigationNotice(false)}>
@@ -5739,7 +5830,7 @@ export default function App() {
         helpers={{ getThemeTokens: getThemedThemeTokens, todayInputValue, hasPremiumAccess, dateForReminder, dateKey, formatLiveTime, colors: themedColors, summarizePremiumTaskTemplate }}
         components={{ CompactNumberSetting }}
       />}
-      <PremiumModal visible={premiumOpen} initialFeatureId={premiumTargetFeature} designMode={uiDesignMode} chicPalette={chicPalette} planTier={planTier} isDevelopment={__DEV__} onMockPlanTier={handleMockPlanTier} onClose={() => { logPremiumDiagnostic('PREMIUM_MODAL_DISMISSED', { plan: planTier, purchaseStatus: purchaseDiagnosticPendingRef.current ? 'processing' : 'idle', planTier, modalVisible: premiumOpen, entitlementsResolved: storeKitEntitlementsResolved, pending: purchaseDiagnosticPendingRef.current }); setPremiumOpen(false); }} styles={styles} helpers={{ getThemeTokens: getThemedThemeTokens }} renderReadOnlyPreview={renderPremiumReadOnlyPreview} products={storeKit.products} productStatus={storeKit.status} purchaseError={storeKit.errorMessage} onPurchasePlan={purchasePremiumWithDiagnostics} onRestorePurchase={() => { void restorePremiumPurchase(); }} />
+      <PremiumModal visible={premiumOpen} initialFeatureId={premiumTargetFeature} designMode={uiDesignMode} chicPalette={chicPalette} planTier={planTier} isDevelopment={__DEV__} onMockPlanTier={handleMockPlanTier} onClose={() => { logPremiumDiagnostic('PREMIUM_MODAL_DISMISSED', { plan: planTier, purchaseStatus: purchaseDiagnosticPendingRef.current ? 'processing' : 'idle', planTier, modalVisible: premiumOpen, entitlementsResolved: storeKitEntitlementsResolved, pending: purchaseDiagnosticPendingRef.current }); setPremiumOpen(false); }} onOpenDesignCustomize={() => { setPremiumOpen(false); setDesignCustomizeOpen(true); }} styles={styles} helpers={{ getThemeTokens: getThemedThemeTokens }} renderReadOnlyPreview={renderPremiumReadOnlyPreview} products={storeKit.products} productStatus={storeKit.status} purchaseError={storeKit.errorMessage} onPurchasePlan={purchasePremiumWithDiagnostics} onRestorePurchase={() => { void restorePremiumPurchase(); }} />
       <VoiceUsageLimitModal
         visible={voiceUsageLimitOpen}
         designMode={uiDesignMode}
@@ -5757,31 +5848,51 @@ export default function App() {
         onClose={() => setVoiceUsageLimitOpen(false)}
       />
       <VoiceInputModal visible={voiceOpen} autoStart={voiceAutoStart} designMode={uiDesignMode} chicPalette={chicPalette} dateKey={dateKey} onClose={() => { setVoiceAutoStart(false); setVoiceOpen(false); }} onRoute={handleVoiceRoute} hapticsEnabled={hapticsEnabled} isPremium={planTier === 'premium'} remainingUses={remainingVoiceUses(voiceUsage, dateKey())} onRecognitionAccepted={consumeVoiceInput} />
-      <DesignCustomizeModal visible={designCustomizeOpen} designMode={uiDesignMode} chicPalette={chicPalette} purchased={hasDesignCustomizeAccess} localizedPrice={storeKit.designProduct?.displayPrice} priceStatus={storeKit.status} purchaseError={storeKit.errorMessage} isDevelopment={__DEV__} onPurchase={purchaseDesignCustomize} onRestore={restoreDesignCustomizePurchase} onPremium={() => { setDesignCustomizeOpen(false); openPremiumFeature('photo_design'); }} onClose={() => setDesignCustomizeOpen(false)} />
+      <DesignCustomizeModal visible={designCustomizeOpen} designMode={uiDesignMode} chicPalette={chicPalette} purchased={hasDesignCustomizeAccess} localizedPrice={storeKit.designProduct?.displayPrice} priceStatus={storeKit.status} purchaseError={storeKit.errorMessage} onPurchase={purchaseDesignCustomize} onRestore={restoreDesignCustomizePurchase} onPremium={() => { setDesignCustomizeOpen(false); openPremiumFeature('photo_design'); }} onClose={() => setDesignCustomizeOpen(false)} />
       {__DEV__ && <OnboardingCaptureStudio visible={captureStudioOpen} onClose={() => setCaptureStudioOpen(false)} renderStep={renderOnboardingCaptureStep} renderGuideStep={renderGuideCaptureStep} renderPremiumStep={renderPremiumReadOnlyPreview} colors={{ background: theme.colors.screenBackground, surface: theme.colors.surface, border: theme.colors.border, text: theme.colors.primaryText, muted: theme.colors.secondaryText, accent: theme.colors.primaryAccent, onAccent: uiDesignMode === 'chic' && chicPalette ? chicPalette.onAccent : uiDesignMode === 'dark' ? theme.colors.screenBackground : '#FFFFFF' }} />}
-      <DesignPreviewModal visible={Boolean(designPreviewPattern)} initialPattern={designPreviewPattern} initialMode={designPreviewMode} chicCheckColor={chicCheckColor} planTier={planTier} designCustomizePurchased={hasDesignCustomizeAccess} photoUri={designPreviewPhotoUri} onPickPhoto={() => void pickPhotoForDesignPreview()} onClose={() => { setDesignPreviewPattern(undefined); setDesignPreviewPhotoUri(undefined); setDesignPreviewMode('chic'); }} onTrial={(mode, pattern) => {
+      <DesignPreviewModal visible={Boolean(designPreviewPattern)} initialPattern={designPreviewPattern} initialMode={designPreviewMode} chicCheckColor={chicCheckColor} planTier={planTier} designCustomizePurchased={hasDesignCustomizeAccess || isPremiumDesignUnlocked(rewardedAccess, now) || isPremiumDesignTrialActive(rewardedAccess, now)} photoUri={designPreviewPhotoUri} onPickPhoto={() => void pickPhotoForDesignPreview()} onClose={() => { setDesignPreviewPattern(undefined); setDesignPreviewPhotoUri(undefined); setDesignPreviewMonoPattern(undefined); setDesignPreviewMode('chic'); }} onTrial={(mode, pattern) => {
         if (mode === 'chic' && pattern && canStartPremiumDesignTrial(rewardedAccess)) {
-          startDesignTrial(pattern);
+          startDesignTrial(pattern, chicCheckColor);
+          setDesignPreviewPattern(undefined);
+          setDesignPreviewPhotoUri(undefined);
           completeInitialDesignSelection();
           return;
         }
         if (mode === 'photo' && designPreviewPhotoUri && canStartPremiumDesignTrial(rewardedAccess)) {
           startPhotoDesignTrial();
+          setDesignPreviewPattern(undefined);
+          setDesignPreviewPhotoUri(undefined);
           completeInitialDesignSelection();
           return;
+        }
+        if (mode === 'chic' && pattern) {
+          pendingDesignApplyRef.current = () => {
+            setDesignMode('chic');
+            setChicPattern(pattern);
+            setChicCheckColor(chicCheckColor);
+            setDesignPreviewPattern(undefined);
+            if (!onboardingDesignSelectionPending) void onboarding.complete('design');
+            completeInitialDesignSelection();
+          };
+        } else if (mode === 'photo' && designPreviewPhotoUri) {
+          pendingDesignApplyRef.current = () => {
+            applyPhotoDesign(designPreviewPhotoUri, chicCheckColor);
+            completeInitialDesignSelection();
+          };
         }
         setDesignPreviewPattern(undefined);
         setDesignTrialNoticeOpen(true);
       }} onUse={(mode, pattern) => {
         if (mode === 'photo') {
           if (!designPreviewPhotoUri) { void pickPhotoForDesignPreview(); return; }
-          if (planTier === 'premium' || hasDesignCustomizeAccess || activeDesignTrialId === 'photo' || isPremiumDesignUnlocked(rewardedAccess, now)) {
+          if (planTier === 'premium' || hasDesignCustomizeAccess || isPremiumDesignTrialActive(rewardedAccess, now) || isPremiumDesignUnlocked(rewardedAccess, now)) {
             applyPhotoDesign();
             completeInitialDesignSelection();
             return;
           }
           if (canStartPremiumDesignTrial(rewardedAccess)) {
-            setDesignTrialNoticeOpen(true);
+            startPhotoDesignTrial();
+            completeInitialDesignSelection();
             return;
           }
           pendingDesignApplyRef.current = () => {
@@ -5811,6 +5922,14 @@ export default function App() {
         if (pattern) {
           const hasPatternAccess = planTier === 'premium' || hasDesignCustomizeAccess || isPremiumDesignUnlocked(rewardedAccess, now) || isPremiumDesignTrialActive(rewardedAccess, now);
           if (!hasPatternAccess) {
+          pendingDesignApplyRef.current = () => {
+            setDesignMode('chic');
+            setChicPattern(pattern);
+            setChicCheckColor(chicCheckColor);
+            setDesignPreviewPattern(undefined);
+              if (!onboardingDesignSelectionPending) void onboarding.complete('design');
+              completeInitialDesignSelection();
+            };
             setDesignPreviewPattern(undefined);
             setDesignTrialNoticeOpen(true);
             return;
@@ -5822,7 +5941,7 @@ export default function App() {
           completeInitialDesignSelection();
         }
       }} />
-      <DesignTrialExpiredModal visible={designTrialNoticeOpen} designMode={uiDesignMode} chicPalette={chicPalette} onClose={() => { pendingDesignApplyRef.current = undefined; setDesignTrialNoticeOpen(false); }} onPremium={() => { pendingDesignApplyRef.current = undefined; setDesignTrialNoticeOpen(false); openPremiumFeature('photo_design'); }} onReward={() => {
+      <DesignTrialExpiredModal visible={designTrialNoticeOpen} designMode={uiDesignMode} chicPalette={chicPalette} onClose={() => { pendingDesignApplyRef.current = undefined; setDesignTrialNoticeOpen(false); }} onPremium={() => { setDesignTrialNoticeOpen(false); setDesignCustomizeOpen(true); }} onReward={() => {
         setDesignTrialNoticeOpen(false);
         InteractionManager.runAfterInteractions(() => {
           setTimeout(() => {
@@ -5841,11 +5960,9 @@ export default function App() {
   onDismiss={
     onboarding.isCompleted('intro')
       ? onboarding.closeIntro
-      : () => {
-          void onboarding.finishIntro();
-      }
+      : () => { void onboarding.skipIntro(); }
   }
-  finalActionLabel="Rhythmを体験する"
+  finalActionLabel="デザインを選ぶ"
   designMode={uiDesignMode}
   chicPalette={chicPalette}
   onFinalAction={() => {
@@ -6177,7 +6294,7 @@ function DesignPreviewModal({ visible, initialPattern, initialMode = 'chic', chi
         </View>
         {mode === 'photo' && <Pressable style={[designPreviewStyles.secondaryButton, { borderColor: uiPreview.border, backgroundColor: uiPreview.surface }]} onPress={onPickPhoto}><Text style={[designPreviewStyles.secondaryButtonText, { color: uiPreview.accent }]}>{photoUri ? '写真を選び直す' : '写真で試す'}</Text></Pressable>}
         {isLockedPremiumPattern && <Text style={[designPreviewStyles.trialHint, { color: uiPreview.muted }]}>試着だけではお試し時間は開始されません。</Text>}
-        <View style={designPreviewStyles.actions}><Pressable style={[designPreviewStyles.secondaryButton, { borderColor: uiPreview.border, backgroundColor: uiPreview.surface }]} onPress={onClose}><Text style={[designPreviewStyles.secondaryButtonText, { color: uiPreview.accent }]} >閉じる</Text></Pressable><Pressable style={[designPreviewStyles.primaryButton, { backgroundColor: uiPreview.accent }]} onPress={() => { if (mode === 'photo' && !photoUri) { onPickPhoto(); return; } if (isLockedPremiumPattern) { onTrial?.(mode, pattern); return; } onUse(mode, mode === 'chic' ? pattern : undefined); }}><Text style={[designPreviewStyles.primaryButtonText, { color: uiPreview.onAccent }]}>{mode === 'photo' ? (photoUri ? 'この写真を使う' : '写真で試す') : isLockedPremiumPattern ? '24時間無料で使ってみる' : 'このデザインを使う'}</Text></Pressable></View>
+        <View style={designPreviewStyles.actions}><Pressable style={[designPreviewStyles.secondaryButton, { borderColor: uiPreview.border, backgroundColor: uiPreview.surface }]} onPress={onClose}><Text style={[designPreviewStyles.secondaryButtonText, { color: uiPreview.accent }]} >閉じる</Text></Pressable><Pressable style={[designPreviewStyles.primaryButton, { backgroundColor: uiPreview.accent }]} onPress={() => { if (mode === 'photo' && !photoUri) { onPickPhoto(); return; } if (isLockedPremiumPattern) { onTrial?.(mode, pattern); return; } onUse(mode, mode === 'chic' ? pattern : undefined); }}><Text style={[designPreviewStyles.primaryButtonText, { color: uiPreview.onAccent }]}>{mode === 'photo' ? (photoUri ? 'この写真を使う' : '写真で試す') : 'このデザインを使う'}</Text></Pressable></View>
       </Pressable>
     </Pressable>
     </Modal>
@@ -6186,7 +6303,7 @@ function DesignPreviewModal({ visible, initialPattern, initialMode = 'chic', chi
 
 function DesignTrialExpiredModal({ visible, designMode, chicPalette, onClose, onPremium, onReward }: { visible: boolean; designMode: DesignMode; chicPalette?: ChicThemePalette; onClose: () => void; onPremium: () => void; onReward: () => void }) {
   const colors = chicPalette && designMode === 'chic' ? { surface: chicPalette.cardSurface, border: chicPalette.border, text: chicPalette.textPrimary, muted: chicPalette.textSecondary, accent: chicPalette.accent, onAccent: chicPalette.onAccent } : (() => { const theme = getThemeTokens(designMode).colors; return { surface: theme.surface, border: theme.border, text: theme.primaryText, muted: theme.secondaryText, accent: theme.primaryAccent, onAccent: designMode === 'dark' ? theme.screenBackground : '#FFFFFF' }; })();
-  return <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}><Pressable style={designPreviewStyles.backdrop} onPress={onClose}><Pressable style={[designPreviewStyles.sheet, { backgroundColor: colors.surface, borderColor: colors.border }]} onPress={(event) => event.stopPropagation()}><ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={designPreviewStyles.trialSheetContent}><Text style={[designPreviewStyles.eyebrow, { color: colors.accent }]}>DESIGN TRIAL</Text><Text style={[designPreviewStyles.title, { color: colors.text }]}>デザイン体験が終了しました</Text><Text style={[designPreviewStyles.copy, { color: colors.muted }]}>広告を1回確認すると12時間使えます。Premiumなら期限なしで使い続けられます。無料デザインでそのまま続けることもできます。</Text><Pressable style={[designPreviewStyles.primaryButton, designPreviewStyles.trialActionButton, { backgroundColor: colors.accent }]} onPress={onReward}><Text style={[designPreviewStyles.primaryButtonText, { color: colors.onAccent }]}>広告を見て取得（12時間）</Text></Pressable><Pressable style={[designPreviewStyles.secondaryButton, designPreviewStyles.trialActionButton, { borderColor: colors.border }]} onPress={onPremium}><Text style={[designPreviewStyles.secondaryButtonText, { color: colors.accent }]}>Premiumで使い続ける</Text></Pressable><Pressable style={designPreviewStyles.textButton} onPress={onClose}><Text style={[designPreviewStyles.textButtonText, { color: colors.muted }]}>無料デザインで続ける</Text></Pressable></ScrollView></Pressable></Pressable></Modal>;
+  return <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}><Pressable style={designPreviewStyles.backdrop} onPress={onClose}><Pressable style={[designPreviewStyles.sheet, { backgroundColor: colors.surface, borderColor: colors.border }]} onPress={(event) => event.stopPropagation()}><ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={designPreviewStyles.trialSheetContent}><Text style={[designPreviewStyles.eyebrow, { color: colors.accent }]}>デザインカスタマイズ</Text><Text style={[designPreviewStyles.title, { color: colors.text }]}>デザインの利用期限が終了しました</Text><Text style={[designPreviewStyles.copy, { color: colors.muted }]}>広告を1回見ると、デザイン・写真を12時間使えます。購入すると期限なく利用できます。</Text><Pressable style={[designPreviewStyles.primaryButton, designPreviewStyles.trialActionButton, { backgroundColor: colors.accent }]} onPress={onReward}><Text style={[designPreviewStyles.primaryButtonText, { color: colors.onAccent }]}>広告を見て12時間使う</Text></Pressable><Pressable style={[designPreviewStyles.secondaryButton, designPreviewStyles.trialActionButton, { borderColor: colors.border }]} onPress={onPremium}><Text style={[designPreviewStyles.secondaryButtonText, { color: colors.accent }]}>デザインカスタマイズを購入</Text></Pressable><Pressable style={designPreviewStyles.textButton} onPress={onClose}><Text style={[designPreviewStyles.textButtonText, { color: colors.muted }]}>無料デザインで続ける</Text></Pressable></ScrollView></Pressable></Pressable></Modal>;
 }
 
 const designPreviewStyles = StyleSheet.create({

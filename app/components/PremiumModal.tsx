@@ -85,14 +85,14 @@ const darkPreviewStyleOverrides: Record<string, any> = {
 };
 
 const PREMIUM_GUIDE_FEATURES: Array<{ id: PremiumGuideFeatureId; kind: PremiumPreviewKind; title: string; description: string }> = [
-  { id: 'widget', kind: 'widget', title: 'ホーム画面から今日を確認', description: '基本のWidgetは無料で利用できます。Premiumなら10種類すべてのWidgetと、Design Customize対象のデザインを利用できます。' },
-  { id: 'live_activity', kind: 'live_activity', title: 'ロック画面から、そのまま確認・操作', description: '基本のLive Activityは無料で利用できます。PremiumではTask完了・checklist操作、Premium対象の表示、アファメーション自動切替までロック画面から使えます。' },
-  { id: 'voice', kind: 'voice', title: '音声入力', description: '話した内容から、ToDo・予定・ルーティン・叶えたいことをすぐに整理できます。Freeは1日5回に加え、広告視聴で1回につき3回分を追加できます。Premiumは無制限です。' },
+  { id: 'widget', kind: 'widget', title: 'ホーム画面にも、自分のRhythmを。', description: '基本のウィジェットは無料で利用できます。プレミアムなら10種類すべてのウィジェットと、デザインカスタマイズ対象の見た目を利用できます。' },
+  { id: 'live_activity', kind: 'live_activity', title: 'ロック画面から、そのまま動ける。', description: '基本のライブアクティビティは無料で利用できます。プレミアムではタスク完了・チェックリスト操作、プレミアム対象の表示、自動切替まで使えます。' },
+  { id: 'voice', kind: 'voice', title: '音声入力', description: '話した内容から、タスク・予定・習慣・叶えたいことをすぐに整理できます。無料版は1日5回に加え、広告視聴で追加できます。プレミアムは無制限です。' },
   { id: 'focus_custom_duration', kind: 'focus_custom_duration', title: '集中時間を自由に設定', description: '決まった時間だけでなく、その日に合わせて好きな集中時間を設定できます。' },
   { id: 'records', kind: 'records', title: '今日の記録', description: '写真・ひとこと・メモを日付ごとに保存。カレンダーから記録済みの日を確認し、登録後の編集・削除もできます。' },
   { id: 'reflection', kind: 'reflection', title: '今月を振り返る', description: 'カレンダー上部のボタンから開く独立機能。今月の写真・言葉・ベストをテンプレートやレイアウトでまとめ、画像保存・共有できます。' },
-  { id: 'calendar', kind: 'calendar', title: 'カレンダー連携', description: '予定の閲覧は無料。Freeは広告1回で1予定をRhythmへ取り込め、Premiumなら広告なしで取り込めます。' },
-  { id: 'route', kind: 'route', title: '出発カウントダウン・地図・共有', description: '出発までのカウントダウンと、予定の場所・共有をPremiumで利用できます。' },
+  { id: 'calendar', kind: 'calendar', title: 'カレンダー連携', description: '予定の閲覧は無料。無料版は広告1回で1予定をRhythmへ取り込め、プレミアムなら広告なしで取り込めます。' },
+  { id: 'route', kind: 'route', title: '出発カウントダウン・地図・共有', description: '出発までのカウントダウンと、予定の場所・共有をプレミアムで利用できます。' },
   { id: 'travel_apps', kind: 'travel_apps', title: '移動アプリ連携', description: 'いつもの乗換・タクシーアプリを登録して、予定や遅れた時にRhythmからすぐ開けます。' },
   { id: 'nudge', kind: 'nudge', title: '高度な通知', description: '段階的な通知や反応に応じた再通知で、大切な予定を忘れにくくします。' },
   { id: 'behavior', kind: 'behavior', title: '振り返り', description: '最近の記録から、できたことや立て直した場面を振り返れます。' },
@@ -102,7 +102,7 @@ const PREMIUM_GUIDE_FEATURES: Array<{ id: PremiumGuideFeatureId; kind: PremiumPr
   { id: 'templates', kind: 'templates', title: 'タスクひな型', description: '一度作ったタスクのカテゴリ・優先度・通知設定をひな型として保存し、次回の登録を簡単にします。' },
   { id: 'wish', kind: 'wish', title: '叶えたいこと', description: '叶えたいことを残して、今日できる行動に分けながら進み具合を確認できます。' },
   { id: 'affirmation', kind: 'affirmation', title: '好きな言葉を、選んだ時間に届ける', description: '自分で書いたアファメーションを毎日指定時刻に通知。忙しい日も、自分の軸へ静かに戻れます。' },
-  { id: 'photo_design', kind: 'photo_design', title: '選べるデザイン', description: '花柄・チェック・ドット・写真を、RhythmPaceの画面に合わせて楽しめます。Premiumは対象デザインを含むすべての機能を利用でき、Design Customizeは対象デザインを開放する買い切り商品です。価格はStoreKitの表示に従います。' },
+  { id: 'photo_design', kind: 'photo_design', title: '好きな見た目を、いつでも。', description: '花柄・チェック・ドット・写真を、RhythmPaceの画面に合わせて楽しめます。デザインカスタマイズは対象の見た目を開放する買い切り商品で、プレミアムにも含まれます。価格はStoreKitの表示に従います。' },
 ];
 
 export type PremiumFeatureIconName = 'timer' | 'journal' | 'calendarChart' | 'calendarSync' | 'pin' | 'bell' | 'bellSparkle' | 'chart' | 'analyticsBars' | 'historyTrend' | 'calendarList' | 'search' | 'copy' | 'target' | 'pathCheck' | 'quote' | 'messageSparkle' | 'refresh' | 'palette' | 'swatches' | 'pattern' | 'mic' | 'widget' | 'sparkle' | 'info';
@@ -116,11 +116,11 @@ const PREMIUM_FEATURE_ICONS: Record<PremiumGuideFeatureId, PremiumFeatureIconNam
 };
 
 const PREMIUM_FEATURE_NAV_LABELS: Record<PremiumGuideFeatureId, string> = {
-  widget: 'Widget', live_activity: 'Live Activity',
+  widget: 'ウィジェット', live_activity: 'ライブアクティビティ',
   voice: '音声入力',
   focus_custom_duration: '集中時間', records: '今日の記録', reflection: '月の振り返り', calendar: 'カレンダー連携', route: '出発・地図・共有', travel_apps: '移動アプリ',
   nudge: '高度な通知', time: '行動分析', behavior: '振り返り', month: '月別履歴', history: '履歴検索', recovery: '立て直し', templates: 'タスクひな型', wish: '叶えたいこと',
-  affirmation: 'アファメーション', photo_design: 'デザイン', floral: '花柄1〜3', dot: 'ドット', check: 'チェック',
+  affirmation: 'アファメーション', photo_design: 'デザインカスタマイズ', floral: '花柄1〜3', dot: 'ドット', check: 'チェック',
 };
 
 const PREMIUM_FEATURE_DIFFS: Partial<Record<PremiumGuideFeatureId, { free: string; premium: string }>> = {
@@ -162,15 +162,15 @@ const PREMIUM_COMPARISON_ROWS: Array<{ label: string; free: '○' | '△' | '×'
 
 function PremiumComparison({ styles, primaryText, secondaryText, border, surfaceSoft, accent }: { styles: any; primaryText: string; secondaryText: string; border: string; surfaceSoft: string; accent: string }) {
   return <View style={[styles.premiumComparison, { borderTopColor: border }]}>
-    <Text style={[styles.premiumSectionTitle, { color: primaryText }]}>Free / Premium</Text>
+    <Text style={[styles.premiumSectionTitle, { color: primaryText }]}>無料版 / プレミアム</Text>
     <Text style={[styles.premiumSectionCopy, { color: secondaryText }]}>使える範囲の違いをまとめています。</Text>
-    <View style={[styles.premiumComparisonHeader, { borderBottomColor: border }]}><Text style={[styles.premiumComparisonLabel, { color: secondaryText }]}>機能</Text><Text style={[styles.premiumComparisonCell, { color: secondaryText }]}>Free</Text><Text style={[styles.premiumComparisonCell, { color: accent }]}>Premium</Text></View>
+    <View style={[styles.premiumComparisonHeader, { borderBottomColor: border }]}><Text style={[styles.premiumComparisonLabel, { color: secondaryText }]}>機能</Text><Text style={[styles.premiumComparisonCell, { color: secondaryText }]}>無料版</Text><Text style={[styles.premiumComparisonCell, { color: accent }]}>プレミアム</Text></View>
     {PREMIUM_COMPARISON_ROWS.map((row) => <View key={row.label} style={[styles.premiumComparisonRow, { borderBottomColor: border }]}>
       <View style={styles.premiumComparisonLabelWrap}><Text style={[styles.premiumComparisonLabel, { color: primaryText }]}>{row.label}</Text>{row.note && <Text style={[styles.premiumComparisonNote, { color: secondaryText }]}>{row.note}</Text>}</View>
       <Text style={[styles.premiumComparisonCell, { color: row.free === '×' ? secondaryText : primaryText }]}>{row.free}</Text>
       <Text style={[styles.premiumComparisonCell, { color: row.premium === '×' ? secondaryText : accent }]}>{row.premium}</Text>
     </View>)}
-    <View style={[styles.premiumComparisonLegend, { backgroundColor: surfaceSoft }]}><Text style={[styles.premiumComparisonLegendText, { color: secondaryText }]}>○ 利用できます　△ 一部制限・広告・Trial　× Premium限定</Text></View>
+    <View style={[styles.premiumComparisonLegend, { backgroundColor: surfaceSoft }]}><Text style={[styles.premiumComparisonLegendText, { color: secondaryText }]}>○ 利用できます　△ 一部制限・広告・お試し　× プレミアム限定</Text></View>
   </View>;
 }
 
@@ -276,8 +276,8 @@ function PremiumFeatureDiff({ kind, styles, primaryText, secondaryText, accent, 
   const diff = PREMIUM_FEATURE_DIFFS[kind];
   if (!diff) return null;
   return <View style={[styles.premiumFeatureDiff, { borderColor: border, backgroundColor: surfaceSoft }]}>
-    <Text style={[styles.premiumFeatureDiffHeading, { color: primaryText }]}>FreeとPremiumの違い</Text>
-    <View style={[styles.premiumFeatureDiffRow, { borderTopColor: border }]}><View style={styles.premiumFeatureDiffCopy}><Text style={[styles.premiumFeatureDiffLabel, { color: secondaryText }]}>Free</Text><Text style={[styles.premiumFeatureDiffValue, { color: primaryText }]}>{diff.free}</Text></View><View style={styles.premiumFeatureDiffCopy}><Text style={[styles.premiumFeatureDiffLabel, { color: accent }]}>Premium</Text><Text style={[styles.premiumFeatureDiffValue, { color: primaryText }]}>{diff.premium}</Text></View></View>
+    <Text style={[styles.premiumFeatureDiffHeading, { color: primaryText }]}>無料版とプレミアムの違い</Text>
+    <View style={[styles.premiumFeatureDiffRow, { borderTopColor: border }]}><View style={styles.premiumFeatureDiffCopy}><Text style={[styles.premiumFeatureDiffLabel, { color: secondaryText }]}>無料版</Text><Text style={[styles.premiumFeatureDiffValue, { color: primaryText }]}>{diff.free}</Text></View><View style={styles.premiumFeatureDiffCopy}><Text style={[styles.premiumFeatureDiffLabel, { color: accent }]}>プレミアム</Text><Text style={[styles.premiumFeatureDiffValue, { color: primaryText }]}>{diff.premium}</Text></View></View>
   </View>;
 }
 
@@ -289,7 +289,7 @@ function PremiumFeatureDetail({ icon, kind, title, description, designMode, chic
   </View>;
 }
 
-export function PremiumModal({ visible, initialFeatureId, designMode, chicPalette, planTier, isDevelopment = false, onMockPlanTier, onClose, styles, helpers, renderReadOnlyPreview, products, productStatus = products ? 'ready' : 'unavailable', onRestorePurchase, onPurchasePlan, purchaseError }: { visible: boolean; initialFeatureId: PremiumGuideFeatureId; designMode: DesignMode; chicPalette?: ChicThemePalette; planTier: PlanTier; isDevelopment?: boolean; onMockPlanTier?: (tier: PlanTier | null) => void; onClose: () => void; styles: any; helpers: any; renderReadOnlyPreview?: (kind: PremiumPreviewKind) => React.ReactNode; products?: PremiumStoreProducts; productStatus?: PremiumStoreProductStatus; onRestorePurchase?: () => void; onPurchasePlan?: (plan: 'monthly' | 'annual') => Promise<boolean>; purchaseError?: string }) {
+export function PremiumModal({ visible, initialFeatureId, designMode, chicPalette, planTier, isDevelopment = false, onMockPlanTier, onClose, onOpenDesignCustomize, styles, helpers, renderReadOnlyPreview, products, productStatus = products ? 'ready' : 'unavailable', onRestorePurchase, onPurchasePlan, purchaseError }: { visible: boolean; initialFeatureId: PremiumGuideFeatureId; designMode: DesignMode; chicPalette?: ChicThemePalette; planTier: PlanTier; isDevelopment?: boolean; onMockPlanTier?: (tier: PlanTier | null) => void; onClose: () => void; onOpenDesignCustomize?: () => void; styles: any; helpers: any; renderReadOnlyPreview?: (kind: PremiumPreviewKind) => React.ReactNode; products?: PremiumStoreProducts; productStatus?: PremiumStoreProductStatus; onRestorePurchase?: () => void; onPurchasePlan?: (plan: 'monthly' | 'annual') => Promise<boolean>; purchaseError?: string }) {
   const { getThemeTokens } = helpers;
   const theme = getThemeTokens(designMode, chicPalette?.id ?? 'cool');
   const designSurface = designMode === 'chic' && chicPalette ? { backgroundColor: chicPalette.cardSurface, borderColor: chicPalette.border } : undefined;
@@ -397,19 +397,19 @@ export function PremiumModal({ visible, initialFeatureId, designMode, chicPalett
         <View style={styles.modalHandle} />
         <View style={styles.premiumCarouselHeader}>
           <View style={{ flex: 1 }}>
-            <Text style={[styles.premiumCarouselBrand, { color: primaryText }]}>Rhythm Premium</Text>
-            <Text style={[styles.premiumCarouselCopy, { color: secondaryText }]}>予定を立てるだけでなく、間に合う・続けるまで支えます。</Text>
-            <Text style={[styles.premiumCarouselCopy, { color: accentStrong }, { marginTop: 5, fontSize: 11, fontWeight: '800' }]}>Premiumならすべての機能・Widget・デザインを利用できます。</Text>
+            <Text style={[styles.premiumCarouselBrand, { color: primaryText }]}>Rhythmプレミアム</Text>
+            <Text style={[styles.premiumCarouselCopy, { color: secondaryText }]}>Rhythmをもっと自分仕様に。</Text>
+            <Text style={[styles.premiumCarouselCopy, { color: accentStrong }, { marginTop: 5, fontSize: 11, fontWeight: '800' }]}>実際の機能を見てから、必要なものだけ選べます。</Text>
             <Text style={[styles.premiumCarouselCopy, { color: secondaryText }, { marginTop: 4, fontSize: 10 }]}>{purchaseOpen ? 'Premiumを始める準備をしています。' : '記録・分析・デザイン・共有を、あなたの使い方に合わせて広げます。'}</Text>
           </View>
           {purchaseOpen ? <Pressable accessibilityRole="button" accessibilityLabel="Premium購入画面から戻る" hitSlop={10} style={styles.premiumHeaderClose} onPress={() => { setPurchaseOpen(false); setPurchaseStatus('idle'); }}><Text style={[styles.premiumCloseButtonText, { color: accentStrong }]}>戻る</Text></Pressable> : <Pressable accessibilityRole="button" accessibilityLabel="Premium案内を閉じる" hitSlop={10} style={styles.premiumHeaderClose} onPress={onClose}><Text style={[styles.premiumHeaderCloseText, { color: accentStrong }]}>×</Text></Pressable>}
         </View>
-        {!purchaseOpen && <View style={styles.premiumTopActions}><Pressable accessibilityRole="button" style={[styles.premiumTopCta, { backgroundColor: accent }]} onPress={() => setPurchaseOpen(true)}><Text style={[styles.premiumTopCtaText, { color: accentText }]}>{planTier === 'premium' ? 'Premium有効中' : 'Premiumを始める'}</Text></Pressable><Pressable accessibilityRole="button" style={styles.premiumComparisonLink} onPress={() => setComparisonOpen(true)}><Text style={[styles.premiumComparisonLinkText, { color: accentStrong }]}>Freeとの違いを見る</Text></Pressable></View>}
+        {!purchaseOpen && <View style={styles.premiumTopActions}><Pressable accessibilityRole="button" style={[styles.premiumTopCta, { backgroundColor: accent }]} onPress={() => setPurchaseOpen(true)}><Text style={[styles.premiumTopCtaText, { color: accentText }]}>{planTier === 'premium' ? 'プレミアム利用中' : 'プレミアムを始める'}</Text></Pressable><Pressable accessibilityRole="button" style={styles.premiumComparisonLink} onPress={() => setComparisonOpen(true)}><Text style={[styles.premiumComparisonLinkText, { color: accentStrong }]}>無料版との違いを見る</Text></Pressable></View>}
         {purchaseOpen ? <ScrollView style={styles.premiumCarouselArea} contentContainerStyle={styles.premiumModalScroll} showsVerticalScrollIndicator={false} nestedScrollEnabled keyboardShouldPersistTaps="handled">
           <View style={[styles.premiumPurchasePanel, { backgroundColor: surface, borderColor: accent }]}>
-            <Text style={[styles.premiumPurchaseTitle, { color: primaryText }]}>Premiumを始める</Text>
-            <Text style={[styles.premiumPurchaseCopy, { color: secondaryText }]}>すべての機能・Widget・デザインを、RhythmPaceの使い方に合わせて広げます。</Text>
-            <View style={[styles.premiumPurchaseBenefits, { borderTopColor: theme.colors.border, borderBottomColor: theme.colors.border }]}><Text style={[styles.premiumPurchaseBenefit, { color: primaryText }]}>10種類すべてのWidget</Text><Text style={[styles.premiumPurchaseBenefit, { color: primaryText }]}>Live ActivityからTask・checklistを操作</Text><Text style={[styles.premiumPurchaseBenefit, { color: primaryText }]}>今日の記録・振り返り・詳細な履歴</Text><Text style={[styles.premiumPurchaseBenefit, { color: primaryText }]}>選べるデザイン・写真・アファメーション</Text></View>
+            <Text style={[styles.premiumPurchaseTitle, { color: primaryText }]}>プレミアムを始める</Text>
+            <Text style={[styles.premiumPurchaseCopy, { color: secondaryText }]}>すべての機能・ウィジェット・デザインを、RhythmPaceの使い方に合わせて広げます。</Text>
+            <View style={[styles.premiumPurchaseBenefits, { borderTopColor: theme.colors.border, borderBottomColor: theme.colors.border }]}><Text style={[styles.premiumPurchaseBenefit, { color: primaryText }]}>10種類すべてのウィジェット</Text><Text style={[styles.premiumPurchaseBenefit, { color: primaryText }]}>ライブアクティビティからタスク・チェックリストを操作</Text><Text style={[styles.premiumPurchaseBenefit, { color: primaryText }]}>今日の記録・振り返り・詳細な履歴</Text><Text style={[styles.premiumPurchaseBenefit, { color: primaryText }]}>選べるデザイン・写真・アファメーション</Text></View>
             <Text style={[styles.premiumPlanHeading, { color: primaryText }]}>プランを選択</Text>
             {(['annual', 'monthly'] as const).map((plan) => {
               const product = products?.[plan];
@@ -453,6 +453,7 @@ export function PremiumModal({ visible, initialFeatureId, designMode, chicPalett
           <View key={`premium-feature-stage-${selectedFeature.id}-${designMode}`} style={styles.premiumFeatureStage}>
             <PremiumFeatureDetail icon={PREMIUM_FEATURE_ICONS[selectedFeature.id]} kind={selectedFeature.kind} title={selectedFeature.title} description={selectedFeature.description} designMode={designMode} chicPalette={chicPalette} styles={styles} renderReadOnlyPreview={renderReadOnlyPreview} surface={surface} surfaceSoft={surfaceSoft} border={theme.colors.border} primaryText={primaryText} secondaryText={secondaryText} accentColor={accent} />
           </View>
+          {selectedFeature.id === 'photo_design' && onOpenDesignCustomize ? <Pressable accessibilityRole="button" style={styles.premiumTextLink} onPress={onOpenDesignCustomize}><Text style={[styles.premiumTextLinkText, { color: accentStrong }]}>デザインカスタマイズを見る</Text></Pressable> : null}
           {planTier !== 'premium' && <Pressable accessibilityRole="button" style={[styles.premiumBottomCta, { backgroundColor: accent }]} onPress={() => setPurchaseOpen(true)}><Text style={[styles.premiumBottomCtaText, { color: accentText }]}>Premiumを始める</Text></Pressable>}
           <Pressable style={styles.premiumTextLink} onPress={onClose}><Text style={[styles.premiumTextLinkText, { color: accentStrong }]}>Rhythmに戻る</Text></Pressable>
         </ScrollView>}

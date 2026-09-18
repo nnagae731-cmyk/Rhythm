@@ -81,15 +81,26 @@ export function useOnboarding() {
   );
 
   /**
-   * 初回7枚の
-   * 「スキップ」と
-   * 「Rhythmをはじめる」
-   * の両方で使用する。
+   * 「はじめに」を終えて、初回デザイン選択へ進む。
+   * 長いデモツアーは自動開始しない。
    */
   const finishIntro = useCallback(
     async () => {
       await complete('intro');
-      const next = await setOnboardingFirstRunStage('demo');
+      const next = await setOnboardingFirstRunStage('design');
+      setState(next);
+    },
+    [complete],
+  );
+
+  /**
+   * Skip the first-run introduction without entering the design handoff.
+   * The design selector is opened only by the final page's explicit CTA.
+   */
+  const skipIntro = useCallback(
+    async () => {
+      await complete('intro');
+      const next = await setOnboardingFirstRunStage('done');
       setState(next);
     },
     [complete],
@@ -128,6 +139,7 @@ export function useOnboarding() {
     openIntro,
     closeIntro,
     finishIntro,
+    skipIntro,
     setFirstRunStage,
 
     isCompleted,

@@ -117,7 +117,7 @@ export function OnboardingHint({
       <View style={styles.topRow}>
         <View style={styles.badge}>
           <Text style={[styles.badgeText, { color: colors.accent }]}>
-            GUIDE
+            使い方ガイド
           </Text>
         </View>
 
@@ -180,12 +180,12 @@ export function OnboardingHint({
       {onExitTour ? (
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel="GUIDEを終了"
+            accessibilityLabel="ガイドを終了"
           hitSlop={10}
           onPress={() => { setOpen(false); onExitTour(); }}
           style={styles.exitTourButton}
         >
-          <Text style={[styles.exitTourText, { color: colors.muted }]}>GUIDEを終了</Text>
+          <Text style={[styles.exitTourText, { color: colors.muted }]}>ガイドを終了</Text>
         </Pressable>
       ) : null}
       </View>;

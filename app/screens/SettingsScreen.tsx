@@ -1,9 +1,10 @@
 import React, { useEffect, useState } from 'react';
-import { Alert, DevSettings, Image, InteractionManager, Modal, Pressable, ScrollView, Switch, Text, TextInput, View, useColorScheme } from 'react-native';
+import { Alert, DevSettings, Image, InteractionManager, Linking, Modal, Pressable, ScrollView, Switch, Text, TextInput, View, useColorScheme } from 'react-native';
+import Constants from 'expo-constants';
 import { BannerAd, BannerAdSize, TestIds } from 'react-native-google-mobile-ads';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { ChicCheckColor, ChicPattern, ChicThemePalette, DesignMode, getDesignCheckColorLabel, getThemeTokens } from '../theme';
-import { Affirmation, AffirmationCustomText, DevDesignCustomizeOverride, LiveActivityCustomizationSettings, LiveActivityDisplayOptions, PhotoThemePhotoTarget, PhotoThemeSettings, Task, WidgetSettings, WidgetSize, WidgetType } from '../types';
+import { Affirmation, AffirmationCustomText, LiveActivityCustomizationSettings, LiveActivityDisplayOptions, PhotoThemePhotoTarget, PhotoThemeSettings, Task, WidgetSettings, WidgetSize, WidgetType } from '../types';
 import { PlanTier } from '../premiumAccess';
 import { PremiumGuideFeatureId } from '../premiumGuide';
 import { PremiumTaskTemplate } from '../taskTemplates';
@@ -23,6 +24,45 @@ import { LiveActivitySettingsSheet } from '../components/LiveActivitySettingsShe
 // override is supplied by the build environment.
 const isProductionAds = process.env.EXPO_PUBLIC_RHYTHM_ADS_ENV === 'production' || process.env.RHYTHM_ADS_ENV === 'production';
 const SETTINGS_BANNER_AD_UNIT_ID = process.env.EXPO_PUBLIC_RHYTHM_BANNER_AD_UNIT_ID ?? (isProductionAds ? undefined : TestIds.BANNER);
+
+const PRIVACY_POLICY_URL = 'https://rhythm-app-support-jp-nnagae731-5982s-projects.vercel.app/privacy.html';
+const SUPPORT_URL = 'https://rhythm-app-support-jp-nnagae731-5982s-projects.vercel.app/support.html';
+const SUPPORT_EMAIL = 'rhythmsupport2@gmail.com';
+
+type AboutDetailId = 'about' | 'privacyPolicy' | 'contact' | 'version';
+
+function AboutAppSheet({ visible, onClose, colors }: { visible: boolean; onClose: () => void; colors: { background: string; surface: string; border: string; text: string; muted: string; accent: string; onAccent: string } }) {
+  const [detail, setDetail] = useState<AboutDetailId>();
+  useEffect(() => { if (!visible) setDetail(undefined); }, [visible]);
+  if (!visible) return null;
+  const version = Constants.expoConfig?.version ?? Constants.nativeAppVersion ?? '確認できません';
+  const rows: Array<{ id: AboutDetailId; title: string; subtitle?: string; external?: string }> = [
+    { id: 'about', title: 'RhythmPaceについて', subtitle: '毎日を、自分のリズムで整える' },
+    { id: 'privacyPolicy', title: 'プライバシーポリシー', subtitle: 'Webで詳しく確認', external: PRIVACY_POLICY_URL },
+    { id: 'contact', title: 'お問い合わせ・サポート', subtitle: 'サポートページとメール' },
+    { id: 'version', title: 'バージョン情報', subtitle: `RhythmPace ${version}` },
+  ];
+  const openExternal = (url: string) => { void Linking.openURL(url).catch(() => Alert.alert('ページを開けませんでした', '通信状態を確認して、もう一度お試しください。')); };
+  const detailBody = (id: AboutDetailId) => {
+    switch (id) {
+      case 'about': return <Text style={{ color: colors.muted, fontSize: 13, lineHeight: 21 }}>RhythmPaceは、タスク・予定・習慣・集中などをまとめて、自分のペースで毎日を整えるためのアプリです。</Text>;
+      case 'privacyPolicy': return <View><Text style={{ color: colors.muted, fontSize: 13, lineHeight: 20 }}>情報の取扱いを詳しく確認できます。</Text><Pressable accessibilityRole="link" onPress={() => openExternal(PRIVACY_POLICY_URL)} style={{ marginTop: 12 }}><Text style={{ color: colors.accent, fontSize: 13, fontWeight: '800' }}>プライバシーポリシーを開く ↗</Text></Pressable></View>;
+      case 'contact': return <View><Text style={{ color: colors.muted, fontSize: 13, lineHeight: 20 }}>不具合のお問い合わせには、発生した画面、操作内容、発生日時、iPhone機種、iOSバージョン、RhythmPaceバージョンがあると確認しやすくなります。Taskの内容など、不要な個人情報は送らないでください。</Text><Pressable accessibilityRole="link" onPress={() => openExternal(SUPPORT_URL)} style={{ marginTop: 12 }}><Text style={{ color: colors.accent, fontSize: 13, fontWeight: '800' }}>サポートページを開く ↗</Text></Pressable><Pressable accessibilityRole="link" onPress={() => openExternal(`mailto:${SUPPORT_EMAIL}`)} style={{ marginTop: 10 }}><Text style={{ color: colors.accent, fontSize: 13, fontWeight: '800' }}>メールで問い合わせる</Text><Text style={{ color: colors.muted, fontSize: 11, marginTop: 3 }}>{SUPPORT_EMAIL}</Text></Pressable></View>;
+      case 'version': return <Text style={{ color: colors.muted, fontSize: 13, lineHeight: 21 }}>RhythmPace{`\n`}バージョン {version}</Text>;
+    }
+  };
+  return <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
+    <View style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.28)' }}>
+      <View style={{ height: '88%', borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingTop: 10, backgroundColor: colors.background }}>
+        <View style={{ alignSelf: 'center', width: 42, height: 4, borderRadius: 3, backgroundColor: colors.border }} />
+        <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 18, paddingTop: 14, paddingBottom: 10 }}><View style={{ flex: 1 }}><Text style={{ color: colors.text, fontSize: 20, fontWeight: '900' }}>アプリについて</Text><Text style={{ color: colors.muted, fontSize: 11, marginTop: 3 }}>アプリ情報とサポート</Text></View><Pressable accessibilityRole="button" accessibilityLabel="アプリについてを閉じる" onPress={onClose} style={{ width: 40, height: 40, alignItems: 'center', justifyContent: 'center' }}><Text style={{ color: colors.muted, fontSize: 26, fontWeight: '300' }}>×</Text></Pressable></View>
+        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 18, paddingBottom: 36 }}>
+          {rows.map((row) => { const expanded = detail === row.id; return <View key={row.id} style={{ marginTop: 8, borderWidth: 1, borderColor: colors.border, borderRadius: 14, backgroundColor: colors.surface, overflow: 'hidden' }}><Pressable accessibilityRole="button" accessibilityState={{ expanded }} onPress={() => row.external ? openExternal(row.external) : setDetail(expanded ? undefined : row.id)} style={{ minHeight: 60, paddingHorizontal: 14, paddingVertical: 11, flexDirection: 'row', alignItems: 'center' }}><View style={{ flex: 1 }}><Text style={{ color: colors.text, fontSize: 14, fontWeight: '800' }}>{row.title}</Text>{row.subtitle ? <Text style={{ color: colors.muted, fontSize: 11, marginTop: 3 }}>{row.subtitle}</Text> : null}</View><Text style={{ color: colors.accent, fontSize: 20 }}>{row.external ? '↗' : row.id === 'version' ? '' : '›'}</Text></Pressable>{expanded ? <View style={{ borderTopWidth: 1, borderTopColor: colors.border, paddingHorizontal: 14, paddingVertical: 13 }}>{detailBody(row.id)}</View> : null}</View>; })}
+        </ScrollView>
+      </View>
+    </View>
+  </Modal>;
+}
 
 function LiveActivityDisplayOptionsCard({ options, onChange, colors, isDark }: { options: LiveActivityDisplayOptions; onChange: (next: LiveActivityDisplayOptions) => void; colors: { surface: string; border: string; text: string; muted: string; accent: string; soft: string; onAccent: string }; isDark: boolean }) {
   const labels: Array<[keyof LiveActivityDisplayOptions, string]> = [
@@ -52,7 +92,7 @@ function DesignCustomizeCard({ designMode, chicPalette, planTier, purchased, loc
     ? { surface: chicPalette.cardSurface, border: chicPalette.border, text: chicPalette.textPrimary, muted: chicPalette.textSecondary, accent: chicPalette.accent, soft: chicPalette.accentSoft, onAccent: chicPalette.onAccent }
     : { surface: theme.colors.surface, border: theme.colors.border, text: theme.colors.primaryText, muted: theme.colors.secondaryText, accent: theme.colors.primaryAccent, soft: theme.colors.softAccent, onAccent: designMode === 'dark' ? theme.colors.screenBackground : '#FFFFFF' };
   return <View style={{ marginTop: 14, padding: 15, borderRadius: 16, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface }}>
-    <Text style={{ color: colors.text, fontSize: 15, fontWeight: '900' }}>Design Customize</Text>
+    <Text style={{ color: colors.text, fontSize: 15, fontWeight: '900' }}>デザインカスタマイズ</Text>
     {planTier === 'premium' ? <Text style={{ color: colors.accent, marginTop: 6, fontSize: 12, fontWeight: '800' }}>Premiumで利用できます</Text> : purchased ? <Text style={{ color: colors.accent, marginTop: 6, fontSize: 12, fontWeight: '800' }}>購入済み</Text> : <>
       <Text style={{ color: colors.muted, marginTop: 6, fontSize: 12, lineHeight: 18, fontWeight: '600' }}>RhythmPaceの見た目を、もっと自分らしく。{ '\n' }花柄・チェック・ドット・写真カスタマイズを買い切りで利用できます。Widgetごとに写真レイアウトも設定できます。</Text>
       <Text style={{ color: colors.accent, marginTop: 8, fontSize: 14, fontWeight: '900' }}>{priceStatus === 'loading' ? '価格を取得中…' : localizedPrice ? `買い切り ${localizedPrice}` : '価格は購入画面で確認'}</Text>
@@ -62,16 +102,16 @@ function DesignCustomizeCard({ designMode, chicPalette, planTier, purchased, loc
       </View>
       <Text style={{ color: colors.muted, marginTop: 8, fontSize: 10, lineHeight: 15 }}>広告やお試しで無料で試すこともできます。</Text>
     </>}
-    {planTier === 'premium' || purchased ? <Text style={{ color: colors.muted, marginTop: 6, fontSize: 11 }}>Design / Photoの見た目機能を利用できます。</Text> : null}
+    {planTier === 'premium' || purchased ? <Text style={{ color: colors.muted, marginTop: 6, fontSize: 11 }}>デザイン・写真の見た目機能を利用できます。</Text> : null}
   </View>;
 }
 
 function DesignStatusCards({ label, previewing, colors, purchased, planTier, onOpen }: { label: string; previewing: boolean; colors: { surface: string; border: string; text: string; muted: string; accent: string; soft: string }; purchased: boolean; planTier: PlanTier; onOpen?: () => void }) {
   const hasAccess = planTier === 'premium' || purchased;
-  const customizeCard = <View style={{ flex: 1, minHeight: 72, paddingHorizontal: 12, paddingVertical: 10, borderRadius: 14, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface, justifyContent: 'center' }}><Text style={{ color: colors.muted, fontSize: 11, fontWeight: '800' }}>Customize</Text><Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.82} style={{ color: hasAccess ? colors.accent : colors.text, fontSize: 14, fontWeight: '900', marginTop: 4 }}>{hasAccess ? '購入済み' : '未購入 ›'}</Text></View>;
+  const customizeCard = <View style={{ flex: 1, minHeight: 72, paddingHorizontal: 12, paddingVertical: 10, borderRadius: 14, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface, justifyContent: 'center' }}><Text style={{ color: colors.muted, fontSize: 11, fontWeight: '800' }}>デザインカスタマイズ</Text><Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.82} style={{ color: hasAccess ? colors.accent : colors.text, fontSize: 14, fontWeight: '900', marginTop: 4 }}>{hasAccess ? '購入済み' : '未購入 ›'}</Text></View>;
   return <View style={{ flexDirection: 'row', gap: 9, marginTop: 10 }}>
     <View style={{ flex: 1, minHeight: 72, paddingHorizontal: 12, paddingVertical: 10, borderRadius: 14, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface, justifyContent: 'center' }}><Text style={{ color: colors.muted, fontSize: 11, fontWeight: '800' }}>{previewing ? '試着中' : '現在'}</Text><Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.78} style={{ color: colors.text, fontSize: 14, fontWeight: '900', marginTop: 4 }}>{label}</Text></View>
-    {hasAccess || !onOpen ? customizeCard : <Pressable accessibilityRole="button" accessibilityLabel="Design Customizeを開く" onPress={onOpen} style={{ flex: 1 }}>{customizeCard}</Pressable>}
+    {hasAccess || !onOpen ? customizeCard : <Pressable accessibilityRole="button" accessibilityLabel="デザインカスタマイズを開く" onPress={onOpen} style={{ flex: 1 }}>{customizeCard}</Pressable>}
   </View>;
 }
 
@@ -113,7 +153,7 @@ function WidgetSettingsSheet({ visible, onClose, widgetSettings, onWidgetSetting
     <View style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.28)' }}>
       <View style={{ height: '92%', maxHeight: '92%', borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingTop: 10, backgroundColor: widgetColors.screenBackground }}>
         <View style={{ alignSelf: 'center', width: 42, height: 4, borderRadius: 3, backgroundColor: widgetColors.border }} />
-        <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 18, paddingTop: 14, paddingBottom: 10 }}><View style={{ flex: 1 }}><Text style={{ color: widgetColors.primaryText, fontSize: 20, fontWeight: '900' }}>Widget</Text><Text style={{ color: widgetColors.secondaryText, fontSize: 11, marginTop: 3 }}>ホーム画面に表示する内容と見た目を設定</Text></View><Pressable accessibilityRole="button" accessibilityLabel="Widget設定を閉じる" onPress={onClose} style={{ width: 40, height: 40, alignItems: 'center', justifyContent: 'center' }}><Text style={{ color: widgetColors.secondaryText, fontSize: 26, fontWeight: '300' }}>×</Text></Pressable></View>
+        <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 18, paddingTop: 14, paddingBottom: 10 }}><View style={{ flex: 1 }}><Text style={{ color: widgetColors.primaryText, fontSize: 20, fontWeight: '900' }}>ウィジェット</Text><Text style={{ color: widgetColors.secondaryText, fontSize: 11, marginTop: 3 }}>ホーム画面に表示する内容と見た目を設定</Text></View><Pressable accessibilityRole="button" accessibilityLabel="ウィジェット設定を閉じる" onPress={onClose} style={{ width: 40, height: 40, alignItems: 'center', justifyContent: 'center' }}><Text style={{ color: widgetColors.secondaryText, fontSize: 26, fontWeight: '300' }}>×</Text></Pressable></View>
         <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: 18, paddingBottom: 44 }} showsVerticalScrollIndicator={false}>
           <View style={{ flexDirection: 'row', gap: 9, marginTop: 4 }}><View style={{ flex: 1, minHeight: 64, paddingHorizontal: 12, paddingVertical: 10, borderRadius: 14, borderWidth: 1, borderColor: widgetColors.border, backgroundColor: widgetColors.surface, justifyContent: 'center' }}><Text style={{ color: widgetColors.secondaryText, fontSize: 11, fontWeight: '800' }}>現在</Text><Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.78} style={{ color: widgetColors.primaryText, fontSize: 14, fontWeight: '900', marginTop: 4 }}>{currentWidget?.label ?? 'Widget'}</Text></View><View style={{ flex: 1, minHeight: 64, paddingHorizontal: 12, paddingVertical: 10, borderRadius: 14, borderWidth: 1, borderColor: widgetColors.border, backgroundColor: widgetColors.surface, justifyContent: 'center' }}><Text style={{ color: widgetColors.secondaryText, fontSize: 11, fontWeight: '800' }}>サイズ</Text><Text style={{ color: widgetColors.primaryText, fontSize: 14, fontWeight: '900', marginTop: 4 }}>{currentWidget?.sizes ?? '—'}</Text></View></View>
           {contentReady ? <>
@@ -134,9 +174,12 @@ type DesignSettingsSheetProps = {
   chicPalette?: ChicThemePalette;
   monoAppearance: 'auto' | 'light' | 'dark';
   monoPattern: 'plain' | 'looseLeaf' | 'chic';
+  previewMonoPattern?: 'plain' | 'looseLeaf' | 'chic';
+  canUseMonoPaidPattern?: boolean;
   chicPattern: ChicPattern;
   chicCheckColor: ChicCheckColor;
   photoTheme: PhotoThemeSettings;
+  previewPhotoUri?: string;
   planTier: PlanTier;
   designCustomizePurchased: boolean;
   designCustomizePrice?: string;
@@ -144,14 +187,17 @@ type DesignSettingsSheetProps = {
   onDesignMode: (mode: DesignMode) => void;
   onMonoAppearance: (appearance: 'auto' | 'light' | 'dark') => void;
   onMonoPattern: (pattern: 'plain' | 'looseLeaf' | 'chic') => void;
+  onMonoPreview?: (pattern: 'looseLeaf' | 'chic') => void;
   onChicPattern: (pattern: ChicPattern) => void;
   onChicCheckColor: (color: ChicCheckColor) => void;
   onDesignPreview: (pattern: ChicPattern) => void;
   onPickPhotoTheme: (target: PhotoThemePhotoTarget) => void;
+  onPickPhotoPreview?: () => void;
   onAdjustPhotoTheme: (target: Exclude<PhotoThemePhotoTarget, 'background' | 'focus'>) => void;
   onClearPhotoTheme: (target: PhotoThemePhotoTarget) => void;
   onPremium: (featureId?: PremiumGuideFeatureId) => void;
   onOpenDesignCustomize?: () => void;
+  onOpenDesignAccess?: () => void;
   fullscreenPreview?: (onBack: () => void, sheetVisible: boolean) => React.ReactNode;
   styles: any;
   helpers: any;
@@ -165,7 +211,7 @@ const designSheetBackgroundSources: Partial<Record<ChicPattern, number>> = {
   nightSky: require('../assets/themes/design-backgrounds/design-night-sky-background.jpg'),
 };
 
-function DesignAppliedPreview({ tab, selectedMode, designMode, systemColorScheme, monoAppearance, monoPattern, chicPattern, chicCheckColor, chicPalette, photoTheme, colors, styles, helpers, components }: { tab: 'mono' | 'chic' | 'photo'; selectedMode: DesignMode; designMode: DesignMode; systemColorScheme?: 'light' | 'dark' | null; monoAppearance: 'auto' | 'light' | 'dark'; monoPattern: 'plain' | 'looseLeaf' | 'chic'; chicPattern: ChicPattern; chicCheckColor: ChicCheckColor; chicPalette?: ChicThemePalette; photoTheme: PhotoThemeSettings; colors: { background: string; surface: string; border: string; text: string; muted: string; accent: string; soft: string; onAccent: string }; styles: any; helpers: any; components: any }) {
+function DesignAppliedPreview({ tab, selectedMode, designMode, systemColorScheme, monoAppearance, monoPattern, chicPattern, chicCheckColor, chicPalette, photoTheme, previewPhotoUri, colors, styles, helpers, components }: { tab: 'mono' | 'chic' | 'photo'; selectedMode: DesignMode; designMode: DesignMode; systemColorScheme?: 'light' | 'dark' | null; monoAppearance: 'auto' | 'light' | 'dark'; monoPattern: 'plain' | 'looseLeaf' | 'chic'; chicPattern: ChicPattern; chicCheckColor: ChicCheckColor; chicPalette?: ChicThemePalette; photoTheme: PhotoThemeSettings; previewPhotoUri?: string; colors: { background: string; surface: string; border: string; text: string; muted: string; accent: string; soft: string; onAccent: string }; styles: any; helpers: any; components: any }) {
   const { ChicPatternDecor, BThemeRibbonDecoration, CThemeRibbonDecoration } = components;
   const savedPalette = helpers.getChicCheckColor(chicCheckColor);
   const candidatePalette = tab === 'chic' && chicPattern === 'nightSky' && helpers.getNightSkyPalette
@@ -191,7 +237,7 @@ function DesignAppliedPreview({ tab, selectedMode, designMode, systemColorScheme
   const cardMuted = isDarkPreview || tab === 'photo' ? '#B4C0D4' : previewTheme.muted;
   const cardSurface = isDarkPreview || tab === 'photo' ? 'rgba(18,28,42,0.92)' : previewTheme.surface;
   const cardBorder = isDarkPreview || tab === 'photo' ? 'rgba(220,225,230,0.42)' : previewTheme.border;
-  const photoPreviewUri = photoTheme.imageUri ?? photoTheme.topImageUris?.home ?? photoTheme.topImageOriginalUris?.home;
+  const photoPreviewUri = previewPhotoUri ?? photoTheme.imageUri ?? photoTheme.topImageUris?.home ?? photoTheme.topImageOriginalUris?.home;
   const background = tab === 'photo' ? previewTheme.background : imageSource ? '#101722' : previewMode === 'dark' ? '#171B24' : previewTheme.background;
   const useDesignCard = tab === 'chic' || tab === 'photo';
   const monoCardSurface = tab === 'mono' && monoPattern === 'looseLeaf'
@@ -232,7 +278,7 @@ function DesignAppliedPreview({ tab, selectedMode, designMode, systemColorScheme
   </View>;
 }
 
-function DesignSettingsSheet({ visible, onClose, selectedMode, designMode, chicPalette, monoAppearance, monoPattern, chicPattern, chicCheckColor, photoTheme, planTier, designCustomizePurchased, designCustomizePrice, designCustomizePriceStatus, onDesignMode, onMonoAppearance, onMonoPattern, onChicPattern, onChicCheckColor, onDesignPreview, onPickPhotoTheme, onAdjustPhotoTheme, onClearPhotoTheme, onPremium, onOpenDesignCustomize, fullscreenPreview, styles, helpers, components }: DesignSettingsSheetProps) {
+function DesignSettingsSheet({ visible, onClose, selectedMode, designMode, chicPalette, monoAppearance, monoPattern, previewMonoPattern, chicPattern, chicCheckColor, photoTheme, previewPhotoUri, canUseMonoPaidPattern = false, planTier, designCustomizePurchased, designCustomizePrice, designCustomizePriceStatus, onDesignMode, onMonoAppearance, onMonoPattern, onMonoPreview, onChicPattern, onChicCheckColor, onDesignPreview, onPickPhotoTheme, onPickPhotoPreview, onAdjustPhotoTheme, onClearPhotoTheme, onPremium, onOpenDesignCustomize, onOpenDesignAccess, fullscreenPreview, styles, helpers, components }: DesignSettingsSheetProps) {
   const { ChicPatternSelector, ThemeColorSelector, PremiumFeatureIcon } = components;
   const systemColorScheme = useColorScheme();
   const [tab, setTab] = useState<'mono' | 'chic' | 'photo'>(selectedMode === 'photo' ? 'photo' : selectedMode === 'chic' ? 'chic' : 'mono');
@@ -261,13 +307,14 @@ function DesignSettingsSheet({ visible, onClose, selectedMode, designMode, chicP
     : monoAppearance === 'light'
       ? 'minimal'
       : (systemColorScheme === 'dark' || (!systemColorScheme && designMode === 'dark')) ? 'dark' : 'minimal';
+  const visibleMonoPattern = previewMonoPattern ?? monoPattern;
   const currentMonoLabel = monoAppearance === 'auto'
-    ? `Mono ${designMode === 'dark' ? 'Dark' : 'Light'}（自動）`
-    : monoAppearance === 'dark' ? 'Mono Dark' : 'Mono Light';
+    ? `シンプル ${designMode === 'dark' ? 'ダーク' : 'ライト'}（自動）`
+    : monoAppearance === 'dark' ? 'シンプル ダーク' : 'シンプル ライト';
   const selectedLabel = selectedMode === 'minimal' || selectedMode === 'dark'
     ? currentMonoLabel
       : selectedMode === 'photo'
-        ? `Photo / ${getDesignCheckColorLabel(chicCheckColor)}`
+        ? `写真 / ${getDesignCheckColorLabel(chicCheckColor)}`
         : chicPattern === 'nightSky'
           ? 'Night Sky'
           : chicPattern === 'stationery'
@@ -276,11 +323,11 @@ function DesignSettingsSheet({ visible, onClose, selectedMode, designMode, chicP
               ? 'Botanical'
                 : chicPattern === 'ocean'
                   ? 'Ocean'
-                  : `Design / ${getDesignCheckColorLabel(chicCheckColor)}`;
+                  : `デザイン / ${getDesignCheckColorLabel(chicCheckColor)}`;
   const previewCandidateLabel = tab === 'mono'
-    ? (`Mono ${monoPreviewMode === 'dark' ? 'Dark' : 'Light'} / ${monoPattern === 'plain' ? 'プレーン' : monoPattern === 'looseLeaf' ? 'ルーズリーフ' : 'シック'}`)
+    ? (`シンプル ${monoPreviewMode === 'dark' ? 'ダーク' : 'ライト'} / ${visibleMonoPattern === 'plain' ? 'プレーン' : visibleMonoPattern === 'looseLeaf' ? 'ルーズリーフ' : 'シック'}`)
     : tab === 'photo'
-      ? `Photo / ${getDesignCheckColorLabel(chicCheckColor)}`
+      ? `写真 / ${getDesignCheckColorLabel(chicCheckColor)}`
       : chicPattern === 'nightSky'
         ? 'Night Sky'
         : chicPattern === 'stationery'
@@ -289,11 +336,11 @@ function DesignSettingsSheet({ visible, onClose, selectedMode, designMode, chicP
             ? 'Botanical'
             : chicPattern === 'ocean'
               ? 'Ocean'
-              : `Design / ${getDesignCheckColorLabel(chicCheckColor)}`;
+              : `デザイン / ${getDesignCheckColorLabel(chicCheckColor)}`;
   const previewMatchesSaved = tab === 'mono'
-    ? ((selectedMode === 'minimal' || selectedMode === 'dark') && (monoAppearance === 'auto' || (monoAppearance === 'dark' && selectedMode === 'dark') || (monoAppearance === 'light' && selectedMode === 'minimal')))
+    ? ((selectedMode === 'minimal' || selectedMode === 'dark') && visibleMonoPattern === monoPattern && (monoAppearance === 'auto' || (monoAppearance === 'dark' && selectedMode === 'dark') || (monoAppearance === 'light' && selectedMode === 'minimal')))
     : tab === 'photo'
-      ? selectedMode === 'photo'
+      ? selectedMode === 'photo' && !previewPhotoUri
       : selectedMode === 'chic';
   const compactDesignLabel = (value: string) => value.replace(' / ', '・').replace('（自動）', '・自動');
   const statusLabel = compactDesignLabel(previewMatchesSaved ? selectedLabel : previewCandidateLabel);
@@ -314,14 +361,14 @@ function DesignSettingsSheet({ visible, onClose, selectedMode, designMode, chicP
         <View style={{ flex: 1, display: sheetView === 'settings' ? 'flex' : 'none' }}>
         <View style={{ alignSelf: 'center', width: 42, height: 4, borderRadius: 3, backgroundColor: colors.border }} />
         <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 18, paddingTop: 14, paddingBottom: 10 }}><View style={{ flex: 1 }}><Text style={{ color: colors.text, fontSize: 20, fontWeight: '900' }}>デザインを変更</Text><Text style={{ color: colors.muted, fontSize: 11, marginTop: 3 }}>Mono・Design・Photoをここから選べます</Text></View><Pressable accessibilityRole="button" accessibilityLabel="閉じる" onPress={onClose} style={{ width: 40, height: 40, alignItems: 'center', justifyContent: 'center' }}><Text style={{ color: colors.muted, fontSize: 26, fontWeight: '300' }}>×</Text></Pressable></View>
-        <View style={{ flexDirection: 'row', gap: 8, paddingHorizontal: 18, paddingBottom: 12 }}>{tabButton('mono', 'Mono')}{tabButton('chic', 'Design')}{tabButton('photo', 'Photo')}</View>
+        <View style={{ flexDirection: 'row', gap: 8, paddingHorizontal: 18, paddingBottom: 12 }}>{tabButton('mono', 'シンプル')}{tabButton('chic', 'デザイン')}{tabButton('photo', '写真')}</View>
         <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: 18, paddingBottom: 72 }} showsVerticalScrollIndicator={false}>
-          <DesignAppliedPreview tab={tab} selectedMode={selectedMode} designMode={designMode} systemColorScheme={systemColorScheme} monoAppearance={monoAppearance} monoPattern={monoPattern} chicPattern={chicPattern} chicCheckColor={chicCheckColor} chicPalette={chicPalette} photoTheme={photoTheme} colors={colors} styles={styles} helpers={helpers} components={components} />
+          <DesignAppliedPreview tab={tab} selectedMode={selectedMode} designMode={designMode} systemColorScheme={systemColorScheme} monoAppearance={monoAppearance} monoPattern={visibleMonoPattern} chicPattern={chicPattern} chicCheckColor={chicCheckColor} chicPalette={chicPalette} photoTheme={photoTheme} previewPhotoUri={previewPhotoUri} colors={colors} styles={styles} helpers={helpers} components={components} />
           {fullscreenPreview && <Pressable accessibilityRole="button" accessibilityLabel="Today画面を全画面で試す" onPress={() => setSheetView('fullscreenPreview')} style={{ marginTop: 9, minHeight: 42, borderRadius: 12, borderWidth: 1, borderColor: colors.accent, backgroundColor: colors.soft, alignItems: 'center', justifyContent: 'center' }}><Text style={{ color: colors.accent, fontSize: 12, fontWeight: '900' }}>全画面で試す</Text></Pressable>}
-          <DesignStatusCards label={statusLabel} previewing={!previewMatchesSaved} colors={colors} purchased={designCustomizePurchased} planTier={planTier} onOpen={onOpenDesignCustomize ? onOpenDesignCustomize : () => onPremium('photo_design')} />
-          {tab === 'mono' && <View style={{ marginTop: 12 }}><Text style={{ color: colors.text, fontSize: 14, fontWeight: '900' }}>モノトーンテーマ</Text><Text style={{ color: colors.muted, fontSize: 11, marginTop: 4 }}>外観</Text><View style={{ flexDirection: 'row', gap: 8, marginTop: 7 }}>{(['auto', 'light', 'dark'] as const).map((appearance) => { const active = monoAppearance === appearance; const label = appearance === 'auto' ? '自動' : appearance === 'light' ? 'Light' : 'Dark'; return <Pressable key={appearance} accessibilityRole="button" accessibilityLabel={`Mono ${label}`} accessibilityState={{ selected: active }} onPress={() => { onDesignMode('minimal'); onMonoAppearance(appearance); }} style={{ flex: 1, minHeight: 38, alignItems: 'center', justifyContent: 'center', borderRadius: 10, borderWidth: active ? 2 : 1, borderColor: active ? colors.accent : colors.border, backgroundColor: active ? colors.soft : 'transparent' }}><Text style={{ color: active ? colors.accent : colors.muted, fontSize: 11, fontWeight: '900' }}>{label}</Text></Pressable>; })}</View><Text style={{ color: colors.muted, fontSize: 10, marginTop: 5 }}>{monoAppearance === 'auto' ? `iPhoneの外観に合わせています（現在は${monoPreviewMode === 'dark' ? 'ダーク' : 'ライト'}）` : monoAppearance === 'dark' ? '暗いMonoを固定' : '明るいMonoを固定'}</Text><View style={{ flexDirection: 'row', gap: 10, marginTop: 12 }}>{monoCard('minimal', 'Mono Light')}{monoCard('dark', 'Mono Dark')}</View><View style={{ marginTop: 12, padding: 12, borderRadius: 14, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface }}><Text style={{ color: colors.muted, fontSize: 11 }}>背景</Text><View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}>{(['plain', 'looseLeaf', 'chic'] as const).map((pattern) => { const active = monoPattern === pattern; const locked = pattern !== 'plain' && !(planTier === 'premium' || designCustomizePurchased); return <Pressable key={pattern} accessibilityRole="button" accessibilityState={{ selected: active, disabled: locked }} onPress={() => { if (locked) { onOpenDesignCustomize ? onOpenDesignCustomize() : onPremium('photo_design'); return; } onMonoPattern(pattern); }} style={{ flex: 1, minHeight: 38, alignItems: 'center', justifyContent: 'center', borderRadius: 10, borderWidth: active ? 2 : 1, borderColor: active ? colors.accent : colors.border, backgroundColor: active ? colors.soft : 'transparent', opacity: locked ? 0.58 : 1 }}><Text numberOfLines={1} style={{ color: active ? colors.accent : colors.muted, fontSize: 10, fontWeight: '800' }}>{pattern === 'plain' ? 'プレーン' : pattern === 'looseLeaf' ? 'ルーズリーフ' : 'シック'}</Text></Pressable>; })}</View></View></View>}
+          <DesignStatusCards label={statusLabel} previewing={!previewMatchesSaved} colors={colors} purchased={designCustomizePurchased} planTier={planTier} onOpen={onOpenDesignAccess ?? onOpenDesignCustomize ?? (() => onPremium('photo_design'))} />
+          {tab === 'mono' && <View style={{ marginTop: 12 }}><Text style={{ color: colors.text, fontSize: 14, fontWeight: '900' }}>モノトーンテーマ</Text><Text style={{ color: colors.muted, fontSize: 11, marginTop: 4 }}>外観</Text><View style={{ flexDirection: 'row', gap: 8, marginTop: 7 }}>{(['auto', 'light', 'dark'] as const).map((appearance) => { const active = monoAppearance === appearance; const label = appearance === 'auto' ? '自動' : appearance === 'light' ? 'Light' : 'Dark'; return <Pressable key={appearance} accessibilityRole="button" accessibilityLabel={`Mono ${label}`} accessibilityState={{ selected: active }} onPress={() => { onDesignMode('minimal'); onMonoAppearance(appearance); }} style={{ flex: 1, minHeight: 38, alignItems: 'center', justifyContent: 'center', borderRadius: 10, borderWidth: active ? 2 : 1, borderColor: active ? colors.accent : colors.border, backgroundColor: active ? colors.soft : 'transparent' }}><Text style={{ color: active ? colors.accent : colors.muted, fontSize: 11, fontWeight: '900' }}>{label}</Text></Pressable>; })}</View><Text style={{ color: colors.muted, fontSize: 10, marginTop: 5 }}>{monoAppearance === 'auto' ? `iPhoneの外観に合わせています（現在は${monoPreviewMode === 'dark' ? 'ダーク' : 'ライト'}）` : monoAppearance === 'dark' ? '暗いMonoを固定' : '明るいMonoを固定'}</Text><View style={{ flexDirection: 'row', gap: 10, marginTop: 12 }}>{monoCard('minimal', 'Mono Light')}{monoCard('dark', 'Mono Dark')}</View><View style={{ marginTop: 12, padding: 12, borderRadius: 14, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface }}><Text style={{ color: colors.muted, fontSize: 11 }}>背景</Text><View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}>{(['plain', 'looseLeaf', 'chic'] as const).map((pattern) => { const active = visibleMonoPattern === pattern; const locked = pattern !== 'plain' && !canUseMonoPaidPattern; return <Pressable key={pattern} accessibilityRole="button" accessibilityState={{ selected: active }} onPress={() => { if (pattern === 'plain' || canUseMonoPaidPattern) onMonoPattern(pattern); else onMonoPreview?.(pattern); }} style={{ flex: 1, minHeight: 38, alignItems: 'center', justifyContent: 'center', borderRadius: 10, borderWidth: active ? 2 : 1, borderColor: active ? colors.accent : colors.border, backgroundColor: active ? colors.soft : 'transparent', opacity: locked ? 0.82 : 1 }}><Text numberOfLines={1} style={{ color: active ? colors.accent : colors.muted, fontSize: 10, fontWeight: '800' }}>{pattern === 'plain' ? 'プレーン' : pattern === 'looseLeaf' ? `ルーズリーフ${locked ? ' 🔒' : ''}` : `シック${locked ? ' 🔒' : ''}`}</Text></Pressable>; })}</View><Text style={{ color: colors.muted, fontSize: 10, marginTop: 7 }}>プレーンは無料、ルーズリーフとシックは正式適用時に利用権を確認します。</Text></View></View>}
           {tab === 'chic' && <View style={{ marginTop: 12 }}><View style={{ padding: 12, borderRadius: 14, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface }}><Text style={{ color: colors.text, fontSize: 13, fontWeight: '900' }}>テーマカラー</Text><Text style={{ color: colors.muted, fontSize: 11, marginTop: 3 }}>選択中のaccentをデザインに反映します</Text><View style={{ marginTop: 8 }}><ThemeColorSelector color={chicCheckColor} onChange={onChicCheckColor} designMode="chic" /></View></View><ChicPatternSelector designMode="chic" chicPattern={chicPattern} chicCheckColor={chicCheckColor} planTier={planTier} designCustomizePurchased={designCustomizePurchased} onPattern={(pattern: ChicPattern) => { onDesignMode('chic'); onChicPattern(pattern); }} onCheckColor={onChicCheckColor} onPremium={() => onPremium('photo_design')} onPreview={onDesignPreview} /></View>}
-          {tab === 'photo' && <View style={{ marginTop: 12 }}><View style={{ padding: 12, borderRadius: 14, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface }}><Text style={{ color: colors.text, fontSize: 13, fontWeight: '900' }}>テーマカラー</Text><Text style={{ color: colors.muted, fontSize: 11, marginTop: 3 }}>写真の上に重ねるUIのaccentを選べます</Text><View style={{ marginTop: 8 }}><ThemeColorSelector color={chicCheckColor} onChange={onChicCheckColor} designMode="photo" /></View></View><Text style={{ color: colors.text, fontSize: 14, fontWeight: '900', marginTop: 12 }}>写真を使う</Text><Text style={{ color: colors.muted, fontSize: 11, marginTop: 3 }}>好きな写真を背景にできます</Text><Pressable accessibilityRole="button" accessibilityLabel={photoTheme.imageUri ? '写真を変更' : '写真を選ぶ'} onPress={() => onPickPhotoTheme('background')} style={{ marginTop: 9, minHeight: 42, borderRadius: 11, backgroundColor: colors.accent, borderWidth: 1, borderColor: colors.accent, alignItems: 'center', justifyContent: 'center' }}><Text style={{ color: colors.onAccent, fontSize: 12, fontWeight: '900' }}>{photoTheme.imageUri ? '写真を変更' : '写真を選ぶ'}</Text></Pressable><Pressable accessibilityRole="button" onPress={() => onDesignMode('photo')} style={{ marginTop: 7, minHeight: 38, borderRadius: 11, backgroundColor: selectedMode === 'photo' ? colors.soft : 'transparent', borderWidth: 1, borderColor: colors.accent, alignItems: 'center', justifyContent: 'center' }}><Text style={{ color: colors.accent, fontSize: 11, fontWeight: '900' }}>{selectedMode === 'photo' ? '写真デザインを使用中' : '写真デザインを使う'}</Text></Pressable><PhotoThemeSettingsCard photoTheme={photoTheme} designMode={designMode} chicPalette={chicPalette} planTier={planTier} designCustomizePurchased={designCustomizePurchased} onPremium={onPremium} onPick={onPickPhotoTheme} onAdjust={onAdjustPhotoTheme} onClear={onClearPhotoTheme} styles={styles} /></View>}
+          {tab === 'photo' && <View style={{ marginTop: 12 }}><View style={{ padding: 12, borderRadius: 14, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface }}><Text style={{ color: colors.text, fontSize: 13, fontWeight: '900' }}>テーマカラー</Text><Text style={{ color: colors.muted, fontSize: 11, marginTop: 3 }}>写真の上に重ねるUIのaccentを選べます</Text><View style={{ marginTop: 8 }}><ThemeColorSelector color={chicCheckColor} onChange={onChicCheckColor} designMode="photo" /></View></View><Text style={{ color: colors.text, fontSize: 14, fontWeight: '900', marginTop: 12 }}>写真を使う</Text><Text style={{ color: colors.muted, fontSize: 11, marginTop: 3 }}>正式利用はデザインカスタマイズ対象ですが、選択・Preview・全画面試着は無料です。</Text><Pressable accessibilityRole="button" accessibilityLabel={(previewPhotoUri ?? photoTheme.imageUri) ? '写真を変更して試す' : '写真を選んで試す'} onPress={() => onPickPhotoPreview ? onPickPhotoPreview() : onPickPhotoTheme('background')} style={{ marginTop: 9, minHeight: 42, borderRadius: 11, backgroundColor: colors.accent, borderWidth: 1, borderColor: colors.accent, alignItems: 'center', justifyContent: 'center' }}><Text style={{ color: colors.onAccent, fontSize: 12, fontWeight: '900' }}>{(previewPhotoUri ?? photoTheme.imageUri) ? '写真を変更して試す' : '写真を選んで試す'}</Text></Pressable><Pressable accessibilityRole="button" onPress={() => onDesignMode('photo')} style={{ marginTop: 7, minHeight: 38, borderRadius: 11, backgroundColor: selectedMode === 'photo' ? colors.soft : 'transparent', borderWidth: 1, borderColor: colors.accent, alignItems: 'center', justifyContent: 'center' }}><Text style={{ color: colors.accent, fontSize: 11, fontWeight: '900' }}>{selectedMode === 'photo' ? '写真デザインを使用中' : '写真デザインを使う'}{selectedMode !== 'photo' && !designCustomizePurchased && planTier !== 'premium' ? ' 🔒' : ''}</Text></Pressable><PhotoThemeSettingsCard photoTheme={photoTheme} designMode={designMode} chicPalette={chicPalette} planTier={planTier} designCustomizePurchased={designCustomizePurchased} onPremium={onPremium} onPick={onPickPhotoTheme} onAdjust={onAdjustPhotoTheme} onClear={onClearPhotoTheme} styles={styles} /></View>}
         </ScrollView>
         <Pressable accessibilityRole="button" onPress={onClose} style={{ marginHorizontal: 18, marginBottom: 18, minHeight: 46, borderRadius: 13, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.accent }}><Text style={{ color: colors.onAccent, fontSize: 13, fontWeight: '900' }}>閉じる</Text></Pressable>
         </View>
@@ -355,6 +402,8 @@ export function SettingsScreen({
   affirmations,
   affirmationCustomTexts,
   photoTheme,
+  designPreviewPhotoUri,
+  designPreviewMonoPattern,
   travelApps,
   widgetSettings,
   onPickWidgetPhoto,
@@ -372,10 +421,10 @@ export function SettingsScreen({
   onDesignMode,
   onMonoAppearance,
   onMonoPattern,
+  onMonoPreview,
   onHapticsEnabled,
   onPremiumTrialReminderEnabled,
   onLiveActivityEnabled,
-  onReview,
   onChicPattern,
   onDesignPreview,
   onChicCheckColor,
@@ -384,6 +433,7 @@ export function SettingsScreen({
   onSaveAffirmationCustomText,
   onDeleteAffirmationCustomText,
   onPickPhotoTheme,
+  onPickPhotoPreview,
   onAdjustPhotoTheme,
   onClearPhotoTheme,
   onTravelAppsChange,
@@ -391,23 +441,20 @@ export function SettingsScreen({
   savedTemplates,
   onAddTemplate,
   onDeleteTemplate,
-  onGuide,
   onPremium,
   onDeleteSavedTemplate,
   onOpenCaptureStudio,
   designCustomizePurchased = false,
+  canUseMonoPaidPattern = false,
   widgetPlanTier,
   widgetDesignCustomizePurchased,
   widgetEntitlementOverride,
   onWidgetEntitlementOverrideChange,
-  devDesignCustomizeOverride = 'actual',
-  storeDesignCustomizeAccess = false,
-  onDevDesignCustomizeOverrideChange,
-  onResetDesignCustomizeOverride,
   onResetWidgetPhotoUnlock,
   designCustomizePrice,
   designCustomizePriceStatus,
   onOpenDesignCustomize,
+  onOpenDesignAccess,
   fullscreenPreview,
   initialAppearanceOpen = false,
   captureDesignOnly = false,
@@ -437,6 +484,8 @@ export function SettingsScreen({
   affirmations: Affirmation[];
   affirmationCustomTexts: AffirmationCustomText[];
   photoTheme: PhotoThemeSettings;
+  designPreviewPhotoUri?: string;
+  designPreviewMonoPattern?: 'plain' | 'looseLeaf' | 'chic';
   travelApps: TravelAppSettings;
   widgetSettings: WidgetSettings;
   onPickWidgetPhoto?: (widgetType?: WidgetType, override?: WidgetEntitlementOverride) => void;
@@ -454,6 +503,7 @@ export function SettingsScreen({
   onDesignMode: (mode: DesignMode) => void;
   onMonoAppearance: (appearance: 'auto' | 'light' | 'dark') => void;
   onMonoPattern: (pattern: 'plain' | 'looseLeaf' | 'chic') => void;
+  onMonoPreview?: (pattern: 'looseLeaf' | 'chic') => void;
   onHapticsEnabled: (value: boolean) => void;
   onPremiumTrialReminderEnabled?: (value: boolean) => void;
   onLiveActivityEnabled?: (value: boolean) => void;
@@ -461,7 +511,6 @@ export function SettingsScreen({
   onLiveActivityDisplayOptionsChange?: (value: LiveActivityDisplayOptions) => void;
   liveActivityCustomization?: LiveActivityCustomizationSettings;
   onLiveActivityCustomizationChange?: (value: LiveActivityCustomizationSettings) => void;
-  onReview: () => void;
   onChicPattern: (pattern: ChicPattern) => void;
   onDesignPreview: (pattern: ChicPattern) => void;
   onChicCheckColor: (color: ChicCheckColor) => void;
@@ -470,6 +519,7 @@ export function SettingsScreen({
   onSaveAffirmationCustomText: (text: AffirmationCustomText) => void;
   onDeleteAffirmationCustomText: (id: string) => void;
   onPickPhotoTheme: (target: PhotoThemePhotoTarget) => void;
+  onPickPhotoPreview?: () => void;
   onAdjustPhotoTheme: (target: Exclude<PhotoThemePhotoTarget, 'background' | 'focus'>) => void;
   onClearPhotoTheme: (target: PhotoThemePhotoTarget) => void;
   onTravelAppsChange: (settings: TravelAppSettings) => void;
@@ -477,24 +527,20 @@ export function SettingsScreen({
   savedTemplates: PremiumTaskTemplate[];
   onAddTemplate: (title: string) => void;
   onDeleteTemplate: (title: string) => void;
-  onGuide: () => void;
   onPremium: (featureId?: PremiumGuideFeatureId) => void;
   onDeleteSavedTemplate: (template: PremiumTaskTemplate) => void;
   onOpenCaptureStudio?: () => void;
   designCustomizePurchased?: boolean;
+  canUseMonoPaidPattern?: boolean;
   widgetPlanTier?: PlanTier;
   widgetDesignCustomizePurchased?: boolean;
   widgetEntitlementOverride?: WidgetEntitlementOverride;
   onWidgetEntitlementOverrideChange?: (override: WidgetEntitlementOverride) => void;
-  /** DEV-only app-level Design Customize QA override. */
-  devDesignCustomizeOverride?: DevDesignCustomizeOverride;
-  storeDesignCustomizeAccess?: boolean;
-  onDevDesignCustomizeOverrideChange?: (override: DevDesignCustomizeOverride) => void;
-  onResetDesignCustomizeOverride?: () => void;
   onResetWidgetPhotoUnlock?: () => void;
   designCustomizePrice?: string;
   designCustomizePriceStatus?: 'loading' | 'ready' | 'unavailable';
   onOpenDesignCustomize?: () => void;
+  onOpenDesignAccess?: () => void;
   fullscreenPreview?: (onBack: () => void, sheetVisible: boolean) => React.ReactNode;
   /** Opens the appearance section for the first-run design choice. */
   initialAppearanceOpen?: boolean;
@@ -511,13 +557,15 @@ export function SettingsScreen({
   const [liveActivitySettingsOpen, setLiveActivitySettingsOpen] = useState(false);
   const [widgetRefreshing, setWidgetRefreshing] = useState(false);
   const [widgetSheetOpen, setWidgetSheetOpen] = useState(false);
+  const [aboutSheetOpen, setAboutSheetOpen] = useState(false);
   const [designSheetOpen, setDesignSheetOpen] = useState(initialAppearanceOpen || captureDesignOnly);
   const selectedMode = selectedDesignMode ?? designMode;
   const isDark = designMode === 'dark';
   const isDesign = selectedMode === 'chic' || selectedMode === 'photo';
   const isMono = selectedMode === 'minimal' || selectedMode === 'dark';
-  const canUseMonoPaidPattern = planTier === 'premium' || designCustomizePurchased;
-  const effectiveMonoPattern = (monoPattern === 'looseLeaf' || monoPattern === 'chic') && canUseMonoPaidPattern ? monoPattern : 'plain';
+  // Mono Plain is free; Loose Leaf and Chic require Design access only when
+  // formally applied. Their preview and try-on remain available to everyone.
+  const effectiveMonoPattern = monoPattern;
   const [expandedSetting, setExpandedSetting] = useState<'appearance' | 'travelApps' | 'notifications' | 'quick' | 'premium' | 'about' | null>(captureDesignOnly || initialAppearanceOpen ? 'appearance' : null);
   const previewTasks = tasks.filter((task) => showCompleted || !task.done).slice(0, size === 'small' ? 2 : 3);
   const isCheckPattern = chicPattern === 'checkLavenderSatin' || chicPattern === 'checkBeigeNoir' || chicPattern === 'checkMauveFrame';
@@ -580,16 +628,6 @@ export function SettingsScreen({
         <Text style={[styles.settingsTitle, isDark && styles.darkBodyText, isDesign && chicPalette && { color: guideColors.textPrimary }]}>開発用確認環境</Text>
         <Text style={[styles.switchCopy, isDark && styles.darkAccentText, isDesign && chicPalette && { color: guideColors.accent }]}>開発用の固定プランで動作を確認できます。</Text>
         <Text style={[styles.devPlanCurrent, isDark && styles.darkAccentText, isDesign && chicPalette && { color: guideColors.accent }]}>現在：{planTier === 'premium' ? 'Premium版' : '無料版'}</Text>
-        <Text style={[styles.switchCopy, isDark && styles.darkMutedText, isDesign && chicPalette && { color: guideColors.textSecondary }, { marginTop: 12 }]}>Design Customize</Text>
-        <Text style={[styles.switchCopy, isDark && styles.darkMutedText, isDesign && chicPalette && { color: guideColors.textSecondary }, { marginTop: 4 }]}>StoreKit：{storeDesignCustomizeAccess ? '購入済み' : '未購入'} ／ アプリ確認：{devDesignCustomizeOverride === 'actual' ? '実際の状態' : devDesignCustomizeOverride === 'free' ? '未購入として確認中' : '購入済みとして確認中'}</Text>
-        <View style={{ flexDirection: 'row', gap: 6, marginTop: 8 }}>
-          {([
-            ['actual', '実際の購入状態'],
-            ['free', '未購入として確認'],
-            ['purchased', '購入済みとして確認'],
-          ] as const).map(([value, label]) => <Pressable key={value} accessibilityRole="button" accessibilityState={{ selected: devDesignCustomizeOverride === value }} onPress={() => onDevDesignCustomizeOverrideChange?.(value)} style={{ flex: 1, minHeight: 38, paddingHorizontal: 6, borderRadius: 10, borderWidth: 1, borderColor: devDesignCustomizeOverride === value ? (isDark ? '#B4C0D4' : '#7559E8') : (isDark ? '#40506A' : '#D8DCE5'), backgroundColor: devDesignCustomizeOverride === value ? (isDark ? '#40506A' : '#EEE9FF') : 'transparent', alignItems: 'center', justifyContent: 'center' }}><Text numberOfLines={2} style={{ textAlign: 'center', color: isDark ? '#F4F7FC' : '#33415D', fontSize: 10, fontWeight: '800' }}>{label}</Text></Pressable>)}
-        </View>
-        <Pressable onPress={onResetDesignCustomizeOverride} style={{ minHeight: 42, marginTop: 10, borderRadius: 11, borderWidth: 1, borderColor: isDark ? '#8F9BB0' : '#C9D0DD', alignItems: 'center', justifyContent: 'center' }}><Text style={{ color: isDark ? '#F4F7FC' : '#33415D', fontSize: 12, fontWeight: '800' }}>Design Customize状態をリセット</Text></Pressable>
         <Pressable onPress={onResetWidgetPhotoUnlock} style={{ minHeight: 42, marginTop: 10, borderRadius: 11, borderWidth: 1, borderColor: isDark ? '#8F9BB0' : '#C9D0DD', alignItems: 'center', justifyContent: 'center' }}><Text style={{ color: isDark ? '#F4F7FC' : '#33415D', fontSize: 12, fontWeight: '800' }}>Widget広告状態をリセット</Text></Pressable>
         {onOpenCaptureStudio ? <Pressable onPress={onOpenCaptureStudio} style={{ minHeight: 42, marginTop: 10, borderRadius: 11, backgroundColor: isDark ? '#40506A' : '#EEF1F7', alignItems: 'center', justifyContent: 'center' }}><Text style={{ color: isDark ? '#F4F7FC' : '#33415D', fontSize: 12, fontWeight: '800' }}>Onboarding Capture Studio</Text></Pressable> : null}
         <Pressable onPress={resetDevelopmentData} style={{ minHeight: 42, marginTop: 10, borderRadius: 11, borderWidth: 1, borderColor: isDark ? '#8F9BB0' : '#C9D0DD', alignItems: 'center', justifyContent: 'center' }}><Text style={{ color: isDark ? '#F4F7FC' : '#33415D', fontSize: 12, fontWeight: '800' }}>初回起動状態に戻す</Text></Pressable>
@@ -611,6 +649,9 @@ export function SettingsScreen({
         chicPattern={chicPattern}
         chicCheckColor={chicCheckColor}
         photoTheme={photoTheme}
+        previewMonoPattern={designPreviewMonoPattern}
+        previewPhotoUri={designPreviewPhotoUri}
+        canUseMonoPaidPattern={canUseMonoPaidPattern}
         planTier={planTier}
         designCustomizePurchased={designCustomizePurchased}
         designCustomizePrice={designCustomizePrice}
@@ -618,14 +659,17 @@ export function SettingsScreen({
         onDesignMode={onDesignMode}
         onMonoAppearance={onMonoAppearance}
         onMonoPattern={onMonoPattern}
+        onMonoPreview={onMonoPreview}
         onChicPattern={onChicPattern}
         onChicCheckColor={onChicCheckColor}
         onDesignPreview={onDesignPreview}
         onPickPhotoTheme={onPickPhotoTheme}
+        onPickPhotoPreview={onPickPhotoPreview}
         onAdjustPhotoTheme={onAdjustPhotoTheme}
         onClearPhotoTheme={onClearPhotoTheme}
         onPremium={onPremium}
         onOpenDesignCustomize={onOpenDesignCustomize}
+        onOpenDesignAccess={onOpenDesignAccess}
         fullscreenPreview={fullscreenPreview}
         styles={styles}
         helpers={helpers}
@@ -660,8 +704,8 @@ export function SettingsScreen({
         <Text style={[styles.fieldLabel, isDark && styles.darkAccentText, { marginTop: 14 }]}>背景</Text>
         <View style={[styles.monoThemeChoices, { marginTop: 6, gap: 8 }]}>
           <Pressable accessibilityRole="button" accessibilityLabel="Mono プレーン" accessibilityState={{ selected: effectiveMonoPattern === 'plain' }} style={[styles.monoThemeChoice, { flex: 1, minHeight: 42, alignItems: 'center', justifyContent: 'center' }, effectiveMonoPattern === 'plain' && styles.monoThemeChoiceActive]} onPress={() => onMonoPattern('plain')}><Text style={[styles.monoThemeChoiceText, effectiveMonoPattern === 'plain' && styles.monoThemeChoiceTextActive]}>プレーン</Text></Pressable>
-          <Pressable accessibilityRole="button" accessibilityLabel="Mono ルーズリーフ" accessibilityState={{ selected: effectiveMonoPattern === 'looseLeaf', disabled: !canUseMonoPaidPattern }} style={[styles.monoThemeChoice, { flex: 1, minHeight: 42, alignItems: 'center', justifyContent: 'center' }, effectiveMonoPattern === 'looseLeaf' && styles.monoThemeChoiceActive, !canUseMonoPaidPattern && { opacity: 0.58 }]} onPress={() => { if (!canUseMonoPaidPattern) { if (onOpenDesignCustomize) onOpenDesignCustomize(); else onPremium('photo_design'); return; } onMonoPattern('looseLeaf'); }}><Text style={[styles.monoThemeChoiceText, effectiveMonoPattern === 'looseLeaf' && styles.monoThemeChoiceTextActive]}>{canUseMonoPaidPattern ? 'ルーズリーフ' : 'ルーズリーフ · ロック'}</Text></Pressable>
-          <Pressable accessibilityRole="button" accessibilityLabel="Mono シック" accessibilityState={{ selected: effectiveMonoPattern === 'chic', disabled: !canUseMonoPaidPattern }} style={[styles.monoThemeChoice, { flex: 1, minHeight: 42, alignItems: 'center', justifyContent: 'center' }, effectiveMonoPattern === 'chic' && styles.monoThemeChoiceActiveDark, !canUseMonoPaidPattern && { opacity: 0.58 }]} onPress={() => { if (!canUseMonoPaidPattern) { if (onOpenDesignCustomize) onOpenDesignCustomize(); else onPremium('photo_design'); return; } onMonoPattern('chic'); }}><Text style={[styles.monoThemeChoiceText, effectiveMonoPattern === 'chic' && styles.monoThemeChoiceTextActive]}>{canUseMonoPaidPattern ? 'シック' : 'シック · ロック'}</Text></Pressable>
+          <Pressable accessibilityRole="button" accessibilityLabel="Mono ルーズリーフ" accessibilityState={{ selected: effectiveMonoPattern === 'looseLeaf' }} style={[styles.monoThemeChoice, { flex: 1, minHeight: 42, alignItems: 'center', justifyContent: 'center' }, effectiveMonoPattern === 'looseLeaf' && styles.monoThemeChoiceActive, !canUseMonoPaidPattern && { opacity: 0.82 }]} onPress={() => { if (canUseMonoPaidPattern) onMonoPattern('looseLeaf'); else onMonoPreview?.('looseLeaf'); }}><Text style={[styles.monoThemeChoiceText, effectiveMonoPattern === 'looseLeaf' && styles.monoThemeChoiceTextActive]}>{canUseMonoPaidPattern ? 'ルーズリーフ' : 'ルーズリーフ 🔒'}</Text></Pressable>
+          <Pressable accessibilityRole="button" accessibilityLabel="Mono シック" accessibilityState={{ selected: effectiveMonoPattern === 'chic' }} style={[styles.monoThemeChoice, { flex: 1, minHeight: 42, alignItems: 'center', justifyContent: 'center' }, effectiveMonoPattern === 'chic' && styles.monoThemeChoiceActiveDark, !canUseMonoPaidPattern && { opacity: 0.82 }]} onPress={() => { if (canUseMonoPaidPattern) onMonoPattern('chic'); else onMonoPreview?.('chic'); }}><Text style={[styles.monoThemeChoiceText, effectiveMonoPattern === 'chic' && styles.monoThemeChoiceTextActive]}>{canUseMonoPaidPattern ? 'シック' : 'シック 🔒'}</Text></Pressable>
         </View>
       </View>}
         {isDesign && <View style={{ marginTop: 12 }}>
@@ -681,11 +725,11 @@ export function SettingsScreen({
         </View>
       </SettingsDisclosure>}
        {!captureDesignOnly && <>
-        <SettingsDisclosure icon="widget" headerAction={<Pressable accessibilityRole="button" accessibilityLabel="Widgetを更新" accessibilityState={{ busy: widgetRefreshing, disabled: widgetRefreshing || !onRefreshWidget }} disabled={widgetRefreshing || !onRefreshWidget} onPress={() => {
+        <SettingsDisclosure icon="widget" headerAction={<Pressable accessibilityRole="button" accessibilityLabel="ウィジェットを更新" accessibilityState={{ busy: widgetRefreshing, disabled: widgetRefreshing || !onRefreshWidget }} disabled={widgetRefreshing || !onRefreshWidget} onPress={() => {
          if (widgetRefreshing || !onRefreshWidget) return;
          setWidgetRefreshing(true);
          void Promise.resolve().then(() => onRefreshWidget()).finally(() => setWidgetRefreshing(false));
-       }} style={{ width: 40, height: 40, alignItems: 'center', justifyContent: 'center' }}><PremiumFeatureIcon name="refresh" color={widgetRefreshing ? guideColors.accent : guideColors.textSecondary} /></Pressable>} designMode={designMode} chicPalette={chicPalette} title="ホーム画面のWidget" subtitle="追加・管理・使い方" expanded={false} onPress={() => {
+       }} style={{ width: 40, height: 40, alignItems: 'center', justifyContent: 'center' }}><PremiumFeatureIcon name="refresh" color={widgetRefreshing ? guideColors.accent : guideColors.textSecondary} /></Pressable>} designMode={designMode} chicPalette={chicPalette} title="ホーム画面のウィジェット" subtitle="追加・管理・使い方" expanded={false} onPress={() => {
          setWidgetSheetOpen(true);
          onWidgetSectionOpened?.();
        }} />
@@ -771,14 +815,12 @@ export function SettingsScreen({
        </SettingsDisclosure>
        <View style={styles.settingsDisclosure}>
          <Pressable style={[styles.settingsDisclosureHeader, isDark && styles.darkSurface, isDesign && chicPalette && { backgroundColor: guideColors.surface, borderColor: guideColors.border }]} onPress={() => onPremium()} accessibilityRole="button">
-           <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, minWidth: 0 }}><View style={{ width: 32, alignItems: 'flex-start' }}><PremiumFeatureIcon name="sparkle" color={isDesign && chicPalette ? guideColors.accent : baseTheme.primaryAccent} /></View><View style={{ flex: 1, minWidth: 0 }}><Text style={[styles.settingsDisclosureTitle, { color: isDesign && chicPalette ? guideColors.textPrimary : baseTheme.primaryText }]}>{planTier === 'premium' ? 'Premium利用中' : 'Rhythm Premium'}</Text><Text style={[styles.settingsDisclosureSubtitle, { color: isDesign && chicPalette ? guideColors.textSecondary : baseTheme.secondaryText }]}>{planTier === 'premium' ? 'Premiumの機能を利用中です' : 'もっとRhythmを便利に使う'}</Text></View></View>
+           <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, minWidth: 0 }}><View style={{ width: 32, alignItems: 'flex-start' }}><PremiumFeatureIcon name="sparkle" color={isDesign && chicPalette ? guideColors.accent : baseTheme.primaryAccent} /></View><View style={{ flex: 1, minWidth: 0 }}><Text style={[styles.settingsDisclosureTitle, { color: isDesign && chicPalette ? guideColors.textPrimary : baseTheme.primaryText }]}>{planTier === 'premium' ? 'プレミアム利用中' : 'Rhythmプレミアム'}</Text><Text style={[styles.settingsDisclosureSubtitle, { color: isDesign && chicPalette ? guideColors.textSecondary : baseTheme.secondaryText }]}>{planTier === 'premium' ? 'プレミアムの機能を利用中です' : 'もっとRhythmを便利に使う'}</Text></View></View>
            <Text style={[styles.settingsDisclosureChevron, { color: isDesign && chicPalette ? guideColors.accent : baseTheme.primaryAccent }]}>›</Text>
          </Pressable>
        </View>
-       <SettingsDisclosure icon="info" designMode={designMode} chicPalette={chicPalette} title="アプリについて" subtitle="使い方・レビュー" expanded={expandedSetting === 'about'} onPress={() => setExpandedSetting((current) => current === 'about' ? null : 'about')}>
-         <Pressable style={[styles.guideCard, { backgroundColor: guideColors.surface, borderColor: guideColors.border, borderWidth: 1 }]} onPress={onGuide}><View><Text style={[styles.guideCardTitle, { color: guideColors.textPrimary }]}>使い方を見る</Text><Text style={[styles.guideCardCopy, { color: guideColors.textSecondary }]}>登録・振り分け・出発・集中の流れを見る</Text></View><Text style={[styles.guideCardArrow, { color: guideColors.accent }]}>›</Text></Pressable>
-         <Pressable style={[styles.settingsCard, isDark && styles.darkSurface, isDesign && chicPalette && { backgroundColor: guideColors.surface, borderColor: guideColors.border }]} onPress={onReview}><Text style={[styles.settingsTitle, isDark && styles.darkBodyText, isDesign && chicPalette && { color: guideColors.textPrimary }]}>アプリを評価する</Text><Text style={[styles.switchCopy, isDark && styles.darkMutedText, isDesign && chicPalette && { color: guideColors.textSecondary }]}>短いレビューでRhythmの改善を応援できます</Text></Pressable>
-       </SettingsDisclosure>
+       <SettingsDisclosure icon="info" designMode={designMode} chicPalette={chicPalette} title="アプリについて" subtitle="情報・プライバシー・お問い合わせ" expanded={false} onPress={() => setAboutSheetOpen(true)} />
+       <AboutAppSheet visible={aboutSheetOpen} onClose={() => setAboutSheetOpen(false)} colors={{ background: isDesign && chicPalette ? chicPalette.background : baseTheme.screenBackground, surface: isDesign && chicPalette ? chicPalette.cardSurface : baseTheme.surface, border: isDesign && chicPalette ? chicPalette.border : baseTheme.border, text: isDesign && chicPalette ? chicPalette.textPrimary : baseTheme.primaryText, muted: isDesign && chicPalette ? chicPalette.textSecondary : baseTheme.secondaryText, accent: isDesign && chicPalette ? chicPalette.accent : baseTheme.primaryAccent, onAccent: isDesign && chicPalette ? chicPalette.onAccent : (isDark ? baseTheme.screenBackground : '#FFFFFF') }} />
       </>}
       {!captureDesignOnly && SETTINGS_BANNER_AD_UNIT_ID && <View style={{ alignItems: 'center', marginTop: 24, marginBottom: 12, paddingVertical: 8 }} accessibilityLabel="広告">
         <BannerAd

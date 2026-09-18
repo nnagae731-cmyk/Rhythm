@@ -19,9 +19,10 @@ type Props = {
   onReward: () => Promise<RewardedAccessResult>;
   onClose: () => void;
   onPremium?: () => void;
+  premiumLabel?: string;
 };
 
-export function RewardedAccessModal({ visible, title, description, current = 0, required = 1, designMode, chicPalette, onReward, onClose, onPremium }: Props) {
+export function RewardedAccessModal({ visible, title, description, current = 0, required = 1, designMode, chicPalette, onReward, onClose, onPremium, premiumLabel = 'プレミアムなら広告なしで使えます' }: Props) {
   const [busy, setBusy] = useState(false);
   const [adActive, setAdActive] = useState(false);
   const [message, setMessage] = useState('');
@@ -82,7 +83,7 @@ export function RewardedAccessModal({ visible, title, description, current = 0, 
         <Pressable accessibilityRole="button" disabled={busy} onPress={() => void handleReward()} style={{ minHeight: 50, marginTop: 18, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.accent, opacity: busy ? 0.65 : 1 }}>
           {busy ? <ActivityIndicator color={colors.onAccent} /> : <Text style={{ color: colors.onAccent, fontSize: 14, fontWeight: '900' }}>広告を見て取得</Text>}
         </Pressable>
-        {onPremium && <Pressable onPress={onPremium} style={{ minHeight: 42, alignItems: 'center', justifyContent: 'center', marginTop: 4 }}><Text style={{ color: colors.accent, fontSize: 12, fontWeight: '800' }}>Premiumなら広告なしで使えます</Text></Pressable>}
+        {onPremium && <Pressable onPress={onPremium} style={{ minHeight: 42, alignItems: 'center', justifyContent: 'center', marginTop: 4 }}><Text style={{ color: colors.accent, fontSize: 12, fontWeight: '800' }}>{premiumLabel}</Text></Pressable>}
         <Pressable onPress={onClose} style={{ minHeight: 44, alignItems: 'center', justifyContent: 'center' }}><Text style={{ color: colors.muted, fontSize: 13, fontWeight: '800' }}>閉じる</Text></Pressable>
       </Pressable>
     </Pressable>

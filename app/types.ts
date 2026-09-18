@@ -370,6 +370,3 @@ export type PersistedState = {
   /** Local daily voice recognition usage; optional for older saves. */
   voiceUsage?: { date: string; count: number; rewardedCount?: number; bonusUses?: number };
 };
-
-/** Development-only app-level Design Customize entitlement override. */
-export type DevDesignCustomizeOverride = 'actual' | 'free' | 'purchased';

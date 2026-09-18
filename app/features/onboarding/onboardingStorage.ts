@@ -82,12 +82,22 @@ export function normalizeOnboardingState(
     }
   }
 
+  const hasCompletedIntro = typeof completed.intro === 'string';
+  const normalizedFirstRunStage = raw.firstRunStage === 'done'
+    ? 'done'
+    : hasCompletedIntro && raw.firstRunStage === 'demo'
+      ? 'design'
+      : hasCompletedIntro && raw.firstRunStage === 'design'
+        ? 'design'
+        : undefined;
+
   return {
     version: 1,
     completed,
-    firstRunStage: raw.firstRunStage === 'demo' || raw.firstRunStage === 'design' || raw.firstRunStage === 'done'
-      ? raw.firstRunStage
-      : undefined,
+    // Older builds stored an interrupted long demo as `demo`. Treat that
+    // stage as the design handoff only after the intro was actually completed.
+    // A blank/new onboarding record must never be promoted to the design step.
+    firstRunStage: normalizedFirstRunStage,
   };
 }
 

@@ -25,7 +25,7 @@ type SharedEventScreenProps = {
 type DraftState = {
   displayName: string;
   attendanceStatus: SharedAttendanceStatus;
-  departurePoint: 'current' | 'home' | 'custom';
+  departurePoint: 'home' | 'custom';
   departurePointLabel: string;
   actionStatus: SharedActionStatus;
 };
@@ -33,7 +33,7 @@ type DraftState = {
 const emptyDraft: DraftState = {
   displayName: '',
   attendanceStatus: '参加',
-  departurePoint: 'current',
+  departurePoint: 'home',
   departurePointLabel: '',
   actionStatus: '未準備',
 };
@@ -66,16 +66,12 @@ function estimateArrivalAt(event: SharedEvent, actionStatus: SharedActionStatus,
   return sameDayEstimate.arrival.toISOString();
 }
 
-async function probeCurrentLocationOnce() {
-  const geolocation = (globalThis as any)?.navigator?.geolocation;
-  if (!geolocation?.getCurrentPosition) return false;
-  return new Promise<boolean>((resolve) => {
-    geolocation.getCurrentPosition(() => resolve(true), () => resolve(false), { enableHighAccuracy: false, timeout: 5000, maximumAge: 60_000 });
-  });
-}
-
 function participantLabel(status: SharedAttendanceStatus) {
   return status === '参加' ? '参加' : '不参加';
+}
+
+function normalizeDeparturePoint(value?: SharedParticipantPrefs['departurePoint']): DraftState['departurePoint'] {
+  return value === 'custom' ? 'custom' : 'home';
 }
 
 export function SharedEventScreen({
@@ -111,7 +107,7 @@ export function SharedEventScreen({
       setDraft({
         displayName: localParticipant.displayName,
         attendanceStatus: localParticipant.attendanceStatus,
-        departurePoint: localPrefs?.departurePoint ?? 'current',
+        departurePoint: normalizeDeparturePoint(localPrefs?.departurePoint),
         departurePointLabel: localPrefs?.departurePointLabel ?? '',
         actionStatus: localParticipant.actionStatus,
       });
@@ -121,14 +117,14 @@ export function SharedEventScreen({
       ...current,
       displayName: '',
       attendanceStatus: '参加',
-      departurePoint: localPrefs?.departurePoint ?? 'current',
+      departurePoint: normalizeDeparturePoint(localPrefs?.departurePoint),
       departurePointLabel: localPrefs?.departurePointLabel ?? '',
       actionStatus: '未準備',
     }));
   }, [event, localParticipant, localPrefs]);
 
   const canSave = Boolean(draft.displayName.trim());
-  const departureLabel = draft.departurePoint === 'custom' ? draft.departurePointLabel.trim() || '指定した場所' : draft.departurePoint === 'home' ? '自宅' : '現在地';
+  const departureLabel = draft.departurePoint === 'custom' ? draft.departurePointLabel.trim() || '指定した場所' : '自宅';
   const moments = event ? getDepartureMoments({
     id: event.eventId,
     title: event.title,
@@ -170,17 +166,13 @@ export function SharedEventScreen({
     setStatusMessage('参加情報を保存しました');
   };
 
-  const updateActionStatus = async (actionStatus: SharedActionStatus) => {
+  const updateActionStatus = (actionStatus: SharedActionStatus) => {
     if (!event || !localParticipantId) {
       setDraft((current) => ({ ...current, actionStatus }));
       setStatusMessage('表示名を保存してから更新できます');
       return;
     }
     const updatedAt = new Date().toISOString();
-    let usedCurrentLocation = false;
-    if ((actionStatus === '今から出る' || actionStatus === '移動中') && draft.departurePoint === 'current') {
-      usedCurrentLocation = await probeCurrentLocationOnce();
-    }
     const estimatedArrivalAt = draft.attendanceStatus === '不参加' ? undefined : estimateArrivalAt(event, actionStatus, new Date());
     onSaveSharedEvents((current) => current.map((item) => {
       if (item.shareToken !== event.shareToken) return item;
@@ -196,7 +188,7 @@ export function SharedEventScreen({
       };
     }));
     setDraft((current) => ({ ...current, actionStatus }));
-    setStatusMessage(usedCurrentLocation ? `${actionStatus} に更新しました（現在地を使いました）` : `${actionStatus} に更新しました`);
+    setStatusMessage(`${actionStatus} に更新しました`);
   };
 
   if (!visible) return null;
@@ -319,7 +311,7 @@ export function SharedEventScreen({
                   <View style={[styles.card, { borderColor: theme.colors.border, backgroundColor: theme.colors.surface }]}>
                     <Text style={[styles.sectionLabel, { color: theme.colors.primaryAccent }]}>共有の見え方</Text>
                     <Text style={[styles.cardCopy, { color: theme.colors.secondaryText }]}>表示名、参加状態、行動状態、到着見込み、最終更新時刻だけを共有しています。</Text>
-                    <Text style={[styles.cardCopy, { color: theme.colors.secondaryText, marginTop: 6 }]}>出発地点や現在地は端末内だけで扱い、リンクには含めません。</Text>
+                    <Text style={[styles.cardCopy, { color: theme.colors.secondaryText, marginTop: 6 }]}>出発地点は端末内だけで扱い、リンクには含めません。</Text>
                     {moments && <Text style={[styles.cardCopy, { color: theme.colors.secondaryText, marginTop: 6 }]}>準備 {formatClock(Math.floor((moments.leave.getTime() - moments.prepare.getTime()) / 60_000))} · 出発 {formatClock(Math.floor((moments.arrival.getTime() - moments.leave.getTime()) / 60_000))}</Text>}
                   </View>
                 </>

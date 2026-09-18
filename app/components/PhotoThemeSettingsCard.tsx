@@ -36,7 +36,7 @@ export function PhotoThemeSettingsCard({ photoTheme, designMode, chicPalette, pl
     ? { textPrimary: chicPalette.textPrimary, textSecondary: chicPalette.textSecondary, primaryAccent: chicPalette.accent, accentSoft: chicPalette.accentSoft, onAccent: chicPalette.onAccent }
     : (() => { const colors = getThemeTokens(designMode).colors; return { textPrimary: colors.primaryText, textSecondary: colors.secondaryText, primaryAccent: colors.primaryAccent, accentSoft: colors.softAccent, onAccent: designMode === 'dark' ? colors.screenBackground : '#FFFFFF' }; })();
   return <View style={[styles.settingsCard, isDark && styles.darkSurface]}>
-    <View style={styles.historyHeader}><View><Text style={[styles.settingsTitle, isDark && styles.darkBodyText]}>写真デザイン</Text><Text style={[styles.switchCopy, isDark && styles.darkAccentText]}>Designの雰囲気はそのままに、好きな一枚を添えます</Text></View><Text style={styles.taskTemplateSavePremium}>{planTier === 'premium' ? 'Premium' : designCustomizePurchased ? '購入済み' : '広告で解放'}</Text></View>
+    <View style={styles.historyHeader}><View><Text style={[styles.settingsTitle, isDark && styles.darkBodyText]}>写真デザイン</Text><Text style={[styles.switchCopy, isDark && styles.darkAccentText]}>デザインの雰囲気はそのままに、好きな一枚を添えます</Text></View><Text style={styles.taskTemplateSavePremium}>{planTier === 'premium' ? 'プレミアム' : designCustomizePurchased ? '購入済み' : '広告で解放'}</Text></View>
 
     <Text style={[styles.fieldLabel, isDark && styles.darkAccentText]}>背景写真</Text>
     <PhotoPreview uri={photoTheme.imageUri} label="背景にしたい写真を選ぶ" />

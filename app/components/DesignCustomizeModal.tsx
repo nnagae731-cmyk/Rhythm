@@ -7,7 +7,6 @@ type Props = {
   designMode: DesignMode;
   chicPalette?: ChicThemePalette;
   purchased: boolean;
-  isDevelopment?: boolean;
   onPurchase: () => void;
   onRestore: () => void;
   onPremium: () => void;
@@ -17,7 +16,7 @@ type Props = {
   purchaseError?: string;
 };
 
-export function DesignCustomizeModal({ visible, designMode, chicPalette, purchased, isDevelopment = false, onPurchase, onRestore, onPremium, onClose, localizedPrice, priceStatus = localizedPrice ? 'ready' : 'unavailable', purchaseError }: Props) {
+export function DesignCustomizeModal({ visible, designMode, chicPalette, purchased, onPurchase, onRestore, onPremium, onClose, localizedPrice, priceStatus = localizedPrice ? 'ready' : 'unavailable', purchaseError }: Props) {
   const theme = getThemeTokens(designMode, chicPalette?.id ?? 'cool');
   const colors = designMode === 'chic' && chicPalette
     ? { background: chicPalette.cardSurface, surface: chicPalette.surfaceSubtle, text: chicPalette.textPrimary, muted: chicPalette.textSecondary, border: chicPalette.border, accent: chicPalette.accent, accentSoft: chicPalette.accentSoft, onAccent: chicPalette.onAccent }
@@ -28,7 +27,7 @@ export function DesignCustomizeModal({ visible, designMode, chicPalette, purchas
         <Pressable style={[styles.sheet, { backgroundColor: colors.background, borderColor: colors.border }]} onPress={(event) => event.stopPropagation()}>
           <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.content}>
             <View style={[styles.handle, { backgroundColor: colors.border }]} />
-            <Text style={[styles.eyebrow, { color: colors.accent }]}>DESIGN CUSTOMIZE</Text>
+            <Text style={[styles.eyebrow, { color: colors.accent }]}>デザインカスタマイズ</Text>
             <Text style={[styles.title, { color: colors.text }]}>RhythmPaceを、{ '\n' }もっと自分らしく。</Text>
             <Text style={[styles.description, { color: colors.muted }]}>一度購入すると、毎日の画面とウィジェットを自分のスタイルに整えられます。</Text>
             <View style={styles.designPreviewRow} accessibilityLabel="既存デザインと写真の例">
@@ -52,10 +51,9 @@ export function DesignCustomizeModal({ visible, designMode, chicPalette, purchas
               <Pressable accessibilityRole="button" onPress={onPurchase} style={[styles.primaryButton, { backgroundColor: colors.accent }]}><Text style={[styles.primaryText, { color: colors.onAccent }]}>{priceStatus === 'loading' ? '価格を取得中…' : localizedPrice ? `${localizedPrice}で買い切る` : '価格を確認して購入'}</Text></Pressable>
               <Pressable accessibilityRole="button" onPress={onRestore} style={[styles.secondaryButton, { borderColor: colors.border }]}><Text style={[styles.secondaryText, { color: colors.accent }]}>購入を復元</Text></Pressable>
             </>}
-            <Text style={[styles.premiumNote, { color: colors.accent }]}>PremiumにはDesign Customizeの全機能が含まれます</Text>
-            <Pressable accessibilityRole="button" onPress={onPremium} style={styles.linkButton}><Text style={[styles.linkText, { color: colors.accent }]}>Premiumを見る</Text></Pressable>
+            <Text style={[styles.premiumNote, { color: colors.accent }]}>プレミアムにはデザインカスタマイズの全機能が含まれます</Text>
+            <Pressable accessibilityRole="button" onPress={onPremium} style={styles.linkButton}><Text style={[styles.linkText, { color: colors.accent }]}>プレミアムを見る</Text></Pressable>
             <Text style={[styles.note, { color: colors.muted }]}>広告やトライアルで無料で試すこともできます。</Text>
-            {isDevelopment && !purchased ? <Text style={[styles.devNote, { color: colors.muted }]}>開発環境では購入ボタンから動作確認できます。</Text> : null}
             <Pressable accessibilityRole="button" onPress={onClose} style={styles.closeButton}><Text style={[styles.closeText, { color: colors.muted }]}>閉じる</Text></Pressable>
           </ScrollView>
         </Pressable>
@@ -86,7 +84,6 @@ const styles = StyleSheet.create({
   linkButton: { alignSelf: 'center', paddingVertical: 12, paddingHorizontal: 14 },
   linkText: { fontSize: 13, fontWeight: '900' },
   note: { textAlign: 'center', fontSize: 11, lineHeight: 17, fontWeight: '600' },
-  devNote: { textAlign: 'center', marginTop: 8, fontSize: 10, fontWeight: '600' },
   purchased: { minHeight: 50, marginTop: 14, borderRadius: 14, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
   purchasedText: { fontSize: 14, fontWeight: '900' },
   closeButton: { alignSelf: 'center', paddingVertical: 14, paddingHorizontal: 20 },
