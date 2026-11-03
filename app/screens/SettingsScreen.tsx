@@ -18,6 +18,7 @@ import { WidgetSettingsCard } from '../components/WidgetSettingsCard';
 import { WIDGET_TYPE_OPTIONS } from '../features/widget/widgetSettings';
 import type { WidgetEntitlementOverride } from '../features/widget/widgetSettings';
 import { LiveActivitySettingsSheet } from '../components/LiveActivitySettingsSheet';
+import type { RhythmLiveActivityRuntimeStatus } from '../features/widget/rhythmLiveActivity';
 
 // Keep the production unit configurable without scattering IDs through the UI.
 // Development builds use Google's test unit unless an explicit test/production
@@ -66,7 +67,7 @@ function AboutAppSheet({ visible, onClose, colors }: { visible: boolean; onClose
 
 function LiveActivityDisplayOptionsCard({ options, onChange, colors, isDark }: { options: LiveActivityDisplayOptions; onChange: (next: LiveActivityDisplayOptions) => void; colors: { surface: string; border: string; text: string; muted: string; accent: string; soft: string; onAccent: string }; isDark: boolean }) {
   const labels: Array<[keyof LiveActivityDisplayOptions, string]> = [
-    ['currentTask', '今はこれ'],
+    ['currentTask', '今日のTODO'],
     ['nextSchedule', '次の予定'],
     ['departureCountdown', '出発カウントダウン'],
     ['focusRemaining', '集中の残り時間'],
@@ -423,6 +424,7 @@ export function SettingsScreen({
   hapticsEnabled,
   premiumTrialReminderEnabled = true,
   liveActivityEnabled = false,
+  liveActivityRuntimeStatus = 'off',
   liveActivityDisplayOptions,
   onLiveActivityDisplayOptionsChange,
   liveActivityCustomization,
@@ -515,6 +517,7 @@ export function SettingsScreen({
   hapticsEnabled: boolean;
   premiumTrialReminderEnabled?: boolean;
   liveActivityEnabled?: boolean;
+  liveActivityRuntimeStatus?: RhythmLiveActivityRuntimeStatus;
   chicPalette?: ChicThemePalette;
   chicPattern: ChicPattern;
   chicCheckColor: ChicCheckColor;
@@ -602,15 +605,24 @@ export function SettingsScreen({
   const [widgetRefreshing, setWidgetRefreshing] = useState(false);
   const [widgetSheetOpen, setWidgetSheetOpen] = useState(false);
   const widgetSheetDismissActionRef = React.useRef<(() => void) | undefined>(undefined);
+  const flushWidgetSheetDismissAction = React.useCallback(() => {
+    const pending = widgetSheetDismissActionRef.current;
+    if (!pending) return;
+    widgetSheetDismissActionRef.current = undefined;
+    requestAnimationFrame(() => requestAnimationFrame(pending));
+  }, []);
   const closeWidgetSheetThen = React.useCallback((action: () => void) => {
     widgetSheetDismissActionRef.current = action;
     setWidgetSheetOpen(false);
-    if (Platform.OS !== 'ios') InteractionManager.runAfterInteractions(() => {
-      const pending = widgetSheetDismissActionRef.current;
-      widgetSheetDismissActionRef.current = undefined;
-      pending?.();
+    if (Platform.OS !== 'ios') InteractionManager.runAfterInteractions(flushWidgetSheetDismissAction);
+  }, [flushWidgetSheetDismissAction]);
+  useEffect(() => {
+    if (widgetSheetOpen || !widgetSheetDismissActionRef.current) return;
+    const task = InteractionManager.runAfterInteractions(() => {
+      if (!widgetSheetOpen) flushWidgetSheetDismissAction();
     });
-  }, []);
+    return () => task.cancel();
+  }, [flushWidgetSheetDismissAction, widgetSheetOpen]);
   const [aboutSheetOpen, setAboutSheetOpen] = useState(false);
   // The sheet is opened by an explicit request (the onboarding CTA, a
   // settings tap, or the crop-resume path), never by a transient prop value
@@ -902,9 +914,7 @@ export function SettingsScreen({
           visible={widgetSheetOpen}
           onClose={() => setWidgetSheetOpen(false)}
           onDismiss={() => {
-            const pending = widgetSheetDismissActionRef.current;
-            widgetSheetDismissActionRef.current = undefined;
-            pending?.();
+            InteractionManager.runAfterInteractions(flushWidgetSheetDismissAction);
           }}
           widgetSettings={widgetSettings}
           onWidgetSettings={onWidgetSettings}
@@ -949,11 +959,12 @@ export function SettingsScreen({
             closeWidgetSheetThen(() => onWidgetGuide?.());
           }}
         />
-        <SettingsDisclosure icon="bellSparkle" headerAction={<View style={{ minWidth: 62, minHeight: 40, alignItems: 'flex-end', justifyContent: 'center' }}><Switch accessibilityRole="switch" accessibilityLabel="ライブアクティビティ" accessibilityState={{ checked: liveActivityEnabled }} value={liveActivityEnabled} onValueChange={(value) => onLiveActivityEnabled?.(value)} trackColor={{ false: isDark ? '#40506A' : baseTheme.border, true: isDesign && chicPalette ? chicPalette.accent : baseTheme.primaryAccent }} thumbColor={liveActivityEnabled ? (isDesign && chicPalette ? chicPalette.onAccent : '#FFFFFF') : (isDark ? '#8F9BB0' : '#FFFFFF')} /></View>} designMode={designMode} chicPalette={chicPalette} title="ライブアクティビティ" subtitle="ロック画面・Dynamic Islandの表示" expanded={false} onPress={() => setLiveActivitySettingsOpen(true)} />
+        <SettingsDisclosure icon="bellSparkle" headerAction={<View style={{ minWidth: 62, minHeight: 40, alignItems: 'flex-end', justifyContent: 'center' }}><Switch accessibilityRole="switch" accessibilityLabel="ライブアクティビティ" accessibilityState={{ checked: liveActivityEnabled }} value={liveActivityEnabled} onValueChange={(value) => onLiveActivityEnabled?.(value)} trackColor={{ false: isDark ? '#40506A' : baseTheme.border, true: isDesign && chicPalette ? chicPalette.accent : baseTheme.primaryAccent }} thumbColor={liveActivityEnabled ? (isDesign && chicPalette ? chicPalette.onAccent : '#FFFFFF') : (isDark ? '#8F9BB0' : '#FFFFFF')} /></View>} designMode={designMode} chicPalette={chicPalette} title="ライブアクティビティ" subtitle={liveActivityRuntimeStatus === 'active' ? 'ロック画面・Dynamic Islandに表示中' : liveActivityRuntimeStatus === 'unavailable' ? 'この端末では表示できません' : liveActivityRuntimeStatus === 'failed' ? '表示を開始できませんでした' : liveActivityEnabled ? '表示を開始しています' : 'ロック画面・Dynamic Islandの表示'} expanded={false} onPress={() => setLiveActivitySettingsOpen(true)} />
         {liveActivityDisplayOptions && onLiveActivityDisplayOptionsChange && liveActivityCustomization && onLiveActivityCustomizationChange ? <LiveActivitySettingsSheet
           visible={liveActivitySettingsOpen}
           options={liveActivityDisplayOptions}
           customization={liveActivityCustomization}
+          runtimeStatus={liveActivityRuntimeStatus}
           onClose={() => setLiveActivitySettingsOpen(false)}
           onSave={(nextOptions, nextCustomization) => { onLiveActivityDisplayOptionsChange(nextOptions); onLiveActivityCustomizationChange(nextCustomization); setLiveActivitySettingsOpen(false); }}
           colors={{ background: isDesign && chicPalette ? chicPalette.background : baseTheme.screenBackground, surface: isDesign && chicPalette ? chicPalette.cardSurface : baseTheme.surface, secondarySurface: isDesign && chicPalette ? chicPalette.surfaceSubtle : baseTheme.secondarySurface, border: isDesign && chicPalette ? chicPalette.border : baseTheme.border, text: isDesign && chicPalette ? chicPalette.textPrimary : baseTheme.primaryText, muted: isDesign && chicPalette ? chicPalette.textSecondary : baseTheme.secondaryText, accent: isDesign && chicPalette ? chicPalette.accent : baseTheme.primaryAccent, soft: isDesign && chicPalette ? chicPalette.accentSoft : baseTheme.softAccent, onAccent: isDesign && chicPalette ? chicPalette.onAccent : (isDark ? baseTheme.screenBackground : '#FFFFFF') }}

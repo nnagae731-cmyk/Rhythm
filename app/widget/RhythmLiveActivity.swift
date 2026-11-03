@@ -33,17 +33,21 @@ struct RhythmLiveActivityWidget: Widget {
         }
         DynamicIslandExpandedRegion(.bottom) {
           TimelineView(.periodic(from: .now, by: 30)) { _ in
-            RhythmLiveActivityDetail(state: context.state, suppressAffirmationOnly: true)
+            VStack(alignment: .leading, spacing: 8) {
+              RhythmLiveActivityDetail(state: context.state, suppressAffirmationOnly: true)
+              RhythmLiveActivityAddLink(accentHex: context.state.accentHex)
+            }
           }
         }
       } compactLeading: {
         Image(systemName: RhythmLiveActivityCopy.iconName(for: context.state))
           .accessibilityHidden(true)
       } compactTrailing: {
-        RhythmLiveActivityTimer(state: context.state)
+        // Keep task creation one tap away even while an existing TODO,
+        // schedule, or focus session is being shown.
+        RhythmLiveActivityCompactAddLink(accentHex: context.state.accentHex)
       } minimal: {
-        Image(systemName: RhythmLiveActivityCopy.iconName(for: context.state))
-          .accessibilityHidden(true)
+        RhythmLiveActivityCompactAddLink(accentHex: context.state.accentHex)
       }
       .widgetURL(URL(string: RhythmLiveActivityCopy.hasActiveFocus(context.state) ? "rhythm://focus" : "rhythm://today"))
     }
@@ -177,11 +181,39 @@ private struct RhythmLiveActivityLockScreenView: View {
           .fontDesign(RhythmLiveActivityCopy.fontDesign(for: state))
           .lineLimit(2).minimumScaleFactor(0.75)
         RhythmLiveActivityDetail(state: state, suppressAffirmationOnly: false)
+        RhythmLiveActivityAddLink(accentHex: state.accentHex)
       }
       .padding(.horizontal, 16).padding(.vertical, 12)
     }
       .accessibilityElement(children: .combine)
       .accessibilityLabel(RhythmLiveActivityAccessibility.label(for: state))
+  }
+}
+
+@available(iOS 16.1, *)
+private struct RhythmLiveActivityAddLink: View {
+  let accentHex: String
+
+  var body: some View {
+    Link(destination: URL(string: "rhythm://add")!) {
+      Label("追加", systemImage: "plus.circle")
+        .font(.caption.weight(.semibold))
+        .foregroundStyle(Color(hex: accentHex))
+    }
+    .accessibilityLabel("タスクを追加")
+  }
+}
+
+@available(iOS 16.1, *)
+private struct RhythmLiveActivityCompactAddLink: View {
+  let accentHex: String
+
+  var body: some View {
+    Link(destination: URL(string: "rhythm://add")!) {
+      Image(systemName: "plus.circle.fill")
+        .foregroundStyle(Color(hex: accentHex))
+    }
+    .accessibilityLabel("タスクを追加")
   }
 }
 

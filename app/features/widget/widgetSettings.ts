@@ -19,24 +19,33 @@ export type WidgetAccessTier = 'free' | 'design' | 'premium';
 export type WidgetEntitlementOverride = 'actual' | 'free' | 'design' | 'premium';
 
 export const WIDGET_TYPE_OPTIONS: ReadonlyArray<{ id: WidgetType; label: string; description: string; sizes: string; access: WidgetAccessTier }> = [
-  { id: 'current', label: '今はこれ', description: 'いま取り組むタスクを表示', sizes: 'M / L', access: 'free' },
-  { id: 'next', label: '次の予定', description: '次に控えている予定を表示', sizes: 'M', access: 'free' },
-  { id: 'combined', label: '今はこれ＋次の予定', description: 'タスクと予定をまとめて表示', sizes: 'M', access: 'design' },
+  { id: 'current', label: '今やるTODO', description: 'いま取り組むタスクを表示', sizes: 'M / L', access: 'free' },
+  { id: 'next', label: '次に控える予定', description: '直近の予定をひとつ表示', sizes: 'M', access: 'free' },
+  { id: 'combined', label: 'TODOと次の予定', description: 'いまやることと次の予定をまとめて表示', sizes: 'M', access: 'design' },
   { id: 'monthly', label: '月間カレンダー', description: '予定のある日を月ごとに確認', sizes: 'L', access: 'design' },
   { id: 'weekly', label: '週間カレンダー', description: '今週の予定を一覧で確認', sizes: 'M / L', access: 'design' },
-  { id: 'today', label: '今日の予定', description: '今日の予定を時刻順に表示', sizes: 'M', access: 'design' },
-  { id: 'checklist', label: 'ToDoメモ', description: '持ち物やメモを確認', sizes: 'M', access: 'design' },
+  { id: 'today', label: '今日の予定', description: '今日の予定を時刻順に一覧表示', sizes: 'M', access: 'design' },
+  { id: 'checklist', label: 'TODOチェックリスト', description: '登録したTODOをチェックリストで確認', sizes: 'M', access: 'design' },
   { id: 'goal', label: '叶えたいこと', description: '目標と進捗を表示', sizes: 'M', access: 'premium' },
-  { id: 'voice', label: '音声入力', description: 'ホーム画面から音声入力を開始', sizes: 'S / M', access: 'free' },
+  { id: 'voice', label: '音声で追加', description: 'ホーム画面からタスクや予定を追加', sizes: 'M', access: 'free' },
   { id: 'affirmation', label: 'アファメーション', description: '言葉と背景で気持ちを整える', sizes: 'M', access: 'premium' },
 ];
 
+/** User-facing groups keep similar Widget choices together without changing
+ * persisted WidgetType IDs or the native Widget Extension kinds. */
+export const WIDGET_TYPE_GROUPS: ReadonlyArray<{ id: string; label: string; types: ReadonlyArray<WidgetType> }> = [
+  { id: 'tasks', label: 'TODO', types: ['current'] },
+  { id: 'schedule', label: '予定', types: ['next', 'today', 'weekly', 'monthly'] },
+  { id: 'summary', label: 'まとめ', types: ['combined'] },
+  { id: 'personal', label: 'その他', types: ['goal', 'voice', 'affirmation'] },
+];
+
 export const WIDGET_STYLE_OPTIONS: ReadonlyArray<{ id: WidgetStyle; label: string; description: string }> = [
-  { id: 'mono', label: 'Mono', description: 'すっきり見やすく' },
+  { id: 'mono', label: 'シンプル', description: 'すっきり見やすく' },
   // Keep the persisted `color` id for compatibility while exposing the
   // product-facing Design name used by the app's existing Design mode.
-  { id: 'color', label: 'Design', description: '既存の柄とカラーで彩る' },
-  { id: 'photo', label: 'Photo', description: '写真と組み合わせる' },
+  { id: 'color', label: 'デザイン', description: '柄とカラーで彩る' },
+  { id: 'photo', label: '写真', description: '写真と組み合わせる' },
 ];
 
 // Legacy widget-only accent values are retained solely to decode existing
@@ -65,10 +74,10 @@ export const WIDGET_PHOTO_LAYOUT_OPTIONS: ReadonlyArray<{ id: WidgetPhotoLayout;
 ];
 
 export const WIDGET_MONO_TEMPLATE_OPTIONS: ReadonlyArray<{ id: WidgetMonoTemplate; label: string }> = [
-  { id: 'clean', label: 'Plain' },
-  { id: 'pinNote', label: 'Pin Note' },
-  { id: 'ruledNote', label: 'Ruled Note' },
-  { id: 'looseLeaf', label: 'Loose Leaf' },
+  { id: 'clean', label: 'プレーン' },
+  { id: 'pinNote', label: 'ピンノート' },
+  { id: 'ruledNote', label: '罫線ノート' },
+  { id: 'looseLeaf', label: 'ルーズリーフ' },
 ];
 
 export const WIDGET_FONT_DESIGN_OPTIONS: ReadonlyArray<{ id: RhythmFontDesign; label: string }> = [

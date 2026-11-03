@@ -114,6 +114,38 @@ private enum WidgetPendingActionStore {
       object["checklist"] = checklist
     }
   }
+
+  static func appendTask(title: String, scheduledDate: String? = nil, scheduledTime: String? = nil) {
+    let normalized = title.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !normalized.isEmpty else { return }
+    let id = "addTask:\(UUID().uuidString)"
+    var action: [String: Any] = [
+      "id": id,
+      "type": "addTask",
+      "title": normalized,
+    ]
+    if let scheduledDate { action["scheduledDate"] = scheduledDate }
+    if let scheduledTime { action["scheduledTime"] = scheduledTime }
+    append(action)
+  }
+
+  static func loadSnapshot() -> WidgetSnapshot? {
+    guard let defaults = UserDefaults(suiteName: appGroup),
+          let raw = defaults.string(forKey: snapshotKey),
+          let data = raw.data(using: .utf8) else { return nil }
+    let decoder = JSONDecoder()
+    decoder.dateDecodingStrategy = .custom { decoder in
+      let container = try decoder.singleValueContainer()
+      let value = try container.decode(String.self)
+      let formatter = ISO8601DateFormatter()
+      formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+      if let date = formatter.date(from: value) { return date }
+      formatter.formatOptions = [.withInternetDateTime]
+      if let date = formatter.date(from: value) { return date }
+      throw DecodingError.dataCorruptedError(in: container, debugDescription: "Invalid widget snapshot date")
+    }
+    return try? decoder.decode(WidgetSnapshot.self, from: data)
+  }
 }
 
 @available(iOSApplicationExtension 17.0, *)
@@ -145,6 +177,102 @@ struct RhythmToggleListItemIntent: AppIntent {
     WidgetPendingActionStore.append(["id": "toggleListItem:\(taskId):\(listItemId)", "type": "toggleListItem", "taskId": taskId, "listItemId": listItemId, "completed": completed])
     WidgetCenter.shared.reloadAllTimelines()
     return .result()
+  }
+}
+
+@available(iOSApplicationExtension 17.0, *)
+struct RhythmAddTaskIntent: AppIntent {
+  static var title: LocalizedStringResource = "RhythmPaceにタスクを追加"
+  static var description = IntentDescription("RhythmPaceに新しいタスクを追加します。")
+  static var openAppWhenRun: Bool { true }
+
+  @Parameter(title: "タスク名") var title: String
+  @Parameter(title: "日時") var scheduledAt: Date?
+
+  init() { title = ""; scheduledAt = nil }
+  init(title: String, scheduledAt: Date? = nil) { self.title = title; self.scheduledAt = scheduledAt }
+
+  func perform() async throws -> some IntentResult {
+    var calendar = Calendar.current
+    calendar.timeZone = .current
+    let dateFormatter = DateFormatter()
+    dateFormatter.calendar = calendar
+    dateFormatter.locale = Locale(identifier: "en_US_POSIX")
+    dateFormatter.dateFormat = "yyyy-MM-dd"
+    let timeFormatter = DateFormatter()
+    timeFormatter.calendar = calendar
+    timeFormatter.locale = Locale(identifier: "en_US_POSIX")
+    timeFormatter.dateFormat = "HH:mm"
+    WidgetPendingActionStore.appendTask(
+      title: title,
+      scheduledDate: scheduledAt.map { dateFormatter.string(from: $0) },
+      scheduledTime: scheduledAt.map { timeFormatter.string(from: $0) }
+    )
+    WidgetCenter.shared.reloadAllTimelines()
+    return .result()
+  }
+}
+
+@available(iOSApplicationExtension 17.0, *)
+struct RhythmAppShortcuts: AppShortcutsProvider {
+  static var appShortcuts: [AppShortcut] {
+    AppShortcut(
+      intent: RhythmAddTaskIntent(),
+      phrases: ["\(.applicationName)にタスクを追加"],
+      shortTitle: "タスクを追加",
+      systemImageName: "plus.circle"
+    )
+    AppShortcut(
+      intent: RhythmReadTodayTasksIntent(),
+      phrases: ["\(.applicationName)の今日のタスクを教えて"],
+      shortTitle: "今日のタスク",
+      systemImageName: "checklist"
+    )
+    AppShortcut(
+      intent: RhythmReadNextScheduleIntent(),
+      phrases: ["\(.applicationName)の次の予定を教えて"],
+      shortTitle: "次の予定",
+      systemImageName: "calendar"
+    )
+  }
+}
+
+@available(iOSApplicationExtension 17.0, *)
+struct RhythmReadTodayTasksIntent: AppIntent {
+  static var title: LocalizedStringResource = "今日のタスクを確認"
+  static var description = IntentDescription("RhythmPaceの今日のタスクを読み上げます。")
+  static var openAppWhenRun: Bool { false }
+
+  func perform() async throws -> some IntentResult {
+    guard let snapshot = WidgetPendingActionStore.loadSnapshot() else {
+      return .result(dialog: "RhythmPaceのデータをまだ読み込めません。")
+    }
+    var tasks: [WidgetSnapshot.Task] = []
+    if let current = snapshot.currentTask { tasks.append(current) }
+    tasks.append(contentsOf: snapshot.todayNowTasks ?? [])
+    var seen = Set<String>()
+    let titles = tasks.filter { task in
+      guard task.status != "completed", task.status != "skipped", seen.insert(task.id).inserted else { return false }
+      return true
+    }.prefix(5).map(\.title)
+    guard !titles.isEmpty else { return .result(dialog: "今日の未完了タスクはありません。") }
+    return .result(dialog: "今日のタスクは、\(titles.joined(separator: "、"))です。")
+  }
+}
+
+@available(iOSApplicationExtension 17.0, *)
+struct RhythmReadNextScheduleIntent: AppIntent {
+  static var title: LocalizedStringResource = "次の予定を確認"
+  static var description = IntentDescription("RhythmPaceの次の予定を読み上げます。")
+  static var openAppWhenRun: Bool { false }
+
+  func perform() async throws -> some IntentResult {
+    guard let snapshot = WidgetPendingActionStore.loadSnapshot() else {
+      return .result(dialog: "RhythmPaceのデータをまだ読み込めません。")
+    }
+    let plan = (snapshot.nextPlans?.first ?? snapshot.nextPlan)
+    guard let plan else { return .result(dialog: "次の予定はありません。") }
+    return .result(dialog: "次の予定は、\(plan.title)です。")
   }
 }
 #endif
@@ -527,9 +655,9 @@ enum RhythmWidgetDesignColorValue: String, AppEnum {
 
 @available(iOSApplicationExtension 17.0, *)
 enum RhythmWidgetPhotoLayoutValue: String, AppEnum {
-  case unknown, background, right, top, card, circle, cutout, appDefault
+  case unknown, background, right, top, card, circle, appDefault
   static var typeDisplayRepresentation: TypeDisplayRepresentation = "Photo layout"
-  static var caseDisplayRepresentations: [Self: DisplayRepresentation] = [.unknown: "unknown", .background: "全面背景", .right: "右側", .top: "上部", .card: "カード", .circle: "丸型", .cutout: "切り抜き", .appDefault: "アプリ設定を使用"]
+  static var caseDisplayRepresentations: [Self: DisplayRepresentation] = [.unknown: "unknown", .background: "全面背景", .right: "右側", .top: "上部", .card: "カード", .circle: "丸型", .appDefault: "アプリ設定を使用"]
 }
 
 @available(iOSApplicationExtension 17.0, *)
@@ -847,7 +975,7 @@ struct RhythmWidgetProvider: AppIntentTimelineProvider {
         // A per-widget photo selected in the app is an effective Photo style
         // when the installed widget follows the app default. An explicit
         // native Mono/Design/Photo selection below still wins.
-        return customization?.photoFileName != nil || customization?.cutoutFileName != nil ? .photo : stored.style
+        return customization?.photoFileName != nil ? .photo : stored.style
       @unknown default: return .mono
       }
     }()
@@ -885,7 +1013,6 @@ struct RhythmWidgetProvider: AppIntentTimelineProvider {
       case .top: return "top"
       case .card: return "card"
       case .circle: return "circle"
-      case .cutout: return "cutout"
       @unknown default: return "background"
       }
     }()
@@ -914,7 +1041,6 @@ struct RhythmWidgetProvider: AppIntentTimelineProvider {
       return designCheckColor ?? stored.designCheckColor ?? "cool"
     }()
     let resolvedPhotoFileName = customization?.photoFileName ?? stored.photoFileName
-    let resolvedCutoutFileName = customization?.cutoutFileName ?? stored.cutoutFileName
     // An explicit native selection wins. The appDefault/unknown sentinel
     // falls through to the per-widget app setting, then the shared legacy
     // setting, and finally the safe background default.
@@ -931,7 +1057,7 @@ struct RhythmWidgetProvider: AppIntentTimelineProvider {
       @unknown default: return customization?.monoTemplate ?? stored.monoTemplate ?? (stored.designPattern == "pinNote" || stored.designPattern == "ruledNote" ? stored.designPattern : nil)
       }
     }()
-    let appearance = WidgetSnapshot.Appearance(style: style, monoTemplate: resolvedMonoTemplate, fontDesign: stored.fontDesign, accentHex: stored.accentHex, photoFileName: resolvedPhotoFileName, cutoutFileName: resolvedCutoutFileName, photoLayout: resolvedPhotoLayout, designPattern: pattern, designCheckColor: resolvedDesignCheckColor, designPatternUnlocked: stored.designPatternUnlocked, affirmationBackgrounds: stored.affirmationBackgrounds)
+    let appearance = WidgetSnapshot.Appearance(style: style, monoTemplate: resolvedMonoTemplate, fontDesign: stored.fontDesign, accentHex: stored.accentHex, photoFileName: resolvedPhotoFileName, cutoutFileName: nil, photoLayout: resolvedPhotoLayout, designPattern: pattern, designCheckColor: resolvedDesignCheckColor, designPatternUnlocked: stored.designPatternUnlocked, affirmationBackgrounds: stored.affirmationBackgrounds)
     return WidgetSnapshot(updatedAt: snapshot.updatedAt, isPremium: snapshot.isPremium, designCustomizePurchased: snapshot.designCustomizePurchased, appearance: appearance, widgetCustomizations: snapshot.widgetCustomizations, displayOptions: snapshot.displayOptions, currentTask: snapshot.currentTask, currentTaskCandidates: snapshot.currentTaskCandidates, todayNowTasks: snapshot.todayNowTasks, todayNowTaskCount: snapshot.todayNowTaskCount, nextPlan: snapshot.nextPlan, nextPlans: snapshot.nextPlans, calendarPlans: snapshot.calendarPlans, calendarMonth: snapshot.calendarMonth, calendarWeek: snapshot.calendarWeek, todaySchedules: snapshot.todaySchedules, todayScheduleCount: snapshot.todayScheduleCount, checklist: snapshot.checklist, goal: snapshot.goal, goalMonths: snapshot.goalMonths, widgetPhotoUnlock: snapshot.widgetPhotoUnlock, affirmations: snapshot.affirmations, affirmationPhotoFileNames: snapshot.affirmationPhotoFileNames)
   }
 
@@ -1002,7 +1128,7 @@ private struct WidgetPalette {
     let accent = colors.accent
     // Stored photo filenames remain available for Photo -> Mono -> Photo
     // round-trips, but only the effective Photo style may render them.
-    let photoAvailable = style == .photo && ((appearance?.photoFileName.map { loadWidgetPhoto($0) != nil } ?? false) || (appearance?.cutoutFileName.map { loadWidgetPhoto($0) != nil } ?? false))
+    let photoAvailable = style == .photo && (appearance?.photoFileName.map { loadWidgetPhoto($0) != nil } ?? false)
     let photoBackground = style == .photo && appearance?.photoLayout == "background" && photoAvailable
     if photoBackground {
       return WidgetPalette(foreground: .white, secondary: .white.opacity(0.82), accent: accent, background: colors.background, divider: colors.background.opacity(0.34), monoTemplate: nil, designPattern: nil, designCheckColor: appearance?.designCheckColor)
@@ -1084,21 +1210,12 @@ private struct DesignPatternColors {
 private func loadWidgetPhoto(_ fileName: String?) -> Image? {
   guard let fileName, !fileName.isEmpty, fileName == URL(fileURLWithPath: fileName).lastPathComponent,
         let container = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: appGroup) else {
-    #if DEBUG
-    if fileName?.hasPrefix("rhythm-widget-cutout-") == true { print("[BackgroundRemoval][Widget] loadCutout failure invalid filename") }
-    #endif
     return nil
   }
   let url = container.appendingPathComponent(fileName)
   guard let image = UIImage(contentsOfFile: url.path) else {
-    #if DEBUG
-    if fileName.hasPrefix("rhythm-widget-cutout-") { print("[BackgroundRemoval][Widget] loadCutout failure file=\(fileName)") }
-    #endif
     return nil
   }
-  #if DEBUG
-  if fileName.hasPrefix("rhythm-widget-cutout-") { print("[BackgroundRemoval][Widget] loadCutout success file=\(fileName)") }
-  #endif
   return Image(uiImage: image)
 }
 
@@ -1310,10 +1427,6 @@ private struct WidgetSurface<Content: View>: View {
     self.content = content()
   }
 
-  private var calendarPhotoLayout: Bool {
-    widgetKind == "RhythmMonthlyCalendarWidget" || widgetKind == "RhythmWeeklyCalendarWidget" || widgetKind == "RhythmTodayScheduleWidget"
-  }
-
   @ViewBuilder
   private func photoLayer(_ image: Image, layout: String, size: CGSize, palette: WidgetPalette) -> some View {
     let isMonthly = widgetKind == "RhythmMonthlyCalendarWidget"
@@ -1333,9 +1446,8 @@ private struct WidgetSurface<Content: View>: View {
       }
     case "top":
       VStack(spacing: 0) {
-        if calendarPhotoLayout { Spacer(minLength: 0) }
         image.resizable().scaledToFill().frame(width: size.width, height: size.height * (isMonthly ? 0.16 : family == .systemLarge ? 0.30 : 0.36)).clipped()
-        if !calendarPhotoLayout { Spacer(minLength: 0) }
+        Spacer(minLength: 0)
       }
     case "card":
       let widthFraction: CGFloat = isMonthly ? 0.22 : family == .systemSmall ? 0.28 : family == .systemLarge ? 0.34 : 0.32
@@ -1359,12 +1471,6 @@ private struct WidgetSurface<Content: View>: View {
         .shadow(color: .black.opacity(0.18), radius: 4, y: 2)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
         .padding(11)
-    case "cutout":
-      image.resizable().scaledToFit()
-        .frame(width: isMonthly ? size.width * 0.22 : family == .systemSmall ? size.width * 0.28 : family == .systemLarge ? size.width * 0.34 : size.width * 0.30,
-               height: isMonthly ? size.height * 0.36 : family == .systemSmall ? size.height * 0.48 : family == .systemLarge ? size.height * 0.62 : size.height * 0.54)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .trailing)
-        .padding(.trailing, family == .systemSmall ? 8 : 12)
     default:
       ZStack {
         image.resizable().scaledToFill().frame(width: size.width, height: size.height).clipped()
@@ -1375,15 +1481,14 @@ private struct WidgetSurface<Content: View>: View {
 
   var body: some View {
     GeometryReader { proxy in
-      let configuredPhotoLayout = appearance?.photoLayout ?? "background"
-      let cutout = configuredPhotoLayout == "cutout" ? loadWidgetPhoto(appearance?.cutoutFileName) : nil
-      // Keep the original photo fallback when a cutout is missing. A stale
-      // cutout reference must not turn a valid configured photo into a blank
-      // widget.
+      // Old snapshots can carry the retired `cutout` layout. Render the
+      // original saved photo as a normal background instead of keeping a
+      // second derived image path alive.
+      let configuredPhotoLayout = appearance?.photoLayout == "cutout" ? "background" : (appearance?.photoLayout ?? "background")
       // A stored photo is data, not a rendering mode. Only Photo may display
       // it; Mono and Design must remain their own visual treatments.
-      let photo = appearance?.style == .photo ? (cutout ?? loadWidgetPhoto(appearance?.photoFileName)) : nil
-      let photoLayout = configuredPhotoLayout == "cutout" && cutout == nil ? "background" : configuredPhotoLayout
+      let photo = appearance?.style == .photo ? loadWidgetPhoto(appearance?.photoFileName) : nil
+      let photoLayout = configuredPhotoLayout
       ZStack {
         palette.background
         if let monoTemplate = palette.monoTemplate,
@@ -1401,9 +1506,8 @@ private struct WidgetSurface<Content: View>: View {
         }
         content
           .fontDesign(widgetFontDesign(appearance?.fontDesign))
-          .padding(family == .systemSmall ? 10 : family == .systemLarge ? 16 : 12)
-          .padding(.top, photo != nil && photoLayout == "top" && !calendarPhotoLayout ? proxy.size.height * (family == .systemLarge ? 0.23 : 0.27) : 0)
-          .padding(.bottom, photo != nil && photoLayout == "top" && calendarPhotoLayout ? proxy.size.height * (widgetKind == "RhythmMonthlyCalendarWidget" ? 0.14 : family == .systemLarge ? 0.23 : 0.27) : 0)
+          .padding(family == .systemSmall ? 8 : family == .systemLarge ? 12 : 10)
+          .padding(.top, photo != nil && photoLayout == "top" ? proxy.size.height * (widgetKind == "RhythmMonthlyCalendarWidget" ? 0.14 : family == .systemLarge ? 0.23 : 0.27) : 0)
           .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
           .background(photo != nil && photoLayout == "background" ? palette.background.opacity(0.12) : Color.clear)
       }
@@ -1495,7 +1599,7 @@ private func timerRingDiameter(for appearance: WidgetSnapshot.Appearance?, famil
   guard appearance?.style != .color,
         let layout = appearance?.photoLayout else { return 68 }
   switch layout {
-  case "right", "side", "card", "circle", "cutout":
+  case "right", "side", "card", "circle":
     return family == .systemSmall ? 50 : family == .systemLarge ? 60 : 54
   default: return 68
   }
@@ -1527,7 +1631,7 @@ struct RhythmWidgetView: View {
         let noPreferredSection = !preferredCurrent && !preferredNext
         let showCurrent = preferredCurrent || (noPreferredSection && currentAvailable)
           let showNext = preferredNext || (noPreferredSection && !currentAvailable && nextAvailable)
-          VStack(alignment: .leading, spacing: 10) {
+          VStack(alignment: .leading, spacing: 8) {
           Text("RhythmPace")
             .font(.headline.weight(.semibold))
             .foregroundStyle(palette.foreground)
@@ -1543,7 +1647,7 @@ struct RhythmWidgetView: View {
               }
             }
           } else if showCurrent {
-            WidgetRow(label: "今はこれ", value: "予定なし", palette: palette)
+            WidgetRow(label: "今日のTODO", value: "予定なし", palette: palette)
           }
           if showCurrent && showNext {
             Divider().overlay(palette.divider)
@@ -1628,7 +1732,7 @@ private struct CurrentTaskWidgetView: View {
             TaskCompletionButton(taskId: task.id, palette: palette, completed: widgetTaskIsCompleted(task))
             Link(destination: URL(string: "rhythm://todo")!) {
               VStack(alignment: .leading, spacing: 7) {
-              Text("今はこれ").font(sectionFont).foregroundStyle(palette.accent)
+              Text("今日のTODO").font(sectionFont).foregroundStyle(palette.accent)
               Text(task.title).strikethrough(completed, color: palette.secondary).font(titleFont).foregroundStyle(palette.foreground).lineLimit(3).opacity(completed ? 0.52 : 1)
               if shouldShowTimerRing(snapshot: snapshot, task: task) { TaskTimerRing(task: task, palette: palette, diameter: timerRingDiameter(for: snapshot.appearance, family: family)).frame(maxWidth: .infinity, alignment: .center) }
               if snapshot.isDisplayOptionEnabled("startTime"), let startAt = task.startAt { Text(startAt.formatted(date: .omitted, time: .shortened)).font(family == .systemLarge ? .subheadline : .caption2).foregroundStyle(palette.secondary).opacity(completed ? 0.52 : 1) }
@@ -1641,7 +1745,7 @@ private struct CurrentTaskWidgetView: View {
         }
       } else {
         VStack(alignment: .leading, spacing: 6) {
-          Text("今はこれ")
+          Text("今日のTODO")
             .font(.caption.weight(.semibold))
             .foregroundStyle(palette.accent)
           Text("やることはありません")
@@ -1663,7 +1767,7 @@ private struct TaskInformation: View {
   var body: some View {
     let completed = widgetTaskIsCompleted(task)
     VStack(alignment: .leading, spacing: 6) {
-      Text("今はこれ").font(.caption.weight(.semibold)).foregroundStyle(palette.accent)
+      Text("今日のTODO").font(.caption.weight(.semibold)).foregroundStyle(palette.accent)
       Text(task.title).strikethrough(completed, color: palette.secondary).font(.title3.weight(.semibold)).foregroundStyle(palette.foreground).lineLimit(3).opacity(completed ? 0.52 : 1)
       if snapshot.isDisplayOptionEnabled("startTime"), let startAt = task.startAt {
         Label(startAt.formatted(date: .omitted, time: .shortened), systemImage: "clock")
@@ -1849,7 +1953,7 @@ private struct WidgetTaskRow: View {
   var body: some View {
     let completed = widgetTaskIsCompleted(task)
     VStack(alignment: .leading, spacing: 2) {
-      Text("今はこれ")
+      Text("今日のTODO")
         .font(.caption)
         .foregroundStyle(palette.secondary)
       Text(task.title)
@@ -1931,7 +2035,7 @@ private struct MonthlyCalendarWidgetView: View {
             .foregroundStyle(palette.foreground)
           LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: isLarge ? 3 : 1), count: 7), spacing: isLarge ? 5 : 3) {
             ForEach(["日", "月", "火", "水", "木", "金", "土"], id: \.self) { label in
-              Text(label).font(isLarge ? .subheadline : .caption2).foregroundStyle(palette.secondary)
+              Text(label).font(isLarge ? .subheadline : .caption2.weight(.medium)).foregroundStyle(palette.foreground.opacity(0.82))
             }
             ForEach(0..<max(0, month.leadingEmptyCount), id: \.self) { _ in
               Color.clear.frame(height: dayCellHeight)
@@ -1954,17 +2058,23 @@ private struct MonthlyCalendarWidgetView: View {
                 }
                 .frame(maxWidth: .infinity, minHeight: isLarge ? 20 : 16)
                 if day.hasSchedule {
-                  Text(day.scheduleTitle ?? "予定")
-                    .font(.system(size: isLarge ? 8 : 6, weight: .medium))
-                    .foregroundStyle(palette.foreground)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.65)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                  if day.scheduleCount > 1 {
-                    Text("+\(day.scheduleCount - 1)")
-                      .font(.system(size: isLarge ? 7 : 6, weight: .semibold))
-                      .foregroundStyle(palette.accent)
+                  HStack(spacing: 2) {
+                    Circle().fill(palette.accent).frame(width: isLarge ? 4 : 3, height: isLarge ? 4 : 3)
+                    if day.scheduleCount > 1 {
+                      Text("\(day.scheduleCount)")
+                        .font(.system(size: isLarge ? 7 : 6, weight: .semibold))
+                        .foregroundStyle(palette.accent)
+                        .lineLimit(1)
+                    }
+                  }
+                  .frame(maxWidth: .infinity, alignment: .center)
+                  if isLarge, let title = day.scheduleTitle {
+                    Text(title)
+                      .font(.system(size: 7, weight: .medium))
+                      .foregroundStyle(palette.foreground.opacity(0.82))
                       .lineLimit(1)
+                      .minimumScaleFactor(0.65)
+                      .frame(maxWidth: .infinity, alignment: .leading)
                   }
                 }
               }
@@ -2009,14 +2119,19 @@ private struct WeeklyCalendarWidgetView: View {
             HStack(alignment: .top, spacing: 2) {
               ForEach(Array(week.days.enumerated()), id: \.offset) { _, day in
                 VStack(spacing: 3) {
-                  Text(day.weekday).font(.caption2.weight(day.isToday ? .bold : .regular)).foregroundStyle(day.isToday ? palette.accent : palette.secondary)
+                  Text(day.weekday).font(.caption2.weight(day.isToday ? .bold : .medium)).foregroundStyle(day.isToday ? palette.accent : palette.foreground.opacity(0.82))
                   Text("\(day.day)").font(.caption2).foregroundStyle(palette.foreground)
-                  Text(day.schedules.first?.title ?? "—")
-                    .font(.caption2.weight(.semibold))
-                    .foregroundStyle(day.schedules.isEmpty ? palette.secondary : palette.accent)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.65)
-                  if day.schedules.count > 1 { Text("+\(day.schedules.count - 1)").font(.caption2).foregroundStyle(palette.secondary) }
+                  if day.schedules.isEmpty {
+                    Text("—").font(.caption2).foregroundStyle(palette.foreground.opacity(0.55))
+                  } else {
+                    HStack(spacing: 2) {
+                      Circle().fill(palette.accent).frame(width: 4, height: 4)
+                      if day.schedules.count > 1 { Text("\(day.schedules.count)").font(.caption2.weight(.semibold)).foregroundStyle(palette.accent) }
+                    }
+                    if let title = day.schedules.first?.title {
+                      Text(title).font(.system(size: 7, weight: .medium)).foregroundStyle(palette.foreground.opacity(0.82)).lineLimit(1).minimumScaleFactor(0.65)
+                    }
+                  }
                 }.frame(maxWidth: .infinity)
               }
             }
@@ -2036,21 +2151,21 @@ private struct TodayScheduleWidgetView: View {
     Group {
       if let schedules = entry.snapshot?.todaySchedules, !schedules.isEmpty {
         VStack(alignment: .leading, spacing: 5) {
-          Text("今日の予定").font(.headline.weight(.semibold)).foregroundStyle(palette.foreground)
+          Text("今日の予定一覧").font(.headline.weight(.semibold)).foregroundStyle(palette.foreground)
           ForEach(Array(schedules.prefix(5).enumerated()), id: \.offset) { _, item in
             Link(destination: URL(string: "rhythm://schedule")!) {
               HStack(spacing: 6) {
                 Text(item.allDay == true ? "終日" : item.scheduledAt.formatted(date: .omitted, time: .shortened)).font(.caption2).foregroundStyle(palette.accent).frame(width: 48, alignment: .leading)
                 VStack(alignment: .leading, spacing: 1) {
                   Text(item.title).font(.caption.weight(.medium)).foregroundStyle(palette.foreground).lineLimit(1)
-                  if let location = item.location, !location.isEmpty { Text(location).font(.caption2).foregroundStyle(palette.secondary).lineLimit(1) }
+                  if let location = item.location, !location.isEmpty { Text(location).font(.caption2).foregroundStyle(palette.foreground.opacity(0.78)).lineLimit(1) }
                 }
               }
             }
           }
-          if let total = entry.snapshot?.todayScheduleCount, total > 5 { Text("ほか\(total - 5)件").font(.caption2).foregroundStyle(palette.secondary) }
+          if let total = entry.snapshot?.todayScheduleCount, total > 5 { Text("ほか\(total - 5)件").font(.caption2).foregroundStyle(palette.foreground.opacity(0.78)) }
         }
-      } else { VStack(alignment: .leading, spacing: 5) { Text("今日の予定").font(.headline.weight(.semibold)).foregroundStyle(palette.foreground); Text("予定はありません").font(.subheadline).foregroundStyle(palette.secondary) } }
+      } else { VStack(alignment: .leading, spacing: 5) { Text("今日の予定一覧").font(.headline.weight(.semibold)).foregroundStyle(palette.foreground); Text("予定はありません").font(.subheadline).foregroundStyle(palette.secondary) } }
     }
     .rhythmWidgetSurface(palette: palette, appearance: entry.snapshot?.appearance, widgetKind: entry.widgetKind)
   }
@@ -2066,7 +2181,7 @@ private struct ChecklistWidgetView: View {
     Group {
       if let items = entry.snapshot?.checklist, !items.isEmpty {
         VStack(alignment: .leading, spacing: 5) {
-            Text("ToDoメモ").font(.caption.weight(.semibold)).foregroundStyle(palette.accent)
+            Text("TODO一覧").font(.caption.weight(.semibold)).foregroundStyle(palette.accent)
           ForEach(Array(items.prefix(limit).enumerated()), id: \.offset) { _, item in
             HStack(spacing: 6) {
               ListItemToggleButton(item: item, palette: palette)
@@ -2081,7 +2196,7 @@ private struct ChecklistWidgetView: View {
           }
           if items.count > limit { Text("ほか\(items.count - limit)件").font(.caption2).foregroundStyle(palette.secondary) }
         }
-      } else { VStack(alignment: .leading, spacing: 5) { Text("ToDoメモ").font(.caption.weight(.semibold)).foregroundStyle(palette.accent); Text("項目はありません").font(.subheadline).foregroundStyle(palette.secondary) } }
+      } else { VStack(alignment: .leading, spacing: 5) { Text("TODO一覧").font(.caption.weight(.semibold)).foregroundStyle(palette.accent); Text("項目はありません").font(.subheadline).foregroundStyle(palette.secondary) } }
     }
     .rhythmWidgetSurface(palette: palette, appearance: entry.snapshot?.appearance, widgetKind: entry.widgetKind)
   }
@@ -2120,7 +2235,7 @@ private struct VoiceWidgetView: View {
         Image(systemName: "mic.fill")
           .font(.system(size: family == .systemSmall ? 24 : 28, weight: .semibold))
           .foregroundStyle(palette.accent)
-        Text("音声入力")
+        Text("音声で追加")
           .font(.headline.weight(.semibold))
           .foregroundStyle(palette.foreground)
         Text(family == .systemSmall ? "話して予定・タスクを追加" : "タップして音声入力を開始")
@@ -2162,7 +2277,7 @@ private struct AffirmationWidgetView: View {
         let slotIndex = affirmationSlotIndex(for: entry.date)
         let selectedBackground = safeBackgrounds[slotIndex % safeBackgrounds.count]
         if selectedBackground == "photo", let selectedPhoto {
-          return WidgetSnapshot.Appearance(style: .photo, monoTemplate: baseAppearance.monoTemplate, fontDesign: baseAppearance.fontDesign, accentHex: baseAppearance.accentHex, photoFileName: selectedPhoto, cutoutFileName: baseAppearance.cutoutFileName, photoLayout: baseAppearance.photoLayout ?? "background", designPattern: nil, designCheckColor: baseAppearance.designCheckColor, designPatternUnlocked: baseAppearance.designPatternUnlocked, affirmationBackgrounds: baseAppearance.affirmationBackgrounds)
+          return WidgetSnapshot.Appearance(style: .photo, monoTemplate: baseAppearance.monoTemplate, fontDesign: baseAppearance.fontDesign, accentHex: baseAppearance.accentHex, photoFileName: selectedPhoto, cutoutFileName: nil, photoLayout: baseAppearance.photoLayout == "cutout" ? "background" : (baseAppearance.photoLayout ?? "background"), designPattern: nil, designCheckColor: baseAppearance.designCheckColor, designPatternUnlocked: baseAppearance.designPatternUnlocked, affirmationBackgrounds: baseAppearance.affirmationBackgrounds)
         }
         if baseAppearance.designPatternUnlocked != true {
           return WidgetSnapshot.Appearance(style: .mono, monoTemplate: baseAppearance.monoTemplate, fontDesign: baseAppearance.fontDesign, accentHex: baseAppearance.accentHex, photoFileName: nil, cutoutFileName: nil, photoLayout: baseAppearance.photoLayout, designPattern: nil, designCheckColor: baseAppearance.designCheckColor, designPatternUnlocked: false, affirmationBackgrounds: baseAppearance.affirmationBackgrounds)
@@ -2295,8 +2410,8 @@ struct RhythmWidget: Widget {
     AppIntentConfiguration(kind: kind, provider: RhythmWidgetProvider(widgetKind: kind)) { entry in
       WidgetAccessGate(entry: entry) { RhythmWidgetView(entry: entry) }
     }
-    .configurationDisplayName("今はこれ＋次の予定")
-    .description("今やることと次の予定を確認できます。")
+    .configurationDisplayName("今日のTODO＋次の予定")
+    .description("登録したTODOと次の予定を確認できます。")
     .supportedFamilies([.systemMedium])
   }
 }
@@ -2308,8 +2423,8 @@ struct RhythmCurrentTaskWidget: Widget {
     AppIntentConfiguration(kind: kind, provider: RhythmWidgetProvider(widgetKind: kind)) { entry in
       WidgetAccessGate(entry: entry) { CurrentTaskWidgetView(entry: entry) }
     }
-    .configurationDisplayName("今はこれ")
-    .description("今やることをすぐ確認できます。")
+    .configurationDisplayName("今日のTODO")
+    .description("今日取り組むTODOを確認できます。")
     .supportedFamilies([.systemMedium, .systemLarge])
   }
 }
@@ -2360,7 +2475,7 @@ struct RhythmTodayScheduleWidget: Widget {
     AppIntentConfiguration(kind: kind, provider: RhythmWidgetProvider(widgetKind: kind)) { entry in
       WidgetAccessGate(entry: entry) { TodayScheduleWidgetView(entry: entry) }
     }
-    .configurationDisplayName("今日の予定")
+    .configurationDisplayName("今日の予定一覧")
     .description("今日の予定を時系列で確認できます。")
     .supportedFamilies([.systemMedium])
   }
@@ -2373,8 +2488,8 @@ struct RhythmChecklistWidget: Widget {
     AppIntentConfiguration(kind: kind, provider: RhythmWidgetProvider(widgetKind: kind)) { entry in
       WidgetAccessGate(entry: entry) { ChecklistWidgetView(entry: entry) }
     }
-    .configurationDisplayName("ToDoメモ")
-    .description("待機中の項目を確認できます。")
+    .configurationDisplayName("TODO一覧")
+    .description("登録したTODOを一覧で確認できます。")
     .supportedFamilies([.systemMedium])
   }
 }
@@ -2399,9 +2514,9 @@ struct RhythmVoiceWidget: Widget {
     AppIntentConfiguration(kind: kind, provider: RhythmWidgetProvider(widgetKind: kind)) { entry in
       WidgetAccessGate(entry: entry) { VoiceWidgetView(entry: entry) }
     }
-    .configurationDisplayName("音声入力")
-    .description("ホーム画面からすぐに音声入力を開始できます。")
-    .supportedFamilies([.systemSmall, .systemMedium])
+    .configurationDisplayName("音声で追加")
+    .description("ホーム画面からタスクや予定を追加できます。")
+    .supportedFamilies([.systemMedium])
   }
 }
 

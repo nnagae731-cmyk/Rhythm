@@ -56,7 +56,7 @@ import { cancelPendingTaskNotifications, cancelPendingTaskNotificationsUnsafe } 
 import { cancelPendingDepartureNotifications, cancelPendingDepartureNotificationsUnsafe } from './features/departure/departureNotifications';
 import { enqueueNotificationOperation } from './features/notifications/notificationOperationQueue';
 import { getDeparturePlanMode, getPlanScheduledTime, isArrivalReversePlan, isDepartureReminderPlan, normalizeDeparturePlanForSave } from './features/departure/departurePlanMode';
-import { DEFAULT_LIVE_ACTIVITY_CUSTOMIZATION, DEFAULT_LIVE_ACTIVITY_DISPLAY_OPTIONS, endRhythmLiveActivity, getRhythmLiveActivityStatus, normalizeRhythmLiveActivityCustomization, normalizeRhythmLiveActivityDisplayOptions, startOrUpdateRhythmLiveActivity, type RhythmLiveActivityPayload } from './features/widget/rhythmLiveActivity';
+import { DEFAULT_LIVE_ACTIVITY_CUSTOMIZATION, DEFAULT_LIVE_ACTIVITY_DISPLAY_OPTIONS, endRhythmLiveActivity, getRhythmLiveActivityStatus, isRhythmLiveActivityAvailable, normalizeRhythmLiveActivityCustomization, normalizeRhythmLiveActivityDisplayOptions, startOrUpdateRhythmLiveActivity, type RhythmLiveActivityPayload, type RhythmLiveActivityRuntimeStatus } from './features/widget/rhythmLiveActivity';
 import { WishScreen } from './WishScreen';
 import { VoiceInputModal } from './components/VoiceInputModal';
 import { VoiceParseResult } from './features/voiceParser';
@@ -833,6 +833,7 @@ export default function App() {
   const [focusTimerActive, setFocusTimerActive] = useState(false);
   const [focusActivity, setFocusActivity] = useState<{ taskTitle?: string; endsAt?: string; elapsedStartAt?: string; elapsedSeconds?: number; remainingSeconds?: number; running?: boolean }>();
   const [liveActivityEnabled, setLiveActivityEnabled] = useState(false);
+  const [liveActivityRuntimeStatus, setLiveActivityRuntimeStatus] = useState<RhythmLiveActivityRuntimeStatus>('off');
   const liveActivityEnabledRef = React.useRef(false);
   const liveActivityPreferenceTouchedRef = React.useRef(false);
   const [liveActivityDisplayOptions, setLiveActivityDisplayOptions] = useState<LiveActivityDisplayOptions>(() => ({ ...DEFAULT_LIVE_ACTIVITY_DISPLAY_OPTIONS }));
@@ -1224,6 +1225,7 @@ export default function App() {
     liveActivityPreferenceTouchedRef.current = true;
     liveActivityEnabledRef.current = requested;
     setLiveActivityEnabled(requested);
+    setLiveActivityRuntimeStatus(requested ? 'waiting' : 'off');
     if (__DEV__) {
       console.log('[LiveActivityToggle]', {
         previous,
@@ -2350,6 +2352,11 @@ export default function App() {
         navigateWithinAppRef.current('home');
         return true;
       }
+      if (parsed.hostname === 'add') {
+        navigateWithinAppRef.current('home');
+        setAddOpen(true);
+        return true;
+      }
       if (parsed.hostname === 'schedule') {
         setTimelineInitialTab('departure');
         navigateWithinAppRef.current('timeline');
@@ -3247,11 +3254,14 @@ export default function App() {
     const current = rankedCurrentTasks[0] ?? (showCurrentTasks ? selectCurrentTask(candidates, now) : undefined);
     const displayTasks = rankedCurrentTasks.slice(0, 3);
     const next = tier === 'premium' && (displayOptions.nextSchedule || displayOptions.departureCountdown) ? nextDeparturePlan : undefined;
-    if (!current && !next && !affirmationText) return undefined;
     return {
       tier,
       mode: 'normal',
-      currentTaskTitle: current?.title,
+      // A switch that appears enabled but produces no visible activity is
+      // confusing. Keep a lightweight, actionable empty state until the
+      // user has an eligible TODO; real task/focus/schedule data replaces it
+      // on the next sync.
+      currentTaskTitle: current?.title ?? '今日のTODOを追加',
       currentTasks: displayTasks.length ? displayTasks.map((task) => ({ id: task.id, title: task.title })) : undefined,
       currentTaskRemainingCount: Math.max(0, rankedCurrentTasks.length - displayTasks.length),
       nextScheduleTitle: tier === 'premium' && (displayOptions.nextSchedule || displayOptions.departureCountdown) ? next?.title : undefined,
@@ -3301,22 +3311,41 @@ export default function App() {
     }
     if (!hydrated || !storeKitEntitlementsResolved) return;
     const serialized = liveActivityPayload ? JSON.stringify(liveActivityPayload) : undefined;
-    if (serialized === liveActivitySerializedRef.current) return;
-    liveActivitySerializedRef.current = serialized;
     if (!serialized || !liveActivityPayload) {
+      liveActivitySerializedRef.current = undefined;
+      setLiveActivityRuntimeStatus('off');
       if (__DEV__) console.log('[LiveActivity] sync-action', { action: 'end', reason: 'payload-unavailable' });
       void endRhythmLiveActivity();
       return;
     }
+    if (serialized === liveActivitySerializedRef.current) return;
     const payload = liveActivityPayload;
     if (__DEV__) console.log('[LiveActivity] sync-action', { action: 'start-or-update', mode: payload.mode, tier: payload.tier });
-    void startOrUpdateRhythmLiveActivity(payload).then(async (result) => {
-      if (__DEV__) console.log('[LiveActivity] sync-complete', { action: 'start-or-update', result });
+    setLiveActivityRuntimeStatus('starting');
+    void (async () => {
+      const available = await isRhythmLiveActivityAvailable();
+      if (!available) {
+        // Never cache a failed call as if it had started. This makes a later
+        // native-capable build or a manual re-enable retry the same payload.
+        liveActivitySerializedRef.current = undefined;
+        setLiveActivityRuntimeStatus('unavailable');
+        if (__DEV__) console.log('[LiveActivity] sync-complete', { action: 'start-or-update', result: false, reason: 'unavailable' });
+        return;
+      }
+      const result = await startOrUpdateRhythmLiveActivity(payload);
+      const status = await getRhythmLiveActivityStatus();
+      if (result && status.active) {
+        liveActivitySerializedRef.current = serialized;
+        setLiveActivityRuntimeStatus('active');
+      } else {
+        liveActivitySerializedRef.current = undefined;
+        setLiveActivityRuntimeStatus('failed');
+      }
       if (__DEV__) {
-        const status = await getRhythmLiveActivityStatus();
+        console.log('[LiveActivity] sync-complete', { action: 'start-or-update', result });
         console.log('[LiveActivity] status', status);
       }
-    });
+    })();
   }, [hydrated, liveActivityEnabled, liveActivityPayload, storeKitEntitlementsResolved]);
 
   const syncRhythmWidgetSnapshot = React.useCallback(async () => {
@@ -3478,7 +3507,10 @@ export default function App() {
   }, [affirmationCustomTexts, affirmations, chicCheckColor, designMode, departureCheckIns, departurePlans, effectiveChicPattern, hasDesignCustomizeAccess, hydrated, onboarding.state.firstRunStage, planTier, rewardedAccess.widgetPhotoCustomization, storeKitEntitlementsResolved, tasks, widgetPhotoSyncedUriRef, widgetCustomPhotoSyncedUrisRef, widgetSettings, wishMonths, wishTopImageUri]);
 
   const openWidgetGuide = React.useCallback(() => {
-    setWidgetGuideVisible(true);
+    // Present this native Modal only after the Widget sheet has completed its
+    // dismissal transaction; presenting two iOS Modals in one frame can leave
+    // an invisible host capturing touches.
+    requestAnimationFrame(() => requestAnimationFrame(() => setWidgetGuideVisible(true)));
   }, []);
 
   const removeRoutineById = React.useCallback((taskId: string) => {
@@ -3707,7 +3739,34 @@ export default function App() {
       let nextTasks = tasksRef.current;
       actions.forEach((raw: any) => {
         if (!raw || typeof raw !== 'object' || typeof raw.id !== 'string') return;
-        if (raw.type === 'completeTask' && typeof raw.taskId === 'string') {
+        if (raw.type === 'addTask' && typeof raw.title === 'string') {
+          const title = raw.title.trim();
+          if (title) {
+            const taskId = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+            const scheduledDate = typeof raw.scheduledDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(raw.scheduledDate)
+              ? raw.scheduledDate
+              : dateKey();
+            const scheduledTime = typeof raw.scheduledTime === 'string' && /^\d{2}:\d{2}$/.test(raw.scheduledTime)
+              ? raw.scheduledTime
+              : undefined;
+            const task: Task = {
+              id: taskId,
+              title,
+              createdAt: new Date().toISOString(),
+              done: false,
+              status: 'active',
+              category: 'その他',
+              priority: '中',
+              repeatRule: 'none',
+              nudgeMode: 'once',
+              scheduledDate,
+              scheduledTime,
+            };
+            nextTasks = [task, ...nextTasks];
+            queueScheduleConflictCheck(task, departurePlansRef.current);
+          }
+          handledIds.push(raw.id);
+        } else if (raw.type === 'completeTask' && typeof raw.taskId === 'string') {
           const target = nextTasks.find((task) => task.id === raw.taskId);
           if (target && !target.done) {
             taskIdsToComplete.push(raw.taskId);
@@ -5807,6 +5866,7 @@ export default function App() {
                onPremiumTrialReminderEnabled={premiumTrialReminderAvailable ? setPremiumTrialReminderEnabled : undefined}
                liveActivityEnabled={liveActivityEnabled}
                onLiveActivityEnabled={handleLiveActivityEnabled}
+               liveActivityRuntimeStatus={liveActivityRuntimeStatus}
                liveActivityDisplayOptions={liveActivityDisplayOptions}
                onLiveActivityDisplayOptionsChange={setLiveActivityDisplayOptions}
                liveActivityCustomization={liveActivityCustomization}

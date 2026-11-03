@@ -8,7 +8,7 @@ Pod::Spec.new do |s|
   s.platforms = { :ios => '17.0' }
   s.source = { :git => 'https://github.com/nnagae731-cmyk/Rhythm.git', :tag => s.version.to_s }
   s.static_framework = true
-  s.frameworks = 'Vision', 'ActivityKit'
+  s.frameworks = 'ActivityKit'
   # This podspec lives beside the module implementation. Keep the source
   # explicit so CocoaPods always adds it to the RhythmWidget target.
   s.source_files = ['RhythmWidgetModule.swift', 'RhythmLiveActivityAttributes.swift']

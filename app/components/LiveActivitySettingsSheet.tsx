@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Modal, Pressable, ScrollView, Switch, Text, View } from 'react-native';
 import { LiveActivityCustomizationSettings, LiveActivityDisplayOptions, RhythmFontDesign } from '../types';
 import { RHYTHM_FONT_DESIGN_OPTIONS, reactNativeFontFamily, reactNativeFontWeight } from '../features/fontDesign';
+import type { RhythmLiveActivityRuntimeStatus } from '../features/widget/rhythmLiveActivity';
 
 type PopupColors = {
   background: string;
@@ -16,7 +17,7 @@ type PopupColors = {
 };
 
 const DISPLAY_OPTIONS: Array<[keyof LiveActivityDisplayOptions, string]> = [
-  ['currentTask', '今はこれ'],
+  ['currentTask', '今日のTODO'],
   ['nextSchedule', '次の予定'],
   ['departureCountdown', '出発カウントダウン'],
   ['focusRemaining', '集中の残り時間'],
@@ -42,6 +43,7 @@ export function LiveActivitySettingsSheet({
   canInteractive,
   taskTitle,
   nextTitle,
+  runtimeStatus = 'off',
 }: {
   visible: boolean;
   options: LiveActivityDisplayOptions;
@@ -53,6 +55,7 @@ export function LiveActivitySettingsSheet({
   canInteractive: boolean;
   taskTitle?: string;
   nextTitle?: string;
+  runtimeStatus?: RhythmLiveActivityRuntimeStatus;
 }) {
   const [draftOptions, setDraftOptions] = useState(options);
   const [draftCustomization, setDraftCustomization] = useState(customization);
@@ -72,6 +75,15 @@ export function LiveActivitySettingsSheet({
     return { title: 17, body: 13, meta: 11, aa: 26 };
   }, [draftCustomization.fontSize]);
   const canEditDisplayOptions = canInteractive;
+  const runtimeLabel = runtimeStatus === 'active'
+    ? '表示中'
+    : runtimeStatus === 'starting' || runtimeStatus === 'waiting'
+      ? '表示を開始しています'
+      : runtimeStatus === 'unavailable'
+        ? 'この端末またはBuildでは利用できません'
+        : runtimeStatus === 'failed'
+          ? '開始できませんでした。iPhoneのライブアクティビティ設定を確認してください'
+          : 'オフ';
   const updateOption = (key: keyof LiveActivityDisplayOptions) => {
     if (!canEditDisplayOptions) return;
     if (draftOptions[key] && Object.values(draftOptions).filter(Boolean).length <= 1) return;
@@ -87,15 +99,20 @@ export function LiveActivitySettingsSheet({
         <View style={{ alignItems: 'center', paddingBottom: 8 }}><View style={{ width: 42, height: 4, borderRadius: 2, backgroundColor: colors.border }} /></View>
         <ScrollView contentContainerStyle={{ padding: 18, paddingBottom: 30 }}>
           <View style={{ flexDirection: 'row', alignItems: 'flex-start' }}>
-            <View style={{ flex: 1 }}><Text style={{ color: colors.text, fontSize: 20, fontWeight: '900' }}>Live Activity</Text><Text style={{ color: colors.muted, fontSize: 11, marginTop: 3 }}>ロック画面・Dynamic Islandに表示する内容をカスタマイズ</Text></View>
+            <View style={{ flex: 1 }}><Text style={{ color: colors.text, fontSize: 20, fontWeight: '900' }}>ライブアクティビティ</Text><Text style={{ color: colors.muted, fontSize: 11, marginTop: 3 }}>ロック画面・Dynamic Islandに表示する内容を設定</Text></View>
             <Pressable accessibilityRole="button" accessibilityLabel="閉じる" onPress={onClose} hitSlop={12}><Text style={{ color: colors.muted, fontSize: 24, lineHeight: 24 }}>×</Text></Pressable>
           </View>
           <View style={{ marginTop: 14, padding: 14, borderRadius: 16, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface }}>
             <Text style={{ color: colors.muted, fontSize: 11, fontWeight: '800' }}>プレビュー</Text>
-            <Text style={{ color: colors.text, fontSize: previewSizes.title, fontWeight: previewFontWeight, fontFamily: previewFontFamily, marginTop: 8 }} numberOfLines={1}>{taskTitle || '今はこれ'}</Text>
+            <Text style={{ color: colors.text, fontSize: previewSizes.title, fontWeight: previewFontWeight, fontFamily: previewFontFamily, marginTop: 8 }} numberOfLines={1}>{taskTitle || '今日のTODO'}</Text>
             {draftOptions.nextSchedule ? <Text style={{ color: colors.muted, fontSize: previewSizes.body, fontWeight: previewFontWeight, fontFamily: previewFontFamily, marginTop: 4 }} numberOfLines={1}>{nextTitle || '次の予定を表示'}</Text> : null}
             {draftCustomization.interactiveChecks && canInteractive ? <Text style={{ color: colors.accent, fontSize: previewSizes.body, fontWeight: previewFontWeight, fontFamily: previewFontFamily, marginTop: 7 }}>□ checklist ・ ✓ 完了</Text> : null}
             {draftOptions.affirmation ? <Text style={{ color: colors.muted, fontSize: previewSizes.meta, fontWeight: previewFontWeight, fontFamily: previewFontFamily, marginTop: 7 }} numberOfLines={1}>今日も自分のペースで</Text> : null}
+          </View>
+
+          <View style={{ marginTop: 10, padding: 11, borderRadius: 12, backgroundColor: runtimeStatus === 'active' ? colors.soft : colors.secondarySurface, borderWidth: 1, borderColor: runtimeStatus === 'active' ? colors.accent : colors.border }}>
+            <Text style={{ color: runtimeStatus === 'active' ? colors.accent : colors.text, fontSize: 11, fontWeight: '900' }}>現在の表示状態：{runtimeLabel}</Text>
+            <Text style={{ color: colors.muted, fontSize: 10, marginTop: 4 }}>{runtimeStatus === 'active' ? '未完了の「今やるTODO」や集中中の内容を自動で更新します。' : 'ONにすると、TODOがまだない場合も「今日のTODOを追加」を表示します。'}</Text>
           </View>
 
           <Text style={{ color: colors.text, fontSize: 14, fontWeight: '900', marginTop: 17 }}>表示する内容</Text>
@@ -104,7 +121,7 @@ export function LiveActivitySettingsSheet({
           </View>
 
           <Text style={{ color: colors.text, fontSize: 14, fontWeight: '900', marginTop: 18 }}>チェック操作</Text>
-          <View style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 10 }}><View style={{ flex: 1 }}><Text style={{ color: colors.text, fontSize: 13, fontWeight: '700' }}>Live Activityから完了する</Text><Text style={{ color: colors.muted, fontSize: 11, marginTop: 3 }}>{canInteractive ? 'Premiumで利用できます' : 'Premium限定です'}</Text></View><Switch value={draftCustomization.interactiveChecks && canInteractive} disabled={!canInteractive} onValueChange={(value) => updateCustomization('interactiveChecks', value)} trackColor={{ false: colors.border, true: colors.accent }} thumbColor={draftCustomization.interactiveChecks && canInteractive ? colors.onAccent : colors.muted} /></View>
+          <View style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 10 }}><View style={{ flex: 1 }}><Text style={{ color: colors.text, fontSize: 13, fontWeight: '700' }}>ライブアクティビティから完了する</Text><Text style={{ color: colors.muted, fontSize: 11, marginTop: 3 }}>{canInteractive ? 'プレミアムで利用できます' : 'プレミアム限定です'}</Text></View><Switch value={draftCustomization.interactiveChecks && canInteractive} disabled={!canInteractive} onValueChange={(value) => updateCustomization('interactiveChecks', value)} trackColor={{ false: colors.border, true: colors.accent }} thumbColor={draftCustomization.interactiveChecks && canInteractive ? colors.onAccent : colors.muted} /></View>
 
           <Text style={{ color: colors.text, fontSize: 14, fontWeight: '900', marginTop: 10 }}>アファメーション</Text>
           <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}>

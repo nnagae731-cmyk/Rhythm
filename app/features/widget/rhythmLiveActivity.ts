@@ -74,6 +74,10 @@ export type RhythmLiveActivityPayload = {
   fontSize?: LiveActivityFontSize;
 };
 
+/** Runtime-only state. ActivityKit owns the actual lifecycle, so this is
+ * deliberately never written into the persisted app state. */
+export type RhythmLiveActivityRuntimeStatus = 'off' | 'waiting' | 'starting' | 'active' | 'unavailable' | 'failed';
+
 type RhythmLiveActivityNativeModule = {
   isLiveActivityAvailable?: () => Promise<boolean>;
   startOrUpdateLiveActivity?: (payload: string) => Promise<boolean>;

@@ -1,10 +1,6 @@
 import ExpoModulesCore
 import Foundation
 import Darwin
-import CoreImage
-import ImageIO
-import UIKit
-import Vision
 import WidgetKit
 #if canImport(ActivityKit)
 import ActivityKit
@@ -15,7 +11,6 @@ public final class RhythmWidgetModule: Module {
   private let snapshotKey = "rhythmWidgetSnapshot"
   private let photoFileName = "rhythm-widget-photo.jpg"
   private let widgetPhotoPrefix = "rhythm-widget-photo-"
-  private let widgetCutoutPrefix = "rhythm-widget-cutout-"
   private let affirmationPhotoPrefix = "rhythm-affirmation-photo-"
   private let pendingActionsKey = "rhythmWidgetPendingActions"
   private let pendingActionsLockFile = ".rhythmWidgetPendingActions.lock"
@@ -56,19 +51,6 @@ public final class RhythmWidgetModule: Module {
           for kind in self.widgetPhotoKinds {
             let name = "\(self.widgetPhotoPrefix)\(kind).jpg"
             if !allowedWidgetNames.contains(name) { try? FileManager.default.removeItem(at: container.appendingPathComponent(name)) }
-          }
-          let allowedCutoutNames = Set(customizations.values.compactMap { value -> String? in
-            guard let customization = value as? [String: Any], let name = customization["cutoutFileName"] as? String,
-                  name.hasPrefix(self.widgetCutoutPrefix), name.hasSuffix(".png") else { return nil }
-            return name
-          })
-          for kind in self.widgetPhotoKinds {
-            let name = "\(self.widgetCutoutPrefix)\(kind).png"
-            if !allowedCutoutNames.contains(name) {
-              try? FileManager.default.removeItem(at: container.appendingPathComponent(name))
-              let cacheURL = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0].appendingPathComponent(name)
-              try? FileManager.default.removeItem(at: cacheURL)
-            }
           }
         }
       }
@@ -119,105 +101,6 @@ public final class RhythmWidgetModule: Module {
       try FileManager.default.copyItem(at: sourceURL, to: temporary)
       try? FileManager.default.removeItem(at: destination)
       try FileManager.default.moveItem(at: temporary, to: destination)
-      return true
-    }
-
-    AsyncFunction("isWidgetPhotoBackgroundRemovalAvailable") { () -> Bool in
-      if #available(iOS 17.0, *) {
-        #if DEBUG
-        print("[BackgroundRemoval][Native] availability true")
-        #endif
-        return true
-      }
-      #if DEBUG
-      print("[BackgroundRemoval][Native] availability false")
-      #endif
-      return false
-    }
-
-    AsyncFunction("removeWidgetPhotoBackground") { (uri: String, widgetType: String) async throws -> String? in
-      guard self.widgetPhotoKinds.contains(widgetType) else {
-        throw NSError(domain: "RhythmWidget", code: 10, userInfo: [NSLocalizedDescriptionKey: "Invalid widget photo target"])
-      }
-      guard #available(iOS 17.0, *) else { return nil }
-      #if DEBUG
-      print("[BackgroundRemoval][Native] start")
-      print("[BackgroundRemoval][Native] widget=\(widgetType)")
-      #endif
-      let sourceURL = Self.resolvedFileURL(uri)
-      let sourceExists = FileManager.default.fileExists(atPath: sourceURL.path)
-      #if DEBUG
-      print("[BackgroundRemoval][Native] sourceExists \(sourceExists)")
-      #endif
-      guard sourceExists else {
-        throw NSError(domain: "RhythmWidget", code: 11, userInfo: [NSLocalizedDescriptionKey: "Widget photo file is unavailable"])
-      }
-      let sourcePath = sourceURL.path
-      #if DEBUG
-      print("[BackgroundRemoval][Native] sourcePath \(sourcePath)")
-      #endif
-      let pngData: Data
-      do {
-        pngData = try await Task.detached(priority: .userInitiated) {
-          try Self.foregroundCutoutPNGData(sourceURL: URL(fileURLWithPath: sourcePath))
-        }.value
-      } catch {
-        #if DEBUG
-        print("[BackgroundRemoval][Native] error \(error.localizedDescription)")
-        #endif
-        throw error
-      }
-      guard let container = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: self.appGroup) else {
-        throw NSError(domain: "RhythmWidget", code: 12, userInfo: [NSLocalizedDescriptionKey: "App Group is unavailable"])
-      }
-      let fileName = "\(self.widgetCutoutPrefix)\(widgetType).png"
-      let destination = container.appendingPathComponent(fileName)
-      try Self.atomicWrite(pngData, to: destination)
-      #if DEBUG
-      print("[BackgroundRemoval][Native] appGroupWrite \(destination.path)")
-      #endif
-      // Keep a managed cache copy so the RN preview can display the result;
-      // the Widget itself reads only the App Group filename from the snapshot.
-      let cacheURL = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0].appendingPathComponent(fileName)
-      let cacheWritten: Bool
-      do {
-        try Self.atomicWrite(pngData, to: cacheURL)
-        cacheWritten = true
-      } catch {
-        // App Group output is already valid. Returning it keeps the cutout
-        // usable even if the optional preview cache cannot be written.
-        cacheWritten = false
-        #if DEBUG
-        print("[BackgroundRemoval][Native] cacheWrite failure \(error.localizedDescription)")
-        #endif
-      }
-      #if DEBUG
-      print("[BackgroundRemoval][Native] pngBytes \(pngData.count)")
-      print("[BackgroundRemoval][Native] cacheURL \(cacheURL.path)")
-      print("[BackgroundRemoval][Native] cacheWritten \(cacheWritten)")
-      print("[BackgroundRemoval][Native] success widget=\(widgetType)")
-      #endif
-      return cacheWritten ? cacheURL.absoluteString : destination.absoluteString
-    }
-
-    AsyncFunction("saveWidgetPhotoCutout") { (uri: String, widgetType: String) throws -> Bool in
-      guard self.widgetPhotoKinds.contains(widgetType), let container = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: self.appGroup) else {
-        throw NSError(domain: "RhythmWidget", code: 13, userInfo: [NSLocalizedDescriptionKey: "Invalid widget cutout target"])
-      }
-      let sourceURL = Self.resolvedFileURL(uri)
-      let sourceExists = FileManager.default.fileExists(atPath: sourceURL.path)
-      #if DEBUG
-      print("[BackgroundRemoval][Native] appGroupSourcePath \(sourceURL.path)")
-      print("[BackgroundRemoval][Native] appGroupSourceExists \(sourceExists)")
-      #endif
-      guard sourceExists else {
-        throw NSError(domain: "RhythmWidget", code: 14, userInfo: [NSLocalizedDescriptionKey: "Widget cutout file is unavailable"])
-      }
-      let destination = container.appendingPathComponent("\(self.widgetCutoutPrefix)\(widgetType).png")
-      try Self.atomicCopy(from: sourceURL, to: destination)
-      #if DEBUG
-      print("[BackgroundRemoval][Native] appGroupCopy widget=\(widgetType) success=true")
-      #endif
       return true
     }
 
@@ -303,67 +186,6 @@ public final class RhythmWidgetModule: Module {
       if #available(iOS 16.1, *) { return Self.liveActivityStatus() }
       return "{\"available\":false,\"active\":false}"
     }
-  }
-}
-
-private extension RhythmWidgetModule {
-  static func resolvedFileURL(_ uri: String) -> URL {
-    if let parsed = URL(string: uri), parsed.isFileURL { return parsed }
-    return URL(fileURLWithPath: uri)
-  }
-
-  static func atomicWrite(_ data: Data, to destination: URL) throws {
-    let temporary = destination.appendingPathExtension("tmp")
-    try? FileManager.default.removeItem(at: temporary)
-    try data.write(to: temporary, options: .atomic)
-    try? FileManager.default.removeItem(at: destination)
-    try FileManager.default.moveItem(at: temporary, to: destination)
-  }
-
-  static func atomicCopy(from source: URL, to destination: URL) throws {
-    let temporary = destination.appendingPathExtension("tmp")
-    try? FileManager.default.removeItem(at: temporary)
-    try FileManager.default.copyItem(at: source, to: temporary)
-    try? FileManager.default.removeItem(at: destination)
-    try FileManager.default.moveItem(at: temporary, to: destination)
-  }
-
-  @available(iOS 17.0, *)
-  static func foregroundCutoutPNGData(sourceURL: URL) throws -> Data {
-    guard let source = CGImageSourceCreateWithURL(sourceURL as CFURL, nil),
-          let cgImage = CGImageSourceCreateImageAtIndex(source, 0, nil) else {
-      throw NSError(domain: "RhythmWidget", code: 15, userInfo: [NSLocalizedDescriptionKey: "Photo could not be decoded"])
-    }
-    let orientationRaw = (CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as NSDictionary?)?[kCGImagePropertyOrientation] as? NSNumber
-    let orientation = CGImagePropertyOrientation(rawValue: orientationRaw?.uint32Value ?? 1) ?? .up
-    let handler = VNImageRequestHandler(cgImage: cgImage, orientation: orientation, options: [:])
-    let request = VNGenerateForegroundInstanceMaskRequest()
-    try handler.perform([request])
-    #if DEBUG
-    print("[BackgroundRemoval][Native] instances \(request.results?.first?.allInstances.count ?? 0)")
-    #endif
-    guard let observation = request.results?.first, !observation.allInstances.isEmpty else {
-      #if DEBUG
-      print("[BackgroundRemoval][Native] no-foreground")
-      #endif
-      throw NSError(domain: "RhythmWidget", code: 16, userInfo: [NSLocalizedDescriptionKey: "No foreground subject detected"])
-    }
-    let maskedBuffer = try observation.generateMaskedImage(ofInstances: observation.allInstances, from: handler, croppedToInstancesExtent: false)
-    #if DEBUG
-    print("[BackgroundRemoval][Native] maskedBuffer \(CVPixelBufferGetWidth(maskedBuffer))x\(CVPixelBufferGetHeight(maskedBuffer))")
-    #endif
-    let ciImage = CIImage(cvPixelBuffer: maskedBuffer)
-    let context = CIContext(options: nil)
-    guard let output = context.createCGImage(ciImage, from: ciImage.extent) else {
-      throw NSError(domain: "RhythmWidget", code: 17, userInfo: [NSLocalizedDescriptionKey: "Foreground mask could not be rendered"])
-    }
-    guard let png = UIImage(cgImage: output, scale: 1, orientation: .up).pngData() else {
-      throw NSError(domain: "RhythmWidget", code: 18, userInfo: [NSLocalizedDescriptionKey: "Foreground mask could not be encoded"])
-    }
-    #if DEBUG
-    print("[BackgroundRemoval][Native] pngBytes \(png.count)")
-    #endif
-    return png
   }
 }
 

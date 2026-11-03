@@ -116,18 +116,13 @@ export const INTRO_CARDS: IntroCard[] = [
 export const WIDGET_GUIDE_CARDS: IntroCard[] = [
   {
     id: 'widgetAdd',
-    title: 'ウィジェットをホーム画面に追加しよう',
-    description: 'ホーム画面を長押しして、「＋」からRhythmPaceを選びます。',
-  },
-  {
-    id: 'widget',
-    title: '好きなウィジェットを選ぶ',
-    description: '今やること、予定、カレンダー、音声入力など、必要な情報をホーム画面で確認できます。',
+    title: 'ホーム画面に追加する',
+    description: 'ホーム画面を長押しして「＋」をタップし、RhythmPaceを選んでサイズを追加します。',
   },
   {
     id: 'widgetEdit',
-    title: '見た目もウィジェットごとに変えられる',
-    description: '追加したウィジェットを長押しして「ウィジェットを編集」を選ぶと、シンプル・デザイン・写真から好きな見た目を選べます。',
+    title: '追加した後に整える',
+    description: '追加したウィジェットを長押しして「ウィジェットを編集」。種類・サイズ・見た目をあとから変更できます。',
   },
 ];
 
