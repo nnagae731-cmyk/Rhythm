@@ -1025,7 +1025,7 @@ export function SettingsScreen({
        <SettingsDisclosure icon="info" designMode={designMode} chicPalette={chicPalette} title="アプリについて" subtitle="情報・プライバシー・お問い合わせ" expanded={false} onPress={() => setAboutSheetOpen(true)} />
        <AboutAppSheet visible={aboutSheetOpen} onClose={() => setAboutSheetOpen(false)} colors={{ background: isDesign && chicPalette ? chicPalette.background : baseTheme.screenBackground, surface: isDesign && chicPalette ? chicPalette.cardSurface : baseTheme.surface, border: isDesign && chicPalette ? chicPalette.border : baseTheme.border, text: isDesign && chicPalette ? chicPalette.textPrimary : baseTheme.primaryText, muted: isDesign && chicPalette ? chicPalette.textSecondary : baseTheme.secondaryText, accent: isDesign && chicPalette ? chicPalette.accent : baseTheme.primaryAccent, onAccent: isDesign && chicPalette ? chicPalette.onAccent : (isDark ? baseTheme.screenBackground : '#FFFFFF') }} />
       </>}
-      {!captureDesignOnly && SETTINGS_BANNER_AD_UNIT_ID && <View style={{ alignItems: 'center', marginTop: 24, marginBottom: 12, paddingVertical: 8 }} accessibilityLabel="広告">
+      {!captureDesignOnly && planTier !== 'premium' && SETTINGS_BANNER_AD_UNIT_ID && <View style={{ alignItems: 'center', marginTop: 24, marginBottom: 12, paddingVertical: 8 }} accessibilityLabel="広告">
         <BannerAd
           unitId={SETTINGS_BANNER_AD_UNIT_ID}
           size={BannerAdSize.ANCHORED_ADAPTIVE_BANNER}

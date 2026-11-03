@@ -1187,10 +1187,7 @@ export default function App() {
         : isPremiumDesignUnlocked(rewardedAccess, now)
           ? '広告で12時間利用中'
           : storeKitEntitlementsResolved ? '未購入 ›' : '購入状態を確認中';
-  const currentDesignNeedsAccess = designMode === 'photo'
-    || ((designMode === 'minimal' || designMode === 'dark') && monoPattern !== 'plain')
-    || (designMode === 'chic' && chicPattern !== 'plain');
-  const designRewardAvailable = rewardedAccessHydrated && currentDesignNeedsAccess
+  const designRewardAvailable = rewardedAccessHydrated
     && planTier !== 'premium'
     && !hasDesignCustomizeAccess
     && !isPremiumDesignTrialActive(rewardedAccess, now)
@@ -1261,7 +1258,9 @@ export default function App() {
       ],
     );
   }, []);
-  const activeDesignTrialId = planTier !== 'premium' && (isPremiumDesignTrialActive(rewardedAccess, now) || isPremiumDesignUnlocked(rewardedAccess, now))
+  // The trial remembers the design that started it. A later 12-hour rewarded
+  // unlock is global Design access, so it must not resurrect that old design.
+  const activeDesignTrialId = planTier !== 'premium' && isPremiumDesignTrialActive(rewardedAccess, now)
     ? rewardedAccess.premiumDesignTrial.designId
     : null;
   const hasMonoPatternAccess = (pattern: MonoPattern) => pattern === 'plain'
@@ -2077,6 +2076,9 @@ export default function App() {
   const startDesignRewardForCurrent = React.useCallback(() => {
     if (hasDesignCustomizeAccess || planTier === 'premium') return;
     const hadTryOnSelection = Boolean(pendingDesignApplyRef.current);
+    const currentDesignIsFree = (designMode === 'minimal' || designMode === 'dark')
+      ? monoPattern === 'plain'
+      : designMode === 'chic' && chicPattern === 'plain';
     if (!hadTryOnSelection) {
       pendingDesignApplyRef.current = () => {
         if (designMode === 'photo') {
@@ -2096,6 +2098,19 @@ export default function App() {
     }
     designRewardAfterCustomizeDismissRef.current = () => {
       if (canStartPremiumDesignTrial(rewardedAccess)) {
+        // From the Design Customize sheet, a user may still be on Plain.
+        // Starting the one-time access must not silently replace it with a
+        // different paid pattern; the next paid selection can use this trial.
+        if (!hadTryOnSelection && currentDesignIsFree) {
+          pendingDesignApplyRef.current = undefined;
+          const next: RewardedAccessState = {
+            ...rewardedAccess,
+            premiumDesignTrial: { used: true, designId: null, expiresAt: addHours(new Date(), 24) },
+          };
+          setRewardedAccess(next);
+          void saveRewardedAccessState(next);
+          return;
+        }
         const startTrial = designMode === 'photo'
           ? () => photoTheme.imageUri && startPhotoDesignTrial(photoTheme.imageUri, chicCheckColor)
           : designMode === 'minimal' || designMode === 'dark'
@@ -3775,7 +3790,10 @@ export default function App() {
               id: `${Date.now()}-${Math.random().toString(16).slice(2)}-siri-plan`,
               title,
               date: scheduledDate,
-              arrival: scheduledTime ?? initialPlan.arrival,
+              // A Siri request without a date/time is a calendar-only,
+              // time-free plan. Never inherit initialPlan's 10:00 default.
+              arrival: scheduledTime ?? '',
+              allDay: !scheduledTime,
               planMode: scheduledTime ? 'departure_reminder' : 'calendar_only',
               countdownEnabled: Boolean(scheduledTime),
               ...(scheduledTime ? { departureTime: scheduledTime } : {}),
@@ -3820,13 +3838,15 @@ export default function App() {
         void syncScheduleSwitchNotificationsForTask(createdTask.id);
       }
       for (const createdPlan of createdPlans) {
-        try {
-          await scheduleDeparture(createdPlan);
-        } catch {
-          // The plan itself is already persisted. Notification failures must
-          // not discard a successful Siri/App Shortcuts addition.
+        if (createdPlan.departureTime) {
+          try {
+            await scheduleDeparture(createdPlan);
+          } catch {
+            // The plan itself is already persisted. Notification failures must
+            // not discard a successful Siri/App Shortcuts addition.
+          }
+          if (createdPlan.id) void syncScheduleSwitchNotificationsForPlan(createdPlan.id);
         }
-        if (createdPlan.id) void syncScheduleSwitchNotificationsForPlan(createdPlan.id);
         queuePlanConflictCheck(createdPlan, tasksRef.current);
       }
       if (createdPlans.length) void onboarding.complete('planRegistration');
@@ -7353,6 +7373,18 @@ function DesignCalendarPlanActions({ plan, chicPalette, onEdit, onDelete, onOpen
   </View>;
 }
 
+function withCalendarBandAlpha(color: string, alpha: number) {
+  const normalizedAlpha = Math.max(0, Math.min(1, alpha));
+  const hex = color.trim().match(/^#([0-9a-f]{6})$/i);
+  if (hex) {
+    const value = hex[1]!;
+    return `rgba(${parseInt(value.slice(0, 2), 16)}, ${parseInt(value.slice(2, 4), 16)}, ${parseInt(value.slice(4, 6), 16)}, ${normalizedAlpha})`;
+  }
+  const rgb = color.trim().match(/^rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/i);
+  if (rgb) return `rgba(${rgb[1]}, ${rgb[2]}, ${rgb[3]}, ${normalizedAlpha})`;
+  return color;
+}
+
 function TaskScheduleCalendar({ tasks, plans, externalEvents, now, designMode, chicPattern, chicPalette, planTier, focusDate, calendarMarks, onSetCalendarMark, onPremium, onEditTask, onDeleteTask, onEditPlan, onDeletePlan, onOpenMap, behaviorEvents, departureCheckIns, departurePreparationStatuses }: { tasks: Task[]; plans: DeparturePlan[]; externalEvents: Calendar.Event[]; now: Date; designMode: DesignMode; chicPattern: ChicPattern; chicPalette?: ChicThemePalette; planTier: PlanTier; focusDate?: string; calendarMarks: CalendarMarks; onSetCalendarMark: (date: string, mark?: string) => void; onPremium: (featureId?: PremiumGuideFeatureId) => void; onEditTask: (task: Task) => void; onDeleteTask: (id: string) => void; onEditPlan: (plan: DeparturePlan) => void; onDeletePlan: (id: string) => void; onOpenMap: (plan: DeparturePlan) => void; behaviorEvents: BehaviorEvent[]; departureCheckIns: DepartureCheckIn[]; departurePreparationStatuses: Record<string, DeparturePreparationStatus> }) {
   const theme = getThemeTokens(designMode, chicPalette?.id ?? 'cool');
   const isDark = designMode === 'dark';
@@ -7456,6 +7488,11 @@ function TaskScheduleCalendar({ tasks, plans, externalEvents, now, designMode, c
     setMonthDate(next);
     setSelectedDate(dateKey(next));
   };
+  const showingCurrentMonth = year === now.getFullYear() && month === now.getMonth();
+  const returnToToday = () => {
+    setMonthDate(new Date(now.getFullYear(), now.getMonth(), 1));
+    setSelectedDate(dateKey(now));
+  };
 
   if (!hasPremiumAccess(planTier, 'long_range_calendar')) {
     const freeDates = Array.from({ length: 7 }, (_, index) => {
@@ -7472,7 +7509,7 @@ function TaskScheduleCalendar({ tasks, plans, externalEvents, now, designMode, c
     const visibleFreePlans = freePlanEntries.slice(0, calendarPlanDisplayLimit);
     const hiddenFreePlanCount = Math.max(0, freePlanEntries.length - visibleFreePlans.length);
     return <>
-      <View style={[styles.scheduleCalendarCard, designMode !== 'chic' && styles.scheduleCalendarCardMinimal, isDark && styles.darkSurface, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border, borderRadius: designMode !== 'chic' ? 16 : theme.radius.large }]}>
+      <View style={[styles.scheduleCalendarCard, styles.scheduleCalendarCardWide, designMode !== 'chic' && styles.scheduleCalendarCardMinimal, isDark && styles.darkSurface, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border, borderRadius: designMode !== 'chic' ? 16 : theme.radius.large }]}>
         <View style={styles.scheduleCalendarHeader}><View><Text style={[styles.scheduleMonthTitle, isDark && styles.darkCalendarText, designMode === 'chic' && chicPalette && { color: chicPalette.textPrimary }]}>これから7日間</Text><Text style={[styles.scheduleMonthCopy, isDark && styles.darkCalendarAccent, designMode === 'chic' && chicPalette && { color: chicPalette.textSecondary }]}>今日から6日後までの予定</Text></View><Pressable onPress={() => onPremium('month')}><Text style={[styles.scheduleAgendaEdit, { color: designMode === 'chic' && chicPalette ? chicPalette.accent : theme.colors.primaryAccent }, isDark && styles.darkCalendarAccent]}>月表示 Premium</Text></Pressable></View>
         <ScheduleFilterChips value={scheduleFilter} designMode={designMode} chicPalette={chicPalette} onChange={setScheduleFilter} compact />
         <View style={styles.scheduleGrid}>{freeDates.map(({ date, key }) => {
@@ -7494,46 +7531,74 @@ function TaskScheduleCalendar({ tasks, plans, externalEvents, now, designMode, c
   }
 
   return <>
-      <View style={[styles.scheduleCalendarCard, designMode !== 'chic' && styles.scheduleCalendarCardMinimal, isDark && styles.darkSurface, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border, borderRadius: designMode !== 'chic' ? 16 : theme.radius.large }]}>
+      <View style={[styles.scheduleCalendarCard, styles.scheduleMonthCalendarCardWide, designMode !== 'chic' && styles.scheduleCalendarCardMinimal, isDark && styles.darkSurface, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border, borderRadius: designMode !== 'chic' ? 16 : theme.radius.large }]}>
         <View style={styles.scheduleCalendarHeader}>
           <Pressable style={[styles.scheduleMonthArrow, isDark && styles.scheduleMonthArrowDark]} onPress={() => moveMonth(-1)}><Text style={[styles.scheduleMonthArrowText, isDark && styles.scheduleMonthArrowTextDark]}>‹</Text></Pressable>
         <View><Text style={[styles.scheduleMonthTitle, isDark && styles.darkCalendarText, designMode === 'chic' && chicPalette && { color: chicPalette.textPrimary }]}>{year}年 {month + 1}月</Text><Text style={[styles.scheduleMonthCopy, isDark && styles.darkCalendarAccent, designMode === 'chic' && chicPalette && { color: chicPalette.textSecondary }]}>予定をまとめて見渡す</Text></View>
-        <Pressable style={[styles.scheduleMonthArrow, isDark && styles.scheduleMonthArrowDark]} onPress={() => moveMonth(1)}><Text style={[styles.scheduleMonthArrowText, isDark && styles.scheduleMonthArrowTextDark]}>›</Text></Pressable>
+        <View style={styles.scheduleMonthNavigation}>
+          {!showingCurrentMonth && <Pressable accessibilityRole="button" accessibilityLabel="今日に戻る" style={[styles.scheduleTodayButton, { backgroundColor: designMode === 'chic' && chicPalette ? chicPalette.cardTint : theme.colors.secondarySurface, borderColor: designMode === 'chic' && chicPalette ? chicPalette.border : theme.colors.border }]} onPress={returnToToday}><Text style={[styles.scheduleTodayButtonText, { color: designMode === 'chic' && chicPalette ? chicPalette.accentStrong : theme.colors.primaryAccent }]}>今日</Text></Pressable>}
+          <Pressable style={[styles.scheduleMonthArrow, isDark && styles.scheduleMonthArrowDark]} onPress={() => moveMonth(1)}><Text style={[styles.scheduleMonthArrowText, isDark && styles.scheduleMonthArrowTextDark]}>›</Text></Pressable>
+        </View>
       </View>
       <ScheduleFilterChips value={scheduleFilter} designMode={designMode} chicPalette={chicPalette} onChange={setScheduleFilter} compact />
       <View style={styles.scheduleWeekRow}>{['日','月','火','水','木','金','土'].map((label) => <Text key={label} style={[styles.scheduleWeekLabel, isDark && styles.darkCalendarAccent]}>{label}</Text>)}</View>
       <View style={styles.scheduleGrid}>{cells.map((date, index) => {
-        if (!date) return <View key={`empty-${index}`} style={styles.scheduleDayCell} />;
+        if (!date) return <View key={`empty-${index}`} style={[styles.scheduleDayCell, styles.scheduleMonthDayCell, designMode === 'minimal' && styles.scheduleDayCellMinimal, isDark && styles.scheduleDayCellDark, { backgroundColor: designMode === 'chic' && chicPalette ? chicPalette.surfaceSubtle : theme.colors.secondarySurface, borderColor: designMode === 'chic' && chicPalette ? chicPalette.border : theme.colors.border }]} />;
         const key = dateKey(date);
         const dayTasks = scheduleFilter === 'plans' ? [] : tasks.filter((task) => isRegularVisibleTask(task) && !task.done && taskDates(task).includes(key));
         const dayCompletedTasks = scheduleFilter === 'plans' ? [] : tasks.filter((task) => isRegularVisibleTask(task) && task.done && taskDates(task).includes(key));
         const dayPlans = scheduleFilter === 'tasks' ? [] : plans.filter((item) => isPlanOnDate(item, key));
         const dayExternalEvents = scheduleFilter === 'tasks' ? [] : externalEvents.filter((event) => dateKey(new Date(event.startDate)) === key);
-        // 予定を追加したことが月表示でもすぐ分かるよう、出発予定は常に最初の帯にする。
-        const visiblePlanBars = dayPlans.slice(0, 1);
-        const visibleTaskBars = dayTasks.slice(0, Math.max(0, 2 - visiblePlanBars.length));
-        const slotsAfterTasks = Math.max(0, 2 - visiblePlanBars.length - visibleTaskBars.length);
-        const visibleCompletedBars = dayCompletedTasks.slice(0, slotsAfterTasks);
-        const visibleExternalBars = dayExternalEvents.slice(0, Math.max(0, slotsAfterTasks - visibleCompletedBars.length));
-        const dayItemCount = dayTasks.length + dayPlans.length + dayCompletedTasks.length + dayExternalEvents.length;
+        // 出発予定を先頭に維持しながら、月表示では最大4本まで読めるようにする。
+        const dayBars = [
+          ...dayPlans.map((item) => ({ id: `plan-${item.id ?? item.title}`, kind: 'plan' as const, title: item.title })),
+          ...dayTasks.map((task) => ({ id: `task-${task.id}`, kind: 'task' as const, title: task.title })),
+          ...dayCompletedTasks.map((task) => ({ id: `completed-${task.id}`, kind: 'completed' as const, title: task.title })),
+          ...dayExternalEvents.map((event) => ({ id: `external-${event.id}`, kind: 'external' as const, title: event.title || 'カレンダー予定' })),
+        ];
+        const visibleBars = dayBars.slice(0, 4);
+        const hiddenBarCount = Math.max(0, dayBars.length - visibleBars.length);
+        const strengthForCount = (count: number) => count >= 4 ? 4 : Math.max(1, count);
+        const bandStyleFor = (kind: (typeof visibleBars)[number]['kind']) => {
+          const count = kind === 'plan' ? dayPlans.length : kind === 'task' ? dayTasks.length : kind === 'completed' ? dayCompletedTasks.length : dayExternalEvents.length;
+          const strength = strengthForCount(count);
+          const intensity = [0, 0.14, 0.21, 0.29, 0.38][strength]!;
+          const isChic = designMode === 'chic' && Boolean(chicPalette);
+          if (kind === 'external') {
+            return {
+              backgroundColor: isChic ? chicPalette!.cardTint : theme.colors.secondarySurface,
+              borderColor: isChic ? chicPalette!.border : theme.colors.border,
+              color: isChic ? chicPalette!.textSecondary : theme.colors.secondaryText,
+            };
+          }
+          if (kind === 'completed') {
+            const neutral = isChic ? chicPalette!.textSecondary : theme.colors.secondaryText;
+            return {
+              backgroundColor: withCalendarBandAlpha(neutral, 0.08 + intensity * 0.45),
+              borderColor: withCalendarBandAlpha(neutral, 0.18 + intensity * 0.48),
+              color: neutral,
+            };
+          }
+          const accent = kind === 'plan'
+            ? (isChic ? chicPalette!.accent : theme.colors.primaryAccent)
+            : (isChic ? chicPalette!.accentStrong : theme.colors.secondaryAccent);
+          return {
+            backgroundColor: withCalendarBandAlpha(accent, 0.10 + intensity),
+            borderColor: withCalendarBandAlpha(accent, 0.24 + intensity * 0.78),
+            color: isChic ? chicPalette!.accentStrong : accent,
+          };
+        };
         const selected = key === selectedDate;
         const today = key === dateKey(now);
-        return <Pressable key={key} style={[styles.scheduleDayCell, designMode === 'minimal' && styles.scheduleDayCellMinimal, isDark && styles.scheduleDayCellDark, today && styles.scheduleDayCellToday, selected && styles.scheduleDayCellSelected, selected && { backgroundColor: designMode === 'chic' && chicPalette ? chicPalette.accentSoft : theme.colors.softAccent, borderColor: designMode === 'chic' && chicPalette ? chicPalette.accent : theme.colors.primaryAccent }]} onPress={() => setSelectedDate(key)}>
+        return <Pressable key={key} style={[styles.scheduleDayCell, styles.scheduleMonthDayCell, designMode === 'minimal' && styles.scheduleDayCellMinimal, isDark && styles.scheduleDayCellDark, today && styles.scheduleDayCellToday, selected && styles.scheduleDayCellSelected, selected && { backgroundColor: designMode === 'chic' && chicPalette ? chicPalette.accentSoft : theme.colors.softAccent, borderColor: designMode === 'chic' && chicPalette ? chicPalette.accent : theme.colors.primaryAccent }]} onPress={() => setSelectedDate(key)}>
           <Text style={[styles.scheduleDayNumber, isDark && styles.darkBodyText, date.getDay() === 0 && styles.scheduleSundayNumber, date.getDay() === 6 && styles.scheduleSaturdayNumber, today && styles.scheduleTodayNumber, selected && styles.scheduleSelectedNumber, selected && isDark && styles.scheduleSelectedNumberDark, selected && { color: designMode === 'chic' && chicPalette ? chicPalette.accentStrong : theme.colors.primaryAccent }]}>{date.getDate()}</Text>
-          {calendarMarks[key] && <Text style={[styles.scheduleCalendarMark, { color: designMode === 'chic' && chicPalette ? chicPalette.accentStrong : theme.colors.primaryAccent }]}>{calendarMarks[key]}</Text>}
+          {calendarMarks[key] && <Text style={[styles.scheduleCalendarMark, styles.scheduleMonthCalendarMark, { color: designMode === 'chic' && chicPalette ? chicPalette.accentStrong : theme.colors.primaryAccent }]}>{calendarMarks[key]}</Text>}
           <View style={styles.scheduleEventStack}>
-            {visiblePlanBars.map((item, itemIndex) => {
-              const planBarBackground = designMode === 'chic' && chicPalette ? chicPalette.accentSoft : isDark ? '#40558A' : theme.colors.secondarySurface;
-              const planBarBorder = designMode === 'chic' && chicPalette ? chicPalette.border : isDark ? '#6F82B5' : theme.colors.border;
-              const planBarText = designMode === 'chic' && chicPalette ? chicPalette.accentStrong : isDark ? '#F4F7FC' : theme.colors.primaryText;
-              const selectedPlanBarBackground = designMode === 'chic' && chicPalette ? chicPalette.cardTint : isDark ? '#5872B8' : theme.colors.softAccent;
-              const selectedPlanBarText = designMode === 'chic' && chicPalette ? chicPalette.accentStrong : isDark ? '#FFFFFF' : theme.colors.primaryText;
-              return <View key={item.id ?? `${item.title}-${itemIndex}`} style={[styles.scheduleEventBar, { backgroundColor: selected ? selectedPlanBarBackground : planBarBackground, borderColor: planBarBorder, borderWidth: 1 }, selected && styles.scheduleEventBarSelected]}><Text numberOfLines={1} style={[styles.scheduleEventBarText, { color: selected ? selectedPlanBarText : planBarText }]}>{item.title}</Text></View>;
+            {visibleBars.map((item) => {
+              const bandStyle = bandStyleFor(item.kind);
+              return <View key={item.id} style={[styles.scheduleEventBar, { backgroundColor: bandStyle.backgroundColor, borderColor: bandStyle.borderColor, borderWidth: 1 }, selected && styles.scheduleEventBarSelected]}><Text numberOfLines={1} style={[styles.scheduleEventBarText, { color: bandStyle.color }]}>{item.kind === 'completed' ? '✓ ' : ''}{item.title}</Text></View>;
             })}
-            {visibleTaskBars.map((task) => <View key={task.id} style={[styles.scheduleEventBar, { backgroundColor: designMode === 'chic' && chicPalette ? chicPalette.accentSoft : theme.colors.secondarySurface, borderColor: designMode === 'chic' && chicPalette ? chicPalette.border : theme.colors.border, borderWidth: 1 }, selected && styles.scheduleEventBarSelected]}><Text numberOfLines={1} style={[styles.scheduleEventBarText, isDark && styles.scheduleEventBarTextDark, selected && styles.scheduleEventBarTextSelected, selected && isDark && styles.darkBodyText, { color: designMode === 'chic' && chicPalette ? chicPalette.accentStrong : theme.colors.primaryText }]}>{task.title}</Text></View>)}
-            {visibleCompletedBars.map((task) => <View key={`done-${task.id}`} style={[styles.scheduleEventBar, styles.scheduleCompletedBar, isDark && styles.scheduleCompletedBarDark]}><Text numberOfLines={1} style={[styles.scheduleCompletedBarText, isDark && styles.scheduleCompletedBarTextDark]}>✓ {task.title}</Text></View>)}
-            {visibleExternalBars.map((event) => <View key={`external-${event.id}`} style={[styles.scheduleEventBar, { backgroundColor: designExternalAccent }, isDark && styles.scheduleExternalBarDark, selected && styles.scheduleEventBarSelected]}><Text numberOfLines={1} style={[styles.scheduleEventBarText, isDark && styles.scheduleEventBarTextDark, selected && styles.scheduleEventBarTextSelected, selected && isDark && styles.darkBodyText]}>{event.title || 'カレンダー予定'}</Text></View>)}
-            {dayItemCount > 2 && <Text style={[styles.scheduleMoreText, selected && styles.scheduleSelectedText, isDark && styles.scheduleMoreTextDark]}>ほか {dayItemCount - 2}件</Text>}
+            {hiddenBarCount > 0 && <Text style={[styles.scheduleMoreText, { color: designMode === 'chic' && chicPalette ? chicPalette.textSecondary : theme.colors.secondaryText }]}>{`＋${hiddenBarCount}`}</Text>}
           </View>
         </Pressable>;
       })}</View>
