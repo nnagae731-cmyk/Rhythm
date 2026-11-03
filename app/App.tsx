@@ -34,7 +34,7 @@ import { BottomNav } from './components/BottomNav';
 import { OnboardingCarousel } from './features/onboarding/OnboardingCarousel';
 import { OnboardingCaptureStudio } from './features/onboarding/OnboardingCaptureStudio';
 import { OnboardingHint } from './features/onboarding/OnboardingHint';
-import { FREE_GUIDE_TOUR, PREMIUM_GUIDE_TOUR, WIDGET_GUIDE_CARDS } from './features/onboarding/onboardingSteps';
+import { FREE_GUIDE_TOUR, PREMIUM_GUIDE_TOUR } from './features/onboarding/onboardingSteps';
 import type { IntroCardId, OnboardingFeatureId } from './features/onboarding/onboardingSteps';
 import { useOnboarding } from './features/onboarding/useOnboarding';
 import { RecoveryModal } from './components/RecoveryModal';
@@ -826,7 +826,6 @@ export default function App() {
   const [currentGuideFeature, setCurrentGuideFeature] = useState<Exclude<OnboardingFeatureId, 'intro'>>();
   const [guideTransitioning, setGuideTransitioning] = useState(false);
   const [pendingGuideFeature, setPendingGuideFeature] = useState<Exclude<OnboardingFeatureId, 'intro'>>();
-  const [widgetGuideVisible, setWidgetGuideVisible] = useState(false);
   const guideTransitioningRef = React.useRef(false);
   const [openTodayReview, setOpenTodayReview] = useState(false);
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -3506,12 +3505,9 @@ export default function App() {
     await queuedPersist;
   }, [affirmationCustomTexts, affirmations, chicCheckColor, designMode, departureCheckIns, departurePlans, effectiveChicPattern, hasDesignCustomizeAccess, hydrated, onboarding.state.firstRunStage, planTier, rewardedAccess.widgetPhotoCustomization, storeKitEntitlementsResolved, tasks, widgetPhotoSyncedUriRef, widgetCustomPhotoSyncedUrisRef, widgetSettings, wishMonths, wishTopImageUri]);
 
-  const openWidgetGuide = React.useCallback(() => {
-    // Present this native Modal only after the Widget sheet has completed its
-    // dismissal transaction; presenting two iOS Modals in one frame can leave
-    // an invisible host capturing touches.
-    requestAnimationFrame(() => requestAnimationFrame(() => setWidgetGuideVisible(true)));
-  }, []);
+  const markWidgetGuideSeen = React.useCallback(() => {
+    if (!onboarding.isCompleted('widgetGuide')) void onboarding.complete('widgetGuide');
+  }, [onboarding]);
 
   const removeRoutineById = React.useCallback((taskId: string) => {
     const target = tasksRef.current.find((task) => task.id === taskId);
@@ -3542,13 +3538,7 @@ export default function App() {
       recordBehaviorEvent(createRoutineDeactivatedBehaviorEvent({ routineId, routineTitle: latest.title, taskId: latest.id, occurredAt: new Date(endedAt), targetDate: dateKey(endedAt) }));
     } }]);
   }, [recordBehaviorEvent]);
-  const closeWidgetGuide = React.useCallback(() => {
-    setWidgetGuideVisible(false);
-    if (!onboarding.isCompleted('widgetGuide')) void onboarding.complete('widgetGuide');
-  }, [onboarding]);
-  const openWidgetSection = React.useCallback(() => {
-    if (!onboarding.isCompleted('widgetGuide')) setWidgetGuideVisible(true);
-  }, [onboarding]);
+  const openWidgetSection = React.useCallback(() => undefined, []);
   const refreshWidgetFromSettings = React.useCallback(() => syncRhythmWidgetSnapshot()
     .then(() => Alert.alert('Widgetを更新しました', '最新の予定とタスクを同期しました。'))
     .catch(() => Alert.alert('Widgetを更新できませんでした', '時間をおいてもう一度お試しください。')), [syncRhythmWidgetSnapshot]);
@@ -3736,7 +3726,10 @@ export default function App() {
       if (!actions.length) return;
       const handledIds: string[] = [];
       const taskIdsToComplete: string[] = [];
+      const createdTasks: Task[] = [];
+      const createdPlans: DeparturePlan[] = [];
       let nextTasks = tasksRef.current;
+      let nextPlans = departurePlansRef.current;
       actions.forEach((raw: any) => {
         if (!raw || typeof raw !== 'object' || typeof raw.id !== 'string') return;
         if (raw.type === 'addTask' && typeof raw.title === 'string') {
@@ -3761,9 +3754,34 @@ export default function App() {
               nudgeMode: 'once',
               scheduledDate,
               scheduledTime,
+              ...(scheduledTime ? { remindDate: scheduledDate, remindAt: scheduledTime } : {}),
             };
             nextTasks = [task, ...nextTasks];
+            createdTasks.push(task);
             queueScheduleConflictCheck(task, departurePlansRef.current);
+          }
+          handledIds.push(raw.id);
+        } else if (raw.type === 'addPlan' && typeof raw.title === 'string') {
+          const title = raw.title.trim();
+          if (title) {
+            const scheduledDate = typeof raw.scheduledDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(raw.scheduledDate)
+              ? raw.scheduledDate
+              : dateKey();
+            const scheduledTime = typeof raw.scheduledTime === 'string' && /^\d{2}:\d{2}$/.test(raw.scheduledTime)
+              ? raw.scheduledTime
+              : undefined;
+            const createdPlan: DeparturePlan = {
+              ...initialPlan,
+              id: `${Date.now()}-${Math.random().toString(16).slice(2)}-siri-plan`,
+              title,
+              date: scheduledDate,
+              arrival: scheduledTime ?? initialPlan.arrival,
+              planMode: scheduledTime ? 'departure_reminder' : 'calendar_only',
+              countdownEnabled: Boolean(scheduledTime),
+              ...(scheduledTime ? { departureTime: scheduledTime } : {}),
+            };
+            nextPlans = [createdPlan, ...nextPlans];
+            createdPlans.push(createdPlan);
           }
           handledIds.push(raw.id);
         } else if (raw.type === 'completeTask' && typeof raw.taskId === 'string') {
@@ -3793,12 +3811,31 @@ export default function App() {
         tasksRef.current = nextTasks;
         setTasks(nextTasks);
       }
+      if (nextPlans !== departurePlansRef.current) {
+        departurePlansRef.current = nextPlans;
+        setDeparturePlans(nextPlans);
+      }
+      for (const createdTask of createdTasks) {
+        if (createdTask.remindAt) void scheduleAllTaskNotifications(createdTask);
+        void syncScheduleSwitchNotificationsForTask(createdTask.id);
+      }
+      for (const createdPlan of createdPlans) {
+        try {
+          await scheduleDeparture(createdPlan);
+        } catch {
+          // The plan itself is already persisted. Notification failures must
+          // not discard a successful Siri/App Shortcuts addition.
+        }
+        if (createdPlan.id) void syncScheduleSwitchNotificationsForPlan(createdPlan.id);
+        queuePlanConflictCheck(createdPlan, tasksRef.current);
+      }
+      if (createdPlans.length) void onboarding.complete('planRegistration');
       if (taskIdsToComplete.length) completeTaskIds(taskIdsToComplete, 'manual');
       if (handledIds.length) await acknowledgeRhythmWidgetPendingActions(handledIds);
     } finally {
       pendingWidgetActionsProcessingRef.current = false;
     }
-  }, [completeTaskIds, onboarding.state.firstRunStage]);
+  }, [completeTaskIds, onboarding, onboarding.state.firstRunStage, queuePlanConflictCheck]);
 
   React.useEffect(() => {
     if (!hydrated) return;
@@ -5039,7 +5076,6 @@ export default function App() {
     || openTodayReview
     || sharedEventOpen
     || Boolean(recoveryTargetPlanId)
-    || widgetGuideVisible
     || noticeCenterOpen
     || Boolean(currentGuideFeature)
     || firstRunDemoActive
@@ -5888,7 +5924,7 @@ export default function App() {
                 const removeIndex = index ?? photos.length - 1;
                 return { ...current, affirmationPhotoUris: photos.filter((_, photoIndex) => photoIndex !== removeIndex) };
               })}
-              onWidgetGuide={openWidgetGuide}
+              onWidgetGuide={markWidgetGuideSeen}
               onRefreshWidget={refreshWidgetFromSettings}
               onWidgetSectionOpened={openWidgetSection}
               planTier={planTier}
@@ -6479,17 +6515,6 @@ export default function App() {
   }}
   renderStep={renderOnboardingEmbeddedStep}
 />
-      <OnboardingCarousel
-        visible={widgetGuideVisible}
-        onDismiss={closeWidgetGuide}
-        onFinalAction={closeWidgetGuide}
-        finalActionLabel="閉じる"
-        showSkip={false}
-        cards={WIDGET_GUIDE_CARDS}
-        renderStep={renderOnboardingCaptureStep}
-        designMode={uiDesignMode}
-        chicPalette={chicPalette}
-      />
       </SafeAreaView>
     </View>
   );

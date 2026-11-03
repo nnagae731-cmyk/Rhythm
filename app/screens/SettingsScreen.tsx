@@ -30,7 +30,7 @@ const PRIVACY_POLICY_URL = 'https://rhythm-app-support-jp-nnagae731-5982s-projec
 const SUPPORT_URL = 'https://rhythm-app-support-jp-nnagae731-5982s-projects.vercel.app/support.html';
 const SUPPORT_EMAIL = 'rhythmsupport2@gmail.com';
 
-type AboutDetailId = 'about' | 'privacyPolicy' | 'contact' | 'version';
+type AboutDetailId = 'about' | 'faq' | 'privacyPolicy' | 'contact' | 'version';
 
 function AboutAppSheet({ visible, onClose, colors }: { visible: boolean; onClose: () => void; colors: { background: string; surface: string; border: string; text: string; muted: string; accent: string; onAccent: string } }) {
   const [detail, setDetail] = useState<AboutDetailId>();
@@ -39,6 +39,7 @@ function AboutAppSheet({ visible, onClose, colors }: { visible: boolean; onClose
   const version = Constants.expoConfig?.version ?? Constants.nativeAppVersion ?? '確認できません';
   const rows: Array<{ id: AboutDetailId; title: string; subtitle?: string; external?: string }> = [
     { id: 'about', title: 'RhythmPaceについて', subtitle: '毎日を、自分のリズムで整える' },
+    { id: 'faq', title: '使い方・よくある質問', subtitle: '基本操作と困ったときのヒント' },
     { id: 'privacyPolicy', title: 'プライバシーポリシー', subtitle: 'Webで詳しく確認', external: PRIVACY_POLICY_URL },
     { id: 'contact', title: 'お問い合わせ・サポート', subtitle: 'サポートページとメール' },
     { id: 'version', title: 'バージョン情報', subtitle: `RhythmPace ${version}` },
@@ -47,6 +48,17 @@ function AboutAppSheet({ visible, onClose, colors }: { visible: boolean; onClose
   const detailBody = (id: AboutDetailId) => {
     switch (id) {
       case 'about': return <Text style={{ color: colors.muted, fontSize: 13, lineHeight: 21 }}>RhythmPaceは、タスク・予定・習慣・集中などをまとめて、自分のペースで毎日を整えるためのアプリです。</Text>;
+      case 'faq': {
+        const entries = [
+          ['タスクはどう追加しますか？', '今日画面の「＋」から追加します。タイトルだけでも登録でき、あとから日時・通知・繰り返し・リストを設定できます。'],
+          ['予定とタスクの違いは？', 'タスクは「やること」、予定は予定表に置く時間のある用事です。予定は「予定」画面の「＋ 予定を追加」から登録できます。'],
+          ['通知が届きません。', '予定やタスクの通知設定を確認し、iPhoneの設定でRhythmPaceの通知を許可してください。過去の日時には通知を設定できません。'],
+          ['ホーム画面にウィジェットを追加するには？', 'ホーム画面の何もない場所を長押しし、「＋」からRhythmPaceを選びます。追加後に長押しして「ウィジェットを編集」すると内容や見た目を変えられます。'],
+          ['Siriで追加できますか？', 'ショートカットに「RhythmPaceにタスクを追加」と「RhythmPaceに予定を追加」が表示されます。日時も一緒に伝えると、その時刻の通知として登録できます。'],
+          ['見た目を変更するとすぐ課金されますか？', 'いいえ。見た目の確認や全画面試着は無料です。「このデザインを使う」を選んだ時だけ、利用状況に応じて無料体験・広告・購入の案内が表示されます。'],
+        ];
+        return <View>{entries.map(([question, answer], index) => <View key={question} style={{ paddingVertical: index === 0 ? 0 : 13, borderTopWidth: index === 0 ? 0 : 1, borderTopColor: colors.border }}><Text style={{ color: colors.text, fontSize: 13, fontWeight: '800', lineHeight: 19 }}>Q. {question}</Text><Text style={{ color: colors.muted, fontSize: 12, lineHeight: 19, marginTop: 5 }}>A. {answer}</Text></View>)}<Pressable accessibilityRole="link" onPress={() => openExternal(SUPPORT_URL)} style={{ marginTop: 15, minHeight: 38, justifyContent: 'center' }}><Text style={{ color: colors.accent, fontSize: 12, fontWeight: '800' }}>解決しない場合はサポートページへ ↗</Text></Pressable></View>;
+      }
       case 'privacyPolicy': return <View><Text style={{ color: colors.muted, fontSize: 13, lineHeight: 20 }}>情報の取扱いを詳しく確認できます。</Text><Pressable accessibilityRole="link" onPress={() => openExternal(PRIVACY_POLICY_URL)} style={{ marginTop: 12 }}><Text style={{ color: colors.accent, fontSize: 13, fontWeight: '800' }}>プライバシーポリシーを開く ↗</Text></Pressable></View>;
       case 'contact': return <View><Text style={{ color: colors.muted, fontSize: 13, lineHeight: 20 }}>不具合のお問い合わせには、発生した画面、操作内容、発生日時、iPhone機種、iOSバージョン、RhythmPaceバージョンがあると確認しやすくなります。タスクの内容など、不要な個人情報は送らないでください。</Text><Pressable accessibilityRole="link" onPress={() => openExternal(SUPPORT_URL)} style={{ marginTop: 12 }}><Text style={{ color: colors.accent, fontSize: 13, fontWeight: '800' }}>サポートページを開く ↗</Text></Pressable><Pressable accessibilityRole="link" onPress={() => openExternal(`mailto:${SUPPORT_EMAIL}`)} style={{ marginTop: 10 }}><Text style={{ color: colors.accent, fontSize: 13, fontWeight: '800' }}>メールで問い合わせる</Text><Text style={{ color: colors.muted, fontSize: 11, marginTop: 3 }}>{SUPPORT_EMAIL}</Text></Pressable></View>;
       case 'version': return <Text style={{ color: colors.muted, fontSize: 13, lineHeight: 21 }}>RhythmPace{`\n`}バージョン {version}</Text>;
@@ -142,6 +154,7 @@ function WidgetSettingsSheet({ visible, onClose, onDismiss, widgetSettings, onWi
   const stableWidgetColors = React.useMemo(() => widgetColors, [widgetColors.surface, widgetColors.border, widgetColors.primaryText, widgetColors.secondaryText, widgetColors.primaryAccent, widgetColors.softAccent, widgetColors.screenBackground]);
   const [modalMounted, setModalMounted] = useState(visible);
   const [contentReady, setContentReady] = useState(false);
+  const [addGuideOpen, setAddGuideOpen] = useState(false);
   useEffect(() => {
     if (visible) setModalMounted(true);
     else if (Platform.OS !== 'ios') setModalMounted(false);
@@ -149,6 +162,7 @@ function WidgetSettingsSheet({ visible, onClose, onDismiss, widgetSettings, onWi
   useEffect(() => {
     if (!visible) {
       setContentReady(false);
+      setAddGuideOpen(false);
       return;
     }
     const task = InteractionManager.runAfterInteractions(() => setContentReady(true));
@@ -163,8 +177,20 @@ function WidgetSettingsSheet({ visible, onClose, onDismiss, widgetSettings, onWi
         <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: 18, paddingBottom: 44 }} showsVerticalScrollIndicator={false}>
           <View style={{ flexDirection: 'row', gap: 9, marginTop: 4 }}><View style={{ flex: 1, minHeight: 64, paddingHorizontal: 12, paddingVertical: 10, borderRadius: 14, borderWidth: 1, borderColor: widgetColors.border, backgroundColor: widgetColors.surface, justifyContent: 'center' }}><Text style={{ color: widgetColors.secondaryText, fontSize: 11, fontWeight: '800' }}>現在</Text><Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.78} style={{ color: widgetColors.primaryText, fontSize: 14, fontWeight: '900', marginTop: 4 }}>{currentWidget?.label ?? 'ウィジェット'}</Text></View><View style={{ flex: 1, minHeight: 64, paddingHorizontal: 12, paddingVertical: 10, borderRadius: 14, borderWidth: 1, borderColor: widgetColors.border, backgroundColor: widgetColors.surface, justifyContent: 'center' }}><Text style={{ color: widgetColors.secondaryText, fontSize: 11, fontWeight: '800' }}>サイズ</Text><Text style={{ color: widgetColors.primaryText, fontSize: 14, fontWeight: '900', marginTop: 4 }}>{currentWidget?.sizes ?? '—'}</Text></View></View>
           {contentReady ? <>
-            {onWidgetGuide ? <Pressable accessibilityRole="button" onPress={onWidgetGuide} style={{ marginTop: 10, minHeight: 42, borderRadius: 11, borderWidth: 1, borderColor: widgetColors.primaryAccent, alignItems: 'center', justifyContent: 'center' }}><Text style={{ color: widgetColors.primaryAccent, fontSize: 12, fontWeight: '800' }}>追加方法を見る</Text></Pressable> : null}
-            <WidgetSettingsCard settings={widgetSettings} onChange={onWidgetSettings} onPickPhoto={onPickWidgetPhoto} onUnlockWidgetPhoto={onUnlockWidgetPhoto} widgetPhotoUnlock={widgetPhotoUnlock} entitlementsResolved={entitlementsResolved} onRemoveAffirmationPhoto={onRemoveAffirmationPhoto} styles={styles} colors={stableWidgetColors} designPattern={designPattern} designCheckColor={designCheckColor} PatternDecor={PatternDecor} planTier={planTier} designCustomizePurchased={designCustomizePurchased} widgetEntitlementOverride={widgetEntitlementOverride} onWidgetEntitlementOverrideChange={onWidgetEntitlementOverrideChange} onLockedWidget={onLockedWidget} showSelectedPreview />
+            {addGuideOpen ? <View style={{ marginTop: 12, padding: 14, borderRadius: 14, borderWidth: 1, borderColor: widgetColors.border, backgroundColor: widgetColors.surface }}>
+              <Pressable accessibilityRole="button" onPress={() => setAddGuideOpen(false)} style={{ alignSelf: 'flex-start', minHeight: 34, justifyContent: 'center' }}><Text style={{ color: widgetColors.primaryAccent, fontSize: 12, fontWeight: '800' }}>‹ ウィジェット設定に戻る</Text></Pressable>
+              <Text style={{ color: widgetColors.primaryText, fontSize: 17, fontWeight: '900', marginTop: 6 }}>ホーム画面に追加する</Text>
+              <Text style={{ color: widgetColors.secondaryText, fontSize: 12, lineHeight: 19, marginTop: 6 }}>iPhoneのホーム画面から追加できます。RhythmPaceの設定画面を閉じる必要はありません。</Text>
+              {[
+                ['1', 'ホーム画面の何もない場所を長押し'],
+                ['2', '左上の「＋」をタップしてRhythmPaceを選ぶ'],
+                ['3', '追加したい内容とサイズを選んで「ウィジェットを追加」'],
+                ['4', '追加後に長押しして「ウィジェットを編集」すると、表示内容や見た目を変えられます'],
+              ].map(([step, copy]) => <View key={step} style={{ flexDirection: 'row', gap: 10, marginTop: 13 }}><View style={{ width: 23, height: 23, borderRadius: 12, backgroundColor: widgetColors.softAccent, alignItems: 'center', justifyContent: 'center' }}><Text style={{ color: widgetColors.primaryAccent, fontSize: 11, fontWeight: '900' }}>{step}</Text></View><Text style={{ flex: 1, color: widgetColors.primaryText, fontSize: 13, lineHeight: 19, fontWeight: '700' }}>{copy}</Text></View>)}
+            </View> : <>
+              {onWidgetGuide ? <Pressable accessibilityRole="button" onPress={() => { setAddGuideOpen(true); onWidgetGuide(); }} style={{ marginTop: 10, minHeight: 42, borderRadius: 11, borderWidth: 1, borderColor: widgetColors.primaryAccent, alignItems: 'center', justifyContent: 'center' }}><Text style={{ color: widgetColors.primaryAccent, fontSize: 12, fontWeight: '800' }}>追加方法を見る</Text></Pressable> : null}
+              <WidgetSettingsCard settings={widgetSettings} onChange={onWidgetSettings} onPickPhoto={onPickWidgetPhoto} onUnlockWidgetPhoto={onUnlockWidgetPhoto} widgetPhotoUnlock={widgetPhotoUnlock} entitlementsResolved={entitlementsResolved} onRemoveAffirmationPhoto={onRemoveAffirmationPhoto} styles={styles} colors={stableWidgetColors} designPattern={designPattern} designCheckColor={designCheckColor} PatternDecor={PatternDecor} planTier={planTier} designCustomizePurchased={designCustomizePurchased} widgetEntitlementOverride={widgetEntitlementOverride} onWidgetEntitlementOverrideChange={onWidgetEntitlementOverrideChange} onLockedWidget={onLockedWidget} showSelectedPreview />
+            </>}
           </> : <Text style={{ color: widgetColors.secondaryText, fontSize: 11, marginTop: 16 }}>ウィジェット設定を読み込んでいます…</Text>}
         </ScrollView>
       </View>
@@ -955,9 +981,7 @@ export function SettingsScreen({
               else onPremium('photo_design');
             });
           }}
-          onWidgetGuide={() => {
-            closeWidgetSheetThen(() => onWidgetGuide?.());
-          }}
+          onWidgetGuide={onWidgetGuide}
         />
         <SettingsDisclosure icon="bellSparkle" headerAction={<View style={{ minWidth: 62, minHeight: 40, alignItems: 'flex-end', justifyContent: 'center' }}><Switch accessibilityRole="switch" accessibilityLabel="ライブアクティビティ" accessibilityState={{ checked: liveActivityEnabled }} value={liveActivityEnabled} onValueChange={(value) => onLiveActivityEnabled?.(value)} trackColor={{ false: isDark ? '#40506A' : baseTheme.border, true: isDesign && chicPalette ? chicPalette.accent : baseTheme.primaryAccent }} thumbColor={liveActivityEnabled ? (isDesign && chicPalette ? chicPalette.onAccent : '#FFFFFF') : (isDark ? '#8F9BB0' : '#FFFFFF')} /></View>} designMode={designMode} chicPalette={chicPalette} title="ライブアクティビティ" subtitle={liveActivityRuntimeStatus === 'active' ? 'ロック画面・Dynamic Islandに表示中' : liveActivityRuntimeStatus === 'unavailable' ? 'この端末では表示できません' : liveActivityRuntimeStatus === 'failed' ? '表示を開始できませんでした' : liveActivityEnabled ? '表示を開始しています' : 'ロック画面・Dynamic Islandの表示'} expanded={false} onPress={() => setLiveActivitySettingsOpen(true)} />
         {liveActivityDisplayOptions && onLiveActivityDisplayOptionsChange && liveActivityCustomization && onLiveActivityCustomizationChange ? <LiveActivitySettingsSheet

@@ -2,6 +2,12 @@ const WIDGET_PLUGIN = './plugins/with-rhythm-widget';
 const TOGGLE_PLUGIN = './plugins/with-rhythm-widget-toggle';
 const GOOGLE_ADS_PLUGIN = 'react-native-google-mobile-ads';
 const staticConfig = require('./app.json').expo;
+const staticAdsPlugin = Array.isArray(staticConfig.plugins)
+  ? staticConfig.plugins.find((plugin) => (Array.isArray(plugin) ? plugin[0] : plugin) === GOOGLE_ADS_PLUGIN)
+  : undefined;
+const staticIosAppId = Array.isArray(staticAdsPlugin) && typeof staticAdsPlugin[1]?.iosAppId === 'string'
+  ? staticAdsPlugin[1].iosAppId
+  : undefined;
 
 function isWidgetEnabled() {
   const value = String(process.env.RHYTHM_ENABLE_WIDGET ?? '').trim().toLowerCase();
@@ -12,12 +18,16 @@ const adsEnvironment = process.env.RHYTHM_ADS_ENV
   || process.env.EXPO_PUBLIC_RHYTHM_ADS_ENV
   || (process.env.EAS_BUILD_PROFILE === 'production' ? 'production' : 'development');
 const isProductionAds = adsEnvironment === 'production';
-const iosAppId = process.env.RHYTHM_ADMOB_IOS_APP_ID || process.env.EXPO_PUBLIC_RHYTHM_ADMOB_IOS_APP_ID;
+// The checked-in app config is the Production iOS App ID. Development never
+// reads it: the plugin below deliberately injects Google's official test App
+// IDs unless the build profile explicitly opts into production ads.
+const iosAppId = process.env.RHYTHM_ADMOB_IOS_APP_ID || process.env.EXPO_PUBLIC_RHYTHM_ADMOB_IOS_APP_ID || (isProductionAds ? staticIosAppId : undefined);
 const androidAppId = process.env.RHYTHM_ADMOB_ANDROID_APP_ID || process.env.EXPO_PUBLIC_RHYTHM_ADMOB_ANDROID_APP_ID;
+const bannerUnitId = process.env.EXPO_PUBLIC_RHYTHM_BANNER_AD_UNIT_ID;
 const rewardedUnitId = process.env.EXPO_PUBLIC_RHYTHM_REWARDED_AD_UNIT_ID;
 
-if (isProductionAds && (!iosAppId || !rewardedUnitId)) {
-  throw new Error('Production AdMob is not configured. Set RHYTHM_ADMOB_IOS_APP_ID and EXPO_PUBLIC_RHYTHM_REWARDED_AD_UNIT_ID before building the production profile.');
+if (isProductionAds && (!iosAppId || !bannerUnitId || !rewardedUnitId)) {
+  throw new Error('Production AdMob is not configured. Set EXPO_PUBLIC_RHYTHM_BANNER_AD_UNIT_ID and EXPO_PUBLIC_RHYTHM_REWARDED_AD_UNIT_ID before building the production profile.');
 }
 
 function adsPluginConfig() {

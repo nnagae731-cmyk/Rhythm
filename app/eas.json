@@ -31,7 +31,9 @@
     "production": {
       "env": {
         "RHYTHM_ADS_ENV": "production",
-        "EXPO_PUBLIC_RHYTHM_ADS_ENV": "production"
+        "EXPO_PUBLIC_RHYTHM_ADS_ENV": "production",
+        "EXPO_PUBLIC_RHYTHM_BANNER_AD_UNIT_ID": "ca-app-pub-3848456861839903/5329259314",
+        "EXPO_PUBLIC_RHYTHM_REWARDED_AD_UNIT_ID": "ca-app-pub-3848456861839903/8039183132"
       }
     }
   }

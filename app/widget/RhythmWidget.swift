@@ -129,6 +129,20 @@ private enum WidgetPendingActionStore {
     append(action)
   }
 
+  static func appendPlan(title: String, scheduledDate: String? = nil, scheduledTime: String? = nil) {
+    let normalized = title.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !normalized.isEmpty else { return }
+    let id = "addPlan:\(UUID().uuidString)"
+    var action: [String: Any] = [
+      "id": id,
+      "type": "addPlan",
+      "title": normalized,
+    ]
+    if let scheduledDate { action["scheduledDate"] = scheduledDate }
+    if let scheduledTime { action["scheduledTime"] = scheduledTime }
+    append(action)
+  }
+
   static func loadSnapshot() -> WidgetSnapshot? {
     guard let defaults = UserDefaults(suiteName: appGroup),
           let raw = defaults.string(forKey: snapshotKey),
@@ -214,6 +228,39 @@ struct RhythmAddTaskIntent: AppIntent {
 }
 
 @available(iOSApplicationExtension 17.0, *)
+struct RhythmAddPlanIntent: AppIntent {
+  static var title: LocalizedStringResource = "RhythmPaceに予定を追加"
+  static var description = IntentDescription("RhythmPaceの予定表に新しい予定を追加します。")
+  static var openAppWhenRun: Bool { true }
+
+  @Parameter(title: "予定名") var title: String
+  @Parameter(title: "日時") var scheduledAt: Date?
+
+  init() { title = ""; scheduledAt = nil }
+  init(title: String, scheduledAt: Date? = nil) { self.title = title; self.scheduledAt = scheduledAt }
+
+  func perform() async throws -> some IntentResult {
+    var calendar = Calendar.current
+    calendar.timeZone = .current
+    let dateFormatter = DateFormatter()
+    dateFormatter.calendar = calendar
+    dateFormatter.locale = Locale(identifier: "en_US_POSIX")
+    dateFormatter.dateFormat = "yyyy-MM-dd"
+    let timeFormatter = DateFormatter()
+    timeFormatter.calendar = calendar
+    timeFormatter.locale = Locale(identifier: "en_US_POSIX")
+    timeFormatter.dateFormat = "HH:mm"
+    WidgetPendingActionStore.appendPlan(
+      title: title,
+      scheduledDate: scheduledAt.map { dateFormatter.string(from: $0) },
+      scheduledTime: scheduledAt.map { timeFormatter.string(from: $0) }
+    )
+    WidgetCenter.shared.reloadAllTimelines()
+    return .result()
+  }
+}
+
+@available(iOSApplicationExtension 17.0, *)
 struct RhythmAppShortcuts: AppShortcutsProvider {
   static var appShortcuts: [AppShortcut] {
     AppShortcut(
@@ -221,6 +268,12 @@ struct RhythmAppShortcuts: AppShortcutsProvider {
       phrases: ["\(.applicationName)にタスクを追加"],
       shortTitle: "タスクを追加",
       systemImageName: "plus.circle"
+    )
+    AppShortcut(
+      intent: RhythmAddPlanIntent(),
+      phrases: ["\(.applicationName)に予定を追加"],
+      shortTitle: "予定を追加",
+      systemImageName: "calendar.badge.plus"
     )
     AppShortcut(
       intent: RhythmReadTodayTasksIntent(),
