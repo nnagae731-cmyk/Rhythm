@@ -39,6 +39,10 @@ function IntroPreview({
 }: {
   card: IntroCard;
 }) {
+  const previewNow = new Date();
+  const previewMonthLabel = `${previewNow.getFullYear()}年 ${previewNow.getMonth() + 1}月`;
+  const previewDays = Array.from({ length: 6 }, (_, index) => String(Math.max(1, previewNow.getDate() - 2 + index)));
+  const previewToday = String(previewNow.getDate());
   return (
     <View style={styles.preview}>
       <Text style={styles.previewHeader}>{card.id === 'quickTodo' ? 'やること追加' : card.id === 'voice' ? '音声入力' : card.id === 'today' ? '今日' : card.id === 'schedule' ? '予定' : card.id === 'focus' ? '集中' : card.id === 'recovery' ? '立て直し' : '記録'}</Text>
@@ -48,7 +52,7 @@ function IntroPreview({
       {card.id === 'schedule' && <View style={styles.previewTimeline}>{[['09:00', '予定'], ['14:00', 'タスク'], ['18:30', '予定']].map(([time, title]) => <View key={time} style={styles.previewTimelineRow}><Text style={styles.previewTime}>{time}</Text><View style={styles.previewTimelineCard}><Text style={styles.previewTimelineTitle}>{title}</Text><Text style={styles.previewTimelineMeta}>予定表の予定</Text></View></View>)}</View>}
       {card.id === 'focus' && <><View style={styles.previewFocus}><Text style={styles.previewFocusTime}>25:00</Text><Text style={styles.previewFocusTask}>今日のタスクを確認</Text><View style={styles.previewButton}><Text style={styles.previewButtonText}>スタート</Text></View></View></>}
       {card.id === 'recovery' && <View style={styles.previewRecovery}><Text style={styles.previewLabel}>予定が崩れても</Text><Text style={styles.previewRecoveryTitle}>ここから立て直す</Text><Text style={styles.previewRecoveryText}>今の状況から、次にできることを選べます。</Text><View style={styles.previewRecoveryActions}><Text style={styles.previewRecoveryAction}>今から出発</Text><Text style={styles.previewRecoveryAction}>予定を変更</Text><Text style={styles.previewRecoveryAction}>連絡する</Text></View></View>}
-      {card.id === 'records' && <><View style={styles.previewCalendar}><Text style={styles.previewCalendarTitle}>2026年 8月</Text><View style={styles.previewCalendarRow}>{['18', '19', '20', '21', '22', '23'].map((day) => <Text key={day} style={day === '23' ? styles.previewCalendarDayActive : styles.previewCalendarDay}>{day}</Text>)}</View></View><View style={styles.previewRecord}><Text style={styles.previewRecordTitle}>今日できたこと</Text><Text style={styles.previewRecordText}>写真・ひとこと・メモ</Text></View></>}
+      {card.id === 'records' && <><View style={styles.previewCalendar}><Text style={styles.previewCalendarTitle}>{previewMonthLabel}</Text><View style={styles.previewCalendarRow}>{previewDays.map((day) => <Text key={day} style={day === previewToday ? styles.previewCalendarDayActive : styles.previewCalendarDay}>{day}</Text>)}</View></View><View style={styles.previewRecord}><Text style={styles.previewRecordTitle}>今日できたこと</Text><Text style={styles.previewRecordText}>写真・ひとこと・メモ</Text></View></>}
       {(card.id === 'widget' || card.id === 'widgetAdd' || card.id === 'widgetEdit') && <View style={styles.widgetIntroPreview}>
         <View style={styles.widgetIntroRow}><View style={[styles.widgetIntroTile, styles.widgetIntroTileWide]}><Text style={styles.widgetIntroLabel}>今はこれ</Text><Text numberOfLines={1} style={styles.widgetIntroTitle}>今日のタスクを確認</Text><Text style={styles.widgetIntroMeta}>25 min ・ 集中モード中</Text></View><View style={styles.widgetIntroTile}><Text style={styles.widgetIntroMic}>◉</Text><Text style={styles.widgetIntroLabel}>音声入力</Text></View></View>
         <View style={styles.widgetIntroRow}><View style={styles.widgetIntroTile}><Text style={styles.widgetIntroLabel}>次の予定</Text><Text style={styles.widgetIntroTitle}>18:00 予定</Text></View><View style={[styles.widgetIntroTile, styles.widgetIntroTileWide]}><Text style={styles.widgetIntroLabel}>今日の言葉</Text><Text numberOfLines={2} style={styles.widgetIntroTitle}>私は私のペースで進めばいい</Text></View></View>

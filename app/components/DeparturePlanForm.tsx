@@ -1,6 +1,6 @@
 import DateTimePicker from '@react-native-community/datetimepicker';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, Modal, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Alert, InteractionManager, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { BehaviorEvent } from '../behaviorEvents';
 import { getDeparturePlanMode, getPlanScheduledTime, isArrivalReversePlan, isDepartureReminderPlan } from '../features/departure/departurePlanMode';
 import { recommendPreparationMinutes } from '../features/departure/preparationLearning';
@@ -141,9 +141,13 @@ export function DeparturePlanForm({
   }, [canUseReverse, onChange, plan, recommendation]);
 
   const updatePlan = (patch: Partial<DeparturePlan>) => onChange({ ...plan, ...patch });
+  const closeThenPremium = (featureId?: PremiumGuideFeatureId) => {
+    onClose();
+    InteractionManager.runAfterInteractions(() => requestAnimationFrame(() => requestAnimationFrame(() => onPremium(featureId))));
+  };
   const selectMode = (nextMode: 'calendar_only' | 'departure_reminder' | 'arrival_reverse') => {
     if (nextMode === 'arrival_reverse' && planTier !== 'premium') {
-      onPremium('route');
+      closeThenPremium('route');
       return;
     }
     const nextTime = getPlanScheduledTime(plan);
@@ -337,7 +341,7 @@ export function DeparturePlanForm({
         <Text style={[styles.mapButtonText, { color: theme.colors.primaryAccent }]}>地図で確認</Text>
         <Text style={[styles.mapChevron, { color: theme.colors.primaryAccent }]}>〉</Text>
       </Pressable>
-      {plan.destination?.trim() ? <TravelAppLaunchActions settings={travelApps} category="transit" destination={resolvedDestination} planTier={planTier} designMode={designMode} chicPalette={chicPalette} onPremium={onPremium} onOpenSettings={onOpenTravelAppSettings} /> : null}
+      {plan.destination?.trim() ? <TravelAppLaunchActions settings={travelApps} category="transit" destination={resolvedDestination} planTier={planTier} designMode={designMode} chicPalette={chicPalette} onPremium={closeThenPremium} onOpenSettings={onOpenTravelAppSettings} /> : null}
       <Text style={[styles.destinationNote, secondaryText]}>地図アプリで目的地を確認できます</Text>
     </View>
 
@@ -354,6 +358,20 @@ export function DeparturePlanForm({
           <View><Text style={[styles.durationLabel, secondaryText]}>余裕</Text><Text style={[styles.durationValue, fieldText]}>{durationLabel(plan.bufferMinutes)}</Text></View><Text style={[styles.durationChevron, { color: theme.colors.secondaryText }]}>〉</Text>
         </Pressable>
       </View>
+      {durationEditor ? <View accessibilityViewIsModal style={[styles.durationSheet, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border, borderWidth: 1, marginTop: 12 }]}>
+        <View style={[styles.sheetHandle, { backgroundColor: theme.colors.border }]} />
+        <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}><View style={{ flex: 1 }}><Text style={[styles.sheetTitle, fieldText]}>{durationEditor.label}</Text><Text style={[styles.sheetCopy, secondaryText]}>5分単位で選べます</Text></View><Pressable accessibilityRole="button" accessibilityLabel="時間の選択を閉じる" hitSlop={8} onPress={() => { setDurationEditor(undefined); setShowOtherDuration(false); }}><Text style={{ color: theme.colors.primaryAccent, fontSize: 18, fontWeight: '900' }}>×</Text></Pressable></View>
+        <View style={styles.durationChoices}>
+          {durationChoiceValues.map((value) => <Pressable key={value} style={[styles.durationChoice, { borderColor: theme.colors.border }, currentDuration === value && { borderColor: theme.colors.primaryAccent, backgroundColor: theme.colors.softAccent }]} onPress={() => applyDuration(durationEditor.field, value, true)}><Text style={[styles.durationChoiceText, { color: currentDuration === value ? theme.colors.primaryAccent : theme.colors.primaryText }]}>{durationLabel(value)}{durationEditor.field === 'preparationMinutes' && value === recommendation.minutes && !durationEditor.values.includes(value) ? ' おすすめ' : ''}</Text></Pressable>)}
+          <Pressable style={[styles.durationChoice, { borderColor: theme.colors.border }, showOtherDuration && { borderColor: theme.colors.primaryAccent, backgroundColor: theme.colors.softAccent }]} onPress={() => setShowOtherDuration(true)}><Text style={[styles.durationChoiceText, { color: theme.colors.primaryText }]}>その他</Text></Pressable>
+        </View>
+        {showOtherDuration && <View style={[styles.customDuration, { backgroundColor: theme.colors.secondarySurface }]}>
+          <Pressable style={[styles.adjustButton, { borderColor: theme.colors.border }]} onPress={() => adjustCustomDuration(-5)}><Text style={[styles.adjustButtonText, { color: theme.colors.primaryAccent }]}>−</Text></Pressable>
+          <Text style={[styles.customDurationValue, fieldText]}>{durationLabel(currentDuration)}</Text>
+          <Pressable style={[styles.adjustButton, { borderColor: theme.colors.border }]} onPress={() => adjustCustomDuration(5)}><Text style={[styles.adjustButtonText, { color: theme.colors.primaryAccent }]}>＋</Text></Pressable>
+        </View>}
+        {showOtherDuration && <Pressable style={[styles.applyDurationButton, { backgroundColor: theme.colors.primaryAccent }]} onPress={() => applyDuration(durationEditor.field, currentDuration, true)}><Text style={[styles.applyDurationButtonText, { color: onAccent }]}>この時間にする</Text></Pressable>}
+      </View> : null}
       {learningMessage && <View style={[styles.learningHint, { backgroundColor: usesDarkInputSurface ? theme.colors.secondarySurface : theme.colors.softAccent }]}>
         <Text style={[styles.learningHintText, { color: theme.colors.primaryAccent }]}>{learningMessage}</Text>
       </View>}
@@ -379,25 +397,6 @@ export function DeparturePlanForm({
       </Pressable>
     </View>
 
-    <Modal visible={Boolean(durationEditor)} transparent animationType="slide" onRequestClose={() => setDurationEditor(undefined)}>
-      <Pressable style={styles.modalBackdrop} onPress={() => setDurationEditor(undefined)}>
-        <Pressable style={[styles.durationSheet, { backgroundColor: theme.colors.surface }]} onPress={(event) => event.stopPropagation()}>
-          <View style={[styles.sheetHandle, { backgroundColor: theme.colors.border }]} />
-          <Text style={[styles.sheetTitle, fieldText]}>{durationEditor?.label}</Text>
-          <Text style={[styles.sheetCopy, secondaryText]}>5分単位で選べます</Text>
-          <View style={styles.durationChoices}>
-            {durationChoiceValues.map((value) => <Pressable key={value} style={[styles.durationChoice, { borderColor: theme.colors.border }, currentDuration === value && { borderColor: theme.colors.primaryAccent, backgroundColor: theme.colors.softAccent }]} onPress={() => durationEditor && applyDuration(durationEditor.field, value, true)}><Text style={[styles.durationChoiceText, { color: currentDuration === value ? theme.colors.primaryAccent : theme.colors.primaryText }]}>{durationLabel(value)}{durationEditor?.field === 'preparationMinutes' && value === recommendation.minutes && !durationEditor.values.includes(value) ? ' おすすめ' : ''}</Text></Pressable>)}
-            <Pressable style={[styles.durationChoice, { borderColor: theme.colors.border }, showOtherDuration && { borderColor: theme.colors.primaryAccent, backgroundColor: theme.colors.softAccent }]} onPress={() => setShowOtherDuration(true)}><Text style={[styles.durationChoiceText, { color: theme.colors.primaryText }]}>その他</Text></Pressable>
-          </View>
-          {showOtherDuration && durationEditor && <View style={[styles.customDuration, { backgroundColor: theme.colors.secondarySurface }]}>
-            <Pressable style={[styles.adjustButton, { borderColor: theme.colors.border }]} onPress={() => adjustCustomDuration(-5)}><Text style={[styles.adjustButtonText, { color: theme.colors.primaryAccent }]}>−</Text></Pressable>
-            <Text style={[styles.customDurationValue, fieldText]}>{durationLabel(currentDuration)}</Text>
-            <Pressable style={[styles.adjustButton, { borderColor: theme.colors.border }]} onPress={() => adjustCustomDuration(5)}><Text style={[styles.adjustButtonText, { color: theme.colors.primaryAccent }]}>＋</Text></Pressable>
-          </View>}
-          {showOtherDuration && durationEditor && <Pressable style={[styles.applyDurationButton, { backgroundColor: theme.colors.primaryAccent }]} onPress={() => applyDuration(durationEditor.field, currentDuration, true)}><Text style={[styles.applyDurationButtonText, { color: onAccent }]}>この時間にする</Text></Pressable>}
-        </Pressable>
-      </Pressable>
-    </Modal>
   </View>;
 }
 

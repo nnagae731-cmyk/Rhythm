@@ -8,11 +8,12 @@ type Props = {
   chicPalette?: ChicThemePalette;
   canWatchReward: boolean;
   onReward: () => Promise<boolean>;
+  onRewarded?: () => void;
   onPremium: () => void;
   onClose: () => void;
 };
 
-export function VoiceUsageLimitModal({ visible, designMode, chicPalette, canWatchReward, onReward, onPremium, onClose }: Props) {
+export function VoiceUsageLimitModal({ visible, designMode, chicPalette, canWatchReward, onReward, onRewarded, onPremium, onClose }: Props) {
   const [busy, setBusy] = useState(false);
   const [adActive, setAdActive] = useState(false);
   const [error, setError] = useState('');
@@ -29,7 +30,14 @@ export function VoiceUsageLimitModal({ visible, designMode, chicPalette, canWatc
       await new Promise<void>((resolve) => {
         InteractionManager.runAfterInteractions(() => setTimeout(resolve, 250));
       });
-      if (!await onReward()) setError('広告を完了できませんでした。もう一度お試しください。');
+      if (!await onReward()) {
+        setError('広告を完了できませんでした。もう一度お試しください。');
+      } else {
+        // The Modal is hidden while the reward is presented. Yield once more
+        // before opening Voice Input so iOS never has two presenters in flight.
+        onClose();
+        InteractionManager.runAfterInteractions(() => requestAnimationFrame(() => requestAnimationFrame(() => onRewarded?.())));
+      }
     } finally {
       setAdActive(false);
       setBusy(false);
@@ -44,7 +52,7 @@ export function VoiceUsageLimitModal({ visible, designMode, chicPalette, canWatc
         {canWatchReward && <Pressable accessibilityRole="button" disabled={busy} onPress={() => void handleReward()} style={{ minHeight: 50, marginTop: 18, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.accent, opacity: busy ? 0.65 : 1 }}>
           {busy ? <ActivityIndicator color={colors.onAccent} /> : <Text style={{ color: colors.onAccent, fontSize: 14, fontWeight: '900' }}>広告を見て＋3回</Text>}
         </Pressable>}
-        <Pressable onPress={onPremium} style={{ minHeight: 46, alignItems: 'center', justifyContent: 'center', marginTop: canWatchReward ? 4 : 18, borderRadius: 12, borderWidth: 1, borderColor: colors.border }}><Text style={{ color: colors.accent, fontSize: 13, fontWeight: '900' }}>Premiumを見る</Text></Pressable>
+        <Pressable onPress={() => { onClose(); InteractionManager.runAfterInteractions(() => requestAnimationFrame(() => requestAnimationFrame(onPremium))); }} style={{ minHeight: 46, alignItems: 'center', justifyContent: 'center', marginTop: canWatchReward ? 4 : 18, borderRadius: 12, borderWidth: 1, borderColor: colors.border }}><Text style={{ color: colors.accent, fontSize: 13, fontWeight: '900' }}>Premiumを見る</Text></Pressable>
         <Pressable onPress={onClose} style={{ minHeight: 42, alignItems: 'center', justifyContent: 'center' }}><Text style={{ color: colors.muted, fontSize: 13, fontWeight: '800' }}>閉じる</Text></Pressable>
       </Pressable>
     </Pressable>

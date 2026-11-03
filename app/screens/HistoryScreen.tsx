@@ -1,6 +1,6 @@
 import * as ImagePicker from 'expo-image-picker';
 import React, { useEffect, useRef, useState } from 'react';
-import { Alert, Image, Modal, Pressable, ScrollView, Share, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Alert, Image, InteractionManager, Modal, Pressable, ScrollView, Share, StyleSheet, Text, TextInput, View } from 'react-native';
 import { ChicPattern, ChicThemePalette, getThemeTokens } from '../theme';
 import { hasPremiumAccess, isWithinFreeHistory, PlanTier } from '../premiumAccess';
 import { PremiumGuideFeatureId } from '../premiumGuide';
@@ -208,6 +208,9 @@ export function HistoryScreen({ tasks, wishMonths, calendarMarks, onSetCalendarM
   const [monthlyCardModel, setMonthlyCardModel] = useState<ReflectionCardModel>();
   const [monthlyEditorOpen, setMonthlyEditorOpen] = useState(false);
   const [monthlyCardGenerating, setMonthlyCardGenerating] = useState(false);
+  const presentAfterModalDismiss = (action: () => void) => {
+    InteractionManager.runAfterInteractions(() => requestAnimationFrame(() => requestAnimationFrame(action)));
+  };
   const [monthlyCardReady, setMonthlyCardReady] = useState(false);
   const [monthlyCardTemplate, setMonthlyCardTemplate] = useState<ReflectionCardTemplate>('gallery');
   const [monthlyCardPalette, setMonthlyCardPalette] = useState<ReflectionCardPalette>('lavender');
@@ -392,8 +395,9 @@ export function HistoryScreen({ tasks, wishMonths, calendarMarks, onSetCalendarM
     const bestTitle = monthEntries.flatMap(([, items]) => items).sort((a, b) => new Date(b.completedAt ?? 0).getTime() - new Date(a.completedAt ?? 0).getTime())[0]?.title ?? '';
     setMonthlyCardPhotoCount(selectedPhotos.length);
     setMonthlyCardReady(false);
+    const model = { monthKey: monthPrefix, monthLabel: `${year}年${month + 1}月`, photos: selectedPhotos, template: monthlyCardTemplate, palette: monthlyCardPalette, phrase: monthlyWord.trim().slice(0, 30), bestMemory: (bestMemory.trim() || bestTitle).slice(0, 30) };
     setMonthlyEditorOpen(false);
-    setMonthlyCardModel({ monthKey: monthPrefix, monthLabel: `${year}年${month + 1}月`, photos: selectedPhotos, template: monthlyCardTemplate, palette: monthlyCardPalette, phrase: monthlyWord.trim().slice(0, 30), bestMemory: (bestMemory.trim() || bestTitle).slice(0, 30) });
+    presentAfterModalDismiss(() => setMonthlyCardModel(model));
   };
   const saveMonthlyCardSettings = React.useCallback(() => {
     if (!monthlyCardModel) return;
@@ -610,7 +614,7 @@ export function HistoryScreen({ tasks, wishMonths, calendarMarks, onSetCalendarM
             {selectedReview?.shortNote ? <Text style={[styles.reviewPhotoModalNote, isDark && styles.darkBodyText, designMode === 'chic' && chicPalette && { color: historyText }]}>{selectedReview.shortNote}</Text> : null}
             {selectedReview?.memo ? <Text style={[styles.reviewPhotoModalMemo, isDark && styles.darkMutedText, designMode === 'chic' && chicPalette && { color: historyMuted }]}>{selectedReview.memo}</Text> : null}
             <View style={styles.reviewPhotoModalActions}>
-              <Pressable style={[styles.reviewEditButton, isDark && styles.darkReviewEditButton, designMode === 'chic' && chicPalette && { borderColor: historyAccent }]} onPress={() => { if (!selectedReviewEntry) return; setReviewEditNote(selectedReview?.shortNote ?? ''); setReviewEditMemo(selectedReview?.memo ?? ''); setEditingReview(selectedReviewEntry); setSelectedReview(null); }}><Text style={[styles.reviewEditButtonText, isDark && styles.darkAccentText, designMode === 'chic' && chicPalette && { color: historyAccent }]}>編集</Text></Pressable>
+              <Pressable style={[styles.reviewEditButton, isDark && styles.darkReviewEditButton, designMode === 'chic' && chicPalette && { borderColor: historyAccent }]} onPress={() => { if (!selectedReviewEntry) return; const next = selectedReviewEntry; const note = selectedReview?.shortNote ?? ''; const memo = selectedReview?.memo ?? ''; setSelectedReview(null); presentAfterModalDismiss(() => { setReviewEditNote(note); setReviewEditMemo(memo); setEditingReview(next); }); }}><Text style={[styles.reviewEditButtonText, isDark && styles.darkAccentText, designMode === 'chic' && chicPalette && { color: historyAccent }]}>編集</Text></Pressable>
               <Pressable style={[styles.reviewDeleteButton, isDark && styles.darkDangerBorder, designMode === 'chic' && chicPalette && { borderColor: guideTheme.colors.danger }]} onPress={() => { if (!selectedReviewEntry) return; onDeleteReview(selectedReviewEntry.monthKey, selectedReviewEntry.reviewKey); setSelectedReview(null); }}><Text style={[styles.reviewDeleteButtonText, isDark && styles.darkDangerText, designMode === 'chic' && chicPalette && { color: guideTheme.colors.danger }]}>削除</Text></Pressable>
             </View>
             <Pressable style={[styles.reviewPhotoModalClose, isDark && styles.darkRestoreButton]} onPress={() => setSelectedReview(null)}><Text style={[styles.reviewPhotoModalCloseText, designMode === 'chic' && chicPalette && { color: historyText }]}>閉じる</Text></Pressable>
@@ -635,7 +639,7 @@ export function HistoryScreen({ tasks, wishMonths, calendarMarks, onSetCalendarM
                 <Pressable style={[styles.reviewEditCancel, isDark && styles.darkReviewEditCancel]} onPress={() => setMonthlyEditorOpen(false)}><Text style={[styles.reviewEditCancelText, isDark && styles.darkMutedText, designMode === 'chic' && chicPalette && { color: historyMuted }]}>閉じる</Text></Pressable>
                 <Pressable style={[styles.reviewEditSave, designMode === 'chic' && chicPalette && { backgroundColor: historyAccent }]} onPress={createMonthlyCard}><Text style={[styles.reviewEditSaveText, designMode === 'chic' && chicPalette && { color: chicPalette.onAccent }]}>カードをプレビュー</Text></Pressable>
               </View>
-              {savedMonthlyCard?.photoIds?.length ? <Pressable style={reflectionStyles.savedCardButton} onPress={() => { setMonthlyEditorOpen(false); openSavedMonthlyCard(); }}><Text style={reflectionStyles.savedCardButtonText}>保存済みカードを見る</Text></Pressable> : null}
+              {savedMonthlyCard?.photoIds?.length ? <Pressable style={reflectionStyles.savedCardButton} onPress={() => { setMonthlyEditorOpen(false); presentAfterModalDismiss(openSavedMonthlyCard); }}><Text style={reflectionStyles.savedCardButtonText}>保存済みカードを見る</Text></Pressable> : null}
             </ScrollView>
           </Pressable>
         </Pressable>

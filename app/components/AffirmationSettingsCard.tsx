@@ -108,10 +108,10 @@ export function AffirmationSettingsCard({ affirmations, customTexts, designMode,
     {compact ? <Pressable style={[styles.itemCard, designMode === 'minimal' && styles.itemCardMinimal, isDark && styles.itemCardDark, isChic && { backgroundColor: chicPalette?.cardSurface, borderColor: chicPalette?.border }]} onPress={() => setSheetOpen(true)}><View style={{ flex: 1 }}>{affirmations[0] ? <><Text numberOfLines={2} style={{ color: primary, fontSize: 16, lineHeight: 23, fontWeight: '800' }}>{affirmations[0].text}</Text><Text style={[styles.itemMeta, { color: secondary, marginTop: 5 }]}>{affirmations[0].enabled ? `通知 ${affirmations[0].time}` : '通知オフ'} ・ {affirmations.length}/{MAX_AFFIRMATIONS}件</Text></> : <><Text style={{ color: primary, fontSize: 14, fontWeight: '800' }}>好きな言葉を、選んだ時間に届ける</Text><Text style={[styles.itemMeta, { color: secondary, marginTop: 5 }]}>まだ言葉は設定されていません</Text></>}</View><Text style={{ color: accent, fontSize: 13, fontWeight: '900' }}>管理する ›</Text></Pressable> : <Pressable style={[styles.settingsCard, isDark && styles.darkSurface, isChic && { backgroundColor: surface, borderColor: border }]} onPress={() => setSheetOpen(true)}><View style={{ flex: 1 }}><Text style={[styles.settingsTitle, { color: primary }]}>アファメーション</Text><Text style={[styles.switchCopy, { color: secondary }]}>{affirmations.length}/{MAX_AFFIRMATIONS}件を設定中 ・ タップして管理</Text></View><Text style={{ color: accent, fontSize: 22 }}>›</Text></Pressable>}
     <Modal visible={sheetOpen} transparent animationType="slide" onRequestClose={closeSheet}>
       <Pressable style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.35)' }} onPress={closeSheet}>
-        <View onStartShouldSetResponder={() => true} style={{ maxHeight: '92%', borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 18, backgroundColor: surface, borderColor: border, borderWidth: 1 }}>
+        <Pressable style={{ maxHeight: '92%', borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 18, backgroundColor: surface, borderColor: border, borderWidth: 1 }} onPress={(event) => event.stopPropagation()}>
           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}><Text style={{ color: primary, fontSize: 20, fontWeight: '800' }}>アファメーション</Text><Pressable onPress={closeSheet}><Text style={{ color: accent, fontWeight: '800' }}>閉じる</Text></Pressable></View>
           {managementContent}
-        </View>
+        </Pressable>
       </Pressable>
     </Modal>
   </>;

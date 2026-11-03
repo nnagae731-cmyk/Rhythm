@@ -918,7 +918,7 @@ export function SettingsScreen({
           }}
           widgetSettings={widgetSettings}
           onWidgetSettings={onWidgetSettings}
-          onPickWidgetPhoto={onPickWidgetPhoto}
+          onPickWidgetPhoto={onPickWidgetPhoto ? (widgetType, override) => closeWidgetSheetThen(() => onPickWidgetPhoto(widgetType, override)) : undefined}
           onUnlockWidgetPhoto={onUnlockWidgetPhoto ? (widgetType, override) => closeWidgetSheetThen(() => onUnlockWidgetPhoto(widgetType, override)) : undefined}
           widgetPhotoUnlock={widgetPhotoUnlock}
           entitlementsResolved={entitlementsResolved}

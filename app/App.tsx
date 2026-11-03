@@ -4477,7 +4477,7 @@ export default function App() {
           designMode={uiDesignMode}
           chicPattern={effectiveChicPattern}
           chicPalette={chicPalette}
-          monthLabel="2026年8月"
+          monthLabel={`${new Date().getFullYear()}年${new Date().getMonth() + 1}月`}
           state={{
             monthlyGoal: '毎日少しでも自分の時間をつくる',
             wishes: [{ id: wishId, title: '自分の時間をつくる', completed: false, createdAt: '2026-01-01T00:00:00.000Z' }],
@@ -5945,7 +5945,12 @@ export default function App() {
                  setDesignPreviewMode('chic');
                  setDesignPreviewPattern(pattern);
               }}
-               onDesignPreview={(pattern) => { setDesignPreviewMode('chic'); setDesignPreviewPattern(undefined); setChicPattern(pattern); }}
+               onDesignPreview={(pattern) => {
+                 // A locked Design is only a try-on candidate until the user
+                 // confirms it in the full-screen preview.
+                 setDesignPreviewMode('chic');
+                 setDesignPreviewPattern(pattern);
+               }}
                 fullscreenPreview={(onBack, sheetVisible, closeSheetThen) => <DesignTryOnModal
                   visible={sheetVisible}
                   initialMode={designPreviewPhotoUri ? 'photo' : designMode === 'photo' ? 'photo' : isMonoDesign ? resolvedMonoMode : designMode}
@@ -6298,15 +6303,9 @@ export default function App() {
         designMode={uiDesignMode}
         chicPalette={chicPalette}
         canWatchReward={remainingVoiceRewards(voiceUsage, dateKey()) > 0}
-        onReward={async () => {
-          const earned = await grantVoiceReward();
-          if (earned) {
-            setVoiceUsageLimitOpen(false);
-            setVoiceOpen(true);
-          }
-          return earned;
-        }}
-        onPremium={() => { setVoiceUsageLimitOpen(false); openPremiumFeature('voice'); }}
+        onReward={grantVoiceReward}
+        onRewarded={() => setVoiceOpen(true)}
+        onPremium={() => openPremiumFeature('voice')}
         onClose={() => setVoiceUsageLimitOpen(false)}
       />
       <VoiceInputModal visible={voiceOpen} autoStart={voiceAutoStart} designMode={uiDesignMode} chicPalette={chicPalette} dateKey={dateKey} onClose={() => { setVoiceAutoStart(false); setVoiceOpen(false); }} onRoute={handleVoiceRoute} hapticsEnabled={hapticsEnabled} isPremium={planTier === 'premium'} remainingUses={remainingVoiceUses(voiceUsage, dateKey())} onRecognitionAccepted={consumeVoiceInput} />

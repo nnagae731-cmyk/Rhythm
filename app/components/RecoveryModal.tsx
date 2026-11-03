@@ -1,5 +1,5 @@
 import React from 'react';
-import { Alert, Modal, Pressable, ScrollView, Share, Text, TextInput, View } from 'react-native';
+import { Alert, InteractionManager, Modal, Pressable, ScrollView, Share, Text, TextInput, View } from 'react-native';
 import { DesignMode, getThemeTokens } from '../theme';
 import { createRecoveryRecord, getRecoveryOptions, RecoveryOption, RecoveryRecord } from '../recovery';
 import { DeparturePlan } from '../types';
@@ -37,6 +37,10 @@ export function RecoveryModal({ visible, plan, now, designMode, onClose, onApply
   // compatibility, but do not expose it in the current Recovery UI.
   const options = getRecoveryOptions(plan, now).filter((option) => option.action !== 'reschedule');
   const estimatedArrival = options[0]?.estimatedArrival ?? plan.arrival;
+  const closeThenPremium = (featureId?: PremiumGuideFeatureId) => {
+    onClose();
+    InteractionManager.runAfterInteractions(() => requestAnimationFrame(() => requestAnimationFrame(() => onPremium(featureId))));
+  };
   const applyOption = async (option: RecoveryOption, customMessage?: string) => {
     const record = createRecoveryRecord(plan, option);
     if (!record) {
@@ -69,8 +73,7 @@ export function RecoveryModal({ visible, plan, now, designMode, onClose, onApply
               return (
                 <Pressable key={option.action} disabled={readOnly} style={[styles.recoveryOption, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }, readOnly && { opacity: 0.96 }]} onPress={() => {
                   if (locked) {
-                    onClose();
-                    onPremium();
+                    closeThenPremium();
                   } else if (option.action === 'contact') {
                     setContactEditing(true);
                     setContactDraft('');
@@ -98,7 +101,7 @@ export function RecoveryModal({ visible, plan, now, designMode, onClose, onApply
               </View>
             </View>}
             <Text style={[styles.recoveryNote, { color: theme.colors.secondaryText }]}>位置情報や経路検索はまだ使わず、登録済みの移動時間から計算しています。</Text>
-            {!readOnly && plan.destination?.trim() ? <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginTop: 8 }}><TravelAppLaunchActions settings={travelApps} category="transit" destination={plan.destination} planTier={planTier} designMode={designMode} chicPalette={chicPalette} onPremium={(featureId) => onPremium(featureId)} onOpenSettings={onOpenTravelAppSettings} /><TravelAppLaunchActions settings={travelApps} category="taxi" destination={plan.destination} planTier={planTier} designMode={designMode} chicPalette={chicPalette} onPremium={(featureId) => onPremium(featureId)} onOpenSettings={onOpenTravelAppSettings} /></View> : null}
+            {!readOnly && plan.destination?.trim() ? <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginTop: 8 }}><TravelAppLaunchActions settings={travelApps} category="transit" destination={plan.destination} planTier={planTier} designMode={designMode} chicPalette={chicPalette} onPremium={closeThenPremium} onOpenSettings={onOpenTravelAppSettings} /><TravelAppLaunchActions settings={travelApps} category="taxi" destination={plan.destination} planTier={planTier} designMode={designMode} chicPalette={chicPalette} onPremium={closeThenPremium} onOpenSettings={onOpenTravelAppSettings} /></View> : null}
             <Pressable onPress={onClose}><Text style={[styles.cancelText, { color: theme.colors.secondaryText }]}>閉じる</Text></Pressable>
   </>;
   const content = inlinePreview

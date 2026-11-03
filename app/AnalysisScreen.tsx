@@ -1,5 +1,5 @@
 import React, { ReactNode, useEffect, useMemo, useState } from 'react';
-import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { InteractionManager, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import Svg, { Circle, Line, Path, Text as SvgText } from 'react-native-svg';
 import { BehaviorEvent } from './behaviorEvents';
 import { buildInsightDashboard, formatComparison, formatMetricAverage, formatPointValue, InsightCondition, InsightConditionView, InsightMetric, InsightRange, InsightRate, InsightSuggestion, insightPointDateLabel } from './features/analytics/insightDashboard';
@@ -86,10 +86,14 @@ function RoutineProgressPanel({ events, tasks, designMode, chicPalette, onRemove
   const theme = getThemeTokens(designMode, chicPalette?.id ?? 'cool');
   const palette = designMode === 'chic' ? [resolvedChicPalette.accent, resolvedChicPalette.statusAccent, resolvedChicPalette.patternStripe, resolvedChicPalette.accentSoft, resolvedChicPalette.border] : [theme.colors.primaryAccent, theme.colors.secondaryAccent, theme.colors.border, theme.colors.softAccent, theme.colors.secondaryText];
   const isDark = designMode === 'dark';
+  const openArchiveHistory = (title: string, summary: RoutineInterruptionSummary) => {
+    setArchiveOpen(false);
+    InteractionManager.runAfterInteractions(() => requestAnimationFrame(() => requestAnimationFrame(() => setHistoryTarget({ title, summary }))));
+  };
   const archiveLink = <Pressable onPress={() => setArchiveOpen(true)} style={styles.routineHistoryLink}><Text style={[styles.routineHistoryLinkText, { color: designMode === 'chic' && chicPalette ? chicPalette.accent : theme.colors.primaryAccent }]}>解除歴 〉</Text></Pressable>;
   if (activeRoutineTasks.length === 0) return <>
     <View style={[styles.routineCard, isDark && styles.routineCardDark, designMode === 'chic' && chicPalette && { backgroundColor: chicPalette.cardSurface, borderColor: chicPalette.border }]}><View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}><Text style={[styles.sectionTitle, isDark && styles.darkMetricText, designMode === 'chic' && chicPalette && { color: chicPalette.textPrimary }]}>ルーティンの継続</Text>{archiveLink}</View><Text style={[styles.sectionCopy, isDark && styles.darkSecondaryText, designMode === 'chic' && chicPalette && { color: chicPalette.textSecondary }]}>タスク登録時に「ルーティンにする」を選ぶと、継続率を確認できます。</Text></View>
-    <RoutineArchiveModal visible={archiveOpen} archives={routineArchives} events={events} tasks={tasks} designMode={designMode} chicPalette={chicPalette} onClose={() => setArchiveOpen(false)} onHistory={(title, summary) => { setArchiveOpen(false); setHistoryTarget({ title, summary }); }} onResume={onResumeRoutine} onDelete={onDeleteRoutineArchive} />
+    <RoutineArchiveModal visible={archiveOpen} archives={routineArchives} events={events} tasks={tasks} designMode={designMode} chicPalette={chicPalette} onClose={() => setArchiveOpen(false)} onHistory={openArchiveHistory} onResume={onResumeRoutine} onDelete={onDeleteRoutineArchive} />
     <RoutineHistoryModal summary={historyTarget?.summary} title={historyTarget?.title} designMode={designMode} chicPalette={chicPalette} onClose={() => setHistoryTarget(undefined)} />
   </>;
   return <>
@@ -121,7 +125,7 @@ function RoutineProgressPanel({ events, tasks, designMode, chicPalette, onRemove
         </View>;
       })}</View>
     </View>
-    <RoutineArchiveModal visible={archiveOpen} archives={routineArchives} events={events} tasks={tasks} designMode={designMode} chicPalette={chicPalette} onClose={() => setArchiveOpen(false)} onHistory={(title, summary) => { setArchiveOpen(false); setHistoryTarget({ title, summary }); }} onResume={onResumeRoutine} onDelete={onDeleteRoutineArchive} />
+    <RoutineArchiveModal visible={archiveOpen} archives={routineArchives} events={events} tasks={tasks} designMode={designMode} chicPalette={chicPalette} onClose={() => setArchiveOpen(false)} onHistory={openArchiveHistory} onResume={onResumeRoutine} onDelete={onDeleteRoutineArchive} />
     <RoutineHistoryModal summary={historyTarget?.summary} title={historyTarget?.title} designMode={designMode} chicPalette={chicPalette} onClose={() => setHistoryTarget(undefined)} />
   </>;
 }
