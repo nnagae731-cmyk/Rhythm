@@ -18,11 +18,13 @@ type Props = {
   chicPalette?: ChicThemePalette;
   onReward: () => Promise<RewardedAccessResult>;
   onClose: () => void;
+  onDismiss?: () => void;
   onPremium?: () => void;
   premiumLabel?: string;
+  rewardButtonLabel?: string;
 };
 
-export function RewardedAccessModal({ visible, title, description, current = 0, required = 1, designMode, chicPalette, onReward, onClose, onPremium, premiumLabel = 'プレミアムなら広告なしで使えます' }: Props) {
+export function RewardedAccessModal({ visible, title, description, current = 0, required = 1, designMode, chicPalette, onReward, onClose, onDismiss, onPremium, premiumLabel = 'プレミアムなら広告なしで使えます', rewardButtonLabel = '広告を見て取得' }: Props) {
   const [busy, setBusy] = useState(false);
   const [adActive, setAdActive] = useState(false);
   const [message, setMessage] = useState('');
@@ -73,7 +75,7 @@ export function RewardedAccessModal({ visible, title, description, current = 0, 
     }
   };
 
-  return <Modal visible={visible && !adActive} transparent animationType="fade" onRequestClose={onClose}>
+  return <Modal visible={visible && !adActive} transparent animationType="fade" onRequestClose={onClose} onDismiss={onDismiss}>
     <Pressable onPress={onClose} style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.35)', justifyContent: 'center', padding: 20 }}>
       <Pressable onPress={(event) => event.stopPropagation()} style={{ borderRadius: 20, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface, padding: 20 }}>
         <Text style={{ color: colors.text, fontSize: 18, fontWeight: '900' }}>{title}</Text>
@@ -81,7 +83,7 @@ export function RewardedAccessModal({ visible, title, description, current = 0, 
         {required > 1 && <Text style={{ color: colors.text, fontSize: 14, fontWeight: '800', marginTop: 14 }}>{current} / {required} 回視聴済み</Text>}
         {message ? <Text style={{ color: colors.accent, fontSize: 12, fontWeight: '800', marginTop: 12 }}>{message}</Text> : null}
         <Pressable accessibilityRole="button" disabled={busy} onPress={() => void handleReward()} style={{ minHeight: 50, marginTop: 18, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.accent, opacity: busy ? 0.65 : 1 }}>
-          {busy ? <ActivityIndicator color={colors.onAccent} /> : <Text style={{ color: colors.onAccent, fontSize: 14, fontWeight: '900' }}>広告を見て取得</Text>}
+          {busy ? <ActivityIndicator color={colors.onAccent} /> : <Text style={{ color: colors.onAccent, fontSize: 14, fontWeight: '900' }}>{rewardButtonLabel}</Text>}
         </Pressable>
         {onPremium && <Pressable onPress={onPremium} style={{ minHeight: 42, alignItems: 'center', justifyContent: 'center', marginTop: 4 }}><Text style={{ color: colors.accent, fontSize: 12, fontWeight: '800' }}>{premiumLabel}</Text></Pressable>}
         <Pressable onPress={onClose} style={{ minHeight: 44, alignItems: 'center', justifyContent: 'center' }}><Text style={{ color: colors.muted, fontSize: 13, fontWeight: '800' }}>閉じる</Text></Pressable>

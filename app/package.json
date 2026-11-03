@@ -3,6 +3,11 @@
   "version": "0.1.0",
   "private": true,
   "main": "index.js",
+  "expo": {
+    "autolinking": {
+      "nativeModulesDir": "./modules"
+    }
+  },
   "scripts": {
     "start": "expo start --dev-client",
     "start:free": "set EXPO_PUBLIC_RHYTHM_PLAN=free&& expo start --dev-client --port 8086",

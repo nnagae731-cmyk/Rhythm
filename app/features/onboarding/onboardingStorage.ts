@@ -85,18 +85,19 @@ export function normalizeOnboardingState(
   const hasCompletedIntro = typeof completed.intro === 'string';
   const normalizedFirstRunStage = raw.firstRunStage === 'done'
     ? 'done'
-    : hasCompletedIntro && raw.firstRunStage === 'demo'
+    : hasCompletedIntro && raw.firstRunStage === 'design'
       ? 'design'
-      : hasCompletedIntro && raw.firstRunStage === 'design'
-        ? 'design'
+      : hasCompletedIntro && raw.firstRunStage === 'demo'
+        ? 'done'
         : undefined;
 
   return {
     version: 1,
     completed,
-    // Older builds stored an interrupted long demo as `demo`. Treat that
-    // stage as the design handoff only after the intro was actually completed.
-    // A blank/new onboarding record must never be promoted to the design step.
+    // Older builds stored the long demo as `demo`. It is not evidence that the
+    // user was in the explicit Design selection step, so never promote it to
+    // `design`; completed legacy demos are treated as done. A blank/new
+    // onboarding record must never be promoted to the design step.
     firstRunStage: normalizedFirstRunStage,
   };
 }

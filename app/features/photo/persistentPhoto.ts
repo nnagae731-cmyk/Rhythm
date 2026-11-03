@@ -36,6 +36,17 @@ export function isPersistedPhotoAvailable(uri: string | undefined) {
   }
 }
 
+/** Removes only the temporary cache image created for the crop UI preview. */
+export function deleteTemporaryPhotoUri(uri: string | undefined) {
+  if (!uri || isManagedPhotoUri(uri) || (!uri.includes('/Caches/') && !uri.includes('/cache/'))) return;
+  try {
+    const file = new File(uri);
+    if (file.exists) file.delete();
+  } catch (error) {
+    console.warn('Could not remove temporary crop preview.', error);
+  }
+}
+
 /** Deletes only Rhythm-owned copies. Picker, library and legacy URIs are never removed. */
 export function deleteManagedPhotoUri(uri: string | undefined, retainedUris: Iterable<string | undefined> = []) {
   if (!uri || !isManagedPhotoUri(uri)) return;

@@ -31,8 +31,6 @@ public final class RhythmWidgetModule: Module {
         throw NSError(domain: "RhythmWidget", code: 1, userInfo: [NSLocalizedDescriptionKey: "App Group is unavailable"])
       }
       defaults.set(snapshot, forKey: self.snapshotKey)
-      // Remove only files owned by the affirmation widget. The main Widget
-      // photo uses a different filename and is never touched here.
       if let data = snapshot.data(using: .utf8), let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any], let container = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: self.appGroup) {
         let names = object["affirmationPhotoFileNames"] as? [String] ?? []
         let allowed = Set(names.filter { $0.hasPrefix(self.affirmationPhotoPrefix) && $0.hasSuffix(".jpg") })
@@ -40,9 +38,15 @@ public final class RhythmWidgetModule: Module {
           let name = "\(self.affirmationPhotoPrefix)\(slot).jpg"
           if !allowed.contains(name) { try? FileManager.default.removeItem(at: container.appendingPathComponent(name)) }
         }
-        // Clean only the per-widget namespace, and only when a current
-        // snapshot explicitly contains that field. Older snapshots remain
-        // backward compatible and do not delete files they cannot reference.
+        let appearance = object["appearance"] as? [String: Any]
+        let sharedPhotoName = appearance?["photoFileName"] as? String
+        let sharedPhotoIsReferenced = sharedPhotoName == self.photoFileName
+        if !sharedPhotoIsReferenced { try? FileManager.default.removeItem(at: container.appendingPathComponent(self.photoFileName)) }
+
+        // Clean the per-widget namespace when the current snapshot carries
+        // that namespace. App-generated snapshots always include entries for
+        // all widget kinds, while older snapshots are left untouched until a
+        // new snapshot is available.
         if let customizations = object["widgetCustomizations"] as? [String: Any] {
           let allowedWidgetNames = Set(customizations.values.compactMap { value -> String? in
             guard let customization = value as? [String: Any], let name = customization["photoFileName"] as? String,

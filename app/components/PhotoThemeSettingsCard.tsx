@@ -6,11 +6,11 @@ import { PhotoThemePhotoTarget, PhotoThemeSettings, PhotoThemeTopSlot, ThemeMode
 import { ChicThemePalette, getThemeTokens } from '../theme';
 
 const topSlots: Array<{ id: PhotoThemeTopSlot; label: string }> = [
-  { id: 'home', label: '今日' },
-  { id: 'timeline', label: '予定' },
-  { id: 'analysis', label: '分析' },
-  { id: 'wish', label: '叶えたいこと' },
-  { id: 'settings', label: '設定' },
+  { id: 'home', label: '今日のトップ' },
+  { id: 'timeline', label: '予定のトップ' },
+  { id: 'analysis', label: '分析のトップ' },
+  { id: 'wish', label: '叶えたいことのトップ' },
+  { id: 'settings', label: '設定のトップ' },
 ];
 
 type Props = {
@@ -19,6 +19,7 @@ type Props = {
   chicPalette?: ChicThemePalette;
   planTier: PlanTier;
   designCustomizePurchased?: boolean;
+  accessStatusLabel?: string;
   onPremium: (featureId?: PremiumGuideFeatureId) => void;
   onPick: (target: PhotoThemePhotoTarget) => void;
   onAdjust: (target: PhotoThemeTopSlot) => void;
@@ -30,13 +31,21 @@ function PhotoPreview({ uri, label }: { uri?: string; label: string }) {
   return uri ? <Image source={{ uri }} style={localStyles.preview} /> : <View style={localStyles.emptyPreview}><Text style={localStyles.emptyPreviewText}>{label}</Text></View>;
 }
 
-export function PhotoThemeSettingsCard({ photoTheme, designMode, chicPalette, planTier, designCustomizePurchased = false, onPremium, onPick, onAdjust, onClear, styles }: Props) {
+export function PhotoThemeSettingsCard({ photoTheme, designMode, chicPalette, planTier, designCustomizePurchased = false, accessStatusLabel, onPremium, onPick, onAdjust, onClear, styles }: Props) {
   const isDark = designMode === 'dark';
   const themeColors = chicPalette && designMode === 'chic'
     ? { textPrimary: chicPalette.textPrimary, textSecondary: chicPalette.textSecondary, primaryAccent: chicPalette.accent, accentSoft: chicPalette.accentSoft, onAccent: chicPalette.onAccent }
-    : (() => { const colors = getThemeTokens(designMode).colors; return { textPrimary: colors.primaryText, textSecondary: colors.secondaryText, primaryAccent: colors.primaryAccent, accentSoft: colors.softAccent, onAccent: designMode === 'dark' ? colors.screenBackground : '#FFFFFF' }; })();
+      : (() => { const colors = getThemeTokens(designMode).colors; return { textPrimary: colors.primaryText, textSecondary: colors.secondaryText, primaryAccent: colors.primaryAccent, accentSoft: colors.softAccent, onAccent: designMode === 'dark' ? colors.screenBackground : '#FFFFFF' }; })();
+  React.useEffect(() => {
+    if (!__DEV__) return;
+    topSlots.forEach((slot) => console.log('[TopImage] render-slot', {
+      target: slot.id,
+      displayUri: Boolean(photoTheme.topImageUris?.[slot.id]),
+      originalUri: Boolean(photoTheme.topImageOriginalUris?.[slot.id]),
+    }));
+  }, [photoTheme.topImageUris, photoTheme.topImageOriginalUris]);
   return <View style={[styles.settingsCard, isDark && styles.darkSurface]}>
-    <View style={styles.historyHeader}><View><Text style={[styles.settingsTitle, isDark && styles.darkBodyText]}>写真デザイン</Text><Text style={[styles.switchCopy, isDark && styles.darkAccentText]}>デザインの雰囲気はそのままに、好きな一枚を添えます</Text></View><Text style={styles.taskTemplateSavePremium}>{planTier === 'premium' ? 'プレミアム' : designCustomizePurchased ? '購入済み' : '広告で解放'}</Text></View>
+    <View style={styles.historyHeader}><View><Text style={[styles.settingsTitle, isDark && styles.darkBodyText]}>写真デザイン</Text><Text style={[styles.switchCopy, isDark && styles.darkAccentText]}>デザインの雰囲気はそのままに、好きな一枚を添えます</Text></View><Text style={styles.taskTemplateSavePremium}>{accessStatusLabel ?? (planTier === 'premium' ? 'プレミアムで利用中' : designCustomizePurchased ? '利用中' : '未購入')}</Text></View>
 
     <Text style={[styles.fieldLabel, isDark && styles.darkAccentText]}>背景写真</Text>
     <PhotoPreview uri={photoTheme.imageUri} label="背景にしたい写真を選ぶ" />
@@ -52,12 +61,12 @@ export function PhotoThemeSettingsCard({ photoTheme, designMode, chicPalette, pl
     <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={localStyles.slotRow}>
       {topSlots.map((slot) => {
         const uri = photoTheme.topImageUris?.[slot.id] ?? photoTheme.topImageOriginalUris?.[slot.id];
-        return <View key={slot.id} style={localStyles.slotCard}>
-          {uri ? <Image source={{ uri }} style={localStyles.slotPreview} /> : <View style={localStyles.slotEmpty}><Text style={localStyles.slotEmptyText}>＋</Text></View>}
-          <Text style={[localStyles.slotLabel, { color: themeColors.textPrimary }]}>{slot.label}</Text>
+        return <View key={slot.id} style={[localStyles.slotCard, { borderColor: themeColors.primaryAccent, backgroundColor: themeColors.accentSoft }]}>
+          {uri ? <Image source={{ uri }} style={localStyles.slotPreview} /> : <View style={[localStyles.slotEmpty, { backgroundColor: themeColors.accentSoft, borderColor: themeColors.primaryAccent }]}><Text style={[localStyles.slotEmptyText, { color: themeColors.primaryAccent }]}>＋</Text></View>}
+          <Text numberOfLines={2} style={[localStyles.slotLabel, { color: themeColors.textPrimary }]}>{slot.label}</Text>
           <View style={localStyles.slotActions}>
-            <Pressable hitSlop={6} style={[localStyles.slotActionButton, { backgroundColor: themeColors.accentSoft }, !uri && localStyles.slotActionButtonFull]} onPress={() => onPick(slot.id)}><Text style={[localStyles.slotActionText, { color: themeColors.primaryAccent }]}>{uri ? '変更' : '選ぶ'}</Text></Pressable>
-            {uri && <Pressable hitSlop={6} style={localStyles.slotActionButton} onPress={() => onAdjust(slot.id)}><Text style={localStyles.slotActionText}>再調整</Text></Pressable>}
+            <Pressable hitSlop={6} style={[localStyles.slotActionButton, { backgroundColor: themeColors.accentSoft, borderColor: themeColors.primaryAccent }, !uri && localStyles.slotActionButtonFull]} onPress={() => onPick(slot.id)}><Text style={[localStyles.slotActionText, { color: themeColors.primaryAccent }]}>{uri ? '変更' : '選ぶ'}</Text></Pressable>
+            {uri && <Pressable hitSlop={6} style={[localStyles.slotActionButton, { borderColor: themeColors.primaryAccent }]} onPress={() => onAdjust(slot.id)}><Text style={[localStyles.slotActionText, { color: themeColors.textPrimary }]}>再調整</Text></Pressable>}
             {uri && <Pressable hitSlop={6} style={localStyles.slotRemoveButton} onPress={() => onClear(slot.id)}><Text style={localStyles.slotRemoveText}>外す</Text></Pressable>}
           </View>
         </View>;
@@ -84,13 +93,13 @@ const localStyles = StyleSheet.create({
   note: { color: '#7B7180', fontSize: 10, lineHeight: 16, fontWeight: '700', marginBottom: 12 },
   divider: { height: 1, backgroundColor: '#E8DCE3', marginVertical: 14 },
   slotRow: { flexDirection: 'row', gap: 8, paddingRight: 4 },
-  slotCard: { width: 132, minHeight: 120, padding: 7, borderRadius: 12, borderWidth: 1, borderColor: '#E2D5DD', backgroundColor: '#FFFDFC' },
+  slotCard: { width: 148, minHeight: 132, padding: 7, borderRadius: 12, borderWidth: 1 },
   slotPreview: { width: '100%', aspectRatio: 2.5, borderRadius: 8, backgroundColor: '#EEE7E8' },
-  slotEmpty: { width: '100%', aspectRatio: 2.5, borderRadius: 8, alignItems: 'center', justifyContent: 'center', backgroundColor: '#F8EFF2' },
-  slotEmptyText: { color: '#A98797', fontSize: 20, fontWeight: '400' },
-  slotLabel: { color: '#403644', fontSize: 10, fontWeight: '900', marginTop: 6 },
+  slotEmpty: { width: '100%', aspectRatio: 2.5, borderRadius: 8, alignItems: 'center', justifyContent: 'center', borderWidth: 1 },
+  slotEmptyText: { fontSize: 20, fontWeight: '700' },
+  slotLabel: { fontSize: 11, lineHeight: 15, fontWeight: '900', marginTop: 6, minHeight: 30 },
   slotActions: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 7 },
-  slotActionButton: { minHeight: 34, minWidth: 44, paddingHorizontal: 9, paddingVertical: 7, borderRadius: 9, alignItems: 'center', justifyContent: 'center', backgroundColor: '#F0E9FF' },
+  slotActionButton: { minHeight: 34, minWidth: 44, paddingHorizontal: 9, paddingVertical: 7, borderRadius: 9, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
   slotActionButtonFull: { flex: 1 },
   slotRemoveButton: { minHeight: 34, minWidth: 38, paddingHorizontal: 8, paddingVertical: 7, borderRadius: 9, alignItems: 'center', justifyContent: 'center', backgroundColor: '#FFF0F2' },
   slotActionText: { fontSize: 11, fontWeight: '900' },

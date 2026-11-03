@@ -7,22 +7,27 @@ type Props = {
   designMode: DesignMode;
   chicPalette?: ChicThemePalette;
   purchased: boolean;
+  premiumIncluded?: boolean;
   onPurchase: () => void;
   onRestore: () => void;
   onPremium: () => void;
   onClose: () => void;
+  onDismiss?: () => void;
+  onRewarded?: () => void;
+  rewardedAvailable?: boolean;
+  rewardedLabel?: string;
   localizedPrice?: string;
   priceStatus?: 'loading' | 'ready' | 'unavailable';
   purchaseError?: string;
 };
 
-export function DesignCustomizeModal({ visible, designMode, chicPalette, purchased, onPurchase, onRestore, onPremium, onClose, localizedPrice, priceStatus = localizedPrice ? 'ready' : 'unavailable', purchaseError }: Props) {
+export function DesignCustomizeModal({ visible, designMode, chicPalette, purchased, premiumIncluded = false, onPurchase, onRestore, onPremium, onClose, onDismiss, onRewarded, rewardedAvailable = false, rewardedLabel = '広告を見て12時間使う', localizedPrice, priceStatus = localizedPrice ? 'ready' : 'unavailable', purchaseError }: Props) {
   const theme = getThemeTokens(designMode, chicPalette?.id ?? 'cool');
   const colors = designMode === 'chic' && chicPalette
     ? { background: chicPalette.cardSurface, surface: chicPalette.surfaceSubtle, text: chicPalette.textPrimary, muted: chicPalette.textSecondary, border: chicPalette.border, accent: chicPalette.accent, accentSoft: chicPalette.accentSoft, onAccent: chicPalette.onAccent }
     : { background: theme.colors.screenBackground, surface: theme.colors.surface, text: theme.colors.primaryText, muted: theme.colors.secondaryText, border: theme.colors.border, accent: theme.colors.primaryAccent, accentSoft: theme.colors.softAccent, onAccent: designMode === 'dark' ? theme.colors.screenBackground : '#FFFFFF' };
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose} onDismiss={onDismiss}>
       <Pressable style={styles.backdrop} onPress={onClose}>
         <Pressable style={[styles.sheet, { backgroundColor: colors.background, borderColor: colors.border }]} onPress={(event) => event.stopPropagation()}>
           <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.content}>
@@ -47,13 +52,15 @@ export function DesignCustomizeModal({ visible, designMode, chicPalette, purchas
             <Text style={[styles.description, { color: colors.muted }]}>トップ画像・集中画面背景などのカスタマイズも利用できます。</Text>
             <Text style={[styles.price, { color: colors.accent }]}>{priceStatus === 'loading' ? '価格を取得中…' : localizedPrice ? `買い切り ${localizedPrice}` : '価格は購入画面で確認'}</Text>
             {purchaseError ? <Text style={[styles.note, { color: colors.muted }]}>App Storeの商品情報を取得できませんでした。時間をおいてもう一度お試しください。</Text> : null}
+            {!purchased && premiumIncluded ? <Text style={[styles.note, { color: colors.accent }]}>プレミアムで利用中。デザインカスタマイズは未購入です。</Text> : null}
+            {!purchased && rewardedAvailable && onRewarded ? <Pressable accessibilityRole="button" onPress={onRewarded} style={[styles.secondaryButton, { borderColor: colors.accent }]}><Text style={[styles.secondaryText, { color: colors.accent }]}>{rewardedLabel}</Text></Pressable> : null}
             {purchased ? <View style={[styles.purchased, { borderColor: colors.border, backgroundColor: colors.surface }]}><Text style={[styles.purchasedText, { color: colors.accent }]}>購入済み</Text></View> : <>
               <Pressable accessibilityRole="button" onPress={onPurchase} style={[styles.primaryButton, { backgroundColor: colors.accent }]}><Text style={[styles.primaryText, { color: colors.onAccent }]}>{priceStatus === 'loading' ? '価格を取得中…' : localizedPrice ? `${localizedPrice}で買い切る` : '価格を確認して購入'}</Text></Pressable>
               <Pressable accessibilityRole="button" onPress={onRestore} style={[styles.secondaryButton, { borderColor: colors.border }]}><Text style={[styles.secondaryText, { color: colors.accent }]}>購入を復元</Text></Pressable>
             </>}
             <Text style={[styles.premiumNote, { color: colors.accent }]}>プレミアムにはデザインカスタマイズの全機能が含まれます</Text>
             <Pressable accessibilityRole="button" onPress={onPremium} style={styles.linkButton}><Text style={[styles.linkText, { color: colors.accent }]}>プレミアムを見る</Text></Pressable>
-            <Text style={[styles.note, { color: colors.muted }]}>広告やトライアルで無料で試すこともできます。</Text>
+            <Text style={[styles.note, { color: colors.muted }]}>見た目の確認・全画面試着は無料です。正式に使う時、初回は24時間無料体験、その後は広告1回で12時間利用できます。</Text>
             <Pressable accessibilityRole="button" onPress={onClose} style={styles.closeButton}><Text style={[styles.closeText, { color: colors.muted }]}>閉じる</Text></Pressable>
           </ScrollView>
         </Pressable>

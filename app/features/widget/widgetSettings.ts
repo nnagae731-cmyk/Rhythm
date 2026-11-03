@@ -131,7 +131,7 @@ export function normalizeWidgetSettings(value: unknown): WidgetSettings {
   const photoLayout = photoLayoutIds.has(source.photoLayout as WidgetPhotoLayout) ? source.photoLayout as WidgetPhotoLayout : DEFAULT_WIDGET_SETTINGS.photoLayout;
   const monoTemplate = monoTemplateIds.has(source.monoTemplate as WidgetMonoTemplate) ? source.monoTemplate as WidgetMonoTemplate : DEFAULT_WIDGET_SETTINGS.monoTemplate;
   const fontDesign = normalizeRhythmFontDesign(source.fontDesign);
-  const photoUri = typeof source.photoUri === 'string' && source.photoUri.trim() ? source.photoUri : undefined;
+  const legacyPhotoUri = typeof source.photoUri === 'string' && source.photoUri.trim() ? source.photoUri : undefined;
   const rawCustomizations = isRecord(source.widgetCustomizations) ? source.widgetCustomizations : {};
   const widgetCustomizations: WidgetCustomizations = {};
   WIDGET_TYPE_OPTIONS.forEach(({ id }) => {
@@ -143,6 +143,17 @@ export function normalizeWidgetSettings(value: unknown): WidgetSettings {
     const customMonoTemplate = monoTemplateIds.has(raw.monoTemplate as WidgetMonoTemplate) ? raw.monoTemplate as WidgetMonoTemplate : undefined;
     if (customPhotoUri || customCutoutUri || customPhotoLayout || customMonoTemplate) widgetCustomizations[id] = { photoUri: customPhotoUri, cutoutUri: customCutoutUri, photoLayout: customPhotoLayout, monoTemplate: customMonoTemplate };
   });
+  // Migrate the old shared Widget photo exactly once. The old setting was
+  // visible to every Widget, so preserve that behavior by creating an
+  // explicit per-Widget reference before clearing the legacy field. From this
+  // point on, deleting one Widget's photo cannot be undone by a shared
+  // fallback, while the same managed file remains retained by other Widgets.
+  if (legacyPhotoUri) {
+    WIDGET_TYPE_OPTIONS.forEach(({ id }) => {
+      const current = widgetCustomizations[id];
+      if (!current?.photoUri) widgetCustomizations[id] = { ...(current ?? {}), photoUri: legacyPhotoUri };
+    });
+  }
   const affirmationRotationMode = source.affirmationRotationMode === 'automatic' ? 'automatic' : 'fixed';
   const allowedBackgrounds = new Set(['floral', 'dot', 'check', 'photo']);
   const affirmationBackgrounds = Array.isArray(source.affirmationBackgrounds)
@@ -151,18 +162,20 @@ export function normalizeWidgetSettings(value: unknown): WidgetSettings {
   const affirmationPhotoUris = Array.isArray(source.affirmationPhotoUris)
     ? source.affirmationPhotoUris.filter((item): item is string => typeof item === 'string' && item.trim().length > 0).slice(0, 3)
     : [];
-  return { widgetType, style, accentColor, photoUri, photoSource, photoLayout, monoTemplate, fontDesign, widgetCustomizations, displayOptions, affirmationRotationMode, affirmationBackgrounds, affirmationPhotoUris };
+  // `photoUri` remains part of the persisted type for backward compatibility,
+  // but normalized state no longer uses the legacy shared reference.
+  return { widgetType, style, accentColor, photoUri: undefined, photoSource, photoLayout, monoTemplate, fontDesign, widgetCustomizations, displayOptions, affirmationRotationMode, affirmationBackgrounds, affirmationPhotoUris };
 }
 
-/** Resolves a widget's new per-kind photo first, while retaining the legacy shared photo fallback. */
+/** Resolves only the formal per-Widget photo configuration. */
 export function getWidgetCustomization(settings: WidgetSettings, widgetType: WidgetType): WidgetCustomization {
   const customization = settings.widgetCustomizations?.[widgetType];
   const storedLayout = customization?.photoLayout ?? settings.photoLayout;
   // Older persisted records may contain the removed cutout layout. Keep the
-  // legacy field decodable, but expose it to the current UI as a normal photo.
+  // field decodable, but expose it to the current UI as a normal photo.
   const photoLayout = storedLayout === 'cutout' ? 'background' : storedLayout;
   return {
-    photoUri: customization?.photoUri ?? settings.photoUri,
+    photoUri: customization?.photoUri,
     photoLayout,
     monoTemplate: customization?.monoTemplate ?? settings.monoTemplate,
   };

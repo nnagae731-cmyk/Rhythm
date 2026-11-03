@@ -20,7 +20,7 @@ import { createPremiumTaskTemplate, hasSameTemplateSettings, PremiumTaskTemplate
 import { Header } from './components/Header';
 import { HomeScreen } from './screens/HomeScreen';
 import { DepartureCountdownCard, TimelineScreen } from './screens/TimelineScreen';
-import { SettingsScreen } from './screens/SettingsScreen';
+import { DesignAppliedPreview, SettingsScreen } from './screens/SettingsScreen';
 import { HistoryScreen, MonthlyReflectionCardView, ReflectionCardModel } from './screens/HistoryScreen';
 import { TaskModal } from './components/TaskModal';
 import { BulkTaskModal } from './components/BulkTaskModal';
@@ -67,7 +67,7 @@ import type { RoutineArchive } from './types';
 import { SharedEventScreen } from './SharedEventScreen';
 import { TopImageCropModal } from './components/TopImageCropModal';
 import { cropRectToPixels, displayToNormalizedRect, getContainBounds, getInitialCropRect, NormalizedCropRect } from './features/photo/topImageCrop';
-import { deleteManagedPhotoUri, persistPhotoUri } from './features/photo/persistentPhoto';
+import { deleteManagedPhotoUri, deleteTemporaryPhotoUri, isPersistedPhotoAvailable, persistPhotoUri } from './features/photo/persistentPhoto';
 import { canUseNotifications, getNotificationPermissionAction, getNotificationPermissionStatus, requestRhythmNotificationPermission } from './features/notifications/notificationPermission';
 import { addHours, canCreateWish, canCreateWishAction, canImportCalendar, canStartPremiumDesignTrial, isPremiumDesignTrialActive, isPremiumDesignUnlocked, isWidgetPhotoUnlockActive } from './features/ads/rewardedAccessLogic';
 import { getRequiredAds, REWARDED_AD_RULES, RewardedFeatureId } from './features/ads/rewardedAccess';
@@ -196,6 +196,28 @@ const designFloralAssets: Record<FloralPatternId, { source: number; label: strin
 };
 
 type ImageDesignPattern = 'stationery' | 'botanicalBackground' | 'ocean' | 'nightSky';
+
+type UserFacingDesignPattern = Exclude<ChicPattern, 'floralDark'>;
+type DesignPatternFeature = 'chic_floral' | 'chic_dot' | 'chic_heart' | 'chic_check_lavender_satin' | 'chic_check_beige_noir' | 'chic_check_mauve_frame';
+
+// Single source of truth for patterns that users can choose in Design. Legacy
+// persisted ids stay accepted by ChicPattern, but are intentionally omitted
+// from user-facing pickers.
+const designPatternChoices: readonly { id: UserFacingDesignPattern; label: string; feature?: DesignPatternFeature }[] = [
+  { id: 'plain', label: 'プレーン' },
+  { id: 'floral', label: designFloralAssets.floral.label, feature: 'chic_floral' },
+  { id: 'floralSoft', label: designFloralAssets.floralSoft.label, feature: 'chic_floral' },
+  { id: 'floralSeasonal', label: designFloralAssets.floralSeasonal.label, feature: 'chic_floral' },
+  { id: 'dot', label: 'ドット', feature: 'chic_dot' },
+  { id: 'heart', label: 'ハート', feature: 'chic_heart' },
+  { id: 'checkLavenderSatin', label: 'ギンガム1', feature: 'chic_check_lavender_satin' },
+  { id: 'checkBeigeNoir', label: 'ギンガム2', feature: 'chic_check_beige_noir' },
+  { id: 'checkMauveFrame', label: 'ギンガム3', feature: 'chic_check_mauve_frame' },
+  { id: 'stationery', label: 'ステーショナリー', feature: 'chic_floral' },
+  { id: 'botanicalBackground', label: 'ボタニカル', feature: 'chic_floral' },
+  { id: 'ocean', label: 'オーシャン', feature: 'chic_floral' },
+  { id: 'nightSky', label: 'ナイトスカイ', feature: 'chic_floral' },
+];
 
 // These are completed background illustrations supplied for the app's Design
 // mode. They are deliberately kept outside the palette/decor renderer so the
@@ -811,13 +833,19 @@ export default function App() {
   const [focusTimerActive, setFocusTimerActive] = useState(false);
   const [focusActivity, setFocusActivity] = useState<{ taskTitle?: string; endsAt?: string; elapsedStartAt?: string; elapsedSeconds?: number; remainingSeconds?: number; running?: boolean }>();
   const [liveActivityEnabled, setLiveActivityEnabled] = useState(false);
+  const liveActivityEnabledRef = React.useRef(false);
+  const liveActivityPreferenceTouchedRef = React.useRef(false);
   const [liveActivityDisplayOptions, setLiveActivityDisplayOptions] = useState<LiveActivityDisplayOptions>(() => ({ ...DEFAULT_LIVE_ACTIVITY_DISPLAY_OPTIONS }));
   const [liveActivityCustomization, setLiveActivityCustomization] = useState<LiveActivityCustomizationSettings>(() => ({ ...DEFAULT_LIVE_ACTIVITY_CUSTOMIZATION }));
   const liveActivitySerializedRef = React.useRef<string | undefined>(undefined);
   const [voiceFocusRequest, setVoiceFocusRequest] = useState<{ durationMinutes: number; id: number }>();
   const [rewardedAccess, setRewardedAccess] = useState<RewardedAccessState>(DEFAULT_REWARDED_ACCESS_STATE);
+  const [rewardedAccessHydrated, setRewardedAccessHydrated] = useState(false);
   const [rewardedPrompt, setRewardedPrompt] = useState<{ featureId: RewardedFeatureId; title: string; description: string } | null>(null);
+  const [rewardedPromptClosing, setRewardedPromptClosing] = useState(false);
   const rewardedPromptCompletionRef = React.useRef<(() => void) | undefined>(undefined);
+  const topImageRewardCompletedRef = React.useRef(false);
+  const topImageRewardDismissActionRef = React.useRef<(() => void) | undefined>(undefined);
   const widgetPhotoUnlockTargetRef = React.useRef<WidgetType | null>(null);
   const rewardedGenericBusyRef = React.useRef(false);
   const rewardedWishBusyRef = React.useRef(false);
@@ -828,7 +856,11 @@ export default function App() {
   const hydratedRef = React.useRef(false);
   useEffect(() => {
     let active = true;
-    void loadRewardedAccessState().then((loaded) => { if (active) setRewardedAccess(loaded); });
+    void loadRewardedAccessState().then((loaded) => {
+      if (!active) return;
+      setRewardedAccess(loaded);
+      setRewardedAccessHydrated(true);
+    });
     return () => { active = false; };
   }, []);
   const persistenceDisabledRef = React.useRef(false);
@@ -892,7 +924,25 @@ export default function App() {
   const completionAffirmationOpacity = React.useRef(new Animated.Value(0)).current;
   const [photoTheme, setPhotoTheme] = useState<PhotoThemeSettings>({ placement: 'background' });
   const [travelApps, setTravelApps] = useState<TravelAppSettings>(DEFAULT_TRAVEL_APP_SETTINGS);
-  const [pendingTopPhoto, setPendingTopPhoto] = useState<{ target: Exclude<PhotoThemePhotoTarget, 'background' | 'focus'>; originalUri: string; sourceWidth: number; sourceHeight: number; cropRect?: NormalizedCropRect }>();
+  const [pendingTopPhoto, setPendingTopPhoto] = useState<{ target: Exclude<PhotoThemePhotoTarget, 'background' | 'focus'>; originalUri: string; previewUri?: string; sourceWidth: number; sourceHeight: number; cropRect?: NormalizedCropRect }>();
+  const [topImageCropResumeToken, setTopImageCropResumeToken] = useState(0);
+  const topImageAccessPurchaseResumeRef = React.useRef(false);
+  const resumeTopImageAfterAccessFlow = React.useCallback(() => {
+    if (!topImageAccessPurchaseResumeRef.current) return;
+    topImageAccessPurchaseResumeRef.current = false;
+    InteractionManager.runAfterInteractions(() => setTopImageCropResumeToken((current) => current + 1));
+  }, []);
+  const [topImageProcessing, setTopImageProcessing] = useState(false);
+  const topImageProcessingRef = React.useRef(false);
+  const topImageCropDismissActionRef = React.useRef<{ type: 'resume' | 'reselect'; target?: Exclude<PhotoThemePhotoTarget, 'background' | 'focus'> }>({ type: 'resume' });
+  const previousTopImageVisibleRef = React.useRef(false);
+  useEffect(() => {
+    const visible = Boolean(pendingTopPhoto);
+    if (__DEV__ && visible && !previousTopImageVisibleRef.current) {
+      console.log('[TopImage] crop-presented', { target: pendingTopPhoto?.target });
+    }
+    previousTopImageVisibleRef.current = visible;
+  }, [pendingTopPhoto]);
   const [recoveryHistory, setRecoveryHistory] = useState<RecoveryRecord[]>([]);
   const [focusSessions, setFocusSessions] = useState<FocusSession[]>([]);
   const [focusState, setFocusState] = useState<FocusPersistedState | undefined>();
@@ -976,8 +1026,14 @@ export default function App() {
   const [designPreviewMonoPattern, setDesignPreviewMonoPattern] = useState<MonoPattern>();
   const [captureStudioOpen, setCaptureStudioOpen] = useState(false);
   const [onboardingDesignSelectionPending, setOnboardingDesignSelectionPending] = useState(false);
+  const completingInitialDesignSelectionRef = React.useRef(false);
   const [designTrialNoticeOpen, setDesignTrialNoticeOpen] = useState(false);
   const pendingDesignApplyRef = React.useRef<(() => void) | undefined>(undefined);
+  const designRewardAfterCustomizeDismissRef = React.useRef<(() => void) | undefined>(undefined);
+  const premiumAfterDismissRef = React.useRef<(() => void) | undefined>(undefined);
+  const designCustomizeAfterDismissRef = React.useRef<(() => void) | undefined>(undefined);
+  const designTrialAfterDismissRef = React.useRef<(() => void) | undefined>(undefined);
+  const pendingDesignTrialRef = React.useRef<(() => void) | undefined>(undefined);
   const applyPendingDesignAfterEntitlement = React.useCallback(() => {
     const pending = pendingDesignApplyRef.current;
     if (!pending) return;
@@ -1115,13 +1171,69 @@ export default function App() {
       if (__DEV__) console.log('[Notifications] Premium trial reminder unavailable', error);
     });
   }, [hydrated, premiumTrialReminderEnabled, storeKit.premiumTrialEndAt, storeKitEntitlementsResolved]);
-  // StoreKit is the source of truth for Design Customize. Premium includes
-  // the same access, while an unconfigured StoreKit environment never grants
-  // access from legacy persisted mirrors or development-only state.
+  // StoreKit is the source of truth for Design Customize. Premium access is
+  // taken from the resolved StoreKit entitlement as well; the development
+  // plan switch and the persisted compatibility mirror never grant access.
   const storeDesignCustomizeEntitlement = storeKit.designConfigured
     && storeKit.designEntitlementResolved
     && storeDesignCustomizeAccess;
-  const hasDesignCustomizeAccess = planTier === 'premium' || storeDesignCustomizeEntitlement;
+  const hasDesignCustomizeAccess = storePremiumAccess || storeDesignCustomizeEntitlement;
+  const designAccessStatus = storeDesignCustomizeEntitlement
+    ? '購入済み'
+    : storePremiumAccess
+      ? 'プレミアムで利用中'
+      : isPremiumDesignTrialActive(rewardedAccess, now)
+        ? '24時間無料体験中'
+        : isPremiumDesignUnlocked(rewardedAccess, now)
+          ? '広告で12時間利用中'
+          : storeKitEntitlementsResolved ? '未購入 ›' : '購入状態を確認中';
+  const currentDesignNeedsAccess = designMode === 'photo'
+    || ((designMode === 'minimal' || designMode === 'dark') && monoPattern !== 'plain')
+    || (designMode === 'chic' && chicPattern !== 'plain');
+  const designRewardAvailable = rewardedAccessHydrated && currentDesignNeedsAccess
+    && planTier !== 'premium'
+    && !hasDesignCustomizeAccess
+    && !isPremiumDesignTrialActive(rewardedAccess, now)
+    && !isPremiumDesignUnlocked(rewardedAccess, now)
+    && (canStartPremiumDesignTrial(rewardedAccess) || rewardedAccess.premiumDesignTrial.used);
+  const designRewardLabel = canStartPremiumDesignTrial(rewardedAccess)
+    ? '24時間無料で使う'
+    : '広告を見て12時間使う';
+  useEffect(() => {
+    if (!__DEV__) return;
+    console.log('[DesignEntitlement]', {
+      planTier,
+      storePremiumAccess,
+      storeDesignCustomizeAccess,
+      designCustomizePurchased,
+      designEntitlementResolved: storeKit.designEntitlementResolved,
+      hasDesignCustomizeAccess,
+      premiumDesignTrial: {
+        used: rewardedAccess.premiumDesignTrial.used,
+        expiresAt: rewardedAccess.premiumDesignTrial.expiresAt,
+      },
+      premiumDesignUnlockedUntil: rewardedAccess.premiumDesign.unlockedUntil,
+      photoTopUnlocks: rewardedAccess.photoCustomization.topExtraSlotsUnlocked,
+    });
+  }, [designCustomizePurchased, hasDesignCustomizeAccess, planTier, rewardedAccess, storeDesignCustomizeAccess, storeKit.designEntitlementResolved, storePremiumAccess]);
+  useEffect(() => {
+    liveActivityEnabledRef.current = liveActivityEnabled;
+  }, [liveActivityEnabled]);
+  const handleLiveActivityEnabled = React.useCallback((requested: boolean) => {
+    const previous = liveActivityEnabledRef.current;
+    liveActivityPreferenceTouchedRef.current = true;
+    liveActivityEnabledRef.current = requested;
+    setLiveActivityEnabled(requested);
+    if (__DEV__) {
+      console.log('[LiveActivityToggle]', {
+        previous,
+        requested,
+        next: requested,
+        planTier,
+        hydrated,
+      });
+    }
+  }, [hydrated, planTier]);
   // Mono plain is free. Loose Leaf and Chic use the same Design access/trial
   // boundary as the paid Design/Photo choices; their preview remains free.
   const resetWidgetPhotoUnlockForDevelopment = React.useCallback(() => {
@@ -1160,15 +1272,20 @@ export default function App() {
   const activeDesignTrial = activeDesignTrialId && activeDesignTrialId !== 'photo' && designMode === 'chic' ? activeDesignTrialId as ChicPattern : null;
   const photoDesignTemporaryAccess = hasDesignCustomizeAccess || isPremiumDesignTrialActive(rewardedAccess, now) || isPremiumDesignUnlocked(rewardedAccess, now);
   const photoThemeEnabled = designMode === 'photo' && (hasDesignCustomizeAccess || photoDesignTemporaryAccess || rewardedAccess.photoCustomization.backgroundUnlocked || rewardedAccess.photoCustomization.focusUnlocked || rewardedAccess.photoCustomization.topExtraSlotsUnlocked > 0);
+  const photoTopImageAccess = hasDesignCustomizeAccess || photoDesignTemporaryAccess || rewardedAccess.photoCustomization.topExtraSlotsUnlocked > 0;
   const uiDesignMode: Exclude<DesignMode, 'photo'> = designMode === 'photo'
     ? 'chic'
     : isMonoDesign ? resolvedMonoMode : designMode;
   const photoBackgroundUri = photoThemeEnabled && (hasDesignCustomizeAccess || photoDesignTemporaryAccess || rewardedAccess.photoCustomization.backgroundUnlocked) && photoTheme.placement !== 'top' ? photoTheme.imageUri : undefined;
-  const photoTopImageUri = photoThemeEnabled && (hasDesignCustomizeAccess || photoDesignTemporaryAccess || rewardedAccess.photoCustomization.topExtraSlotsUnlocked > 0) ? photoTheme.topImageUris?.[screen] ?? photoTheme.topImageOriginalUris?.[screen] ?? (photoTheme.placement === 'top' ? photoTheme.imageUri : undefined) : undefined;
-  // Wish owns the shared top visual even when the app is using Mono or Design.
-  // Keep this display path independent from the Photo theme gate so a saved
-  // Wish image appears immediately after crop/save without switching themes.
-  const wishTopImageUri = photoTheme.topImageUris?.wish ?? photoTheme.topImageOriginalUris?.wish ?? (photoTheme.placement === 'top' ? photoTheme.imageUri : undefined);
+  const photoTopImageUri = photoTopImageAccess || Boolean(photoTheme.topImageUris?.[screen] ?? photoTheme.topImageOriginalUris?.[screen])
+    ? photoTheme.topImageUris?.[screen] ?? photoTheme.topImageOriginalUris?.[screen]
+    : undefined;
+  // Per-screen top visuals are independent from the Photo background theme.
+  // Keep this display path available in Mono, Design, and Photo while retaining
+  // the existing top-slot entitlement gate.
+  const wishTopImageUri = photoTopImageAccess || Boolean(photoTheme.topImageUris?.wish ?? photoTheme.topImageOriginalUris?.wish)
+    ? photoTheme.topImageUris?.wish ?? photoTheme.topImageOriginalUris?.wish
+    : undefined;
   const focusBackgroundUri = photoThemeEnabled && (hasDesignCustomizeAccess || photoDesignTemporaryAccess || rewardedAccess.photoCustomization.focusUnlocked) ? photoTheme.focusBackgroundUri : undefined;
   // A temporary trial is an explicit, time-bounded override. Persisted free
   // users still fall back to plain when no trial is active.
@@ -1285,17 +1402,34 @@ export default function App() {
       onCompleted?.();
       return;
     }
+    if (featureId === 'photoTop') topImageRewardCompletedRef.current = false;
+    setRewardedPromptClosing(false);
     rewardedPromptCompletionRef.current = onCompleted;
     setRewardedPrompt({ featureId, title, description });
   }, [planTier]);
+
+  const finishTopImageRewardPrompt = React.useCallback(() => {
+    const action = topImageRewardDismissActionRef.current;
+    if (!action) return;
+    topImageRewardDismissActionRef.current = undefined;
+    setRewardedPrompt(null);
+    setRewardedPromptClosing(false);
+    InteractionManager.runAfterInteractions(action);
+  }, []);
 
   const handleRewardedPromptReward = React.useCallback(async () => {
     if (!rewardedPrompt) return { success: false, message: '広告を利用できません。' };
     const result = await grantRewarded(rewardedPrompt.featureId);
     if (result.completed) {
-      const continuation = rewardedPromptCompletionRef.current;
-      rewardedPromptCompletionRef.current = undefined;
-      continuation?.();
+      if (rewardedPrompt.featureId === 'photoTop') {
+        // The picker is another native presentation. Open it only after the
+        // rewarded sheet has dismissed, not while that sheet is still visible.
+        topImageRewardCompletedRef.current = true;
+      } else {
+        const continuation = rewardedPromptCompletionRef.current;
+        rewardedPromptCompletionRef.current = undefined;
+        continuation?.();
+      }
     }
     return result;
   }, [grantRewarded, rewardedPrompt]);
@@ -1309,7 +1443,7 @@ export default function App() {
     const current = rewardedAccess.widgetPhotoCustomization;
     if (current.widgetType && current.expiresAt && new Date(current.expiresAt).getTime() > Date.now()) return;
     widgetPhotoUnlockTargetRef.current = widgetType;
-    openRewardedPrompt('widgetPhoto', 'Widget写真を7日間使う', '広告を1回見ると、選んだFree Widgetで写真を7日間使えます。', () => undefined);
+    openRewardedPrompt('widgetPhoto', 'ウィジェットの写真を7日間使う', '広告を1回見ると、選んだウィジェットで写真を7日間使えます。', () => undefined);
   }, [hasDesignCustomizeAccess, openRewardedPrompt, planTier, rewardedAccess]);
   const showCompletionAffirmation = React.useCallback((kind: CompletionFeedbackKind = 'task', withHaptic = false) => {
     const configured = [...affirmations.map((item) => item.text.trim()), ...affirmationCustomTexts.map((item) => item.text.trim())].filter(Boolean);
@@ -1385,23 +1519,11 @@ export default function App() {
   // path. Viewing remains free; this only decides which existing access UI to
   // open before a design is applied.
   const openDesignAccess = React.useCallback(() => {
-    if (planTier === 'premium' || hasDesignCustomizeAccess) {
-      setDesignCustomizeOpen(true);
-      return;
-    }
-    if (isPremiumDesignTrialActive(rewardedAccess, now) || isPremiumDesignUnlocked(rewardedAccess, now)) {
-      setDesignPreviewMode('chic');
-      setDesignPreviewPattern(chicPattern === 'plain' ? 'floral' : chicPattern);
-      return;
-    }
-    if (canStartPremiumDesignTrial(rewardedAccess)) {
-      setDesignPreviewMode('chic');
-      setDesignPreviewPattern(chicPattern === 'plain' ? 'floral' : chicPattern);
-      return;
-    }
-    pendingDesignApplyRef.current = undefined;
-    setDesignTrialNoticeOpen(true);
-  }, [chicPattern, hasDesignCustomizeAccess, now, planTier, rewardedAccess]);
+    // The access card must always expose the purchase route. Temporary
+    // Trial/Rewarded access never means "purchased" and must not replace the
+    // Design Customize purchase sheet.
+    setDesignCustomizeOpen(true);
+  }, []);
   const openVoiceInput = React.useCallback((autoStart = false) => {
     // The demo and previews never consume a user's allowance.
     if (planTier === 'premium' || onboarding.state.firstRunStage === 'demo') {
@@ -1461,7 +1583,16 @@ export default function App() {
   const purchaseDesignCustomize = React.useCallback(async () => {
     if (storeKit.designConfigured) {
       const result = await storeKit.purchaseDesignCustomize();
-      if (result.success) setDesignCustomizePurchased(true);
+      if (result.success) {
+        setDesignCustomizePurchased(true);
+        const applyPendingDesign = pendingDesignApplyRef.current;
+        pendingDesignApplyRef.current = undefined;
+        pendingDesignTrialRef.current = undefined;
+        if (applyPendingDesign) {
+          setDesignCustomizeOpen(false);
+          applyPendingDesign();
+        }
+      }
       else if (result.error) Alert.alert('購入を完了できませんでした', 'App Storeの商品情報を取得できませんでした。時間をおいてもう一度お試しください。');
       return;
     }
@@ -1472,7 +1603,14 @@ export default function App() {
       const restored = await storeKit.restore();
       if (restored.designCustomize) {
         setDesignCustomizePurchased(true);
-        Alert.alert('購入を復元しました', 'Design Customizeを利用できます。');
+        const applyPendingDesign = pendingDesignApplyRef.current;
+        pendingDesignApplyRef.current = undefined;
+        pendingDesignTrialRef.current = undefined;
+        if (applyPendingDesign) {
+          setDesignCustomizeOpen(false);
+          applyPendingDesign();
+        }
+        Alert.alert('購入を復元しました', 'デザインカスタマイズを利用できます。');
       } else if (restored.error) {
         Alert.alert('購入を復元できませんでした', 'App Storeの商品情報を取得できませんでした。時間をおいてもう一度お試しください。');
       } else {
@@ -1522,6 +1660,34 @@ export default function App() {
     markDesignNoticeSeen(expiry);
     setDesignTrialNoticeOpen(true);
   }, [chicPattern, designMode, designTrialNoticeOpen, hasDesignCustomizeAccess, isPremiumDesignUnlocked, markDesignNoticeSeen, now, planTier, rewardedAccess]);
+  const completeInitialDesignSelection = React.useCallback(() => {
+    if (!onboardingDesignSelectionPending) return;
+    if (__DEV__) {
+      console.log('[FirstRunDiagnostic]', {
+        ready: onboarding.ready,
+        introVisible: onboarding.introVisible,
+        introCompleted: onboarding.isCompleted('intro'),
+        firstRunStage: onboarding.state.firstRunStage,
+        onboardingDesignSelectionPending: true,
+        currentScreen: screen,
+        designSheetRequested: false,
+        event: 'design-selection-complete',
+      });
+    }
+    setOnboardingDesignSelectionPending(false);
+    setScreen('home');
+    if (onboarding.state.firstRunStage === 'design') {
+      // Mark the handoff complete before the async persistence finishes. The
+      // resume effect observes firstRunStage and would otherwise see the
+      // transient `design` value after pending=false and reopen Settings in a
+      // loop, which makes the app appear frozen on first launch.
+      completingInitialDesignSelectionRef.current = true;
+      void onboarding.setFirstRunStage('done').then(() => {
+        completingInitialDesignSelectionRef.current = false;
+        void onboarding.complete('design');
+      });
+    }
+  }, [onboarding.introVisible, onboarding.ready, onboarding.state.completed.intro, onboarding.state.firstRunStage, onboardingDesignSelectionPending, screen]);
   const startDesignTrial = React.useCallback((pattern: ChicPattern, color: ChicCheckColor = chicCheckColor) => {
     if (hasDesignCustomizeAccess) {
       setDesignMode('chic');
@@ -1529,6 +1695,7 @@ export default function App() {
       setChicCheckColor(color);
       setDesignPreviewPattern(undefined);
       if (!onboardingDesignSelectionPending) void onboarding.complete('design');
+      completeInitialDesignSelection();
       return;
     }
     if (isPremiumDesignTrialActive(rewardedAccess, now) || isPremiumDesignUnlocked(rewardedAccess, now)) {
@@ -1537,6 +1704,11 @@ export default function App() {
       setChicCheckColor(color);
       setDesignPreviewPattern(undefined);
       if (!onboardingDesignSelectionPending) void onboarding.complete('design');
+      completeInitialDesignSelection();
+      return;
+    }
+    if (!rewardedAccessHydrated) {
+      Alert.alert('利用状態を確認中です', '少し待ってからもう一度お試しください。');
       return;
     }
     if (!canStartPremiumDesignTrial(rewardedAccess)) {
@@ -1548,10 +1720,12 @@ export default function App() {
     setRewardedAccess(next);
     void saveRewardedAccessState(next);
     setDesignMode('chic');
+    setChicPattern(pattern);
     setChicCheckColor(color);
     setDesignPreviewPattern(undefined);
     if (!onboardingDesignSelectionPending) void onboarding.complete('design');
-  }, [chicCheckColor, hasDesignCustomizeAccess, now, onboarding, onboardingDesignSelectionPending, rewardedAccess]);
+    completeInitialDesignSelection();
+  }, [chicCheckColor, completeInitialDesignSelection, hasDesignCustomizeAccess, now, onboarding, onboardingDesignSelectionPending, rewardedAccess, rewardedAccessHydrated]);
   const startMonoDesignTrial = React.useCallback((pattern: 'looseLeaf' | 'chic', appearance: 'auto' | 'light' | 'dark' = monoAppearance) => {
     if (hasDesignCustomizeAccess || isPremiumDesignUnlocked(rewardedAccess, now) || isPremiumDesignTrialActive(rewardedAccess, now)) {
       setDesignMode('minimal');
@@ -1559,6 +1733,11 @@ export default function App() {
       setMonoPattern(pattern);
       setDesignPreviewMonoPattern(undefined);
       if (!onboardingDesignSelectionPending) void onboarding.complete('design');
+      completeInitialDesignSelection();
+      return;
+    }
+    if (!rewardedAccessHydrated) {
+      Alert.alert('利用状態を確認中です', '少し待ってからもう一度お試しください。');
       return;
     }
     if (!canStartPremiumDesignTrial(rewardedAccess)) {
@@ -1574,12 +1753,19 @@ export default function App() {
     setDesignPreviewMonoPattern(undefined);
     pendingDesignApplyRef.current = undefined;
     if (!onboardingDesignSelectionPending) void onboarding.complete('design');
-  }, [hasDesignCustomizeAccess, monoAppearance, now, onboarding, onboardingDesignSelectionPending, planTier, rewardedAccess]);
+    completeInitialDesignSelection();
+  }, [completeInitialDesignSelection, hasDesignCustomizeAccess, monoAppearance, now, onboarding, onboardingDesignSelectionPending, planTier, rewardedAccess, rewardedAccessHydrated]);
   const requestDesignReward = React.useCallback(async () => {
     if (planTier === 'premium') return false;
+    if (!rewardedAccessHydrated) {
+      if (__DEV__) console.log('[Ads] design-reward-blocked', { reason: 'access-not-hydrated' });
+      Alert.alert('利用状態を確認中です', '少し待ってからもう一度お試しください。');
+      return false;
+    }
     if (rewardedDesignBusyRef.current) return false;
     rewardedDesignBusyRef.current = true;
     try {
+      if (__DEV__) console.log('[Ads] design-reward-request', { rewardedDesignBusy: true });
       let showTestRewardedAd: typeof import('./services/rewardedAds').showTestRewardedAd;
       try {
         ({ showTestRewardedAd } = require('./services/rewardedAds') as typeof import('./services/rewardedAds'));
@@ -1592,6 +1778,7 @@ export default function App() {
         if (__DEV__) console.log('[Ads] show:error', error instanceof Error ? error.message : String(error));
         return false;
       });
+      if (__DEV__) console.log('[Ads] design-reward-result', { earned });
       if (!earned) {
         Alert.alert('広告を完了できませんでした', '報酬を受け取れなかったため、デザインは解放されていません。');
         return false;
@@ -1610,18 +1797,10 @@ export default function App() {
     } finally {
       rewardedDesignBusyRef.current = false;
     }
-  }, [planTier, rewardedAccess]);
+  }, [planTier, rewardedAccess, rewardedAccessHydrated]);
   const openWish = React.useCallback(() => {
     setScreen('wish');
   }, []);
-  const completeInitialDesignSelection = React.useCallback(() => {
-    if (!onboardingDesignSelectionPending) return;
-    setOnboardingDesignSelectionPending(false);
-    setScreen('home');
-    if (onboarding.state.firstRunStage === 'design') {
-      void onboarding.complete('design').then(() => onboarding.setFirstRunStage('done'));
-    }
-  }, [onboarding, onboardingDesignSelectionPending]);
   const requestWishReward = React.useCallback(async () => {
     if (hasPremiumAccess(planTier, 'wish_planning')) return { success: true, completed: true } as RewardedAccessResult;
     if (canCreateWish(rewardedAccess)) return { success: true, completed: true } as RewardedAccessResult;
@@ -1720,21 +1899,23 @@ export default function App() {
     if (affirmationOperationGenerationRef.current[affirmation.id] !== generation) return;
     setAffirmations((current) => current.filter((item) => item.id !== affirmation.id));
   }, []);
-  const pickPhotoForDesignPreview = React.useCallback(async (openPreviewAfterPick = false) => {
+  const pickPhotoForDesignPreview = React.useCallback(async (openPreviewAfterPick = false): Promise<boolean> => {
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!permission.granted) {
       Alert.alert('写真へのアクセスが必要です', '許可すると写真デザインを試着できます。');
-      return;
+      return false;
     }
     const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], allowsEditing: true, quality: 0.85 });
     const selectedUri = result.canceled ? undefined : result.assets[0]?.uri;
     if (selectedUri) {
       setDesignPreviewPhotoUri(selectedUri);
-      if (openPreviewAfterPick) {
-        setDesignPreviewMode('photo');
-        setDesignPreviewPattern('plain');
-      }
+      // The current Design Sheet owns the preview surface. Do not open the
+      // legacy root-level DesignPreviewModal after picking a photo; the
+      // selected URI is fed back into the Sheet and its full-screen try-on.
+      if (openPreviewAfterPick) setDesignPreviewMode('photo');
+      return true;
     }
+    return false;
   }, []);
 
   const pickWidgetPhoto = React.useCallback(async (widgetType?: WidgetType, override?: WidgetEntitlementOverride) => {
@@ -1795,18 +1976,23 @@ export default function App() {
       setDesignPreviewPhotoUri(undefined);
       setDesignPreviewMonoPattern(undefined);
       if (!onboardingDesignSelectionPending) void onboarding.complete('design');
+      completeInitialDesignSelection();
     } catch {
       Alert.alert('写真を保存できませんでした', 'もう一度選び直してください。');
     }
-  }, [designPreviewPhotoUri, onboarding, onboardingDesignSelectionPending]);
+  }, [completeInitialDesignSelection, designPreviewPhotoUri, onboarding, onboardingDesignSelectionPending]);
   const startPhotoDesignTrial = React.useCallback((photoUriOverride?: string, colorOverride?: ChicCheckColor) => {
     const selectedPhotoUri = photoUriOverride ?? designPreviewPhotoUri;
     if (!selectedPhotoUri) return;
+    if (!rewardedAccessHydrated) {
+      Alert.alert('利用状態を確認中です', '少し待ってからもう一度お試しください。');
+      return;
+    }
     const next: RewardedAccessState = { ...rewardedAccess, premiumDesignTrial: { used: true, designId: 'photo', expiresAt: addHours(new Date(), 24) } };
     setRewardedAccess(next);
     void saveRewardedAccessState(next);
     applyPhotoDesign(selectedPhotoUri, colorOverride);
-  }, [applyPhotoDesign, designPreviewPhotoUri, rewardedAccess]);
+  }, [applyPhotoDesign, designPreviewPhotoUri, rewardedAccess, rewardedAccessHydrated]);
   const applyDesignTryOn = React.useCallback((selection: DesignTryOnSelection) => {
     if (selection.mode === 'minimal' || selection.mode === 'dark') {
       if (!hasMonoPatternAccess(selection.monoPattern)) {
@@ -1819,12 +2005,10 @@ export default function App() {
           if (!onboardingDesignSelectionPending) void onboarding.complete('design');
           completeInitialDesignSelection();
         };
-        if (canStartPremiumDesignTrial(rewardedAccess)) {
-          startMonoDesignTrial(selection.monoPattern as 'looseLeaf' | 'chic', selection.monoAppearance);
-          completeInitialDesignSelection();
-        } else {
-          setDesignTrialNoticeOpen(true);
-        }
+        pendingDesignTrialRef.current = canStartPremiumDesignTrial(rewardedAccess)
+          ? () => startMonoDesignTrial(selection.monoPattern as 'looseLeaf' | 'chic', selection.monoAppearance)
+          : undefined;
+        setDesignTrialNoticeOpen(true);
         return;
       }
       setDesignMode('minimal');
@@ -1852,8 +2036,10 @@ export default function App() {
           if (!onboardingDesignSelectionPending) void onboarding.complete('design');
           completeInitialDesignSelection();
         };
-        if (canStartPremiumDesignTrial(rewardedAccess)) startDesignTrial(selection.pattern, selection.color);
-        else setDesignTrialNoticeOpen(true);
+        pendingDesignTrialRef.current = canStartPremiumDesignTrial(rewardedAccess)
+          ? () => startDesignTrial(selection.pattern, selection.color)
+          : undefined;
+        setDesignTrialNoticeOpen(true);
         return;
       }
       setChicCheckColor(selection.color);
@@ -1866,7 +2052,7 @@ export default function App() {
     }
     if (!selection.photoUri) {
       setDesignPreviewMode('photo');
-      setDesignPreviewPattern('plain');
+      setDesignPreviewPattern(undefined);
       void pickPhotoForDesignPreview();
       return;
     }
@@ -1876,23 +2062,81 @@ export default function App() {
       || isPremiumDesignUnlocked(rewardedAccess, now);
     if (!hasPhotoAccess) {
       setDesignPreviewMode('photo');
-      setDesignPreviewPattern('plain');
-      if (canStartPremiumDesignTrial(rewardedAccess)) {
-        startPhotoDesignTrial(selection.photoUri, selection.color);
-        completeInitialDesignSelection();
-        return;
-      }
+      setDesignPreviewPattern(undefined);
       setDesignPreviewPhotoUri(selection.photoUri);
       pendingDesignApplyRef.current = () => applyPhotoDesign(selection.photoUri, selection.color);
+      pendingDesignTrialRef.current = canStartPremiumDesignTrial(rewardedAccess)
+        ? () => startPhotoDesignTrial(selection.photoUri, selection.color)
+        : undefined;
       setDesignTrialNoticeOpen(true);
       return;
     }
-    setChicCheckColor(selection.color);
-    setDesignMode('photo');
-    if (!onboardingDesignSelectionPending) void onboarding.complete('design');
-    completeInitialDesignSelection();
+    applyPhotoDesign(selection.photoUri, selection.color);
   }, [activeDesignTrialId, applyPhotoDesign, canStartPremiumDesignTrial, completeInitialDesignSelection, hasDesignCustomizeAccess, hasMonoPatternAccess, isPremiumDesignUnlocked, now, onboarding, onboardingDesignSelectionPending, pickPhotoForDesignPreview, planTier, rewardedAccess, startDesignTrial, startMonoDesignTrial, startPhotoDesignTrial]);
+  const startDesignRewardForCurrent = React.useCallback(() => {
+    if (hasDesignCustomizeAccess || planTier === 'premium') return;
+    const hadTryOnSelection = Boolean(pendingDesignApplyRef.current);
+    if (!hadTryOnSelection) {
+      pendingDesignApplyRef.current = () => {
+        if (designMode === 'photo') {
+          if (photoTheme.imageUri) applyPhotoDesign(photoTheme.imageUri, chicCheckColor);
+          return;
+        }
+        if (designMode === 'minimal' || designMode === 'dark') {
+          setDesignMode('minimal');
+          setMonoAppearance(monoAppearance);
+          setMonoPattern(monoPattern);
+          return;
+        }
+        setDesignMode('chic');
+        setChicPattern(chicPattern);
+        setChicCheckColor(chicCheckColor);
+      };
+    }
+    designRewardAfterCustomizeDismissRef.current = () => {
+      if (canStartPremiumDesignTrial(rewardedAccess)) {
+        const startTrial = designMode === 'photo'
+          ? () => photoTheme.imageUri && startPhotoDesignTrial(photoTheme.imageUri, chicCheckColor)
+          : designMode === 'minimal' || designMode === 'dark'
+            ? () => startMonoDesignTrial(monoPattern === 'plain' ? 'looseLeaf' : monoPattern, monoAppearance)
+            : () => startDesignTrial(chicPattern === 'plain' ? 'floral' : chicPattern, chicCheckColor);
+        startTrial();
+        return;
+      }
+      void requestDesignReward().then((success) => {
+        if (!success) {
+          if (hadTryOnSelection) setDesignTrialNoticeOpen(true);
+          else pendingDesignApplyRef.current = undefined;
+        }
+        resumeTopImageAfterAccessFlow();
+      });
+    };
+    setDesignCustomizeOpen(false);
+    if (Platform.OS !== 'ios') InteractionManager.runAfterInteractions(() => {
+      const startReward = designRewardAfterCustomizeDismissRef.current;
+      designRewardAfterCustomizeDismissRef.current = undefined;
+      startReward?.();
+    });
+  }, [applyPhotoDesign, canStartPremiumDesignTrial, chicCheckColor, chicPattern, designMode, hasDesignCustomizeAccess, monoAppearance, monoPattern, photoTheme.imageUri, planTier, requestDesignReward, rewardedAccess, resumeTopImageAfterAccessFlow, startDesignTrial, startMonoDesignTrial, startPhotoDesignTrial]);
+  const canOpenTopImagePicker = React.useCallback((target: Exclude<PhotoThemePhotoTarget, 'background' | 'focus'>) => {
+    const hasWholePhotoAccess = planTier === 'premium'
+      || hasDesignCustomizeAccess
+      || isPremiumDesignTrialActive(rewardedAccess, now)
+      || isPremiumDesignUnlocked(rewardedAccess, now);
+    if (hasWholePhotoAccess) return true;
+    if (photoTheme.topImageUris?.[target] || photoTheme.topImageOriginalUris?.[target]) return true;
+    const usedSlots = new Set([
+      ...Object.keys(photoTheme.topImageUris ?? {}),
+      ...Object.keys(photoTheme.topImageOriginalUris ?? {}),
+    ]).size;
+    // Top-image slots are a separate rewarded feature. No slot is available
+    // before the first photoTop reward; existing images remain editable.
+    const allowedSlots = Math.min(5, rewardedAccess.photoCustomization.topExtraSlotsUnlocked);
+    return usedSlots < allowedSlots;
+  }, [hasDesignCustomizeAccess, isPremiumDesignUnlocked, now, photoTheme, planTier, rewardedAccess]);
+
   const pickPhotoTheme = React.useCallback(async (target: PhotoThemePhotoTarget, options?: { bypassRewarded?: boolean }) => {
+    if (__DEV__) console.log('[TopImage] pick-start', { target });
     const hasWholePhotoAccess = planTier === 'premium'
       || hasDesignCustomizeAccess
       || isPremiumDesignTrialActive(rewardedAccess, now)
@@ -1908,36 +2152,62 @@ export default function App() {
       }
       if (target !== 'background' && target !== 'focus') {
         const currentUri = photoTheme.topImageUris?.[target] ?? photoTheme.topImageOriginalUris?.[target];
-        // The first Wish top image is a Rewarded-gated action for Free users.
-        // Existing images remain editable under the same access rules as the
-        // legacy top-image flow.
-        if (!options?.bypassRewarded && target === 'wish' && !currentUri && rewardedAccess.photoCustomization.topExtraSlotsUnlocked < 1) {
-          openRewardedPrompt('photoTop', 'トップ画像を設定', '広告を見ると、Wishのトップ画像を1枚設定できます。', () => { void pickPhotoTheme(target, { bypassRewarded: true }); });
-          return;
-        }
-        const usedSlots = Object.values(photoTheme.topImageUris ?? {}).filter(Boolean).length;
-        const allowedSlots = Math.min(5, 1 + rewardedAccess.photoCustomization.topExtraSlotsUnlocked);
+        // Every new top-image slot uses the existing photoTop Rewarded route;
+        // existing images can still be changed without another unlock.
+        const usedSlots = new Set([
+          ...Object.keys(photoTheme.topImageUris ?? {}),
+          ...Object.keys(photoTheme.topImageOriginalUris ?? {}),
+        ]).size;
+        const allowedSlots = Math.min(5, rewardedAccess.photoCustomization.topExtraSlotsUnlocked);
         if (!options?.bypassRewarded && !currentUri && usedSlots >= allowedSlots) {
           openRewardedPrompt('photoTop', '写真枠を追加', '広告を見ると、画面ごとのトップ写真枠を1つ追加できます。', () => { void pickPhotoTheme(target, { bypassRewarded: true }); });
           return;
         }
       }
     }
+    const isTopImage = target !== 'background' && target !== 'focus';
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!permission.granted) {
+      if (isTopImage) setTopImageCropResumeToken((current) => current + 1);
       Alert.alert('写真へのアクセスを許可すると、背景やトップ画像に設定できます。');
       return;
     }
-    const isTopImage = target !== 'background' && target !== 'focus';
     const aspect: [number, number] = [4, 3];
     // iOS の標準トリミングは横長比率を指定しても正方形になることがあるため、
     // トップ画像だけはアプリ内の横長プレビューで位置を確定する。
+    if (__DEV__ && isTopImage) console.log('[TopImage] picker-present', { target });
     const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], allowsEditing: false, ...(isTopImage ? {} : { aspect }), quality: isTopImage ? 1 : 0.82 });
+    if (__DEV__ && isTopImage) console.log('[TopImage] picker-dismissed', { target });
+    if (__DEV__) console.log('[TopImage] picker-result', { target, canceled: result.canceled, width: result.canceled ? undefined : result.assets[0]?.width, height: result.canceled ? undefined : result.assets[0]?.height });
     const selectedAsset = result.canceled ? undefined : result.assets[0];
-    if (!selectedAsset?.uri) return;
+    if (!selectedAsset?.uri) {
+      if (isTopImage) setTopImageCropResumeToken((current) => current + 1);
+      return;
+    }
     if (isTopImage) {
       // 調整を確定するまでは選択元をそのまま使い、不要な端末内コピーを作らない。
-      setPendingTopPhoto({ target: target as Exclude<PhotoThemePhotoTarget, 'background' | 'focus'>, originalUri: selectedAsset.uri, sourceWidth: selectedAsset.width || 1000, sourceHeight: selectedAsset.height || 1000 });
+      const sourceWidth = selectedAsset.width || 1000;
+      const sourceHeight = selectedAsset.height || 1000;
+      let previewUri: string | undefined;
+      const maxPreviewEdge = 1800;
+      if (Math.max(sourceWidth, sourceHeight) > maxPreviewEdge) {
+        try {
+          if (__DEV__) console.log('[TopImage] crop-preview-start', { target, sourceWidth, sourceHeight, maxPreviewEdge });
+          const scale = maxPreviewEdge / Math.max(sourceWidth, sourceHeight);
+          const preview = await ImageManipulator.manipulateAsync(selectedAsset.uri, [{ resize: { width: Math.max(1, Math.round(sourceWidth * scale)) } }], { compress: 0.82, format: ImageManipulator.SaveFormat.JPEG });
+          previewUri = preview.uri;
+          if (__DEV__) console.log('[TopImage] crop-preview-complete', { target, width: Math.max(1, Math.round(sourceWidth * scale)), height: Math.max(1, Math.round(sourceHeight * scale)) });
+        } catch (error) {
+          if (__DEV__) console.log('[TopImage] error', { target, stage: 'crop-preview', message: error instanceof Error ? error.message : String(error) });
+        }
+      }
+      if (pendingTopPhoto?.previewUri) deleteTemporaryPhotoUri(pendingTopPhoto.previewUri);
+      const pending = { target: target as Exclude<PhotoThemePhotoTarget, 'background' | 'focus'>, originalUri: selectedAsset.uri, previewUri, sourceWidth, sourceHeight };
+      if (__DEV__) {
+        console.log('[TopImage] crop-presentation-start', { target: pending.target });
+        console.log('[TopImage] crop-modal-open', { target: pending.target, sourceWidth: pending.sourceWidth, sourceHeight: pending.sourceHeight, previewReady: Boolean(previewUri) });
+      }
+      setPendingTopPhoto(pending);
       return;
     }
     let persistentUri: string;
@@ -1959,7 +2229,7 @@ export default function App() {
         return { ...current, focusBackgroundUri: persistentUri };
       });
     }
-  }, [hasDesignCustomizeAccess, isPremiumDesignUnlocked, now, openRewardedPrompt, photoTheme, planTier, rewardedAccess]);
+  }, [hasDesignCustomizeAccess, isPremiumDesignUnlocked, now, openRewardedPrompt, pendingTopPhoto, photoTheme, planTier, rewardedAccess]);
 
   const adjustTopPhoto = React.useCallback((target: Exclude<PhotoThemePhotoTarget, 'background' | 'focus'>) => {
     const originalUri = photoTheme.topImageOriginalUris?.[target] ?? photoTheme.topImageUris?.[target];
@@ -1968,26 +2238,58 @@ export default function App() {
   }, [photoTheme]);
 
   const applyPendingTopPhoto = React.useCallback(async (cropOverride?: NormalizedCropRect) => {
-    if (!pendingTopPhoto) return;
+    if (!pendingTopPhoto || topImageProcessingRef.current) return;
+    const pending = pendingTopPhoto;
+    let processingErrorMessage: string | undefined;
+    topImageProcessingRef.current = true;
+    setTopImageProcessing(true);
     try {
-      const normalized = cropOverride ?? pendingTopPhoto.cropRect ?? getInitialNormalizedCrop(pendingTopPhoto.sourceWidth, pendingTopPhoto.sourceHeight);
-      const crop = cropRectToPixels(normalized, pendingTopPhoto.sourceWidth, pendingTopPhoto.sourceHeight);
-      const result = await ImageManipulator.manipulateAsync(pendingTopPhoto.originalUri, [{ crop }, { resize: { width: 1000, height: 400 } }], { compress: 0.9, format: ImageManipulator.SaveFormat.JPEG });
-      const originalUri = persistPhotoUri(pendingTopPhoto.originalUri, `top-original-${pendingTopPhoto.target}`);
-      const displayUri = persistPhotoUri(result.uri, `top-${pendingTopPhoto.target}`);
+      if (__DEV__) console.log('[TopImage] apply-start', { target: pending.target, originalUri: Boolean(pending.originalUri), sourceWidth: pending.sourceWidth, sourceHeight: pending.sourceHeight });
+      const normalized = cropOverride ?? pending.cropRect ?? getInitialNormalizedCrop(pending.sourceWidth, pending.sourceHeight);
+      const crop = cropRectToPixels(normalized, pending.sourceWidth, pending.sourceHeight);
+      if (__DEV__) console.log('[TopImage] manipulate-start', { target: pending.target, crop });
+      const result = await ImageManipulator.manipulateAsync(pending.originalUri, [{ crop }, { resize: { width: 1000, height: 400 } }], { compress: 0.9, format: ImageManipulator.SaveFormat.JPEG });
+      if (__DEV__) console.log('[TopImage] manipulate-complete', { target: pending.target, resultUri: Boolean(result.uri) });
+      if (__DEV__) console.log('[TopImage] persist-original-start', { target: pending.target });
+      const originalUri = persistPhotoUri(pending.originalUri, `top-original-${pending.target}`);
+      const originalAvailable = isPersistedPhotoAvailable(originalUri);
+      if (__DEV__) console.log('[TopImage] persist-original-complete', { target: pending.target, exists: originalAvailable });
+      if (!originalAvailable) throw new Error('top image original persistence unavailable');
+      if (__DEV__) console.log('[TopImage] persist-display-start', { target: pending.target });
+      const displayUri = persistPhotoUri(result.uri, `top-${pending.target}`);
+      const displayAvailable = isPersistedPhotoAvailable(displayUri);
+      if (__DEV__) console.log('[TopImage] persist-display-complete', { target: pending.target, exists: displayAvailable });
+      if (!displayAvailable) throw new Error('top image display persistence unavailable');
       setPhotoTheme((current) => {
-        const previousDisplayUri = current.topImageUris?.[pendingTopPhoto.target];
-        const previousOriginalUri = current.topImageOriginalUris?.[pendingTopPhoto.target];
-        const topImageUris = { ...current.topImageUris, [pendingTopPhoto.target]: displayUri };
-        const topImageOriginalUris = { ...current.topImageOriginalUris, [pendingTopPhoto.target]: originalUri };
+        if (__DEV__) console.log('[TopImage] state-before', { target: pending.target, hadDisplay: Boolean(current.topImageUris?.[pending.target]), hadOriginal: Boolean(current.topImageOriginalUris?.[pending.target]) });
+        const previousDisplayUri = current.topImageUris?.[pending.target];
+        const previousOriginalUri = current.topImageOriginalUris?.[pending.target];
+        const topImageUris = { ...current.topImageUris, [pending.target]: displayUri };
+        const topImageOriginalUris = { ...current.topImageOriginalUris, [pending.target]: originalUri };
         const retainedUris = [current.imageUri, current.focusBackgroundUri, ...Object.values(topImageUris), ...Object.values(topImageOriginalUris)];
         deleteManagedPhotoUri(previousDisplayUri, retainedUris);
         deleteManagedPhotoUri(previousOriginalUri, retainedUris);
-        return { ...current, topImageUris, topImageOriginalUris, topImageCropRects: { ...current.topImageCropRects, [pendingTopPhoto.target]: normalized } };
+        if (__DEV__) console.log('[TopImage] state-after', { target: pending.target, displayUri: Boolean(topImageUris[pending.target]), originalUri: Boolean(topImageOriginalUris[pending.target]), cropRect: true });
+        return { ...current, topImageUris, topImageOriginalUris, topImageCropRects: { ...current.topImageCropRects, [pending.target]: normalized } };
       });
+    } catch (error) {
+      processingErrorMessage = error instanceof Error ? error.message : String(error);
+      if (__DEV__) console.log('[TopImage] error', { target: pending.target, message: processingErrorMessage });
+    } finally {
+      topImageProcessingRef.current = false;
+      setTopImageProcessing(false);
+      if (pending.previewUri) deleteTemporaryPhotoUri(pending.previewUri);
+      topImageCropDismissActionRef.current = { type: 'resume', target: pending.target };
+      if (__DEV__) {
+        console.log('[TopImage] crop-dismiss-start', { target: pending.target });
+        console.log('[TopImage] modal-close', { target: pending.target });
+      }
       setPendingTopPhoto(undefined);
-    } catch {
-      Alert.alert('トップ画像を調整できませんでした', 'もう一度画像を選び直して試してください。');
+      if (processingErrorMessage) {
+        InteractionManager.runAfterInteractions(() => {
+          Alert.alert('トップ画像を調整できませんでした', 'もう一度画像を選び直して試してください。');
+        });
+      }
     }
   }, [pendingTopPhoto]);
 
@@ -2473,7 +2775,7 @@ export default function App() {
         if (saved.completionIcon) setCompletionIcon(saved.completionIcon);
         if (!hapticsPreferenceTouchedRef.current && typeof saved.hapticsEnabled === 'boolean') setHapticsEnabled(saved.hapticsEnabled);
         setPremiumTrialReminderEnabled(saved.premiumTrialReminderEnabled !== false);
-        setLiveActivityEnabled(saved.liveActivityEnabled === true);
+        if (!liveActivityPreferenceTouchedRef.current) setLiveActivityEnabled(saved.liveActivityEnabled === true);
         setLiveActivityDisplayOptions(normalizeRhythmLiveActivityDisplayOptions(saved.liveActivityDisplayOptions));
         setLiveActivityCustomization(normalizeRhythmLiveActivityCustomization(saved.liveActivityCustomization));
         if (saved.reviewPromptedAt) setReviewPromptedAt(saved.reviewPromptedAt);
@@ -3026,6 +3328,9 @@ export default function App() {
     const selectedPhotoUri = widgetSettings.style === 'photo'
       ? widgetSettings.photoSource === 'widget' ? widgetSettings.photoUri : wishTopImageUri
       : undefined;
+    // Native removes the shared image when it is no longer referenced. A
+    // later switch back to the same URI must copy it into the App Group again.
+    if (!selectedPhotoUri) widgetPhotoSyncedUriRef.current = undefined;
     let photoFileName: string | undefined;
     let photoWasCopied = false;
     if (selectedPhotoUri) {
@@ -3058,12 +3363,6 @@ export default function App() {
           widgetPhotoFileName = `rhythm-widget-photo-${id}.jpg`;
           if (previousUri !== storedCustomization.photoUri) photoWasCopied = true;
         }
-      } else if (photoFileName && storedCustomization) {
-        // Legacy shared photo remains the fallback for kinds without an
-        // explicit per-widget photo. Only emit it when a per-widget layout is
-        // present; otherwise the native renderer already falls back to the
-        // shared appearance photo without inflating the snapshot.
-        widgetPhotoFileName = photoFileName;
       }
       if (widgetPhotoFileName || storedCustomization?.photoLayout || storedCustomization?.monoTemplate) {
         widgetCustomizations[id] = {
@@ -4445,9 +4744,41 @@ export default function App() {
     return undefined;
   };
 
-  // Premium photo-design previews need the real appearance selector, but it
-  // is intentionally kept separate from the six-card first-run intro.
+  // Premium/Capture Studio previews may use the real appearance selector. The
+  // first-run carousel must use an inline-only preview because a React Native
+  // Modal cannot be contained by the carousel viewport.
   const renderAppearanceSettingsPreview = (): React.ReactNode => renderOnboardingCaptureStep('customize');
+
+  const renderEmbeddedAppearancePreview = (): React.ReactNode => {
+    const monoColors = getThemeTokens('minimal', chicPalette.id).colors;
+    const designVisual = getChicPatternVisual('floral', chicPalette);
+    const photoAsset = designBackgroundAssets.botanicalBackground;
+    return <View pointerEvents="none" style={{ width: '100%', padding: 12 }}>
+      <Text style={{ color: monoColors.primaryText, fontSize: 13, fontWeight: '900', marginBottom: 8 }}>見た目を選ぶ</Text>
+      <View style={{ flexDirection: 'row', gap: 8 }}>
+        <View style={{ flex: 1, height: 116, borderRadius: 14, overflow: 'hidden', borderWidth: 1, borderColor: monoColors.border, backgroundColor: monoColors.surface, padding: 10 }}>
+          <Text style={{ color: monoColors.secondaryText, fontSize: 10, fontWeight: '800' }}>シンプル</Text>
+          <View style={{ marginTop: 12, gap: 8 }}>
+            <View style={{ height: 8, borderRadius: 4, backgroundColor: monoColors.primaryText, opacity: 0.78 }} />
+            <View style={{ height: 8, width: '72%', borderRadius: 4, backgroundColor: monoColors.primaryAccent, opacity: 0.58 }} />
+            <View style={{ height: 8, width: '52%', borderRadius: 4, backgroundColor: monoColors.border }} />
+          </View>
+        </View>
+        <View style={{ flex: 1, height: 116, borderRadius: 14, overflow: 'hidden', borderWidth: 1, borderColor: chicPalette.border, backgroundColor: designVisual.background }}>
+          <View style={{ height: 78, overflow: 'hidden' }}><ChicPatternDecor pattern="floral" accent={designVisual.accent} warm={designVisual.warm} checkColor={chicCheckColor} preview /></View>
+          <Text style={{ color: chicPalette.textPrimary, fontSize: 10, fontWeight: '800', paddingHorizontal: 10, paddingVertical: 7 }}>デザイン</Text>
+        </View>
+        <View style={{ flex: 1, height: 116, borderRadius: 14, overflow: 'hidden', borderWidth: 1, borderColor: monoColors.border, backgroundColor: monoColors.surface }}>
+          <Image source={photoAsset.previewSource} resizeMode="cover" style={{ width: '100%', height: 78 }} />
+          <Text style={{ color: monoColors.primaryText, fontSize: 10, fontWeight: '800', paddingHorizontal: 10, paddingVertical: 7 }}>写真</Text>
+        </View>
+      </View>
+      <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 10, gap: 6 }}>
+        {[chicPalette.accent, '#9D8DDF', '#E7A9BC', '#8DAFD7'].map((color) => <View key={color} style={{ width: 14, height: 14, borderRadius: 7, backgroundColor: color, borderWidth: 1, borderColor: monoColors.border }} />)}
+        <Text style={{ color: monoColors.secondaryText, fontSize: 10, marginLeft: 2 }}>色や柄を組み合わせて選べます</Text>
+      </View>
+    </View>;
+  };
 
   const renderOnboardingCaptureStep = (id: IntroCardId | 'customize'): React.ReactNode => {
     const previewDate = dateKey(now);
@@ -4576,6 +4907,10 @@ export default function App() {
     />;
     return undefined;
   };
+
+  const renderOnboardingEmbeddedStep = (id: IntroCardId | 'customize'): React.ReactNode => (
+    id === 'customize' ? renderEmbeddedAppearancePreview() : renderOnboardingCaptureStep(id)
+  );
 
   const renderGuideCaptureStep = (id: Exclude<OnboardingFeatureId, 'intro'>): React.ReactNode => {
     const previewDate = dateKey(now);
@@ -4739,6 +5074,20 @@ export default function App() {
   const guideDemoAffirmations: Affirmation[] = [{ id: 'guide-demo-affirmation', text: '私は自分のペースで続けられる', time: '09:00', enabled: true, createdAt: now.toISOString() }];
   const productionGuideFeature = pendingGuideFeature ?? currentGuideFeature;
 
+  React.useEffect(() => {
+    if (!__DEV__) return;
+    console.log('[FirstRunDiagnostic]', {
+      ready: onboarding.ready,
+      introVisible: onboarding.introVisible,
+      introCompleted: onboarding.isCompleted('intro'),
+      firstRunStage: onboarding.state.firstRunStage,
+      onboardingDesignSelectionPending,
+      currentScreen: screen,
+      designSheetRequested: onboardingDesignSelectionPending && screen === 'settings',
+      event: 'state',
+    });
+  }, [onboarding.introVisible, onboarding.ready, onboarding.state.completed.intro, onboarding.state.firstRunStage, onboardingDesignSelectionPending, screen]);
+
   // Resume an interrupted first-run experience at the design step after a
   // restart.  The persisted stage is optional, so older users are untouched.
   React.useEffect(() => {
@@ -4746,13 +5095,25 @@ export default function App() {
     // keeps a stale/legacy stage from opening the Design sheet for a new user
     // before the five-page introduction (or after an early skip).
     if (!onboarding.ready || onboarding.introVisible || !onboarding.isCompleted('intro')) return;
-    if (onboarding.state.firstRunStage === 'design' && !onboardingDesignSelectionPending) {
+    if (onboarding.state.firstRunStage === 'design' && !onboardingDesignSelectionPending && !completingInitialDesignSelectionRef.current) {
+      if (__DEV__) {
+        console.log('[FirstRunDiagnostic]', {
+          ready: onboarding.ready,
+          introVisible: onboarding.introVisible,
+          introCompleted: onboarding.isCompleted('intro'),
+          firstRunStage: onboarding.state.firstRunStage,
+          onboardingDesignSelectionPending: true,
+          currentScreen: screen,
+          designSheetRequested: true,
+          event: 'design-sheet-requested',
+        });
+      }
       setOnboardingDesignSelectionPending(true);
       setCurrentGuideFeature(undefined);
       setPendingGuideFeature(undefined);
       setScreen('settings');
     }
-  }, [onboarding.introVisible, onboarding.isCompleted, onboarding.ready, onboarding.state.firstRunStage, onboardingDesignSelectionPending]);
+  }, [onboarding.introVisible, onboarding.ready, onboarding.state.completed.intro, onboarding.state.firstRunStage, onboardingDesignSelectionPending, screen]);
 
   const navigateToGuideFeature = React.useCallback((feature: Exclude<OnboardingFeatureId, 'intro'>) => {
     setAddOpen(false);
@@ -4857,10 +5218,9 @@ export default function App() {
       if (!next) {
         setCurrentGuideFeature(undefined);
         releaseGuideTransition();
-        if (onboarding.state.firstRunStage === 'demo') {
-          await onboarding.setFirstRunStage('design');
-          setOnboardingDesignSelectionPending(true);
-          setScreen('settings');
+        if (onboarding.state.firstRunStage === 'demo' && onboarding.isCompleted('intro') && !onboarding.introVisible) {
+          await onboarding.setFirstRunStage('done');
+          if (__DEV__) console.log('[FirstRunDiagnostic]', { event: 'legacy-demo-complete', source: 'advanceGuide', ready: onboarding.ready, introVisible: onboarding.introVisible, introCompleted: onboarding.isCompleted('intro'), firstRunStage: onboarding.state.firstRunStage, onboardingDesignSelectionPending: false, screen, designSheetRequested: false });
         }
         return;
       }
@@ -4994,10 +5354,9 @@ export default function App() {
       } finally {
         setCurrentGuideFeature(undefined);
         releaseGuideTransition();
-        if (onboarding.state.firstRunStage === 'demo') {
-          void onboarding.setFirstRunStage('design');
-          setOnboardingDesignSelectionPending(true);
-          setScreen('settings');
+        if (onboarding.state.firstRunStage === 'demo' && onboarding.isCompleted('intro') && !onboarding.introVisible) {
+          void onboarding.setFirstRunStage('done');
+          if (__DEV__) console.log('[FirstRunDiagnostic]', { event: 'legacy-demo-complete', source: 'exitGuideTour', ready: onboarding.ready, introVisible: onboarding.introVisible, introCompleted: onboarding.isCompleted('intro'), firstRunStage: onboarding.state.firstRunStage, onboardingDesignSelectionPending: false, screen, designSheetRequested: false });
         }
       }
     })();
@@ -5447,9 +5806,7 @@ export default function App() {
                premiumTrialReminderEnabled={premiumTrialReminderEnabled}
                onPremiumTrialReminderEnabled={premiumTrialReminderAvailable ? setPremiumTrialReminderEnabled : undefined}
                liveActivityEnabled={liveActivityEnabled}
-               onLiveActivityEnabled={(value) => {
-                 setLiveActivityEnabled(value);
-               }}
+               onLiveActivityEnabled={handleLiveActivityEnabled}
                liveActivityDisplayOptions={liveActivityDisplayOptions}
                onLiveActivityDisplayOptionsChange={setLiveActivityDisplayOptions}
                liveActivityCustomization={liveActivityCustomization}
@@ -5489,8 +5846,6 @@ export default function App() {
                  // Rewarded entitlement before persisting an image.
                   if (mode === 'photo' && planTier !== 'premium' && !photoDesignTemporaryAccess) {
                     setDesignPreviewMode('photo');
-                    setDesignPreviewPhotoUri(undefined);
-                    setDesignPreviewPattern('plain');
                     return;
                   }
                   if (mode === 'minimal' || mode === 'dark') {
@@ -5524,14 +5879,14 @@ export default function App() {
                }}
                onHapticsEnabled={handleHapticsEnabled}
                onChicPattern={(pattern) => {
-                 const feature = pattern === 'plain' ? undefined : getChicPatternFeatureId(pattern);
-                 if (feature && !hasPremiumAccess(planTier, feature) && !hasDesignCustomizeAccess) { openPremiumFeature(); return; }
-                 setChicPattern(pattern);
-                 if (!onboardingDesignSelectionPending) void onboarding.complete('design');
-                completeInitialDesignSelection();
+                 // Selecting a design is preview-only. Entitlement, Trial, and
+                 // Rewarded checks happen exclusively when the user confirms
+                 // with "このデザインを使う" in the try-on screen.
+                 setDesignPreviewMode('chic');
+                 setDesignPreviewPattern(pattern);
               }}
-               onDesignPreview={(pattern) => { setDesignPreviewMode('chic'); setDesignPreviewPattern(pattern); }}
-                fullscreenPreview={(onBack, sheetVisible) => <DesignTryOnModal
+               onDesignPreview={(pattern) => { setDesignPreviewMode('chic'); setDesignPreviewPattern(undefined); setChicPattern(pattern); }}
+                fullscreenPreview={(onBack, sheetVisible, closeSheetThen) => <DesignTryOnModal
                   visible={sheetVisible}
                   initialMode={designPreviewPhotoUri ? 'photo' : designMode === 'photo' ? 'photo' : isMonoDesign ? resolvedMonoMode : designMode}
                   initialPattern={designPreviewPattern ?? effectiveChicPattern}
@@ -5539,17 +5894,31 @@ export default function App() {
                   initialMonoAppearance={monoAppearance}
                   initialMonoPattern={designPreviewMonoPattern ?? effectiveMonoPattern}
                   photoUri={designPreviewPhotoUri ?? photoTheme.imageUri}
+                  topImageUris={{
+                    home: photoTheme.topImageUris?.home ?? photoTheme.topImageOriginalUris?.home,
+                    timeline: photoTheme.topImageUris?.timeline ?? photoTheme.topImageOriginalUris?.timeline,
+                    analysis: photoTheme.topImageUris?.analysis ?? photoTheme.topImageOriginalUris?.analysis,
+                    wish: photoTheme.topImageUris?.wish ?? photoTheme.topImageOriginalUris?.wish,
+                    settings: photoTheme.topImageUris?.settings ?? photoTheme.topImageOriginalUris?.settings,
+                  }}
+                  focusBackgroundUri={photoTheme.focusBackgroundUri}
+                  wishState={guideDemoWishState}
+                  wishMonths={{ [currentWishMonthKey]: guideDemoWishState }}
+                  previewComponents={{ TimeTabButton, FocusMode, TaskScheduleCalendar, DailyScheduleTimeline, RecoveryModal }}
+                  previewHelpers={{ getThemeTokens: getThemedThemeTokens, dateKey, planDateKey, hasPremiumAccess, formatLiveDate, formatLiveTime, getDepartureMoments, normalizePlanDate, countdownToDate, dateForReminder, getMapSearchTarget, openMapSearch: async () => undefined, getPlanCountdownAt, colors: themedColors }}
                   systemColorScheme={systemColorScheme}
                   onClose={() => { setDesignPreviewMonoPattern(undefined); onBack(); }}
-                  onApply={applyDesignTryOn}
+                  onApply={(selection) => closeSheetThen(() => applyDesignTryOn(selection))}
                 />}
                onChicCheckColor={(color) => { setChicCheckColor(color); if (!onboardingDesignSelectionPending) void onboarding.complete('design'); completeInitialDesignSelection(); }}
                onSaveAffirmation={saveAffirmation}
                onDeleteAffirmation={deleteAffirmation}
                onSaveAffirmationCustomText={saveAffirmationCustomText}
                onDeleteAffirmationCustomText={deleteAffirmationCustomText}
+               topImageCropResumeToken={topImageCropResumeToken}
+               canOpenTopImagePicker={canOpenTopImagePicker}
                onPickPhotoTheme={(target) => void pickPhotoTheme(target)}
-               onPickPhotoPreview={() => void pickPhotoForDesignPreview(true)}
+               onPickPhotoPreview={() => pickPhotoForDesignPreview(true)}
                onAdjustPhotoTheme={(target) => adjustTopPhoto(target)}
                onClearPhotoTheme={(target) => setPhotoTheme((current) => {
                  if (target === 'background') {
@@ -5584,13 +5953,17 @@ export default function App() {
                onDeleteSavedTemplate={deleteSavedTaskTemplate}
                onOpenCaptureStudio={__DEV__ ? () => setCaptureStudioOpen(true) : undefined}
                designCustomizePurchased={hasDesignCustomizeAccess}
+               designAccessStatus={designAccessStatus}
                canUseMonoPaidPattern={planTier === 'premium' || hasDesignCustomizeAccess || isPremiumDesignUnlocked(rewardedAccess, now) || isPremiumDesignTrialActive(rewardedAccess, now)}
+               canUsePaidDesign={planTier === 'premium' || hasDesignCustomizeAccess || isPremiumDesignUnlocked(rewardedAccess, now) || isPremiumDesignTrialActive(rewardedAccess, now)}
                onResetWidgetPhotoUnlock={__DEV__ ? resetWidgetPhotoUnlockForDevelopment : undefined}
               designCustomizePrice={storeKit.designProduct?.displayPrice}
               designCustomizePriceStatus={storeKit.status}
-              onOpenDesignCustomize={() => setDesignCustomizeOpen(true)}
-              onOpenDesignAccess={openDesignAccess}
-              initialAppearanceOpen={onboardingDesignSelectionPending}
+               onOpenDesignCustomize={() => setDesignCustomizeOpen(true)}
+               onOpenDesignAccess={openDesignAccess}
+               initialAppearanceOpen={onboardingDesignSelectionPending && onboarding.ready && !onboarding.introVisible}
+               onboardingDesignSelectionPending={onboardingDesignSelectionPending}
+               currentScreen={screen}
                           styles={styles}
               helpers={{ colors: themedColors, getThemeTokens: getThemedThemeTokens, getChicPatternVisual, getNightSkyPalette, hasPremiumAccess, getChicCheckColor, chicCheckColorChoices, countdownToClock, getUrgencyStatus, getNextBestAction, designModes, completionIcons, summarizePremiumTaskTemplate }}
               components={{ BThemeRibbonDecoration, CThemeRibbonDecoration, ChicPatternDecor, ChicPatternSelector, ThemeColorSelector, SettingsDisclosure, NotificationManagerCard, PremiumFeatureIcon }}
@@ -5719,7 +6092,7 @@ export default function App() {
       />}
 
       {rewardedPrompt && <RewardedAccessModal
-        visible
+        visible={!rewardedPromptClosing}
         title={rewardedPrompt.title}
         description={rewardedPrompt.description}
         current={getRewardedPromptProgress(rewardedPrompt.featureId).current}
@@ -5727,14 +6100,43 @@ export default function App() {
         designMode={uiDesignMode}
         chicPalette={chicPalette}
         onReward={handleRewardedPromptReward}
-        onClose={() => { rewardedPromptCompletionRef.current = undefined; setRewardedPrompt(null); }}
+        rewardButtonLabel={rewardedPrompt.featureId === 'widgetPhoto' ? '広告を見て7日間使う' : rewardedPrompt.featureId === 'premiumDesign' || rewardedPrompt.featureId === 'premiumDesignTrialExpired' ? '広告を見て12時間使う' : rewardedPrompt.featureId === 'photoTop' ? '広告を見て写真枠を追加' : rewardedPrompt.featureId === 'photoBackground' ? '広告を見て背景写真を使う' : rewardedPrompt.featureId === 'photoFocus' ? '広告を見て集中背景を使う' : undefined}
+        onClose={() => {
+          if (rewardedPrompt.featureId === 'photoTop') {
+            if (rewardedPromptClosing) return;
+            const continuation = rewardedPromptCompletionRef.current;
+            const completed = topImageRewardCompletedRef.current;
+            rewardedPromptCompletionRef.current = undefined;
+            topImageRewardCompletedRef.current = false;
+            topImageRewardDismissActionRef.current = completed && continuation
+              ? continuation
+              : () => setTopImageCropResumeToken((current) => current + 1);
+            setRewardedPromptClosing(true);
+            if (Platform.OS !== 'ios') InteractionManager.runAfterInteractions(finishTopImageRewardPrompt);
+            return;
+          }
+          rewardedPromptCompletionRef.current = undefined;
+          setRewardedPrompt(null);
+        }}
+        onDismiss={() => {
+          if (rewardedPrompt.featureId === 'photoTop' && rewardedPromptClosing) finishTopImageRewardPrompt();
+        }}
         onPremium={() => {
-          const designFeature = rewardedPrompt.featureId === 'photoBackground' || rewardedPrompt.featureId === 'photoFocus' || rewardedPrompt.featureId === 'photoTop' || rewardedPrompt.featureId === 'premiumDesign' || rewardedPrompt.featureId === 'premiumDesignTrialExpired';
+          const designFeature = rewardedPrompt.featureId === 'photoBackground' || rewardedPrompt.featureId === 'photoFocus' || rewardedPrompt.featureId === 'photoTop' || rewardedPrompt.featureId === 'premiumDesign' || rewardedPrompt.featureId === 'premiumDesignTrialExpired' || rewardedPrompt.featureId === 'widgetPhoto';
+          if (rewardedPrompt.featureId === 'photoTop') {
+            topImageAccessPurchaseResumeRef.current = true;
+            topImageRewardCompletedRef.current = false;
+            rewardedPromptCompletionRef.current = undefined;
+            topImageRewardDismissActionRef.current = () => setDesignCustomizeOpen(true);
+            setRewardedPromptClosing(true);
+            if (Platform.OS !== 'ios') InteractionManager.runAfterInteractions(finishTopImageRewardPrompt);
+            return;
+          }
           setRewardedPrompt(null);
           if (designFeature) setDesignCustomizeOpen(true);
           else openPremiumFeature();
         }}
-        premiumLabel={rewardedPrompt.featureId === 'photoBackground' || rewardedPrompt.featureId === 'photoFocus' || rewardedPrompt.featureId === 'photoTop' || rewardedPrompt.featureId === 'premiumDesign' || rewardedPrompt.featureId === 'premiumDesignTrialExpired' ? 'デザインカスタマイズを購入' : undefined}
+        premiumLabel={rewardedPrompt.featureId === 'photoBackground' || rewardedPrompt.featureId === 'photoFocus' || rewardedPrompt.featureId === 'photoTop' || rewardedPrompt.featureId === 'premiumDesign' || rewardedPrompt.featureId === 'premiumDesignTrialExpired' || rewardedPrompt.featureId === 'widgetPhoto' ? 'デザインカスタマイズを購入' : undefined}
       />}
 
       <Modal visible={focusNavigationNotice} transparent animationType="fade" onRequestClose={() => setFocusNavigationNotice(false)}>
@@ -5830,7 +6232,7 @@ export default function App() {
         helpers={{ getThemeTokens: getThemedThemeTokens, todayInputValue, hasPremiumAccess, dateForReminder, dateKey, formatLiveTime, colors: themedColors, summarizePremiumTaskTemplate }}
         components={{ CompactNumberSetting }}
       />}
-      <PremiumModal visible={premiumOpen} initialFeatureId={premiumTargetFeature} designMode={uiDesignMode} chicPalette={chicPalette} planTier={planTier} isDevelopment={__DEV__} onMockPlanTier={handleMockPlanTier} onClose={() => { logPremiumDiagnostic('PREMIUM_MODAL_DISMISSED', { plan: planTier, purchaseStatus: purchaseDiagnosticPendingRef.current ? 'processing' : 'idle', planTier, modalVisible: premiumOpen, entitlementsResolved: storeKitEntitlementsResolved, pending: purchaseDiagnosticPendingRef.current }); setPremiumOpen(false); }} onOpenDesignCustomize={() => { setPremiumOpen(false); setDesignCustomizeOpen(true); }} styles={styles} helpers={{ getThemeTokens: getThemedThemeTokens }} renderReadOnlyPreview={renderPremiumReadOnlyPreview} products={storeKit.products} productStatus={storeKit.status} purchaseError={storeKit.errorMessage} onPurchasePlan={purchasePremiumWithDiagnostics} onRestorePurchase={() => { void restorePremiumPurchase(); }} />
+      <PremiumModal visible={premiumOpen} initialFeatureId={premiumTargetFeature} designMode={uiDesignMode} chicPalette={chicPalette} planTier={planTier} isDevelopment={__DEV__} onMockPlanTier={handleMockPlanTier} onClose={() => { logPremiumDiagnostic('PREMIUM_MODAL_DISMISSED', { plan: planTier, purchaseStatus: purchaseDiagnosticPendingRef.current ? 'processing' : 'idle', planTier, modalVisible: premiumOpen, entitlementsResolved: storeKitEntitlementsResolved, pending: purchaseDiagnosticPendingRef.current }); setPremiumOpen(false); if (Platform.OS !== 'ios') resumeTopImageAfterAccessFlow(); }} onDismiss={() => { if (Platform.OS !== 'ios') return; const pending = premiumAfterDismissRef.current; premiumAfterDismissRef.current = undefined; if (pending) pending(); else resumeTopImageAfterAccessFlow(); }} onOpenDesignCustomize={() => { premiumAfterDismissRef.current = () => setDesignCustomizeOpen(true); setPremiumOpen(false); if (Platform.OS !== 'ios') InteractionManager.runAfterInteractions(() => { const pending = premiumAfterDismissRef.current; premiumAfterDismissRef.current = undefined; pending?.(); }); }} styles={styles} helpers={{ getThemeTokens: getThemedThemeTokens }} renderReadOnlyPreview={renderPremiumReadOnlyPreview} products={storeKit.products} productStatus={storeKit.status} purchaseError={storeKit.errorMessage} onPurchasePlan={purchasePremiumWithDiagnostics} onRestorePurchase={() => { void restorePremiumPurchase(); }} />
       <VoiceUsageLimitModal
         visible={voiceUsageLimitOpen}
         designMode={uiDesignMode}
@@ -5848,41 +6250,9 @@ export default function App() {
         onClose={() => setVoiceUsageLimitOpen(false)}
       />
       <VoiceInputModal visible={voiceOpen} autoStart={voiceAutoStart} designMode={uiDesignMode} chicPalette={chicPalette} dateKey={dateKey} onClose={() => { setVoiceAutoStart(false); setVoiceOpen(false); }} onRoute={handleVoiceRoute} hapticsEnabled={hapticsEnabled} isPremium={planTier === 'premium'} remainingUses={remainingVoiceUses(voiceUsage, dateKey())} onRecognitionAccepted={consumeVoiceInput} />
-      <DesignCustomizeModal visible={designCustomizeOpen} designMode={uiDesignMode} chicPalette={chicPalette} purchased={hasDesignCustomizeAccess} localizedPrice={storeKit.designProduct?.displayPrice} priceStatus={storeKit.status} purchaseError={storeKit.errorMessage} onPurchase={purchaseDesignCustomize} onRestore={restoreDesignCustomizePurchase} onPremium={() => { setDesignCustomizeOpen(false); openPremiumFeature('photo_design'); }} onClose={() => setDesignCustomizeOpen(false)} />
+      <DesignCustomizeModal visible={designCustomizeOpen} designMode={uiDesignMode} chicPalette={chicPalette} purchased={storeDesignCustomizeEntitlement} premiumIncluded={storePremiumAccess} rewardedAvailable={designRewardAvailable} rewardedLabel={designRewardLabel} onRewarded={startDesignRewardForCurrent} localizedPrice={storeKit.designProduct?.displayPrice} priceStatus={storeKit.status} purchaseError={storeKit.errorMessage} onPurchase={purchaseDesignCustomize} onRestore={restoreDesignCustomizePurchase} onPremium={() => { designCustomizeAfterDismissRef.current = () => openPremiumFeature('photo_design'); setDesignCustomizeOpen(false); if (Platform.OS !== 'ios') InteractionManager.runAfterInteractions(() => { const pending = designCustomizeAfterDismissRef.current; designCustomizeAfterDismissRef.current = undefined; pending?.(); }); }} onClose={() => { setDesignCustomizeOpen(false); pendingDesignApplyRef.current = undefined; pendingDesignTrialRef.current = undefined; if (Platform.OS !== 'ios') resumeTopImageAfterAccessFlow(); }} onDismiss={() => { if (Platform.OS !== 'ios') return; const nextModal = designCustomizeAfterDismissRef.current; designCustomizeAfterDismissRef.current = undefined; if (nextModal) { nextModal(); return; } const startReward = designRewardAfterCustomizeDismissRef.current; designRewardAfterCustomizeDismissRef.current = undefined; if (startReward) startReward(); else if (!premiumOpenRef.current) resumeTopImageAfterAccessFlow(); }} />
       {__DEV__ && <OnboardingCaptureStudio visible={captureStudioOpen} onClose={() => setCaptureStudioOpen(false)} renderStep={renderOnboardingCaptureStep} renderGuideStep={renderGuideCaptureStep} renderPremiumStep={renderPremiumReadOnlyPreview} colors={{ background: theme.colors.screenBackground, surface: theme.colors.surface, border: theme.colors.border, text: theme.colors.primaryText, muted: theme.colors.secondaryText, accent: theme.colors.primaryAccent, onAccent: uiDesignMode === 'chic' && chicPalette ? chicPalette.onAccent : uiDesignMode === 'dark' ? theme.colors.screenBackground : '#FFFFFF' }} />}
-      <DesignPreviewModal visible={Boolean(designPreviewPattern)} initialPattern={designPreviewPattern} initialMode={designPreviewMode} chicCheckColor={chicCheckColor} planTier={planTier} designCustomizePurchased={hasDesignCustomizeAccess || isPremiumDesignUnlocked(rewardedAccess, now) || isPremiumDesignTrialActive(rewardedAccess, now)} photoUri={designPreviewPhotoUri} onPickPhoto={() => void pickPhotoForDesignPreview()} onClose={() => { setDesignPreviewPattern(undefined); setDesignPreviewPhotoUri(undefined); setDesignPreviewMonoPattern(undefined); setDesignPreviewMode('chic'); }} onTrial={(mode, pattern) => {
-        if (mode === 'chic' && pattern && canStartPremiumDesignTrial(rewardedAccess)) {
-          startDesignTrial(pattern, chicCheckColor);
-          setDesignPreviewPattern(undefined);
-          setDesignPreviewPhotoUri(undefined);
-          completeInitialDesignSelection();
-          return;
-        }
-        if (mode === 'photo' && designPreviewPhotoUri && canStartPremiumDesignTrial(rewardedAccess)) {
-          startPhotoDesignTrial();
-          setDesignPreviewPattern(undefined);
-          setDesignPreviewPhotoUri(undefined);
-          completeInitialDesignSelection();
-          return;
-        }
-        if (mode === 'chic' && pattern) {
-          pendingDesignApplyRef.current = () => {
-            setDesignMode('chic');
-            setChicPattern(pattern);
-            setChicCheckColor(chicCheckColor);
-            setDesignPreviewPattern(undefined);
-            if (!onboardingDesignSelectionPending) void onboarding.complete('design');
-            completeInitialDesignSelection();
-          };
-        } else if (mode === 'photo' && designPreviewPhotoUri) {
-          pendingDesignApplyRef.current = () => {
-            applyPhotoDesign(designPreviewPhotoUri, chicCheckColor);
-            completeInitialDesignSelection();
-          };
-        }
-        setDesignPreviewPattern(undefined);
-        setDesignTrialNoticeOpen(true);
-      }} onUse={(mode, pattern) => {
+       {false && <DesignPreviewModal visible={Boolean(designPreviewPattern)} initialPattern={designPreviewPattern} initialMode={designPreviewMode} chicCheckColor={chicCheckColor} planTier={planTier} designCustomizePurchased={hasDesignCustomizeAccess || isPremiumDesignUnlocked(rewardedAccess, now) || isPremiumDesignTrialActive(rewardedAccess, now)} photoUri={designPreviewPhotoUri} onPickPhoto={() => void pickPhotoForDesignPreview()} onClose={() => { pendingDesignApplyRef.current = undefined; pendingDesignTrialRef.current = undefined; setDesignPreviewPattern(undefined); setDesignPreviewPhotoUri(undefined); setDesignPreviewMonoPattern(undefined); setDesignPreviewMode('chic'); }} onUse={(mode, pattern) => {
         if (mode === 'photo') {
           if (!designPreviewPhotoUri) { void pickPhotoForDesignPreview(); return; }
           if (planTier === 'premium' || hasDesignCustomizeAccess || isPremiumDesignTrialActive(rewardedAccess, now) || isPremiumDesignUnlocked(rewardedAccess, now)) {
@@ -5890,15 +6260,13 @@ export default function App() {
             completeInitialDesignSelection();
             return;
           }
-          if (canStartPremiumDesignTrial(rewardedAccess)) {
-            startPhotoDesignTrial();
-            completeInitialDesignSelection();
-            return;
-          }
           pendingDesignApplyRef.current = () => {
             applyPhotoDesign();
             completeInitialDesignSelection();
           };
+          pendingDesignTrialRef.current = canStartPremiumDesignTrial(rewardedAccess)
+            ? () => startPhotoDesignTrial()
+            : undefined;
           setDesignPreviewPattern(undefined);
           setDesignTrialNoticeOpen(true);
           return;
@@ -5930,7 +6298,10 @@ export default function App() {
               if (!onboardingDesignSelectionPending) void onboarding.complete('design');
               completeInitialDesignSelection();
             };
-            setDesignPreviewPattern(undefined);
+          pendingDesignTrialRef.current = canStartPremiumDesignTrial(rewardedAccess)
+            ? () => startDesignTrial(pattern, chicCheckColor)
+            : undefined;
+          setDesignPreviewPattern(undefined);
             setDesignTrialNoticeOpen(true);
             return;
           }
@@ -5940,18 +6311,67 @@ export default function App() {
           if (!onboardingDesignSelectionPending) void onboarding.complete('design');
           completeInitialDesignSelection();
         }
-      }} />
-      <DesignTrialExpiredModal visible={designTrialNoticeOpen} designMode={uiDesignMode} chicPalette={chicPalette} onClose={() => { pendingDesignApplyRef.current = undefined; setDesignTrialNoticeOpen(false); }} onPremium={() => { setDesignTrialNoticeOpen(false); setDesignCustomizeOpen(true); }} onReward={() => {
+      }} />}
+      <DesignTrialExpiredModal visible={designTrialNoticeOpen} trialAvailable={rewardedAccessHydrated && canStartPremiumDesignTrial(rewardedAccess)} designMode={uiDesignMode} chicPalette={chicPalette} onClose={() => { pendingDesignApplyRef.current = undefined; pendingDesignTrialRef.current = undefined; designTrialAfterDismissRef.current = undefined; setDesignTrialNoticeOpen(false); }} onDismiss={() => { if (Platform.OS !== 'ios') return; const pending = designTrialAfterDismissRef.current; designTrialAfterDismissRef.current = undefined; pending?.(); }} onPremium={() => { pendingDesignTrialRef.current = undefined; designTrialAfterDismissRef.current = () => setDesignCustomizeOpen(true); setDesignTrialNoticeOpen(false); if (Platform.OS !== 'ios') InteractionManager.runAfterInteractions(() => { const pending = designTrialAfterDismissRef.current; designTrialAfterDismissRef.current = undefined; pending?.(); }); }} onTrial={() => {
+        const startTrial = pendingDesignTrialRef.current;
+        pendingDesignTrialRef.current = undefined;
+        pendingDesignApplyRef.current = undefined;
         setDesignTrialNoticeOpen(false);
-        InteractionManager.runAfterInteractions(() => {
-          setTimeout(() => {
-            void requestDesignReward().then((success) => {
-              if (!success) setDesignTrialNoticeOpen(true);
-            });
-          }, 250);
+        startTrial?.();
+      }} onReward={() => {
+        designTrialAfterDismissRef.current = () => {
+          void requestDesignReward().then((success) => {
+            if (!success) setDesignTrialNoticeOpen(true);
+          });
+        };
+        setDesignTrialNoticeOpen(false);
+        if (Platform.OS !== 'ios') InteractionManager.runAfterInteractions(() => {
+          const pending = designTrialAfterDismissRef.current;
+          designTrialAfterDismissRef.current = undefined;
+          pending?.();
         });
       }} />
-      <TopImageCropModal visible={Boolean(pendingTopPhoto)} uri={pendingTopPhoto?.originalUri} sourceWidth={pendingTopPhoto?.sourceWidth ?? 1} sourceHeight={pendingTopPhoto?.sourceHeight ?? 1} initialRect={pendingTopPhoto?.cropRect} styles={styles} onCancel={() => setPendingTopPhoto(undefined)} onReselect={() => { if (pendingTopPhoto) void pickPhotoTheme(pendingTopPhoto.target); }} onUse={(cropRect) => { void applyPendingTopPhoto(cropRect); }} />
+      <TopImageCropModal
+        visible={Boolean(pendingTopPhoto)}
+        uri={pendingTopPhoto?.previewUri ?? pendingTopPhoto?.originalUri}
+        sourceWidth={pendingTopPhoto?.sourceWidth ?? 1}
+        sourceHeight={pendingTopPhoto?.sourceHeight ?? 1}
+        initialRect={pendingTopPhoto?.cropRect}
+        styles={styles}
+        processing={topImageProcessing}
+        onCancel={() => {
+          const target = pendingTopPhoto?.target;
+          topImageCropDismissActionRef.current = { type: 'resume', target };
+          if (__DEV__) {
+            console.log('[TopImage] cancel-button-press');
+            console.log('[TopImage] crop-dismiss-start', { target, reason: 'cancel' });
+            console.log('[TopImage] modal-close', { target, reason: 'cancel' });
+          }
+          if (pendingTopPhoto?.previewUri) deleteTemporaryPhotoUri(pendingTopPhoto.previewUri);
+          setPendingTopPhoto(undefined);
+        }}
+        onDismiss={() => {
+          const action = topImageCropDismissActionRef.current;
+          topImageCropDismissActionRef.current = { type: 'resume' };
+          if (__DEV__) console.log('[TopImage] crop-dismissed', { target: action.target, action: action.type });
+          InteractionManager.runAfterInteractions(() => {
+            if (action.type === 'reselect' && action.target) {
+              void pickPhotoTheme(action.target);
+              return;
+            }
+            setTopImageCropResumeToken((current) => current + 1);
+          });
+        }}
+        onReselect={() => {
+          const target = pendingTopPhoto?.target;
+          if (!target) return;
+          topImageCropDismissActionRef.current = { type: 'reselect', target };
+          if (__DEV__) console.log('[TopImage] crop-dismiss-start', { target, reason: 'reselect' });
+          if (pendingTopPhoto?.previewUri) deleteTemporaryPhotoUri(pendingTopPhoto.previewUri);
+          setPendingTopPhoto(undefined);
+        }}
+        onUse={(cropRect) => { void applyPendingTopPhoto(cropRect); }}
+      />
       <OnboardingCarousel
   visible={
     onboarding.ready &&
@@ -5960,7 +6380,21 @@ export default function App() {
   onDismiss={
     onboarding.isCompleted('intro')
       ? onboarding.closeIntro
-      : () => { void onboarding.skipIntro(); }
+      : () => {
+        if (__DEV__) {
+          console.log('[FirstRunDiagnostic]', {
+            ready: onboarding.ready,
+            introVisible: onboarding.introVisible,
+            introCompleted: onboarding.isCompleted('intro'),
+            firstRunStage: onboarding.state.firstRunStage,
+            onboardingDesignSelectionPending,
+            currentScreen: screen,
+            designSheetRequested: false,
+            event: 'skip-intro',
+          });
+        }
+        void onboarding.skipIntro();
+      }
   }
   finalActionLabel="デザインを選ぶ"
   designMode={uiDesignMode}
@@ -5970,9 +6404,21 @@ export default function App() {
       onboarding.closeIntro();
       return;
     }
+    if (__DEV__) {
+      console.log('[FirstRunDiagnostic]', {
+        ready: onboarding.ready,
+        introVisible: onboarding.introVisible,
+        introCompleted: onboarding.isCompleted('intro'),
+        firstRunStage: onboarding.state.firstRunStage,
+        onboardingDesignSelectionPending,
+        currentScreen: screen,
+        designSheetRequested: true,
+        event: 'finish-intro-design-request',
+      });
+    }
     void onboarding.finishIntro();
   }}
-  renderStep={renderOnboardingCaptureStep}
+  renderStep={renderOnboardingEmbeddedStep}
 />
       <OnboardingCarousel
         visible={widgetGuideVisible}
@@ -6136,7 +6582,7 @@ type DesignTryOnSelection = {
 
 // Temporary, read-only design try-on. It mounts the production HomeScreen
 // renderer with in-memory sample data and never writes app state.
-function DesignTryOnModal({ visible, initialMode, initialPattern, initialColor, initialMonoAppearance, initialMonoPattern, photoUri, systemColorScheme, onClose, onApply }: {
+function DesignTryOnModal({ visible, initialMode, initialPattern, initialColor, initialMonoAppearance, initialMonoPattern, photoUri, topImageUris, focusBackgroundUri, wishState, wishMonths, previewComponents, previewHelpers, systemColorScheme, onClose, onApply }: {
   visible: boolean;
   initialMode: DesignPreviewMode;
   initialPattern: ChicPattern;
@@ -6144,6 +6590,12 @@ function DesignTryOnModal({ visible, initialMode, initialPattern, initialColor, 
   initialMonoAppearance: 'auto' | 'light' | 'dark';
   initialMonoPattern: MonoPattern;
   photoUri?: string;
+  topImageUris?: Partial<Record<'home' | 'timeline' | 'analysis' | 'wish' | 'settings', string>>;
+  focusBackgroundUri?: string;
+  wishState?: MonthlyWishState;
+  wishMonths?: WishMonthMap;
+  previewComponents?: any;
+  previewHelpers?: any;
   systemColorScheme?: 'light' | 'dark' | null;
   onClose: () => void;
   onApply: (selection: DesignTryOnSelection) => void;
@@ -6153,16 +6605,20 @@ function DesignTryOnModal({ visible, initialMode, initialPattern, initialColor, 
   const [color, setColor] = useState<ChicCheckColor>(initialColor);
   const [monoAppearance, setMonoAppearance] = useState<'auto' | 'light' | 'dark'>(initialMonoAppearance);
   const [monoPattern, setMonoPattern] = useState<MonoPattern>(initialMonoPattern);
+  const [photoTarget, setPhotoTarget] = useState<'background' | 'home' | 'timeline' | 'analysis' | 'wish' | 'settings' | 'focus'>('background');
+  const photoTargetLabel = photoTarget === 'home' ? '今日' : photoTarget === 'timeline' ? '予定' : photoTarget === 'analysis' ? '分析' : photoTarget === 'wish' ? '叶えたいこと' : photoTarget === 'settings' ? '設定' : photoTarget === 'focus' ? '集中タイマー' : '背景';
   useEffect(() => {
     if (!visible) return;
     setMode(initialMode); setPattern(initialPattern); setColor(initialColor);
     setMonoAppearance(initialMonoAppearance); setMonoPattern(initialMonoPattern);
+    setPhotoTarget('background');
   }, [visible, initialColor, initialMode, initialMonoAppearance, initialMonoPattern, initialPattern]);
   const resolvedMonoMode: 'minimal' | 'dark' = monoAppearance === 'dark' ? 'dark' : monoAppearance === 'light' ? 'minimal' : systemColorScheme === 'dark' ? 'dark' : 'minimal';
   const homeMode: DesignMode = mode === 'photo' || mode === 'chic' ? 'chic' : resolvedMonoMode;
   const basePalette = getDesignCheckThemeTokens(color);
   const previewPalette = mode === 'chic' && pattern === 'nightSky' ? getNightSkyPalette(basePalette) : basePalette;
   const imageBackground = mode === 'chic' && isImageDesignPattern(pattern) ? designBackgroundAssets[pattern] : undefined;
+  const selectedTopImageUri = photoTarget === 'background' || photoTarget === 'focus' ? undefined : topImageUris?.[photoTarget];
   const sampleNow = new Date();
   const sampleDate = dateKey(sampleNow);
   const sampleTasks: Task[] = [
@@ -6176,7 +6632,10 @@ function DesignTryOnModal({ visible, initialMode, initialPattern, initialColor, 
     : imageBackground ? <Image source={imageBackground.source} resizeMode="contain" style={StyleSheet.absoluteFillObject} />
       : mode === 'chic' ? <ChicPatternDecor pattern={pattern} accent={previewPalette.accent} warm={previewPalette.accentSoft} checkColor={color} />
         : monoPattern === 'looseLeaf' ? <MonoLooseLeafBackground dark={homeMode === 'dark'} /> : monoPattern === 'chic' ? <MonoChicBackground dark={homeMode === 'dark'} /> : null;
-  const homePreview = <View pointerEvents="none" style={{ flex: 1, paddingHorizontal: 16, paddingTop: 8 }}>
+  const previewSurfaceStyle = { flex: 1, paddingHorizontal: 16, paddingTop: 8 };
+  const topImage = selectedTopImageUri ? <Image source={{ uri: selectedTopImageUri }} resizeMode="cover" style={{ width: '100%', height: 108, borderRadius: 16, marginBottom: 8 }} /> : null;
+  const homePreview = <View pointerEvents="none" style={previewSurfaceStyle}>
+    {topImage}
     <HomeScreen
       tasks={sampleTasks} allTasks={sampleTasks} now={sampleNow} designMode={homeMode} chicPalette={previewPalette} completionIcon="✓"
       selectionMode={false} selectedTaskIds={[]} onAdd={() => undefined} onOpenFocus={() => undefined} initialTab="now"
@@ -6190,25 +6649,72 @@ function DesignTryOnModal({ visible, initialMode, initialPattern, initialColor, 
       helpers={{ deadlineLabel, getUrgencyStatus, getLateRiskMessage, dateForReminder, dateKey, formatLiveTime, isCheckChicPattern, todayInputValue, getThemeTokens: (design: DesignMode) => getThemeTokens(design, color) }}
     />
   </View>;
+  const timelineHelpers = previewHelpers ?? { getThemeTokens: (design: DesignMode) => getThemeTokens(design, color), dateKey, planDateKey, hasPremiumAccess, formatLiveDate, formatLiveTime, getDepartureMoments, normalizePlanDate, countdownToDate, dateForReminder, getMapSearchTarget, openMapSearch: async () => undefined, getPlanCountdownAt, colors: previewPalette };
+  const timelineComponents = previewComponents ?? {};
+  const timelinePreview = <View pointerEvents="none" style={previewSurfaceStyle}>
+    {topImage}
+    <TimelineScreen
+      plan={samplePlans[0]} plans={samplePlans} planEditorOpen={false} departureCheckIns={[]} departurePreparationStatuses={{}} behaviorEvents={[]} tasks={sampleTasks} now={sampleNow}
+      designMode={homeMode} focusBackgroundUri={photoTarget === 'focus' ? focusBackgroundUri : undefined} initialTab={photoTarget === 'focus' ? 'focus' : 'departure'} chicPattern={mode === 'chic' ? pattern : 'plain'} chicPalette={previewPalette} planTier="premium" completionIcon="✓"
+      focusCustomDurationMinutes={25} onFocusCustomDurationChange={() => undefined} focusVoiceRequest={undefined} focusPersistedState={undefined} onFocusStateChange={() => undefined} recoveryTargetPlanId={undefined}
+      onChange={() => undefined} onSchedule={() => undefined} onScheduleUsed={() => undefined} onTimeTabChange={() => undefined} onOpenNewPlan={() => undefined} onClosePlanEditor={() => undefined} onImportCalendarEvent={() => false} onEdit={() => undefined} onSharePlan={() => undefined} onDelete={() => undefined} onEditTask={() => undefined} onDeleteTask={() => undefined} onTaskBucketChange={() => undefined} onPremium={() => undefined} onRecovery={() => undefined} onRecoveryOpened={() => undefined} onRecoveryClosed={() => undefined}
+      onFocusCompleted={() => undefined} onFocusTaskFinished={() => undefined} onFocusStarted={() => undefined} onFocusNotificationPermission={async () => false} onFocusRunningChange={() => undefined} onFocusActivityChange={() => undefined} focusTimerActive={false} onFocusNavigationBlocked={() => undefined} onBehaviorEvent={() => undefined} onDeparted={() => undefined} onPreparationStarted={() => undefined} onStill={() => undefined}
+      calendarMarks={{}} onSetCalendarMark={() => undefined} travelApps={[]} onOpenTravelAppSettings={() => undefined} hapticsEnabled={false} previewCustomDurationOpen={false} previewMode previewCalendarEvents={[]} previewCalendarOptions={[]} calendarImportCalendarIds={[]} calendarImportKnownCalendarIds={[]} onCalendarImportCalendarIdsChange={() => undefined} onCalendarImportKnownCalendarIdsChange={() => undefined} planEditorGuide={undefined} recoveryGuide={undefined} styles={styles} helpers={timelineHelpers} components={timelineComponents}
+    />
+  </View>;
+  const analysisPreview = <View pointerEvents="none" style={previewSurfaceStyle}>
+    {topImage}
+    <AnalysisScreen events={[]} tasks={sampleTasks} onRemoveRoutine={() => undefined} routineArchives={[]} onResumeRoutine={() => undefined} onDeleteRoutineArchive={() => undefined} designMode={homeMode} planTier="premium" recordContent={null} onPremium={() => undefined} departurePlans={samplePlans} chicPalette={previewPalette} chicPattern={mode === 'chic' ? pattern : 'plain'} PatternDecor={ChicPatternDecor} onApplySuggestion={() => undefined} onAnalysisUsed={() => undefined} initialTab="records" previewKind="time" />
+  </View>;
+  const wishPreview = wishState ? <View pointerEvents="none" style={previewSurfaceStyle}>
+    {topImage}
+    <WishScreen designMode={homeMode} chicPattern={mode === 'chic' ? pattern : 'plain'} chicPalette={previewPalette} monthLabel={`${sampleNow.getFullYear()}年${sampleNow.getMonth() + 1}月`} state={wishState} wishMonths={wishMonths ?? {}} onSaveState={() => undefined} onCreateTaskFromAction={() => undefined} canCreateWish planTier="premium" affirmations={[]} affirmationCustomTexts={[]} onSaveAffirmation={() => undefined} onDeleteAffirmation={() => undefined} onSaveAffirmationCustomText={() => undefined} onDeleteAffirmationCustomText={() => undefined} canCreateWishAction topImageUri={selectedTopImageUri} onPremium={() => undefined} />
+  </View> : homePreview;
+  const settingsPreview = <View pointerEvents="none" style={previewSurfaceStyle}>
+    <DesignAppliedPreview
+      tab={mode === 'photo' ? 'photo' : mode === 'chic' ? 'chic' : 'mono'}
+      selectedMode={homeMode}
+      designMode={homeMode}
+      systemColorScheme={systemColorScheme}
+      monoAppearance={monoAppearance}
+      monoPattern={monoPattern}
+      chicPattern={mode === 'chic' ? pattern : 'plain'}
+      chicCheckColor={color}
+      chicPalette={previewPalette}
+      photoTheme={{ imageUri: photoUri, topImageUris: { settings: selectedTopImageUri } } as any}
+      previewPhotoUri={photoUri}
+      topImageUriOverride={selectedTopImageUri}
+      colors={{ background: previewBackground, surface: previewPalette.cardSurface, border: previewPalette.border, text: previewPalette.textPrimary, muted: previewPalette.textSecondary, accent: previewPalette.accent, soft: previewPalette.accentSoft, onAccent: previewPalette.onAccent }}
+      styles={styles}
+      helpers={{ getChicCheckColor: (value: ChicCheckColor) => getDesignCheckThemeTokens(value), getNightSkyPalette, getThemeTokens: (design: DesignMode, paletteId?: ChicCheckColor) => getThemeTokens(design, paletteId), getChicPatternVisual }}
+      components={{ ChicPatternDecor, BThemeRibbonDecoration, CThemeRibbonDecoration }}
+    />
+  </View>;
+  const previewContent = photoTarget === 'timeline' || photoTarget === 'focus' ? timelinePreview : photoTarget === 'analysis' ? analysisPreview : photoTarget === 'wish' ? wishPreview : photoTarget === 'settings' ? settingsPreview : homePreview;
   const applySelection = () => {
-    onApply({ mode: mode === 'photo' ? 'photo' : mode, pattern: mode === 'chic' ? pattern : 'plain', color, photoUri, monoAppearance, monoPattern });
+    const selection = { mode: mode === 'photo' ? 'photo' : mode, pattern: mode === 'chic' ? pattern : 'plain', color, photoUri, monoAppearance, monoPattern } as DesignTryOnSelection;
+    // Close the try-on surface before opening the Trial/Rewarded/purchase
+    // surface. The parent queues the next action until the outer Design Sheet
+    // has received its native onDismiss; delaying this callback with another
+    // InteractionManager task can leave the iOS modal transition suspended.
     onClose();
+    onApply(selection);
   };
-  const designImageChoices: Array<{ id: ImageDesignPattern; label: string }> = [{ id: 'stationery', label: 'ステーショナリー' }, { id: 'botanicalBackground', label: 'ボタニカル' }, { id: 'ocean', label: 'オーシャン' }, { id: 'nightSky', label: 'ナイトスカイ' }];
   const monoChoices: Array<{ id: MonoPattern; label: string }> = [{ id: 'plain', label: 'プレーン' }, { id: 'looseLeaf', label: 'ルーズリーフ' }, { id: 'chic', label: 'シック' }];
   return <SafeAreaView style={{ flex: 1, backgroundColor: previewBackground }}><View style={{ flex: 1, overflow: 'hidden' }}>
       {renderBackground}
       <View style={{ flex: 1 }}>
         <View style={{ minHeight: 54, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 18, borderBottomWidth: 1, borderBottomColor: previewPalette.border, backgroundColor: previewPalette.cardSurface }}>
-          <View><Text style={{ color: previewPalette.textPrimary, fontSize: 17, fontWeight: '900' }}>Todayを試着</Text><Text style={{ color: previewPalette.textSecondary, fontSize: 11, marginTop: 2 }}>試着中・正式設定はまだ変更されません</Text></View>
+          <View><Text style={{ color: previewPalette.textPrimary, fontSize: 17, fontWeight: '900' }}>{photoTarget === 'background' ? '今日を試着' : `${photoTargetLabel}を試着`}</Text><Text style={{ color: previewPalette.textSecondary, fontSize: 11, marginTop: 2 }}>試着中・正式設定はまだ変更されません</Text></View>
           <Pressable accessibilityRole="button" accessibilityLabel="試着を閉じる" onPress={onClose} style={{ minWidth: 42, minHeight: 42, alignItems: 'center', justifyContent: 'center' }}><Text style={{ color: previewPalette.accent, fontSize: 25 }}>×</Text></Pressable>
         </View>
-        <View style={{ flex: 1 }}>{homePreview}</View>
+        <View style={{ flex: 1 }}>{previewContent}</View>
         <View style={{ maxHeight: 286, paddingTop: 10, paddingBottom: 8, paddingHorizontal: 14, borderTopWidth: 1, borderTopColor: previewPalette.border, backgroundColor: previewPalette.cardSurface }}>
           <View style={{ flexDirection: 'row', gap: 7, marginBottom: 8 }}>{(['minimal', 'chic', 'photo'] as const).map((tab) => { const active = tab === 'minimal' ? mode === 'minimal' || mode === 'dark' : mode === tab; return <Pressable key={tab} accessibilityRole="button" accessibilityState={{ selected: active }} onPress={() => setMode(tab === 'minimal' ? 'minimal' : tab)} style={{ flex: 1, minHeight: 34, borderRadius: 10, borderWidth: 1, borderColor: active ? previewPalette.accent : previewPalette.border, backgroundColor: active ? previewPalette.accentSoft : previewPalette.surface, alignItems: 'center', justifyContent: 'center' }}><Text style={{ color: active ? previewPalette.accentStrong : previewPalette.textSecondary, fontSize: 12, fontWeight: '900' }}>{tab === 'minimal' ? 'Mono' : tab === 'chic' ? 'Design' : 'Photo'}</Text></Pressable>; })}</View>
           {(mode === 'minimal' || mode === 'dark') && <><View style={{ flexDirection: 'row', gap: 7, marginBottom: 8 }}>{(['auto', 'light', 'dark'] as const).map((item) => <Pressable key={item} onPress={() => setMonoAppearance(item)} style={{ paddingHorizontal: 12, minHeight: 30, borderRadius: 9, borderWidth: 1, borderColor: monoAppearance === item ? previewPalette.accent : previewPalette.border, backgroundColor: monoAppearance === item ? previewPalette.accentSoft : previewPalette.surface, justifyContent: 'center' }}><Text style={{ color: monoAppearance === item ? previewPalette.accentStrong : previewPalette.textSecondary, fontSize: 11, fontWeight: '800' }}>{item === 'auto' ? '自動' : item === 'light' ? 'Light' : 'Dark'}</Text></Pressable>)}</View><ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingBottom: 8 }}>{monoChoices.map((item) => <Pressable key={item.id} accessibilityRole="button" accessibilityState={{ selected: monoPattern === item.id }} onPress={() => setMonoPattern(item.id)} style={{ width: 108, minHeight: 42, borderRadius: 10, borderWidth: monoPattern === item.id ? 2 : 1, borderColor: monoPattern === item.id ? previewPalette.accent : previewPalette.border, backgroundColor: previewPalette.surface, alignItems: 'center', justifyContent: 'center' }}><Text style={{ color: monoPattern === item.id ? previewPalette.accentStrong : previewPalette.textSecondary, fontSize: 11, fontWeight: '800' }}>{item.label}</Text></Pressable>)}</ScrollView></>}
-          {mode === 'chic' && <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingBottom: 8 }}>{designImageChoices.map((item) => { const active = pattern === item.id; return <Pressable key={item.id} accessibilityRole="button" accessibilityState={{ selected: active }} onPress={() => setPattern(item.id)} style={{ width: 106, minHeight: 58, borderRadius: 10, borderWidth: active ? 2 : 1, borderColor: active ? previewPalette.accent : previewPalette.border, overflow: 'hidden', backgroundColor: designBackgroundAssets[item.id].background }}><Image source={designBackgroundAssets[item.id].previewSource} resizeMode="cover" style={{ width: '100%', height: 34 }} /><Text style={{ color: active ? previewPalette.accentStrong : previewPalette.textSecondary, fontSize: 10, fontWeight: '800', textAlign: 'center', paddingVertical: 4 }}>{item.label}</Text></Pressable>; })}</ScrollView>}
+          {mode === 'chic' && <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingBottom: 8 }}>{designPatternChoices.map((item) => { const active = pattern === item.id; const imageAsset = isImageDesignPattern(item.id) ? designBackgroundAssets[item.id] : undefined; const visual = getChicPatternVisual(item.id, previewPalette); return <Pressable key={item.id} accessibilityRole="button" accessibilityState={{ selected: active }} onPress={() => setPattern(item.id)} style={{ width: 106, minHeight: 58, borderRadius: 10, borderWidth: active ? 2 : 1, borderColor: active ? previewPalette.accent : previewPalette.border, overflow: 'hidden', backgroundColor: imageAsset?.background ?? visual.background }}>{imageAsset ? <Image source={imageAsset.previewSource} resizeMode="cover" style={{ width: '100%', height: 34 }} /> : <View style={{ width: '100%', height: 34, overflow: 'hidden' }}><ChicPatternDecor pattern={item.id} accent={visual.accent} warm={visual.warm} checkColor={color} preview previewTopCrop={item.id === 'floralSoft'} /></View>}<Text style={{ color: active ? previewPalette.accentStrong : previewPalette.textSecondary, fontSize: 10, fontWeight: '800', textAlign: 'center', paddingVertical: 4 }}>{item.label}</Text></Pressable>; })}</ScrollView>}
           {mode === 'photo' && <View style={{ flexDirection: 'row', alignItems: 'center', minHeight: 52, marginBottom: 8, paddingHorizontal: 10, borderRadius: 10, borderWidth: 1, borderColor: previewPalette.border, backgroundColor: previewPalette.surface }}>{photoUri ? <Image source={{ uri: photoUri }} resizeMode="cover" style={{ width: 54, height: 36, borderRadius: 7 }} /> : <View style={{ width: 54, height: 36, borderRadius: 7, backgroundColor: previewPalette.accentSoft }} />}<Text style={{ color: previewPalette.textSecondary, fontSize: 11, marginLeft: 9 }}>{photoUri ? '保存済み写真を試着中' : '写真を選択するとPreviewできます'}</Text></View>}
+          {mode === 'photo' && <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 7, paddingBottom: 7 }}><Text style={{ color: previewPalette.textSecondary, fontSize: 10, alignSelf: 'center', marginRight: 2 }}>写真の表示：</Text>{([{ id: 'background', label: '背景' }, { id: 'home', label: '今日' }, { id: 'timeline', label: '予定' }, { id: 'analysis', label: '分析' }, { id: 'wish', label: '叶えたいこと' }, { id: 'settings', label: '設定' }, { id: 'focus', label: '集中タイマー' }] as const).map((item) => { const active = photoTarget === item.id; const available = item.id === 'background' ? Boolean(photoUri) : item.id === 'focus' ? Boolean(focusBackgroundUri) : Boolean(topImageUris?.[item.id]); return <Pressable key={item.id} disabled={!available} onPress={() => setPhotoTarget(item.id)} style={{ minHeight: 30, paddingHorizontal: 10, borderRadius: 9, borderWidth: active ? 2 : 1, borderColor: active ? previewPalette.accent : previewPalette.border, backgroundColor: active ? previewPalette.accentSoft : previewPalette.surface, opacity: available ? 1 : 0.45, justifyContent: 'center' }}><Text style={{ color: active ? previewPalette.accentStrong : previewPalette.textSecondary, fontSize: 10, fontWeight: '800' }}>{item.label}</Text></Pressable>; })}</ScrollView>}
           {mode !== 'minimal' && mode !== 'dark' && <ThemeColorSelector color={color} onChange={setColor} designMode="chic" />}
           <Pressable accessibilityRole="button" accessibilityLabel="このデザインを使う" onPress={applySelection} style={{ minHeight: 42, borderRadius: 12, marginTop: 8, backgroundColor: previewPalette.accent, alignItems: 'center', justifyContent: 'center' }}><Text style={{ color: previewPalette.onAccent, fontSize: 13, fontWeight: '900' }}>このデザインを使う</Text></Pressable>
         </View>
@@ -6216,7 +6722,7 @@ function DesignTryOnModal({ visible, initialMode, initialPattern, initialColor, 
     </View></SafeAreaView>;
 }
 
-function DesignPreviewModal({ visible, initialPattern, initialMode = 'chic', chicCheckColor, planTier, designCustomizePurchased = false, photoUri, onPickPhoto, onClose, onUse, onTrial }: { visible: boolean; initialPattern?: ChicPattern; initialMode?: DesignPreviewMode; chicCheckColor: ChicCheckColor; planTier: PlanTier; designCustomizePurchased?: boolean; photoUri?: string; onPickPhoto: () => void; onClose: () => void; onUse: (mode: DesignPreviewMode, pattern?: ChicPattern) => void; onTrial?: (mode: DesignPreviewMode, pattern?: ChicPattern) => void }) {
+function DesignPreviewModal({ visible, initialPattern, initialMode = 'chic', chicCheckColor, planTier, designCustomizePurchased = false, photoUri, onPickPhoto, onClose, onUse }: { visible: boolean; initialPattern?: ChicPattern; initialMode?: DesignPreviewMode; chicCheckColor: ChicCheckColor; planTier: PlanTier; designCustomizePurchased?: boolean; photoUri?: string; onPickPhoto: () => void; onClose: () => void; onUse: (mode: DesignPreviewMode, pattern?: ChicPattern) => void }) {
   const [mode, setMode] = useState<DesignPreviewMode>('chic');
   const [pattern, setPattern] = useState<ChicPattern>(initialPattern ?? 'plain');
   const [floralSoftPreviewStatus, setFloralSoftPreviewStatus] = useState<'idle' | 'loading' | 'loaded' | 'error'>('idle');
@@ -6248,37 +6754,22 @@ function DesignPreviewModal({ visible, initialPattern, initialMode = 'chic', chi
   const uiPreview = mode === 'chic' && previewTokens
     ? { background: previewTokens.background, surface: previewTokens.cardSurface, soft: previewTokens.accentSoft, border: previewTokens.border, text: previewTokens.textPrimary, muted: previewTokens.textSecondary, accent: previewTokens.accent, accentStrong: previewTokens.accentStrong, onAccent: previewTokens.onAccent }
     : (() => { const colors = getThemeTokens(mode).colors; return { background: colors.screenBackground, surface: colors.surface, soft: colors.softAccent, border: colors.border, text: colors.primaryText, muted: colors.secondaryText, accent: colors.primaryAccent, accentStrong: colors.primaryAccent, onAccent: mode === 'dark' ? colors.screenBackground : '#FFFFFF' }; })();
-  const previewPatterns: { id: ChicPattern; label: string }[] = [
-    { id: 'plain', label: 'プレーン' },
-    { id: 'floral', label: designFloralAssets.floral.label },
-    { id: 'floralSoft', label: designFloralAssets.floralSoft.label },
-    { id: 'floralSeasonal', label: designFloralAssets.floralSeasonal.label },
-    { id: 'dot', label: 'ドット' },
-    { id: 'heart', label: 'ハート' },
-    { id: 'checkLavenderSatin', label: 'ギンガム1' },
-    { id: 'checkBeigeNoir', label: 'ギンガム2' },
-    { id: 'checkMauveFrame', label: 'ギンガム3' },
-    { id: 'stationery', label: 'ステーショナリー' },
-    { id: 'botanicalBackground', label: 'ボタニカル' },
-    { id: 'ocean', label: 'オーシャン' },
-    { id: 'nightSky', label: 'ナイトスカイ' },
-  ];
   if (!visible) return null;
   return <>
     <Modal visible transparent animationType="slide" onRequestClose={onClose}>
     <Pressable style={designPreviewStyles.backdrop} onPress={onClose}>
       <Pressable style={[designPreviewStyles.sheet, { backgroundColor: uiPreview.surface, borderColor: uiPreview.border }]} onPress={(event) => event.stopPropagation()}>
-        <View style={designPreviewStyles.header}><View><Text style={[designPreviewStyles.eyebrow, { color: uiPreview.accent }]}>DESIGN PREVIEW</Text><Text style={[designPreviewStyles.title, { color: uiPreview.text }]}>見た目を試してみよう</Text></View><Pressable onPress={onClose} hitSlop={10}><Text style={[designPreviewStyles.close, { color: uiPreview.muted }]}>×</Text></Pressable></View>
-        <Text style={[designPreviewStyles.copy, { color: uiPreview.muted }]}>実際のRhythm画面で、Mono・Design・Photoの見え方を確認できます。</Text>
+        <View style={designPreviewStyles.header}><View><Text style={[designPreviewStyles.eyebrow, { color: uiPreview.accent }]}>見た目を確認</Text><Text style={[designPreviewStyles.title, { color: uiPreview.text }]}>見た目を試してみよう</Text></View><Pressable onPress={onClose} hitSlop={10}><Text style={[designPreviewStyles.close, { color: uiPreview.muted }]}>×</Text></Pressable></View>
+        <Text style={[designPreviewStyles.copy, { color: uiPreview.muted }]}>実際のRhythm画面で、シンプル・デザイン・写真の見え方を確認できます。</Text>
         <View style={designPreviewStyles.modeRow}>
-          {([{ id: 'minimal', label: 'Mono Light' }, { id: 'dark', label: 'Mono Dark' }, { id: 'chic', label: 'Design' }, { id: 'photo', label: 'Photo' }] as { id: DesignPreviewMode; label: string }[]).map((item) => <Pressable key={item.id} style={[designPreviewStyles.modeChip, { borderColor: uiPreview.border }, mode === item.id && { borderColor: uiPreview.accent, backgroundColor: uiPreview.soft }]} onPress={() => setMode(item.id)}><Text style={[designPreviewStyles.modeChipText, { color: uiPreview.muted }, mode === item.id && { color: uiPreview.accentStrong }]}>{item.label}</Text></Pressable>)}
+          {([{ id: 'minimal', label: 'ライト' }, { id: 'dark', label: 'ダーク' }, { id: 'chic', label: 'デザイン' }, { id: 'photo', label: '写真' }] as { id: DesignPreviewMode; label: string }[]).map((item) => <Pressable key={item.id} style={[designPreviewStyles.modeChip, { borderColor: uiPreview.border }, mode === item.id && { borderColor: uiPreview.accent, backgroundColor: uiPreview.soft }]} onPress={() => setMode(item.id)}><Text style={[designPreviewStyles.modeChipText, { color: uiPreview.muted }, mode === item.id && { color: uiPreview.accentStrong }]}>{item.label}</Text></Pressable>)}
         </View>
-        {mode === 'chic' && <View style={designPreviewStyles.patternRow}>{previewPatterns.map((item) => { const imageAsset = isImageDesignPattern(item.id) ? designBackgroundAssets[item.id] : undefined; return <Pressable key={item.id} style={[designPreviewStyles.patternChip, pattern === item.id && { borderColor: palette.accent, backgroundColor: palette.accentSoft }]} onPress={() => setPattern(item.id)}>{imageAsset ? <Image source={imageAsset.previewSource} resizeMode="contain" style={designPreviewStyles.patternDot} /> : <View style={[designPreviewStyles.patternDot, { backgroundColor: item.id === 'plain' ? palette.accent : getChicPatternVisual(item.id, palette).accent }]} />}<Text numberOfLines={1} style={[designPreviewStyles.patternText, pattern === item.id && { color: palette.accentStrong }]}>{item.label}</Text></Pressable>; })}</View>}
+        {mode === 'chic' && <View style={designPreviewStyles.patternRow}>{designPatternChoices.map((item) => { const imageAsset = isImageDesignPattern(item.id) ? designBackgroundAssets[item.id] : undefined; return <Pressable key={item.id} style={[designPreviewStyles.patternChip, pattern === item.id && { borderColor: palette.accent, backgroundColor: palette.accentSoft }]} onPress={() => setPattern(item.id)}>{imageAsset ? <Image source={imageAsset.previewSource} resizeMode="contain" style={designPreviewStyles.patternDot} /> : <View style={[designPreviewStyles.patternDot, { backgroundColor: item.id === 'plain' ? palette.accent : getChicPatternVisual(item.id, palette).accent }]} />}<Text numberOfLines={1} style={[designPreviewStyles.patternText, pattern === item.id && { color: palette.accentStrong }]}>{item.label}</Text></Pressable>; })}</View>}
         <View style={[designPreviewStyles.preview, { backgroundColor: mode === 'photo' ? '#202020' : uiPreview.background, borderColor: uiPreview.border }]}>
           {isFreeFloralSoftPreview ? <View style={designPreviewStyles.floralSoftPreviewCard}>
             {floralSoftPreviewStatus !== 'loaded' && <View style={[StyleSheet.absoluteFillObject, designPreviewStyles.floralSoftPreviewFallback, { backgroundColor: uiPreview.soft }]}>{floralSoftPreviewStatus === 'error' ? <Text style={[designPreviewStyles.floralSoftPreviewError, { color: uiPreview.muted }]}>プレビューを表示できませんでした</Text> : <ActivityIndicator color={uiPreview.accent} />}</View>}
             <Image source={designFloralAssets.floralSoft.previewSource ?? designFloralAssets.floralSoft.source} resizeMode="contain" onLoadStart={() => setFloralSoftPreviewStatus('loading')} onLoad={() => setFloralSoftPreviewStatus('loaded')} onError={() => setFloralSoftPreviewStatus('error')} style={[designPreviewStyles.floralSoftPreviewImage, floralSoftPreviewStatus !== 'loaded' && { opacity: 0 }]} />
-            <View style={[designPreviewStyles.floralSoftPreviewNotice, { backgroundColor: uiPreview.surface, borderTopColor: uiPreview.border }]}><Text style={[designPreviewStyles.floralSoftPreviewName, { color: uiPreview.text }]}>花柄2</Text><Text style={[designPreviewStyles.floralSoftPreviewPremium, { color: uiPreview.accent }]}>Premium限定デザイン</Text><Text style={[designPreviewStyles.floralSoftPreviewCopy, { color: uiPreview.muted }]}>このデザインを使うにはPremium登録が必要です</Text></View>
+            <View style={[designPreviewStyles.floralSoftPreviewNotice, { backgroundColor: uiPreview.surface, borderTopColor: uiPreview.border }]}><Text style={[designPreviewStyles.floralSoftPreviewName, { color: uiPreview.text }]}>花柄2</Text><Text style={[designPreviewStyles.floralSoftPreviewPremium, { color: uiPreview.accent }]}>プレミアム限定デザイン</Text><Text style={[designPreviewStyles.floralSoftPreviewCopy, { color: uiPreview.muted }]}>このデザインを使うにはプレミアム登録が必要です</Text></View>
           </View> : <>
             {mode === 'chic' && (isImageDesignPattern(pattern) ? <View pointerEvents="none" style={StyleSheet.absoluteFillObject}><Image source={designBackgroundAssets[pattern].source} resizeMode="contain" style={StyleSheet.absoluteFillObject} /></View> : <View pointerEvents="none" style={StyleSheet.absoluteFillObject}><ChicPatternDecor pattern={pattern} accent={previewVisual.accent} warm={previewVisual.warm} checkColor={chicCheckColor} preview previewTopCrop={pattern === 'floralSoft'} /></View>)}
           {mode === 'photo' && photoUri ? <Image source={{ uri: photoUri }} resizeMode="cover" style={designPreviewStyles.photoBackground} /> : null}
@@ -6294,16 +6785,16 @@ function DesignPreviewModal({ visible, initialPattern, initialMode = 'chic', chi
         </View>
         {mode === 'photo' && <Pressable style={[designPreviewStyles.secondaryButton, { borderColor: uiPreview.border, backgroundColor: uiPreview.surface }]} onPress={onPickPhoto}><Text style={[designPreviewStyles.secondaryButtonText, { color: uiPreview.accent }]}>{photoUri ? '写真を選び直す' : '写真で試す'}</Text></Pressable>}
         {isLockedPremiumPattern && <Text style={[designPreviewStyles.trialHint, { color: uiPreview.muted }]}>試着だけではお試し時間は開始されません。</Text>}
-        <View style={designPreviewStyles.actions}><Pressable style={[designPreviewStyles.secondaryButton, { borderColor: uiPreview.border, backgroundColor: uiPreview.surface }]} onPress={onClose}><Text style={[designPreviewStyles.secondaryButtonText, { color: uiPreview.accent }]} >閉じる</Text></Pressable><Pressable style={[designPreviewStyles.primaryButton, { backgroundColor: uiPreview.accent }]} onPress={() => { if (mode === 'photo' && !photoUri) { onPickPhoto(); return; } if (isLockedPremiumPattern) { onTrial?.(mode, pattern); return; } onUse(mode, mode === 'chic' ? pattern : undefined); }}><Text style={[designPreviewStyles.primaryButtonText, { color: uiPreview.onAccent }]}>{mode === 'photo' ? (photoUri ? 'この写真を使う' : '写真で試す') : 'このデザインを使う'}</Text></Pressable></View>
+        <View style={designPreviewStyles.actions}><Pressable style={[designPreviewStyles.secondaryButton, { borderColor: uiPreview.border, backgroundColor: uiPreview.surface }]} onPress={onClose}><Text style={[designPreviewStyles.secondaryButtonText, { color: uiPreview.accent }]} >閉じる</Text></Pressable><Pressable style={[designPreviewStyles.primaryButton, { backgroundColor: uiPreview.accent }]} onPress={() => { if (mode === 'photo' && !photoUri) { onPickPhoto(); return; } onUse(mode, mode === 'chic' ? pattern : undefined); }}><Text style={[designPreviewStyles.primaryButtonText, { color: uiPreview.onAccent }]}>{mode === 'photo' ? (photoUri ? 'この写真を使う' : '写真で試す') : 'このデザインを使う'}</Text></Pressable></View>
       </Pressable>
     </Pressable>
     </Modal>
   </>;
 }
 
-function DesignTrialExpiredModal({ visible, designMode, chicPalette, onClose, onPremium, onReward }: { visible: boolean; designMode: DesignMode; chicPalette?: ChicThemePalette; onClose: () => void; onPremium: () => void; onReward: () => void }) {
+function DesignTrialExpiredModal({ visible, trialAvailable = false, designMode, chicPalette, onClose, onDismiss, onPremium, onTrial, onReward }: { visible: boolean; trialAvailable?: boolean; designMode: DesignMode; chicPalette?: ChicThemePalette; onClose: () => void; onDismiss?: () => void; onPremium: () => void; onTrial: () => void; onReward: () => void }) {
   const colors = chicPalette && designMode === 'chic' ? { surface: chicPalette.cardSurface, border: chicPalette.border, text: chicPalette.textPrimary, muted: chicPalette.textSecondary, accent: chicPalette.accent, onAccent: chicPalette.onAccent } : (() => { const theme = getThemeTokens(designMode).colors; return { surface: theme.surface, border: theme.border, text: theme.primaryText, muted: theme.secondaryText, accent: theme.primaryAccent, onAccent: designMode === 'dark' ? theme.screenBackground : '#FFFFFF' }; })();
-  return <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}><Pressable style={designPreviewStyles.backdrop} onPress={onClose}><Pressable style={[designPreviewStyles.sheet, { backgroundColor: colors.surface, borderColor: colors.border }]} onPress={(event) => event.stopPropagation()}><ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={designPreviewStyles.trialSheetContent}><Text style={[designPreviewStyles.eyebrow, { color: colors.accent }]}>デザインカスタマイズ</Text><Text style={[designPreviewStyles.title, { color: colors.text }]}>デザインの利用期限が終了しました</Text><Text style={[designPreviewStyles.copy, { color: colors.muted }]}>広告を1回見ると、デザイン・写真を12時間使えます。購入すると期限なく利用できます。</Text><Pressable style={[designPreviewStyles.primaryButton, designPreviewStyles.trialActionButton, { backgroundColor: colors.accent }]} onPress={onReward}><Text style={[designPreviewStyles.primaryButtonText, { color: colors.onAccent }]}>広告を見て12時間使う</Text></Pressable><Pressable style={[designPreviewStyles.secondaryButton, designPreviewStyles.trialActionButton, { borderColor: colors.border }]} onPress={onPremium}><Text style={[designPreviewStyles.secondaryButtonText, { color: colors.accent }]}>デザインカスタマイズを購入</Text></Pressable><Pressable style={designPreviewStyles.textButton} onPress={onClose}><Text style={[designPreviewStyles.textButtonText, { color: colors.muted }]}>無料デザインで続ける</Text></Pressable></ScrollView></Pressable></Pressable></Modal>;
+  return <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose} onDismiss={onDismiss}><Pressable style={designPreviewStyles.backdrop} onPress={onClose}><Pressable style={[designPreviewStyles.sheet, { backgroundColor: colors.surface, borderColor: colors.border }]} onPress={(event) => event.stopPropagation()}><ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={designPreviewStyles.trialSheetContent}><Text style={[designPreviewStyles.eyebrow, { color: colors.accent }]}>デザインカスタマイズ</Text><Text style={[designPreviewStyles.title, { color: colors.text }]}>{trialAvailable ? '24時間無料で試してみますか？' : 'デザインの利用期限が終了しました'}</Text><Text style={[designPreviewStyles.copy, { color: colors.muted }]}>{trialAvailable ? '広告なしで24時間、今試着しているデザインを使えます。' : '広告を1回見ると、デザイン・写真を12時間使えます。購入すると期限なく利用できます。'}</Text>{trialAvailable ? <Pressable style={[designPreviewStyles.primaryButton, designPreviewStyles.trialActionButton, { backgroundColor: colors.accent }]} onPress={onTrial}><Text style={[designPreviewStyles.primaryButtonText, { color: colors.onAccent }]}>24時間無料で使う</Text></Pressable> : <Pressable style={[designPreviewStyles.primaryButton, designPreviewStyles.trialActionButton, { backgroundColor: colors.accent }]} onPress={onReward}><Text style={[designPreviewStyles.primaryButtonText, { color: colors.onAccent }]}>広告を見て12時間使う</Text></Pressable>}<Pressable style={[designPreviewStyles.secondaryButton, designPreviewStyles.trialActionButton, { borderColor: colors.border }]} onPress={onPremium}><Text style={[designPreviewStyles.secondaryButtonText, { color: colors.accent }]}>デザインカスタマイズを購入</Text></Pressable><Pressable style={designPreviewStyles.textButton} onPress={onClose}><Text style={[designPreviewStyles.textButtonText, { color: colors.muted }]}>あとで</Text></Pressable></ScrollView></Pressable></Pressable></Modal>;
 }
 
 const designPreviewStyles = StyleSheet.create({
@@ -7146,37 +7637,7 @@ function CompactNumberSetting({ label, value, onChange, isDark = false }: { labe
 }
 
 function ChicPatternSelector({ designMode, chicPattern, chicCheckColor, planTier, designCustomizePurchased = false, onPattern, onCheckColor, onPremium, onPreview }: { designMode: DesignMode; chicPattern: ChicPattern; chicCheckColor: ChicCheckColor; planTier: PlanTier; designCustomizePurchased?: boolean; onPattern: (pattern: ChicPattern) => void; onCheckColor: (color: ChicCheckColor) => void; onPremium: () => void; onPreview: (pattern: ChicPattern) => void }) {
-  const patterns: { id: ChicPattern; label: string; feature?: 'chic_floral' | 'chic_dot' | 'chic_heart' | 'chic_check_lavender_satin' | 'chic_check_beige_noir' | 'chic_check_mauve_frame' }[] = [
-    { id: 'plain', label: 'プレーン' },
-    { id: 'floral', label: designFloralAssets.floral.label, feature: 'chic_floral' },
-    { id: 'floralSoft', label: designFloralAssets.floralSoft.label, feature: 'chic_floral' },
-    { id: 'floralSeasonal', label: designFloralAssets.floralSeasonal.label, feature: 'chic_floral' },
-    { id: 'dot', label: 'ドット', feature: 'chic_dot' },
-    { id: 'heart', label: 'ハート', feature: 'chic_heart' },
-    { id: 'checkLavenderSatin', label: 'くすみラベンダーチェック', feature: 'chic_check_lavender_satin' },
-    { id: 'checkBeigeNoir', label: 'ベージュ×ブラックチェック', feature: 'chic_check_beige_noir' },
-    { id: 'checkMauveFrame', label: 'モーブフレームチェック', feature: 'chic_check_mauve_frame' },
-    { id: 'stationery', label: 'ステーショナリー', feature: 'chic_floral' },
-    { id: 'botanicalBackground', label: 'ボタニカル', feature: 'chic_floral' },
-    { id: 'ocean', label: 'オーシャン', feature: 'chic_floral' },
-    { id: 'nightSky', label: 'ナイトスカイ', feature: 'chic_floral' },
-  ];
-  const displayPatternLabels: Partial<Record<ChicPattern, string>> = {
-    floral: designFloralAssets.floral.label,
-    floralSoft: designFloralAssets.floralSoft.label,
-    floralSeasonal: designFloralAssets.floralSeasonal.label,
-    floralDark: designFloralAssets.floralDark.label,
-    plain: 'プレーン',
-    dot: 'ドット',
-    checkLavenderSatin: 'ギンガムチェック1',
-    checkBeigeNoir: 'ギンガムチェック2',
-    checkMauveFrame: 'ギンガムチェック3',
-    stationery: 'ステーショナリー',
-    botanicalBackground: 'ボタニカル',
-    ocean: 'オーシャン',
-    nightSky: 'ナイトスカイ',
-  };
-  const visiblePatterns = designMode === 'photo' ? patterns.filter((item) => item.id === 'plain') : patterns;
+  const visiblePatterns = designMode === 'photo' ? designPatternChoices.filter((item) => item.id === 'plain') : designPatternChoices;
   const selectedPalette = chicPattern === 'nightSky' ? getNightSkyPalette(getChicCheckColor(chicCheckColor)) : getChicCheckColor(chicCheckColor);
   return <View style={[styles.patternSelectorNew, designMode === 'dark' && styles.darkSurface, { borderTopColor: selectedPalette.border }]}>
     <Text style={[styles.fieldLabel, designMode === 'dark' && styles.darkAccentText, { color: designMode === 'dark' ? '#B4C0D4' : selectedPalette.textPrimary }]}>背景の柄</Text>
@@ -7192,7 +7653,7 @@ function ChicPatternSelector({ designMode, chicPattern, chicCheckColor, planTier
         const imageAsset = isImageDesignPattern(item.id) ? designBackgroundAssets[item.id] : undefined;
         return <Pressable key={item.id} style={[styles.patternChoice, { backgroundColor: choicePalette.cardSurface, borderColor: selected ? choicePalette.accent : choicePalette.border }, selected && { borderWidth: 2 }]} onPress={() => { if (locked) { onPreview(item.id); return; } onPattern(item.id); }}>
           <View style={[styles.patternSwatch, styles.patternSwatchLarge, { backgroundColor: imageAsset?.background ?? patternBase, borderColor: choicePalette.border, borderWidth: 1 }]}>{imageAsset ? <Image source={imageAsset.previewSource} resizeMode="contain" style={StyleSheet.absoluteFillObject} /> : <ChicPatternDecor pattern={item.id} accent={visual.accent} warm={patternStripe} density="compact" checkColor={chicCheckColor} preview previewTopCrop={item.id === 'floralSoft'} />}</View>
-          <Text numberOfLines={2} ellipsizeMode="clip" style={[styles.patternChoiceText, { color: selected ? choicePalette.accentStrong : choicePalette.textSecondary }]}>{displayPatternLabels[item.id] ?? item.label}{locked ? ' 🔒' : ''}</Text>
+          <Text numberOfLines={2} ellipsizeMode="clip" style={[styles.patternChoiceText, { color: selected ? choicePalette.accentStrong : choicePalette.textSecondary }]}>{item.label}{locked ? ' 🔒' : ''}</Text>
         </Pressable>;
       })}
     </View>

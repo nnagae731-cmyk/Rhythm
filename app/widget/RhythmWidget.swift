@@ -618,10 +618,10 @@ private func gallerySampleSnapshot(now: Date = Date()) -> WidgetSnapshot {
   let nextSchedule = dateAt(today, 18, 0)
   let leaveAt = dateAt(today, 16, 18)
   let sampleSchedules: [(String, Int, Int, String)] = [
-    ("会議", 9, 0, "会議室"),
+    ("朝の確認", 9, 0, ""),
     ("資料提出", 10, 30, ""),
     ("打ち合わせ", 15, 0, ""),
-    ("美容院", 18, 0, "駅前"),
+    ("18:00 予定", 18, 0, "駅前"),
   ]
   let todayItems = sampleSchedules.enumerated().map { index, item in
     WidgetSnapshot.ScheduleItem(
@@ -635,10 +635,10 @@ private func gallerySampleSnapshot(now: Date = Date()) -> WidgetSnapshot {
   }
   let weekStart = calendar.date(byAdding: .day, value: 1 - calendar.component(.weekday, from: today), to: today) ?? today
   let weekDaySchedules: [Int: (String, Int, Int)] = [
-    1: ("会議", 9, 0),
+    1: ("朝の確認", 9, 0),
     2: ("資料提出", 10, 30),
     3: ("打ち合わせ", 15, 0),
-    5: ("美容院", 18, 0),
+    5: ("18:00 予定", 18, 0),
   ]
   let weekDays = (0..<7).map { index in
     let date = calendar.date(byAdding: .day, value: index, to: weekStart) ?? weekStart
@@ -666,7 +666,11 @@ private func gallerySampleSnapshot(now: Date = Date()) -> WidgetSnapshot {
   let monthComponents = calendar.dateComponents([.year, .month], from: today)
   let monthStart = calendar.date(from: monthComponents) ?? today
   let daysInMonth = calendar.range(of: .day, in: .month, for: monthStart) ?? (1..<32)
-  let scheduledDays: Set<Int> = [3, 8, 14, 22]
+  // Keep calendar marks relative to the current month so the gallery does
+  // not look like an old screenshot with permanently fixed dates.
+  let monthDay = calendar.component(.day, from: today)
+  let lastDay = daysInMonth.count
+  let scheduledDays: Set<Int> = Set([0, 3, 8, 14].map { min(lastDay, monthDay + $0) })
   let monthDays = daysInMonth.map { day in
     let date = calendar.date(bySetting: .day, value: day, of: monthStart) ?? monthStart
     return WidgetSnapshot.MonthDay(
@@ -692,14 +696,14 @@ private func gallerySampleSnapshot(now: Date = Date()) -> WidgetSnapshot {
     // Gallery keeps the task preview focused on the task itself; the timer
     // ring belongs to the live widget and is intentionally omitted here.
     displayOptions: ["remainingTime": false],
-    currentTask: WidgetSnapshot.Task(id: "gallery-task", title: "資料をまとめる", startAt: taskStart, estimatedMinutes: 45, remainingMinutes: 25, status: "active", priority: "中", actionableAt: taskStart, deadlineAt: nil, createdAt: now.addingTimeInterval(-3600), scheduledDate: isoDay(today), optimisticCompletedAt: nil),
+    currentTask: WidgetSnapshot.Task(id: "gallery-task", title: "今日のタスクを確認", startAt: taskStart, estimatedMinutes: 25, remainingMinutes: 25, status: "active", priority: "中", actionableAt: taskStart, deadlineAt: nil, createdAt: now.addingTimeInterval(-3600), scheduledDate: isoDay(today), optimisticCompletedAt: nil),
     currentTaskCandidates: nil,
     todayNowTasks: [
       WidgetSnapshot.Task(id: "gallery-task-2", title: "メールを確認", startAt: dateAt(today, 16, 0), estimatedMinutes: nil, remainingMinutes: nil, status: "active", priority: "低", actionableAt: dateAt(today, 16, 0), deadlineAt: nil, createdAt: now, scheduledDate: isoDay(today), optimisticCompletedAt: nil),
       WidgetSnapshot.Task(id: "gallery-task-3", title: "資料を送る", startAt: dateAt(today, 17, 0), estimatedMinutes: nil, remainingMinutes: nil, status: "active", priority: "中", actionableAt: dateAt(today, 17, 0), deadlineAt: nil, createdAt: now, scheduledDate: isoDay(today), optimisticCompletedAt: nil),
     ],
     todayNowTaskCount: 2,
-    nextPlan: WidgetSnapshot.Plan(id: "gallery-plan", title: "美容院", scheduledAt: nextSchedule, location: "駅前", allDay: false, leaveAt: leaveAt, remainingToLeave: 102, departureAt: leaveAt),
+    nextPlan: WidgetSnapshot.Plan(id: "gallery-plan", title: "18:00 予定", scheduledAt: nextSchedule, location: "駅前", allDay: false, leaveAt: leaveAt, remainingToLeave: 102, departureAt: leaveAt),
     nextPlans: nil,
     calendarPlans: nil,
     calendarMonth: WidgetSnapshot.CalendarMonth(year: monthComponents.year ?? calendar.component(.year, from: today), month: monthComponents.month ?? calendar.component(.month, from: today), leadingEmptyCount: calendar.component(.weekday, from: monthStart) - 1, days: monthDays),
