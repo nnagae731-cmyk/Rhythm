@@ -7549,28 +7549,23 @@ function TaskScheduleCalendar({ tasks, plans, externalEvents, now, designMode, c
         const dayCompletedTasks = scheduleFilter === 'plans' ? [] : tasks.filter((task) => isRegularVisibleTask(task) && task.done && taskDates(task).includes(key));
         const dayPlans = scheduleFilter === 'tasks' ? [] : plans.filter((item) => isPlanOnDate(item, key));
         const dayExternalEvents = scheduleFilter === 'tasks' ? [] : externalEvents.filter((event) => dateKey(new Date(event.startDate)) === key);
-        // 出発予定を先頭に維持しながら、月表示では最大4本まで読めるようにする。
+        // Rhythm内予定とAppleカレンダー予定は、月表示では同じ「予定」として扱う。
+        // 予定を先頭に維持しながら、最大4本まで読めるようにする。
+        const dayPlanCount = dayPlans.length + dayExternalEvents.length;
         const dayBars = [
           ...dayPlans.map((item) => ({ id: `plan-${item.id ?? item.title}`, kind: 'plan' as const, title: item.title })),
+          ...dayExternalEvents.map((event) => ({ id: `external-${event.id}`, kind: 'plan' as const, title: event.title || 'カレンダー予定' })),
           ...dayTasks.map((task) => ({ id: `task-${task.id}`, kind: 'task' as const, title: task.title })),
           ...dayCompletedTasks.map((task) => ({ id: `completed-${task.id}`, kind: 'completed' as const, title: task.title })),
-          ...dayExternalEvents.map((event) => ({ id: `external-${event.id}`, kind: 'external' as const, title: event.title || 'カレンダー予定' })),
         ];
         const visibleBars = dayBars.slice(0, 4);
         const hiddenBarCount = Math.max(0, dayBars.length - visibleBars.length);
         const strengthForCount = (count: number) => count >= 4 ? 4 : Math.max(1, count);
         const bandStyleFor = (kind: (typeof visibleBars)[number]['kind']) => {
-          const count = kind === 'plan' ? dayPlans.length : kind === 'task' ? dayTasks.length : kind === 'completed' ? dayCompletedTasks.length : dayExternalEvents.length;
+          const count = kind === 'plan' ? dayPlanCount : kind === 'task' ? dayTasks.length : dayCompletedTasks.length;
           const strength = strengthForCount(count);
           const intensity = [0, 0.14, 0.21, 0.29, 0.38][strength]!;
           const isChic = designMode === 'chic' && Boolean(chicPalette);
-          if (kind === 'external') {
-            return {
-              backgroundColor: isChic ? chicPalette!.cardTint : theme.colors.secondarySurface,
-              borderColor: isChic ? chicPalette!.border : theme.colors.border,
-              color: isChic ? chicPalette!.textSecondary : theme.colors.secondaryText,
-            };
-          }
           if (kind === 'completed') {
             const neutral = isChic ? chicPalette!.textSecondary : theme.colors.secondaryText;
             return {
