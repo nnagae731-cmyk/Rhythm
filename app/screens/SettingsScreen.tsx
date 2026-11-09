@@ -19,6 +19,7 @@ import { WIDGET_TYPE_OPTIONS } from '../features/widget/widgetSettings';
 import type { WidgetEntitlementOverride } from '../features/widget/widgetSettings';
 import { LiveActivitySettingsSheet } from '../components/LiveActivitySettingsSheet';
 import type { RhythmLiveActivityRuntimeStatus } from '../features/widget/rhythmLiveActivity';
+import { PRIVACY_POLICY_URL, SUPPORT_EMAIL, SUPPORT_URL, TERMS_OF_USE_URL } from '../features/legal/legalLinks';
 
 // Keep the production unit configurable without scattering IDs through the UI.
 // Development builds use Google's test unit unless an explicit test/production
@@ -26,11 +27,7 @@ import type { RhythmLiveActivityRuntimeStatus } from '../features/widget/rhythmL
 const isProductionAds = process.env.EXPO_PUBLIC_RHYTHM_ADS_ENV === 'production' || process.env.RHYTHM_ADS_ENV === 'production';
 const SETTINGS_BANNER_AD_UNIT_ID = process.env.EXPO_PUBLIC_RHYTHM_BANNER_AD_UNIT_ID ?? (isProductionAds ? undefined : TestIds.BANNER);
 
-const PRIVACY_POLICY_URL = 'https://rhythm-app-support-jp-nnagae731-5982s-projects.vercel.app/privacy.html';
-const SUPPORT_URL = 'https://rhythm-app-support-jp-nnagae731-5982s-projects.vercel.app/support.html';
-const SUPPORT_EMAIL = 'rhythmsupport2@gmail.com';
-
-type AboutDetailId = 'about' | 'faq' | 'privacyPolicy' | 'contact' | 'version';
+type AboutDetailId = 'about' | 'faq' | 'privacyPolicy' | 'terms' | 'contact' | 'version';
 
 function AboutAppSheet({ visible, onClose, colors }: { visible: boolean; onClose: () => void; colors: { background: string; surface: string; border: string; text: string; muted: string; accent: string; onAccent: string } }) {
   const [detail, setDetail] = useState<AboutDetailId>();
@@ -41,6 +38,7 @@ function AboutAppSheet({ visible, onClose, colors }: { visible: boolean; onClose
     { id: 'about', title: 'RhythmPaceについて', subtitle: '毎日を、自分のリズムで整える' },
     { id: 'faq', title: '使い方・よくある質問', subtitle: '基本操作と困ったときのヒント' },
     { id: 'privacyPolicy', title: 'プライバシーポリシー', subtitle: 'Webで詳しく確認', external: PRIVACY_POLICY_URL },
+    { id: 'terms', title: '利用規約', subtitle: 'Apple標準使用許諾契約', external: TERMS_OF_USE_URL },
     { id: 'contact', title: 'お問い合わせ・サポート', subtitle: 'サポートページとメール' },
     { id: 'version', title: 'バージョン情報', subtitle: `RhythmPace ${version}` },
   ];
@@ -983,7 +981,7 @@ export function SettingsScreen({
           }}
           onWidgetGuide={onWidgetGuide}
         />
-        <SettingsDisclosure icon="bellSparkle" headerAction={<View style={{ minWidth: 62, minHeight: 40, alignItems: 'flex-end', justifyContent: 'center' }}><Switch accessibilityRole="switch" accessibilityLabel="ライブアクティビティ" accessibilityState={{ checked: liveActivityEnabled }} value={liveActivityEnabled} onValueChange={(value) => onLiveActivityEnabled?.(value)} trackColor={{ false: isDark ? '#40506A' : baseTheme.border, true: isDesign && chicPalette ? chicPalette.accent : baseTheme.primaryAccent }} thumbColor={liveActivityEnabled ? (isDesign && chicPalette ? chicPalette.onAccent : '#FFFFFF') : (isDark ? '#8F9BB0' : '#FFFFFF')} /></View>} designMode={designMode} chicPalette={chicPalette} title="ライブアクティビティ" subtitle={liveActivityRuntimeStatus === 'active' ? 'ロック画面・Dynamic Islandに表示中' : liveActivityRuntimeStatus === 'unavailable' ? 'この端末では表示できません' : liveActivityRuntimeStatus === 'failed' ? '表示を開始できませんでした' : liveActivityEnabled ? '表示を開始しています' : 'ロック画面・Dynamic Islandの表示'} expanded={false} onPress={() => setLiveActivitySettingsOpen(true)} />
+        <SettingsDisclosure icon="bellSparkle" headerAction={<View style={{ minWidth: 62, minHeight: 40, alignItems: 'flex-end', justifyContent: 'center' }}><Switch accessibilityRole="switch" accessibilityLabel="ライブアクティビティ" accessibilityState={{ checked: liveActivityEnabled }} value={liveActivityEnabled} onValueChange={(value) => onLiveActivityEnabled?.(value)} trackColor={{ false: isDark ? '#40506A' : baseTheme.border, true: isDesign && chicPalette ? chicPalette.accent : baseTheme.primaryAccent }} thumbColor={liveActivityEnabled ? (isDesign && chicPalette ? chicPalette.onAccent : '#FFFFFF') : (isDark ? '#8F9BB0' : '#FFFFFF')} /></View>} designMode={designMode} chicPalette={chicPalette} title="ライブアクティビティ" subtitle={liveActivityRuntimeStatus === 'active' ? 'ロック画面・Dynamic Islandに表示中' : liveActivityRuntimeStatus === 'unavailable' ? '端末またはBuildが非対応です' : liveActivityRuntimeStatus === 'failed' ? '表示を開始できませんでした' : liveActivityEnabled ? '表示を開始しています' : 'ロック画面・Dynamic Islandの表示'} expanded={false} onPress={() => setLiveActivitySettingsOpen(true)} />
         {liveActivityDisplayOptions && onLiveActivityDisplayOptionsChange && liveActivityCustomization && onLiveActivityCustomizationChange ? <LiveActivitySettingsSheet
           visible={liveActivitySettingsOpen}
           options={liveActivityDisplayOptions}

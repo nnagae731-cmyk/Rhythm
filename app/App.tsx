@@ -48,7 +48,7 @@ import { loadRhythmState, saveRhythmState } from './storage/rhythmStorage';
 import { acknowledgeRhythmWidgetPendingActions, buildRhythmWidgetSnapshot, getRhythmWidgetPendingActions, saveRhythmAffirmationPhoto, saveRhythmWidgetPhoto, saveRhythmWidgetPhotoForWidget, saveRhythmWidgetSnapshot } from './features/widget/rhythmWidgetSnapshot';
 import { DEFAULT_WIDGET_SETTINGS, getWidgetCustomization, normalizeWidgetSettings, WIDGET_TYPE_OPTIONS } from './features/widget/widgetSettings';
 import type { WidgetEntitlementOverride } from './features/widget/widgetSettings';
-import { categories, priorities, completionIcons, categoryColors as baseCategoryColors, designModes, getLateRiskMessage, getNextBestAction, getUrgencyStatus, urgencyLevel } from './features/tasks/taskUtils';
+import { categories, priorities, completionIcons, categoryColors as baseCategoryColors, designModes, getLateRiskMessage, getNextBestAction, getUrgencyStatus, normalizeEstimatedMinutes, urgencyLevel } from './features/tasks/taskUtils';
 import { planScheduledAt, selectCurrentTask, selectCurrentTasks } from './features/tasks/taskSelectors';
 import { createSharedEventPacket, createSharedEventToken, encodeSharedEventLink, normalizeSharedEvent, parseSharedEventLink, upsertSharedEvent } from './features/shared/sharedUtils';
 import { getMonthlyWishState, normalizeWishMonthsForSave, wishMonthKey } from './features/wish/wishUtils';
@@ -66,8 +66,10 @@ import { buildRoutineInterruptionSummary, getRoutineHistories } from './features
 import type { RoutineArchive } from './types';
 import { SharedEventScreen } from './SharedEventScreen';
 import { TopImageCropModal } from './components/TopImageCropModal';
+import { AIShareSheet } from './components/AIShareSheet';
 import { cropRectToPixels, displayToNormalizedRect, getContainBounds, getInitialCropRect, NormalizedCropRect } from './features/photo/topImageCrop';
-import { deleteManagedPhotoUri, deleteTemporaryPhotoUri, isPersistedPhotoAvailable, persistPhotoUri } from './features/photo/persistentPhoto';
+import { cleanupUnreferencedManagedPhotos, collectReferencedManagedPhotoUris, deleteManagedPhotoUri, deleteTemporaryPhotoUri, isPersistedPhotoAvailable, persistPhotoUri } from './features/photo/persistentPhoto';
+import { pruneBehaviorEvents, pruneFocusSessions, pruneRecoveryHistory, pruneRoutineArchives } from './features/storage/historyCleanup';
 import { canUseNotifications, getNotificationPermissionAction, getNotificationPermissionStatus, requestRhythmNotificationPermission } from './features/notifications/notificationPermission';
 import { addHours, canCreateWish, canCreateWishAction, canImportCalendar, canStartPremiumDesignTrial, isPremiumDesignTrialActive, isPremiumDesignUnlocked, isWidgetPhotoUnlockActive } from './features/ads/rewardedAccessLogic';
 import { getRequiredAds, REWARDED_AD_RULES, RewardedFeatureId } from './features/ads/rewardedAccess';
@@ -136,7 +138,6 @@ const colors = {
   line: '#ECE8F0',
 };
 const categoryColors = baseCategoryColors;
-const ROUTINE_ARCHIVE_RETENTION_DAYS = 90;
 
 // Stable local notices. Their IDs are intentionally independent from the
 // persisted read state so a future push/remote source can reuse the same UI.
@@ -147,13 +148,6 @@ const APP_NOTICE_CATEGORY_LABELS: Record<AppNoticeCategory, string> = {
   update: 'アップデート',
   important: '重要なお知らせ',
 };
-
-function pruneRoutineArchives(items: RoutineArchive[], now = Date.now()): RoutineArchive[] {
-  return items.filter((item) => {
-    const removedAt = Date.parse(item.removedAt);
-    return !Number.isFinite(removedAt) || now - removedAt < ROUTINE_ARCHIVE_RETENTION_DAYS * 86_400_000;
-  });
-}
 
 const focusCompletionMessages = [
   'お疲れさま。ここまで集中できたね',
@@ -945,6 +939,8 @@ export default function App() {
   }, [pendingTopPhoto]);
   const [recoveryHistory, setRecoveryHistory] = useState<RecoveryRecord[]>([]);
   const [focusSessions, setFocusSessions] = useState<FocusSession[]>([]);
+  const [aiShareOpen, setAiShareOpen] = useState(false);
+  const [aiShareWishId, setAiShareWishId] = useState<string>();
   const [focusState, setFocusState] = useState<FocusPersistedState | undefined>();
   const [focusCustomDurationMinutes, setFocusCustomDurationMinutes] = useState<number | undefined>();
   const [behaviorEvents, setBehaviorEvents] = useState<BehaviorEvent[]>([]);
@@ -1111,7 +1107,7 @@ export default function App() {
     const monthlyPrice = trial.displayPrice ?? 'App Storeに表示された価格';
     Alert.alert(
       'Premiumを開始しました',
-      `7日間無料で利用できます。\n無料期間終了後は${monthlyPrice} / 月で自動更新されます。\n\n無料期間終了の前日にお知らせしますか？\n終了約24時間前に通知します。`,
+      `${trial.trialLabel ?? '無料期間'}で利用できます。\n無料期間終了後は${monthlyPrice} / 月で自動更新されます。\n\n無料期間終了の前日にお知らせしますか？\n終了約24時間前に通知します。`,
       [
         { text: 'お知らせする', onPress: () => { logPremiumDiagnostic('PREMIUM_TRIAL_ALERT_DISMISSED', { choice: 'enabled', plan: 'monthly', purchaseStatus: 'trial_choice', planTier: planTierRef.current, modalVisible: premiumOpenRef.current, entitlementsResolved: false, pending: purchaseDiagnosticPendingRef.current }); choosePremiumTrialReminder(trial, true); } },
         { text: '今回はしない', style: 'cancel', onPress: () => { logPremiumDiagnostic('PREMIUM_TRIAL_ALERT_DISMISSED', { choice: 'disabled', plan: 'monthly', purchaseStatus: 'trial_choice', planTier: planTierRef.current, modalVisible: premiumOpenRef.current, entitlementsResolved: false, pending: purchaseDiagnosticPendingRef.current }); choosePremiumTrialReminder(trial, false); } },
@@ -2778,6 +2774,7 @@ export default function App() {
           ...task,
           category: (task.category ?? 'その他') as Category,
           priority: (task.priority ?? '中') as Priority,
+          estimatedMinutes: normalizeEstimatedMinutes(task.estimatedMinutes),
           routineId: task.routineId ?? (task.isRoutine ? task.id : undefined),
         })) : [];
         tasksRef.current = loadedTasks;
@@ -2837,8 +2834,8 @@ export default function App() {
         });
         setTravelApps(normalizeTravelAppSettings(saved.travelApps));
         setDesignCustomizePurchased(saved.designCustomizePurchased === true);
-        setRecoveryHistory(saved.recoveryHistory ?? []);
-        setFocusSessions(saved.focusSessions ?? []);
+        setRecoveryHistory(pruneRecoveryHistory(saved.recoveryHistory ?? []));
+        setFocusSessions(pruneFocusSessions(saved.focusSessions ?? []));
         setFocusState(saved.focusState);
         if (saved.focusState?.running && saved.focusState.endAt && Date.parse(saved.focusState.endAt) > Date.now()) setFocusTimerActive(true);
         if (typeof saved.focusCustomDurationMinutes === 'number' && Number.isSafeInteger(saved.focusCustomDurationMinutes) && saved.focusCustomDurationMinutes > 0) {
@@ -2852,7 +2849,7 @@ export default function App() {
         loadedTasks.forEach((task) => {
           if (task.routineId && !routineTaskByTitle.has(task.title.trim())) routineTaskByTitle.set(task.title.trim(), task);
         });
-        const loadedBehaviorEvents = (saved.behaviorEvents ?? []).map((event) => {
+        const loadedBehaviorEvents = pruneBehaviorEvents((saved.behaviorEvents ?? []).map((event) => {
           if ((event.type !== 'task_completed' && event.type !== 'task_completion_reverted') || event.routineId) return event;
           const matchedTask = (event.taskId ? taskById.get(event.taskId) : undefined)
             ?? (event.taskTitleSnapshot ? routineTaskByTitle.get(event.taskTitleSnapshot.trim()) : undefined);
@@ -2863,7 +2860,7 @@ export default function App() {
             routineTitleSnapshot: matchedTask.title,
             routineTargetDate: dateKey(event.type === 'task_completion_reverted' && event.taskCompletionDate ? event.taskCompletionDate : event.occurredAt),
           };
-        });
+        }));
         behaviorEventsRef.current = loadedBehaviorEvents;
         setBehaviorEvents(loadedBehaviorEvents);
         const storedRoutineArchives = pruneRoutineArchives(saved.routineArchives ?? []);
@@ -2885,7 +2882,7 @@ export default function App() {
               };
             })
           : [];
-        setRoutineArchives([...storedRoutineArchives, ...legacyRoutineArchives]);
+        setRoutineArchives(pruneRoutineArchives([...storedRoutineArchives, ...legacyRoutineArchives]));
         if (saved.taskTemplates) setTaskTemplates(saved.taskTemplates);
         setSavedTaskTemplates(saved.savedTaskTemplates ?? []);
         setWishMonths(saved.wishMonths ?? {});
@@ -3056,7 +3053,7 @@ export default function App() {
 
   useEffect(() => {
     if (!hydrated) return;
-    const state: PersistedState = { tasks, plan, departurePlans, widgetSize, widgetSettings, showCompleted, completionIcon, designMode, monoAppearance, monoPattern, hapticsEnabled, premiumTrialReminderEnabled, liveActivityEnabled, liveActivityDisplayOptions, liveActivityCustomization, reviewPromptedAt, readNoticeIds: [...new Set(readNoticeIds)], tomorrowPrepPromptedDate, routineRemainingNotifiedDate, taskTemplates, savedTaskTemplates, chicPattern, chicCheckColor, recoveryHistory, focusSessions, focusState, focusCustomDurationMinutes, departureCheckIns, behaviorEvents, wishMonths: normalizeWishMonthsForSave(wishMonths), calendarMarks, calendarImportCalendarIds, calendarImportKnownCalendarIds, sharedEvents, sharedParticipantIdsByToken, sharedParticipantPrefsByToken, departurePreparationStatuses, affirmations, affirmationCustomTexts, photoTheme, travelApps, designCustomizePurchased, routineArchives: pruneRoutineArchives(routineArchives), voiceUsage: normalizeVoiceUsage(voiceUsage, dateKey()) };
+    const state: PersistedState = { tasks, plan, departurePlans, widgetSize, widgetSettings, showCompleted, completionIcon, designMode, monoAppearance, monoPattern, hapticsEnabled, premiumTrialReminderEnabled, liveActivityEnabled, liveActivityDisplayOptions, liveActivityCustomization, reviewPromptedAt, readNoticeIds: [...new Set(readNoticeIds)], tomorrowPrepPromptedDate, routineRemainingNotifiedDate, taskTemplates, savedTaskTemplates, chicPattern, chicCheckColor, recoveryHistory: pruneRecoveryHistory(recoveryHistory), focusSessions: pruneFocusSessions(focusSessions), focusState, focusCustomDurationMinutes, departureCheckIns, behaviorEvents: pruneBehaviorEvents(behaviorEvents), wishMonths: normalizeWishMonthsForSave(wishMonths), calendarMarks, calendarImportCalendarIds, calendarImportKnownCalendarIds, sharedEvents, sharedParticipantIdsByToken, sharedParticipantPrefsByToken, departurePreparationStatuses, affirmations, affirmationCustomTexts, photoTheme, travelApps, designCustomizePurchased, routineArchives: pruneRoutineArchives(routineArchives), voiceUsage: normalizeVoiceUsage(voiceUsage, dateKey()) };
     latestPersistedStateRef.current = state;
     if (persistenceDisabledRef.current) return;
     if (persistenceTimerRef.current) clearTimeout(persistenceTimerRef.current);
@@ -3092,14 +3089,39 @@ export default function App() {
 
   useEffect(() => {
     if (!hydrated) return;
-    const cleanup = () => setRoutineArchives((current) => {
-      const next = pruneRoutineArchives(current);
-      return next.length === current.length ? current : next;
-    });
+    const cleanup = () => {
+      setRecoveryHistory((current) => {
+        const next = pruneRecoveryHistory(current);
+        return next.length === current.length ? current : next;
+      });
+      setFocusSessions((current) => {
+        const next = pruneFocusSessions(current);
+        return next.length === current.length ? current : next;
+      });
+      setBehaviorEvents((current) => {
+        const next = pruneBehaviorEvents(current);
+        behaviorEventsRef.current = next;
+        return next.length === current.length ? current : next;
+      });
+      setRoutineArchives((current) => {
+        const next = pruneRoutineArchives(current);
+        return next.length === current.length ? current : next;
+      });
+    };
     cleanup();
-    const timer = setInterval(cleanup, 60_000);
+    const timer = setInterval(cleanup, 60 * 60_000);
     return () => clearInterval(timer);
   }, [hydrated]);
+
+  useEffect(() => {
+    if (!hydrated) return;
+    // File scanning is deferred and runs only after persisted image references
+    // change; it never happens as part of rendering.
+    const timer = setTimeout(() => {
+      void cleanupUnreferencedManagedPhotos(collectReferencedManagedPhotoUris({ photoTheme, widgetSettings, wishMonths }));
+    }, 1_000);
+    return () => clearTimeout(timer);
+  }, [hydrated, photoTheme, widgetSettings, wishMonths]);
 
   const requestAppReview = React.useCallback(async () => {
     try {
@@ -3624,7 +3646,7 @@ export default function App() {
     }
   }, [enqueueScheduleConflict, now]);
 
-  const addTask = (title: string, category: Category, priority: Priority, remindDate?: string, remindAt?: string, deadlineDate?: string, deadlineTime?: string, deadlineNotifyBefore?: number, navigationEnabled?: boolean, preparationMinutes?: number, travelMinutes?: number, bufferMinutes?: number, repeatRule: RepeatRule = 'none', nudgeMode: NudgeMode = 'once', scheduledDate?: string, scheduledTime?: string, endAt?: string, isRoutine = false, subtasks: Subtask[] = [], listItems: TaskListItem[] = [], routineIdOverride?: string): Task | undefined => {
+  const addTask = (title: string, category: Category, priority: Priority, remindDate?: string, remindAt?: string, deadlineDate?: string, deadlineTime?: string, deadlineNotifyBefore?: number, navigationEnabled?: boolean, preparationMinutes?: number, travelMinutes?: number, bufferMinutes?: number, repeatRule: RepeatRule = 'none', nudgeMode: NudgeMode = 'once', scheduledDate?: string, scheduledTime?: string, endAt?: string, isRoutine = false, subtasks: Subtask[] = [], estimatedMinutes?: number, listItems: TaskListItem[] = [], routineIdOverride?: string): Task | undefined => {
     if (scheduledTime && endAt && endAt <= scheduledTime) {
       Alert.alert('終了時間を確認してください', '終了時間は開始時間より後にしてください。');
       return undefined;
@@ -3664,6 +3686,7 @@ export default function App() {
       scheduledDate: scheduledDate ?? dateKey(now),
       scheduledTime,
       endAt: endAt && /^\d{2}:\d{2}$/.test(endAt) ? endAt : undefined,
+      estimatedMinutes: normalizeEstimatedMinutes(estimatedMinutes),
       subtasks: subtasks.map((item, index) => ({ ...item, order: index, done: Boolean(item.done) })),
       listItems: listItems.map((item, index) => ({ ...item, order: index, checked: Boolean(item.checked), text: item.text.trim() })).filter((item) => item.text),
     };
@@ -3680,7 +3703,7 @@ export default function App() {
     return task;
   };
 
-  const updateTask = (title: string, category: Category, priority: Priority, remindDate?: string, remindAt?: string, deadlineDate?: string, deadlineTime?: string, deadlineNotifyBefore?: number, navigationEnabled?: boolean, preparationMinutes?: number, travelMinutes?: number, bufferMinutes?: number, repeatRule: RepeatRule = 'none', nudgeMode: NudgeMode = 'once', scheduledDate?: string, scheduledTime?: string, endAt?: string, isRoutine = false, subtasks: Subtask[] = [], listItems?: TaskListItem[]) => {
+  const updateTask = (title: string, category: Category, priority: Priority, remindDate?: string, remindAt?: string, deadlineDate?: string, deadlineTime?: string, deadlineNotifyBefore?: number, navigationEnabled?: boolean, preparationMinutes?: number, travelMinutes?: number, bufferMinutes?: number, repeatRule: RepeatRule = 'none', nudgeMode: NudgeMode = 'once', scheduledDate?: string, scheduledTime?: string, endAt?: string, isRoutine = false, subtasks: Subtask[] = [], estimatedMinutes?: number, listItems?: TaskListItem[]) => {
     if (!editingTask) return;
     if (scheduledTime && endAt && endAt <= scheduledTime) {
       Alert.alert('終了時間を確認してください', '終了時間は開始時間より後にしてください。');
@@ -3700,7 +3723,7 @@ export default function App() {
     const reactivatesRoutine = isRoutine && !editingTask.isRoutine && Boolean(editingTask.routineId);
     const endedAt = editingTask.isRoutine && !isRoutine ? new Date().toISOString() : editingTask.routineEndedAt;
     const existingStatus = getTaskStatus(editingTask);
-    const updated = { ...editingTask, title, category, priority, remindDate, remindAt, deadlineDate, deadlineTime, deadlineNotifyBefore, navigationEnabled, preparationMinutes, travelMinutes, bufferMinutes, repeatRule, isRoutine, routineId: isRoutine ? editingTask.routineId ?? editingTask.id : editingTask.routineId, routineEndedAt: isRoutine ? undefined : endedAt, nudgeMode, scheduledDate: scheduledDate ?? editingTask.scheduledDate ?? dateKey(now), scheduledTime, endAt: endAt && /^\d{2}:\d{2}$/.test(endAt) ? endAt : undefined, done: editingTask.done, status: existingStatus, completedAt: editingTask.completedAt, skippedAt: editingTask.skippedAt, subtasks: subtasks.map((item, index) => ({ ...item, order: index, done: Boolean(item.done) })), listItems: (listItems ?? editingTask.listItems ?? []).map((item, index) => ({ ...item, text: item.text.trim(), order: index, checked: Boolean(item.checked) })).filter((item) => item.text) };
+    const updated = { ...editingTask, title, category, priority, remindDate, remindAt, deadlineDate, deadlineTime, deadlineNotifyBefore, navigationEnabled, preparationMinutes, travelMinutes, bufferMinutes, repeatRule, isRoutine, routineId: isRoutine ? editingTask.routineId ?? editingTask.id : editingTask.routineId, routineEndedAt: isRoutine ? undefined : endedAt, nudgeMode, scheduledDate: scheduledDate ?? editingTask.scheduledDate ?? dateKey(now), scheduledTime, endAt: endAt && /^\d{2}:\d{2}$/.test(endAt) ? endAt : undefined, estimatedMinutes: normalizeEstimatedMinutes(estimatedMinutes), done: editingTask.done, status: existingStatus, completedAt: editingTask.completedAt, skippedAt: editingTask.skippedAt, subtasks: subtasks.map((item, index) => ({ ...item, order: index, done: Boolean(item.done) })), listItems: (listItems ?? editingTask.listItems ?? []).map((item, index) => ({ ...item, text: item.text.trim(), order: index, checked: Boolean(item.checked) })).filter((item) => item.text) };
     const nextTasks = tasksRef.current.map((task) => {
       if (task.id === editingTask.id) return updated;
       if (editingTask.isRoutine && !isRoutine && (task.routineId ?? task.id) === existingRoutineId) {
@@ -5801,6 +5824,7 @@ export default function App() {
               onPickTopImage={firstRunDemoActive ? undefined : () => { void pickPhotoTheme('wish'); }}
               initialEditor={firstRunDemoActive ? undefined : voiceWishDraft}
               onPremium={(featureId = 'wish') => { if (!firstRunDemoActive) openPremiumFeature(featureId); }}
+              onAIShare={firstRunDemoActive ? undefined : (wishId) => { setAiShareWishId(wishId); setAiShareOpen(true); }}
             />
           )}
 
@@ -6119,7 +6143,7 @@ export default function App() {
                 const resumedDeadlineDate = normalizeRoutineResumeDate(template.deadlineDate, template.scheduledDate, resumedScheduledDate);
                 const resetSubtasks = (template.subtasks ?? []).map((item, index) => ({ ...item, order: index, done: false }));
                 const resetListItems = (template.listItems ?? []).map((item, index) => ({ ...item, order: index, checked: false }));
-                addTask(template.title, template.category, template.priority, resumedRemindDate, template.remindAt, resumedDeadlineDate, template.deadlineTime, template.deadlineNotifyBefore, template.navigationEnabled, template.preparationMinutes, template.travelMinutes, template.bufferMinutes, template.repeatRule ?? 'none', template.nudgeMode ?? 'once', resumedScheduledDate, template.scheduledTime, template.endAt, true, resetSubtasks, resetListItems, archive.routineId);
+                addTask(template.title, template.category, template.priority, resumedRemindDate, template.remindAt, resumedDeadlineDate, template.deadlineTime, template.deadlineNotifyBefore, template.navigationEnabled, template.preparationMinutes, template.travelMinutes, template.bufferMinutes, template.repeatRule ?? 'none', template.nudgeMode ?? 'once', resumedScheduledDate, template.scheduledTime, template.endAt, true, resetSubtasks, template.estimatedMinutes, resetListItems, archive.routineId);
               }}
               onDeleteRoutineArchive={(archive) => { if (firstRunDemoActive) return; Alert.alert('この解除履歴を削除しますか？', '解除履歴を削除すると、この解除歴画面からは確認できなくなります。', [{ text: 'キャンセル', style: 'cancel' }, { text: '削除する', style: 'destructive', onPress: () => setRoutineArchives((current) => current.filter((item) => item.id !== archive.id)) }]); }}
               onAnalysisUsed={(tab) => {
@@ -6131,6 +6155,7 @@ export default function App() {
                 if (tab === 'routine') void onboarding.complete('routine');
                 else void onboarding.complete('analysis');
               }}
+              onAIShare={firstRunDemoActive ? undefined : () => { setAiShareWishId(undefined); setAiShareOpen(true); }}
               initialTab={analysisInitialTab}
               departurePlans={firstRunDemoActive ? [guideDemoPlan] : departurePlans}
               onApplySuggestion={(suggestion) => {
@@ -6331,6 +6356,18 @@ export default function App() {
         onClose={() => setSharedEventOpen(false)}
         onOpenMap={(query) => void openMapSearch(query)}
         onShareCurrentEvent={shareCurrentSharedEvent}
+      />
+      <AIShareSheet
+        visible={aiShareOpen}
+        onClose={() => setAiShareOpen(false)}
+        initialWishId={aiShareWishId}
+        tasks={tasks}
+        departurePlans={departurePlans}
+        behaviorEvents={behaviorEvents}
+        focusSessions={focusSessions}
+        wishState={currentWishState}
+        designMode={uiDesignMode}
+        chicPalette={chicPalette}
       />
 
       {addOpen && <TaskModal visible templates={taskTemplates} savedTemplates={savedTaskTemplates} designMode={uiDesignMode} chicPalette={chicPalette} planTier={planTier} onPremium={firstRunDemoActive ? () => undefined : openPremiumFeature} onClose={() => { setAddOpen(false); setVoiceTaskDraft(undefined); }} onOpenVoice={openVoiceInput} onOpenBulkAdd={() => { setAddOpen(false); setBulkAddOpen(true); }} onSave={firstRunDemoActive ? () => undefined : addTask} initialDraft={firstRunDemoActive ? undefined : voiceTaskDraft} readOnlyPreview={firstRunDemoActive} guideOverlay={productionGuideFeature === 'taskDetails' ? productionGuideCard : undefined} styles={styles} helpers={{ getThemeTokens: getThemedThemeTokens, todayInputValue, hasPremiumAccess, dateForReminder, dateKey, formatLiveTime, colors: themedColors, summarizePremiumTaskTemplate }} components={{ CompactNumberSetting }} />}

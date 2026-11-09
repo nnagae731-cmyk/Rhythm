@@ -11,7 +11,9 @@ import { PlanTier } from '../premiumAccess';
 import {
   getWidgetCustomization,
   WIDGET_TYPE_OPTIONS,
+  PERSISTED_WIDGET_TYPE_IDS,
   WIDGET_TYPE_GROUPS,
+  WIDGET_ACCESSIBLE_COUNTS,
   WIDGET_FONT_DESIGN_OPTIONS,
   WIDGET_PHOTO_LAYOUT_OPTIONS,
 } from '../features/widget/widgetSettings';
@@ -163,7 +165,7 @@ export function WidgetSettingsCard({ settings, onChange, onPickPhoto, onUnlockWi
   // Keep all Widget kinds visible in the in-app catalogue. Entitlements
   // control the lock state and purchase route, not catalogue visibility.
   const visibleWidgetOptions = React.useMemo(() => WIDGET_TYPE_OPTIONS, []);
-  const hasStoredWidgetPhotos = Boolean(settings.photoUri || WIDGET_TYPE_OPTIONS.some(({ id }) => {
+  const hasStoredWidgetPhotos = Boolean(settings.photoUri || PERSISTED_WIDGET_TYPE_IDS.some((id) => {
     const customization = settings.widgetCustomizations?.[id];
     return customization?.photoUri || customization?.cutoutUri;
   }));
@@ -206,7 +208,7 @@ export function WidgetSettingsCard({ settings, onChange, onPickPhoto, onUnlockWi
     const next = { ...(settings.widgetCustomizations ?? {}) };
     const removedUris = new Set<string>();
     if (settings.photoUri) removedUris.add(settings.photoUri);
-    WIDGET_TYPE_OPTIONS.forEach(({ id }) => {
+    PERSISTED_WIDGET_TYPE_IDS.forEach((id) => {
       const current = next[id];
       if (!current) return;
       if (current.photoUri) removedUris.add(current.photoUri);
@@ -239,7 +241,7 @@ export function WidgetSettingsCard({ settings, onChange, onPickPhoto, onUnlockWi
       {!entitlementsResolved ? <Text style={{ color: colors.secondaryText, fontSize: 11, marginTop: 14 }}>利用状況を確認中…</Text> : <View style={{ marginTop: 14 }}>
         {__DEV__ && <View style={{ marginBottom: 12, padding: 10, borderRadius: 11, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.screenBackground }}><Text style={{ color: colors.secondaryText, fontSize: 10, fontWeight: '800' }}>開発用・ウィジェット権限確認</Text><View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 7 }}>{([{ id: 'actual', label: '実際の購入状態' }, { id: 'free', label: '無料として確認' }, { id: 'design', label: 'デザインカスタマイズとして確認' }, { id: 'premium', label: 'プレミアムとして確認' }] as const).map((item) => <Pressable key={item.id} accessibilityRole="button" onPress={() => onWidgetEntitlementOverrideChange?.(item.id)} style={{ paddingHorizontal: 8, paddingVertical: 6, borderRadius: 999, borderWidth: 1, borderColor: widgetEntitlementOverride === item.id ? colors.primaryAccent : colors.border, backgroundColor: widgetEntitlementOverride === item.id ? colors.softAccent : colors.surface }}><Text style={{ color: widgetEntitlementOverride === item.id ? colors.primaryAccent : colors.secondaryText, fontSize: 10, fontWeight: '800' }}>{item.label}</Text></Pressable>)}</View></View>}
         {showSelectedPreview && currentWidgetOption ? <View style={{ marginBottom: 14, padding: 10, borderRadius: 13, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.screenBackground }}><Text style={{ color: colors.secondaryText, fontSize: 10, fontWeight: '800' }}>選択中のプレビュー</Text><View style={{ marginTop: 8 }}><MemoizedWidgetTypePreview type={currentWidgetOption.id} style={currentPreviewStyle} fontDesign={settings.fontDesign} photoUri={currentPreviewPhotoUri} photoLayout={currentWidgetCustomization.photoLayout} colors={colors} designPattern={designPattern} designCheckColor={designCheckColor} PatternDecor={PatternDecor} previewSize={currentPreviewSize} /></View></View> : null}
-        <View style={{ flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', gap: 8 }}><Text style={{ color: colors.primaryText, fontSize: 14, fontWeight: '900' }}>ウィジェットギャラリー</Text><Text style={{ color: colors.secondaryText, fontSize: 10, fontWeight: '600' }}>4カテゴリ・8種類</Text></View>
+        <View style={{ flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', gap: 8 }}><Text style={{ color: colors.primaryText, fontSize: 14, fontWeight: '900' }}>ウィジェットギャラリー</Text><Text style={{ color: colors.secondaryText, fontSize: 10, fontWeight: '600' }}>{WIDGET_TYPE_GROUPS.length}カテゴリ・{WIDGET_ACCESSIBLE_COUNTS.premium}種類</Text></View>
         {WIDGET_TYPE_GROUPS.map((group) => <View key={group.id} style={{ marginTop: 12 }}><Text style={{ color: colors.primaryText, fontSize: 12, fontWeight: '900' }}>{group.label}</Text><ScrollView horizontal nestedScrollEnabled directionalLockEnabled decelerationRate="fast" snapToInterval={cardWidth + 10} snapToAlignment="start" showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 10, paddingLeft: 2, paddingRight: 12 }} style={{ marginTop: 7 }}>
           {group.types.map((type) => {
             const option = visibleWidgetOptions.find((item) => item.id === type);

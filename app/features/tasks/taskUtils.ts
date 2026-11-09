@@ -16,6 +16,13 @@ export const repeatOptions: { id: RepeatRule; label: string }[] = [
   { id: 'monthly', label: '毎月' },
 ];
 export const completionIcons = ['✓', '★', '♥', '✿', '☀'];
+
+/** Keeps the optional effort estimate useful without inventing a value for old tasks. */
+export function normalizeEstimatedMinutes(value: unknown): number | undefined {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return undefined;
+  const normalized = Math.round(value);
+  return normalized >= 1 && normalized <= 720 ? normalized : undefined;
+}
 export const categoryColors: Record<Category, string> = {
   仕事: '#E9E4FF',
   家事: '#FFF0D9',

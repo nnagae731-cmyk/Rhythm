@@ -15,10 +15,13 @@ import { normalizeRhythmFontDesign } from '../fontDesign';
 
 export type WidgetAccessTier = 'free' | 'design' | 'premium';
 
+export type WidgetTypeOption = { id: WidgetType; label: string; description: string; sizes: string; access: WidgetAccessTier };
+
 /** Development-only presentation override for validating Widget access states. */
 export type WidgetEntitlementOverride = 'actual' | 'free' | 'design' | 'premium';
 
-export const WIDGET_TYPE_OPTIONS: ReadonlyArray<{ id: WidgetType; label: string; description: string; sizes: string; access: WidgetAccessTier }> = [
+/** The complete user-facing Widget catalogue. Legacy types remain decodable below. */
+export const WIDGET_TYPE_OPTIONS: ReadonlyArray<WidgetTypeOption> = [
   { id: 'current', label: '今やるTODO', description: 'いま取り組むタスクを表示', sizes: 'M / L', access: 'free' },
   { id: 'next', label: '次に控える予定', description: '直近の予定をひとつ表示', sizes: 'M', access: 'free' },
   { id: 'combined', label: 'TODOと次の予定', description: 'いまやることと次の予定をまとめて表示', sizes: 'M', access: 'design' },
@@ -27,17 +30,28 @@ export const WIDGET_TYPE_OPTIONS: ReadonlyArray<{ id: WidgetType; label: string;
   { id: 'today', label: '今日の予定', description: '今日の予定を時刻順に一覧表示', sizes: 'M', access: 'design' },
   { id: 'checklist', label: 'TODOチェックリスト', description: '登録したTODOをチェックリストで確認', sizes: 'M', access: 'design' },
   { id: 'goal', label: '叶えたいこと', description: '目標と進捗を表示', sizes: 'M', access: 'premium' },
-  { id: 'voice', label: '音声で追加', description: 'ホーム画面からタスクや予定を追加', sizes: 'M', access: 'free' },
   { id: 'affirmation', label: 'アファメーション', description: '言葉と背景で気持ちを整える', sizes: 'M', access: 'premium' },
 ];
+
+const WIDGET_ACCESS_TOTALS = WIDGET_TYPE_OPTIONS.reduce<Record<WidgetAccessTier, number>>((totals, option) => {
+  totals[option.access] += 1;
+  return totals;
+}, { free: 0, design: 0, premium: 0 });
+
+/** Counts derive from the user-facing catalogue so explanatory UI cannot drift. */
+export const WIDGET_ACCESSIBLE_COUNTS = {
+  free: WIDGET_ACCESS_TOTALS.free,
+  design: WIDGET_ACCESS_TOTALS.free + WIDGET_ACCESS_TOTALS.design,
+  premium: WIDGET_TYPE_OPTIONS.length,
+} as const;
 
 /** User-facing groups keep similar Widget choices together without changing
  * persisted WidgetType IDs or the native Widget Extension kinds. */
 export const WIDGET_TYPE_GROUPS: ReadonlyArray<{ id: string; label: string; types: ReadonlyArray<WidgetType> }> = [
-  { id: 'tasks', label: 'TODO', types: ['current'] },
+  { id: 'tasks', label: 'TODO', types: ['current', 'checklist'] },
   { id: 'schedule', label: '予定', types: ['next', 'today', 'weekly', 'monthly'] },
   { id: 'summary', label: 'まとめ', types: ['combined'] },
-  { id: 'personal', label: 'その他', types: ['goal', 'voice', 'affirmation'] },
+  { id: 'personal', label: 'その他', types: ['goal', 'affirmation'] },
 ];
 
 export const WIDGET_STYLE_OPTIONS: ReadonlyArray<{ id: WidgetStyle; label: string; description: string }> = [
@@ -113,7 +127,15 @@ export const DEFAULT_WIDGET_SETTINGS: WidgetSettings = {
   affirmationPhotoUris: [],
 };
 
-const widgetTypeIds = new Set<WidgetType>(WIDGET_TYPE_OPTIONS.map((item) => item.id));
+// Voice was offered by previous releases. Keep the persisted ID decodable so
+// existing state remains safe, while keeping it out of every new selection UI.
+/**
+ * IDs that may exist in persisted settings. `voice` stays here solely for
+ * backward-compatible decoding and managed-photo cleanup; it is not part of
+ * the selectable Widget catalogue.
+ */
+export const PERSISTED_WIDGET_TYPE_IDS: ReadonlyArray<WidgetType> = [...WIDGET_TYPE_OPTIONS.map((item) => item.id), 'voice'];
+const widgetTypeIds = new Set<WidgetType>(PERSISTED_WIDGET_TYPE_IDS);
 const widgetStyleIds = new Set<WidgetStyle>(WIDGET_STYLE_OPTIONS.map((item) => item.id));
 const accentIds = new Set<WidgetAccentColor>(WIDGET_ACCENT_OPTIONS.map((item) => item.id));
 const photoSourceIds = new Set<WidgetPhotoSource>(WIDGET_PHOTO_SOURCE_OPTIONS.map((item) => item.id));
@@ -143,14 +165,18 @@ export function normalizeWidgetSettings(value: unknown): WidgetSettings {
   const legacyPhotoUri = typeof source.photoUri === 'string' && source.photoUri.trim() ? source.photoUri : undefined;
   const rawCustomizations = isRecord(source.widgetCustomizations) ? source.widgetCustomizations : {};
   const widgetCustomizations: WidgetCustomizations = {};
-  WIDGET_TYPE_OPTIONS.forEach(({ id }) => {
+  PERSISTED_WIDGET_TYPE_IDS.forEach((id) => {
     const raw = isRecord(rawCustomizations[id]) ? rawCustomizations[id] : undefined;
     if (!raw) return;
     const customPhotoUri = typeof raw.photoUri === 'string' && raw.photoUri.trim() ? raw.photoUri : undefined;
     const customCutoutUri = typeof raw.cutoutUri === 'string' && raw.cutoutUri.trim() ? raw.cutoutUri : undefined;
     const customPhotoLayout = photoLayoutIds.has(raw.photoLayout as WidgetPhotoLayout) ? raw.photoLayout as WidgetPhotoLayout : undefined;
     const customMonoTemplate = monoTemplateIds.has(raw.monoTemplate as WidgetMonoTemplate) ? raw.monoTemplate as WidgetMonoTemplate : undefined;
-    if (customPhotoUri || customCutoutUri || customPhotoLayout || customMonoTemplate) widgetCustomizations[id] = { photoUri: customPhotoUri, cutoutUri: customCutoutUri, photoLayout: customPhotoLayout, monoTemplate: customMonoTemplate };
+    // Background removal is retired. Older cutout-only saves remain visible by
+    // using their file as the normal photo, but the legacy key is never saved
+    // back out by normalized settings.
+    const photoUri = customPhotoUri ?? customCutoutUri;
+    if (photoUri || customPhotoLayout || customMonoTemplate) widgetCustomizations[id] = { photoUri, photoLayout: customPhotoLayout, monoTemplate: customMonoTemplate };
   });
   // Migrate the old shared Widget photo exactly once. The old setting was
   // visible to every Widget, so preserve that behavior by creating an
@@ -158,7 +184,7 @@ export function normalizeWidgetSettings(value: unknown): WidgetSettings {
   // point on, deleting one Widget's photo cannot be undone by a shared
   // fallback, while the same managed file remains retained by other Widgets.
   if (legacyPhotoUri) {
-    WIDGET_TYPE_OPTIONS.forEach(({ id }) => {
+    PERSISTED_WIDGET_TYPE_IDS.forEach((id) => {
       const current = widgetCustomizations[id];
       if (!current?.photoUri) widgetCustomizations[id] = { ...(current ?? {}), photoUri: legacyPhotoUri };
     });

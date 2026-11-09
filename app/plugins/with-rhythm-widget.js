@@ -11,6 +11,7 @@ const TEMPLATE_FILES = [
   'RhythmWidgetBundle.swift',
   'RhythmWidget-Info.plist',
   'RhythmWidget.entitlements',
+  'PrivacyInfo.xcprivacy',
   'RhythmLiveActivity.swift',
   'RhythmLiveActivityAttributes.swift',
 ];
@@ -340,7 +341,10 @@ function ensureWidgetSourceFiles(project, target) {
 
 function ensureWidgetResourceFiles(project, target) {
   const sourceRoot = path.join(__dirname, '..');
-  const resourceFiles = WIDGET_DESIGN_ASSETS.filter(({ source }) => fs.existsSync(path.join(sourceRoot, source)));
+  const resourceFiles = [
+    { fileName: 'PrivacyInfo.xcprivacy', lastKnownFileType: 'text.plist.xml' },
+    ...WIDGET_DESIGN_ASSETS.filter(({ source }) => fs.existsSync(path.join(sourceRoot, source))),
+  ];
   const { group } = ensureWidgetSourceGroup(project);
   const fileReferences = project.getPBXObject('PBXFileReference') ?? {};
   const buildFiles = project.pbxBuildFileSection();

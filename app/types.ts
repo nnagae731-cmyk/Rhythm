@@ -114,6 +114,8 @@ export type Task = {
   scheduledTime?: string;
   /** Optional end time for schedule range display. Legacy tasks omit this. */
   endAt?: string;
+  /** Optional user-entered effort estimate in minutes. */
+  estimatedMinutes?: number;
   category: Category;
   priority: Priority;
   completedAt?: string;
@@ -192,6 +194,8 @@ export type WishAction = {
   wishId: string;
   title: string;
   completed: boolean;
+  /** Creation time for new actions. Legacy actions intentionally omit it. */
+  createdAt?: string;
   completedAt?: string;
 };
 

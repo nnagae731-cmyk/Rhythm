@@ -1,6 +1,7 @@
 import React from 'react';
 import { Image, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { ChicThemePalette, DesignMode, getThemeTokens } from '../theme';
+import { WIDGET_ACCESSIBLE_COUNTS } from '../features/widget/widgetSettings';
 
 type Props = {
   visible: boolean;
@@ -44,7 +45,7 @@ export function DesignCustomizeModal({ visible, designMode, chicPalette, purchas
             <View style={[styles.featureList, { backgroundColor: colors.surface, borderColor: colors.border }]}>
               {[
                 '全デザインを解放（花柄・チェック・ドットなど）',
-                'ウィジェットが8種類に',
+                `ウィジェットが${WIDGET_ACCESSIBLE_COUNTS.design}種類に`,
                 'ウィジェットごとに写真を設定',
                 '写真レイアウト5種類（全面背景・右側・上部・カード・丸型）',
               ].map((label) => <Text key={label} style={[styles.feature, { color: colors.text }]}>• {label}</Text>)}

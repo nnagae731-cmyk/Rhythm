@@ -36,6 +36,7 @@ type WishScreenProps = {
   onPickTopImage?: () => void;
   initialEditor?: { mode: EditorMode; title: string; wishId?: string };
   onPremium?: (featureId?: PremiumGuideFeatureId) => void;
+  onAIShare?: (wishId?: string) => void;
 };
 
 type EditorMode = 'wish' | 'action';
@@ -97,7 +98,7 @@ function formatHistoryDate(value?: string) {
   return Number.isNaN(date.getTime()) ? '' : `${date.getMonth() + 1}/${date.getDate()} 完了`;
 }
 
-export function WishScreen({ designMode: rawDesignMode, chicPalette, monthLabel, state, wishMonths = {}, onSaveState, onCreateTaskFromAction, canCreateWish = true, wishRewardProgress, onRequestWishReward, onWishCreated, wishActionRewardProgress, onRequestWishActionReward, onWishActionCreated, affirmations, affirmationCustomTexts, planTier, onSaveAffirmation, onDeleteAffirmation, onSaveAffirmationCustomText, onDeleteAffirmationCustomText, canCreateWishAction = true, topImageUri, onPickTopImage, initialEditor, onPremium }: WishScreenProps) {
+export function WishScreen({ designMode: rawDesignMode, chicPalette, monthLabel, state, wishMonths = {}, onSaveState, onCreateTaskFromAction, canCreateWish = true, wishRewardProgress, onRequestWishReward, onWishCreated, wishActionRewardProgress, onRequestWishActionReward, onWishActionCreated, affirmations, affirmationCustomTexts, planTier, onSaveAffirmation, onDeleteAffirmation, onSaveAffirmationCustomText, onDeleteAffirmationCustomText, canCreateWishAction = true, topImageUri, onPickTopImage, initialEditor, onPremium, onAIShare }: WishScreenProps) {
   // Mono DarkはMono Lightと同じレイアウトを使い、色だけを反転する。
   const isDark = rawDesignMode === 'dark';
   const theme = getThemeTokens(rawDesignMode, chicPalette?.id ?? 'cool');
@@ -192,6 +193,7 @@ export function WishScreen({ designMode: rawDesignMode, chicPalette, monthLabel,
         wishId: editor.wishId,
         title,
         completed: editor.completed,
+        createdAt: editor.id ? state.actions.find((item) => item.id === editor.id)?.createdAt : new Date().toISOString(),
         completedAt: editor.completed ? state.actions.find((item) => item.id === editor.id)?.completedAt ?? new Date().toISOString() : undefined,
       };
       commit((current) => ({
@@ -300,6 +302,7 @@ export function WishScreen({ designMode: rawDesignMode, chicPalette, monthLabel,
           <View style={styles.pageHeader}>
             <Text style={[styles.pageHeaderTitle, { color: textPrimary }]}>叶えたいこと</Text>
             <View style={styles.pageHeaderActions}>
+              {onAIShare ? <Pressable onPress={() => onAIShare(selectedWish?.id)} hitSlop={8}><Text style={[styles.pageHeaderLink, { color: accent }]}>AIに共有</Text></Pressable> : null}
               <Pressable onPress={() => openWishEditor()} hitSlop={8}><Text style={[styles.pageHeaderAdd, { color: accent }]}>＋追加</Text></Pressable>
               <Pressable onPress={() => { setHistoryMonthKey(undefined); setHistoryOpen(true); }} hitSlop={8}><Text style={[styles.pageHeaderLink, { color: textSecondary }]}>過去を見る ›</Text></Pressable>
             </View>

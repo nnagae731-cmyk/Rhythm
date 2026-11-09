@@ -80,7 +80,7 @@ export function LiveActivitySettingsSheet({
     : runtimeStatus === 'starting' || runtimeStatus === 'waiting'
       ? '表示を開始しています'
       : runtimeStatus === 'unavailable'
-        ? 'この端末またはBuildでは利用できません'
+        ? 'この端末またはBuildでは利用できません（無料版の制限ではありません）'
         : runtimeStatus === 'failed'
           ? '開始できませんでした。iPhoneのライブアクティビティ設定を確認してください'
           : 'オフ';
@@ -112,7 +112,7 @@ export function LiveActivitySettingsSheet({
 
           <View style={{ marginTop: 10, padding: 11, borderRadius: 12, backgroundColor: runtimeStatus === 'active' ? colors.soft : colors.secondarySurface, borderWidth: 1, borderColor: runtimeStatus === 'active' ? colors.accent : colors.border }}>
             <Text style={{ color: runtimeStatus === 'active' ? colors.accent : colors.text, fontSize: 11, fontWeight: '900' }}>現在の表示状態：{runtimeLabel}</Text>
-            <Text style={{ color: colors.muted, fontSize: 10, marginTop: 4 }}>{runtimeStatus === 'active' ? '未完了の「今やるTODO」や集中中の内容を自動で更新します。' : 'ONにすると、TODOがまだない場合も「今日のTODOを追加」を表示します。'}</Text>
+            <Text style={{ color: colors.muted, fontSize: 10, marginTop: 4 }}>{runtimeStatus === 'active' ? '未完了の「今やるTODO」や集中中の内容を自動で更新します。' : runtimeStatus === 'unavailable' ? '無料版の制限ではありません。端末の対応状況または、インストール済みのBuildの構成を確認してください。' : 'ONにすると、TODOがまだない場合も「今日のTODOを追加」を表示します。'}</Text>
           </View>
 
           <Text style={{ color: colors.text, fontSize: 14, fontWeight: '900', marginTop: 17 }}>表示する内容</Text>

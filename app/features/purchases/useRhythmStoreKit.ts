@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Platform } from 'react-native';
-import { ErrorCode, fetchProducts as fetchProductsDirect, getActiveSubscriptions as getActiveSubscriptionsDirect, getAvailablePurchases as getAvailablePurchasesDirect, getStorefront, type Product, type ProductSubscription, type Purchase, useIAP } from 'expo-iap';
+import { ErrorCode, fetchProducts as fetchProductsDirect, getActiveSubscriptions as getActiveSubscriptionsDirect, getAvailablePurchases as getAvailablePurchasesDirect, getStorefront, isEligibleForIntroOfferIOS, type Product, type ProductSubscription, type Purchase, useIAP } from 'expo-iap';
 import { PremiumPlan, STORE_PRODUCT_IDS } from './storeProducts';
 
 export type StoreProduct = {
@@ -8,6 +8,9 @@ export type StoreProduct = {
   periodLabel: string;
   amount?: number;
   currency?: string;
+  /** StoreKit introductory free-trial text, shown only when this Apple ID is eligible. */
+  introductoryTrialLabel?: string;
+  introductoryTrialEligible?: boolean;
 };
 
 export type StoreKitStatus = 'loading' | 'ready' | 'unavailable';
@@ -39,16 +42,26 @@ export type PremiumTrialStarted = {
   productId: string;
   trialEndAt: number;
   displayPrice?: string;
+  trialLabel?: string;
 };
 
-function productToDisplay(product: Product | ProductSubscription | undefined, periodLabel: string): StoreProduct | undefined {
+function productToDisplay(product: Product | ProductSubscription | undefined, periodLabel: string, introductoryTrial?: Pick<StoreProduct, 'introductoryTrialLabel' | 'introductoryTrialEligible'>): StoreProduct | undefined {
   if (!product) return undefined;
   return {
     displayPrice: product.displayPrice,
     periodLabel,
     amount: typeof product.price === 'number' ? product.price : undefined,
     currency: product.currency,
+    ...introductoryTrial,
   };
+}
+
+function introductoryFreeTrial(product: ProductSubscription | undefined): { label: string; subscriptionGroupId: string } | undefined {
+  if (!product || product.platform !== 'ios') return undefined;
+  const offer = product.subscriptionInfoIOS?.introductoryOffer;
+  if (!offer || offer.type !== 'introductory' || offer.paymentMode !== 'free-trial' || offer.period.value < 1 || !product.subscriptionInfoIOS?.subscriptionGroupId) return undefined;
+  const unit = offer.period.unit === 'day' ? '日間' : offer.period.unit === 'week' ? '週間' : offer.period.unit === 'month' ? 'か月間' : offer.period.unit === 'year' ? '年間' : undefined;
+  return unit ? { label: `${offer.period.value}${unit}無料`, subscriptionGroupId: product.subscriptionInfoIOS.subscriptionGroupId } : undefined;
 }
 
 function isSuccessfulPurchase(purchase: Purchase): boolean {
@@ -94,6 +107,7 @@ export function useRhythmStoreKit({
   const [premiumEntitlementResolved, setPremiumEntitlementResolved] = useState(false);
   const [designEntitlementResolved, setDesignEntitlementResolved] = useState(false);
   const [premiumTrialEndAt, setPremiumTrialEndAt] = useState<number>();
+  const [monthlyIntroductoryTrialEligible, setMonthlyIntroductoryTrialEligible] = useState<boolean>();
   const pendingPurchaseRef = useRef<PendingPurchase | undefined>(undefined);
   const subscriptionsRef = useRef<ProductSubscription[]>([]);
   const productsRef = useRef<Product[]>([]);
@@ -143,6 +157,7 @@ export function useRhythmStoreKit({
           productId,
           trialEndAt,
           displayPrice: subscriptionsRef.current.find((item) => item.id === productId)?.displayPrice,
+          trialLabel: introductoryFreeTrial(subscriptionsRef.current.find((item) => item.id === productId))?.label,
         });
         if (__DEV__) console.log('[StoreKit] premium free trial', { productId, trialEndAt: new Date(trialEndAt).toISOString(), offer: (purchase as Purchase & { offerIOS?: unknown }).offerIOS });
       }
@@ -190,6 +205,30 @@ export function useRhythmStoreKit({
   useEffect(() => {
     productsRef.current = products;
   }, [products]);
+
+  const monthlySubscription = useMemo(
+    () => subscriptions.find((product) => product.id === STORE_PRODUCT_IDS.premiumMonthly),
+    [subscriptions],
+  );
+  const monthlyIntroductoryTrial = useMemo(
+    () => introductoryFreeTrial(monthlySubscription),
+    [monthlySubscription],
+  );
+
+  // StoreKit supplies both the actual introductory offer and this Apple ID's
+  // eligibility. Do not advertise a free trial until both are confirmed.
+  useEffect(() => {
+    if (Platform.OS !== 'ios' || !monthlyIntroductoryTrial) {
+      setMonthlyIntroductoryTrialEligible(undefined);
+      return;
+    }
+    let cancelled = false;
+    setMonthlyIntroductoryTrialEligible(undefined);
+    void isEligibleForIntroOfferIOS(monthlyIntroductoryTrial.subscriptionGroupId)
+      .then((eligible) => { if (!cancelled) setMonthlyIntroductoryTrialEligible(eligible === true); })
+      .catch(() => { if (!cancelled) setMonthlyIntroductoryTrialEligible(false); });
+    return () => { cancelled = true; };
+  }, [monthlyIntroductoryTrial]);
 
   // Available purchases are the StoreKit-backed source for restored/current
   // transactions. Keep the trial end derived from the monthly transaction so
@@ -394,9 +433,12 @@ export function useRhythmStoreKit({
   }, [connected, onDesignCustomizeEntitlement, onPremiumEntitlement, premiumIds, refreshActiveSubscriptions, refreshAvailablePurchases]);
 
   const mappedProducts = useMemo(() => ({
-    monthly: productToDisplay(subscriptions.find((product) => product.id === STORE_PRODUCT_IDS.premiumMonthly), '月額'),
+    monthly: productToDisplay(monthlySubscription, '月額', monthlyIntroductoryTrial ? {
+      introductoryTrialLabel: monthlyIntroductoryTrial.label,
+      introductoryTrialEligible: monthlyIntroductoryTrialEligible,
+    } : undefined),
     annual: productToDisplay(subscriptions.find((product) => product.id === STORE_PRODUCT_IDS.premiumAnnual), '年額'),
-  }), [subscriptions]);
+  }), [monthlyIntroductoryTrial, monthlyIntroductoryTrialEligible, monthlySubscription, subscriptions]);
   const designProduct = useMemo(
     () => productToDisplay(products.find((product) => product.id === STORE_PRODUCT_IDS.designCustomize), '買い切り'),
     [products],

@@ -1,11 +1,17 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { LayoutChangeEvent, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Alert, LayoutChangeEvent, Linking, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import Svg, { Circle, Line, Path, Rect } from 'react-native-svg';
 import { ChicThemePalette, DesignMode } from '../theme';
 import { PremiumGuideFeatureId } from '../premiumGuide';
 import { PlanTier } from '../premiumAccess';
+import { WIDGET_ACCESSIBLE_COUNTS } from '../features/widget/widgetSettings';
+import { PRIVACY_POLICY_URL, TERMS_OF_USE_URL } from '../features/legal/legalLinks';
 
 type PremiumPreviewKind = PremiumGuideFeatureId;
+
+function openLegalLink(url: string) {
+  void Linking.openURL(url).catch(() => Alert.alert('ページを開けませんでした', '通信状態を確認して、もう一度お試しください。'));
+}
 
 export type PremiumStoreProduct = {
   displayPrice: string;
@@ -14,6 +20,8 @@ export type PremiumStoreProduct = {
   amount?: number;
   /** ISO 4217 currency code supplied by StoreKit. */
   currency?: string;
+  introductoryTrialLabel?: string;
+  introductoryTrialEligible?: boolean;
 };
 
 export type PremiumStoreProducts = {
@@ -85,7 +93,7 @@ const darkPreviewStyleOverrides: Record<string, any> = {
 };
 
 const PREMIUM_GUIDE_FEATURES: Array<{ id: PremiumGuideFeatureId; kind: PremiumPreviewKind; title: string; description: string }> = [
-  { id: 'widget', kind: 'widget', title: 'ホーム画面にも、自分のRhythmを。', description: '基本のウィジェットは無料で利用できます。プレミアムなら10種類すべてのウィジェットと、デザインカスタマイズ対象の見た目を利用できます。' },
+  { id: 'widget', kind: 'widget', title: 'ホーム画面にも、自分のRhythmを。', description: `無料で${WIDGET_ACCESSIBLE_COUNTS.free}種類の基本ウィジェットを利用できます。プレミアムなら${WIDGET_ACCESSIBLE_COUNTS.premium}種類すべてのウィジェットと、デザインカスタマイズ対象の見た目を利用できます。` },
   { id: 'live_activity', kind: 'live_activity', title: 'ロック画面から、そのまま動ける。', description: '基本のライブアクティビティは無料で利用できます。プレミアムではタスク完了・チェックリスト操作、プレミアム対象の表示、自動切替まで使えます。' },
   { id: 'voice', kind: 'voice', title: '音声入力', description: '話した内容から、タスク・予定・習慣・叶えたいことをすぐに整理できます。無料版は1日5回に加え、広告視聴で追加できます。プレミアムは無制限です。' },
   { id: 'focus_custom_duration', kind: 'focus_custom_duration', title: '集中時間を自由に設定', description: '決まった時間だけでなく、その日に合わせて好きな集中時間を設定できます。' },
@@ -124,7 +132,7 @@ const PREMIUM_FEATURE_NAV_LABELS: Record<PremiumGuideFeatureId, string> = {
 };
 
 const PREMIUM_FEATURE_DIFFS: Partial<Record<PremiumGuideFeatureId, { free: string; premium: string }>> = {
-  widget: { free: '基本の3種類', premium: '10種類すべて' },
+  widget: { free: `${WIDGET_ACCESSIBLE_COUNTS.free}種類`, premium: `${WIDGET_ACCESSIBLE_COUNTS.premium}種類すべて` },
   live_activity: { free: '基本表示（操作なし）', premium: 'タスク・チェックリスト操作／自動切替' },
   voice: { free: '1日5回＋広告で追加', premium: '無制限' },
   focus_custom_duration: { free: '固定の集中時間を利用', premium: '好きな集中時間を設定' },
@@ -147,7 +155,7 @@ const PREMIUM_FEATURE_DIFFS: Partial<Record<PremiumGuideFeatureId, { free: strin
 const PREMIUM_COMPARISON_ROWS: Array<{ label: string; free: '○' | '△' | '×'; premium: '○' | '△' | '×'; note?: string }> = [
   { label: '基本のToDo・予定管理', free: '○', premium: '○' },
   { label: '基本の集中タイム', free: '○', premium: '○' },
-  { label: 'ウィジェット', free: '△', premium: '○', note: 'Freeは基本の3種類。プレミアムは10種類すべて' },
+  { label: 'ウィジェット', free: '△', premium: '○', note: `Freeは${WIDGET_ACCESSIBLE_COUNTS.free}種類。プレミアムは${WIDGET_ACCESSIBLE_COUNTS.premium}種類すべて` },
   { label: 'ライブアクティビティ', free: '△', premium: '○', note: 'Freeは基本表示。プレミアムはタスク・チェックリスト操作や自動切替に対応' },
   { label: '音声入力', free: '△', premium: '○', note: 'Freeは1日5回＋広告で追加' },
   { label: '今日の記録', free: '×', premium: '○' },
@@ -175,7 +183,7 @@ function PremiumComparison({ styles, primaryText, secondaryText, border, surface
 }
 
 function LegacyPreviewFallback({ kind, styles }: { kind: PremiumPreviewKind; styles: any }) {
-  if (kind === 'widget') return <View style={styles.premiumPreview}><Text style={styles.previewImageLabel}>ホーム画面のウィジェット</Text><View style={styles.previewTemplateSource}><Text style={styles.previewTemplateTitle}>今日のTODO　25分</Text><Text style={styles.previewTemplateMeta}>今日のタスク　・　集中モード中</Text><Text style={styles.previewTemplateMeta}>次の予定　18:00</Text></View><Text style={styles.previewTemplateReady}>プレミアムなら10種類すべてを利用できます</Text></View>;
+  if (kind === 'widget') return <View style={styles.premiumPreview}><Text style={styles.previewImageLabel}>ホーム画面のウィジェット</Text><View style={styles.previewTemplateSource}><Text style={styles.previewTemplateTitle}>今日のTODO　25分</Text><Text style={styles.previewTemplateMeta}>今日のタスク　・　集中モード中</Text><Text style={styles.previewTemplateMeta}>次の予定　18:00</Text></View><Text style={styles.previewTemplateReady}>プレミアムなら{WIDGET_ACCESSIBLE_COUNTS.premium}種類すべてを利用できます</Text></View>;
   if (kind === 'live_activity') return <View style={styles.premiumPreview}><Text style={styles.previewImageLabel}>ライブアクティビティ</Text><View style={styles.previewTemplateSource}><Text style={styles.previewTemplateTitle}>今日のタスク</Text><Text style={styles.previewTemplateMeta}>○ 今日のタスクを確認</Text><Text style={styles.previewTemplateMeta}>○ 次のタスク</Text><Text style={styles.previewTemplateMeta}>ロック画面から確認・操作</Text></View><Text style={styles.previewTemplateReady}>プレミアムならタスク完了・チェックリスト操作と自動切替</Text></View>;
   if (kind === 'calendar') return <View style={styles.premiumPreview}><Text style={styles.previewImageLabel}>予定表の表示イメージ</Text>{[['09:00', '予定', '外部予定'], ['11:00', 'タスク', 'Rhythm'], ['14:00', '予定', '外部予定'], ['18:30', '予定', '外部予定']].map(([time, title, source]) => <View key={`${time}-${title}`} style={styles.previewScheduleRow}><Text style={styles.previewTime}>{time}</Text><Text style={styles.previewScheduleTitle}>{title}</Text><Text style={[styles.previewSource, source === 'Rhythm' && styles.previewSourceRhythm]}>{source}</Text></View>)}<View style={styles.previewFlow}><Text style={styles.previewFlowText}>14:00 予定</Text><Text style={styles.previewArrow}>↓</Text><Text style={styles.previewFlowButton}>出発を考える</Text></View></View>;
   if (kind === 'records') return <View style={styles.premiumPreview}><Text style={styles.previewImageLabel}>今日の記録</Text><View style={styles.previewTemplateSource}><Text style={styles.previewCompareTag}>8月23日</Text><Text style={styles.previewTemplateTitle}>写真・ひとこと・メモ</Text><Text style={styles.previewTemplateMeta}>カレンダーから記録済みの日を確認</Text></View><Text style={styles.previewTemplateReady}>登録後も編集・削除できます</Text></View>;
@@ -370,6 +378,9 @@ export function PremiumModal({ visible, initialFeatureId, designMode, chicPalett
     ? Math.min(100, Math.max(0, Math.round((1 - annualAmount / (monthlyAmount * 12)) * 100)))
     : undefined;
   const selectedProduct = products?.[selectedPlan];
+  const monthlyTrialLabel = products?.monthly?.introductoryTrialEligible === true
+    ? products.monthly.introductoryTrialLabel
+    : undefined;
   const canPurchaseSelectedPlan = planTier === 'premium' || (productStatus === 'ready' && Boolean(selectedProduct)) || (isDevelopment && Boolean(onMockPlanTier));
   useEffect(() => {
     if (!visible) return;
@@ -414,18 +425,18 @@ export function PremiumModal({ visible, initialFeatureId, designMode, chicPalett
           <View style={[styles.premiumPurchasePanel, { backgroundColor: surface, borderColor: accent }]}>
             <Text style={[styles.premiumPurchaseTitle, { color: primaryText }]}>プレミアムを始める</Text>
             <Text style={[styles.premiumPurchaseCopy, { color: secondaryText }]}>すべての機能・ウィジェット・デザインを、RhythmPaceの使い方に合わせて広げます。</Text>
-            <View style={[styles.premiumPurchaseBenefits, { borderTopColor: theme.colors.border, borderBottomColor: theme.colors.border }]}><Text style={[styles.premiumPurchaseBenefit, { color: primaryText }]}>10種類すべてのウィジェット</Text><Text style={[styles.premiumPurchaseBenefit, { color: primaryText }]}>ライブアクティビティからタスク・チェックリストを操作</Text><Text style={[styles.premiumPurchaseBenefit, { color: primaryText }]}>今日の記録・振り返り・詳細な履歴</Text><Text style={[styles.premiumPurchaseBenefit, { color: primaryText }]}>選べるデザイン・写真・アファメーション</Text></View>
+            <View style={[styles.premiumPurchaseBenefits, { borderTopColor: theme.colors.border, borderBottomColor: theme.colors.border }]}><Text style={[styles.premiumPurchaseBenefit, { color: primaryText }]}>{WIDGET_ACCESSIBLE_COUNTS.premium}種類すべてのウィジェット</Text><Text style={[styles.premiumPurchaseBenefit, { color: primaryText }]}>ライブアクティビティからタスク・チェックリストを操作</Text><Text style={[styles.premiumPurchaseBenefit, { color: primaryText }]}>今日の記録・振り返り・詳細な履歴</Text><Text style={[styles.premiumPurchaseBenefit, { color: primaryText }]}>選べるデザイン・写真・アファメーション</Text></View>
             <Text style={[styles.premiumPlanHeading, { color: primaryText }]}>プランを選択</Text>
             {(['annual', 'monthly'] as const).map((plan) => {
               const product = products?.[plan];
               const isAnnual = plan === 'annual';
               return <Pressable key={plan} accessibilityRole="radio" accessibilityState={{ selected: selectedPlan === plan }} onPress={() => setSelectedPlan(plan)} style={[styles.premiumPlanCard, { backgroundColor: selectedPlan === plan ? surfaceSoft : surface, borderColor: selectedPlan === plan ? accent : theme.colors.border }]}>
-                <View style={{ flex: 1, minWidth: 0 }}><Text style={[styles.premiumPlanTitle, { color: primaryText }]}>{isAnnual ? '年額プラン' : '月額プラン'}</Text>{isAnnual ? <Text style={[styles.premiumPlanRecommended, { color: accent }]}>いちばんお得</Text> : product && <Text style={[styles.premiumPlanRecommended, { color: accent }]}>7日間無料</Text>}{isAnnual && annualMonthlyEquivalent !== undefined && <Text style={[styles.premiumPlanMeta, { color: secondaryText }]}>月あたり約 {annualMonthlyEquivalent}{annualSavingsPercent !== undefined ? ` ・ 約${annualSavingsPercent}%お得` : ''}</Text>}{!isAnnual && product && <Text style={[styles.premiumPlanMeta, { color: secondaryText }]}>その後 {product.displayPrice} / 月</Text>}</View>
+                <View style={{ flex: 1, minWidth: 0 }}><Text style={[styles.premiumPlanTitle, { color: primaryText }]}>{isAnnual ? '年額プラン' : '月額プラン'}</Text>{isAnnual ? <Text style={[styles.premiumPlanRecommended, { color: accent }]}>いちばんお得</Text> : product?.introductoryTrialEligible && product.introductoryTrialLabel ? <Text style={[styles.premiumPlanRecommended, { color: accent }]}>{product.introductoryTrialLabel}</Text> : null}{isAnnual && annualMonthlyEquivalent !== undefined && <Text style={[styles.premiumPlanMeta, { color: secondaryText }]}>月あたり約 {annualMonthlyEquivalent}{annualSavingsPercent !== undefined ? ` ・ 約${annualSavingsPercent}%お得` : ''}</Text>}{!isAnnual && product && <Text style={[styles.premiumPlanMeta, { color: secondaryText }]}>その後 {product.displayPrice} / 月</Text>}</View>
                 <Text style={[styles.premiumPlanPrice, { color: product ? accentStrong : secondaryText }]}>{productStatus === 'loading' ? '価格を確認中…' : product ? `${product.displayPrice} / ${product.periodLabel}` : '価格を取得できませんでした'}</Text>
               </Pressable>;
             })}
             {productStatus !== 'ready' || !products?.annual || !products?.monthly ? <View style={[styles.premiumPurchaseStatus, { borderColor: theme.colors.border }]}><Text style={[styles.premiumPurchaseStatusTitle, { color: primaryText }]}>{productStatus === 'loading' ? '価格を確認中…' : '価格を取得できませんでした'}</Text><Text style={[styles.premiumPurchaseStatusCopy, { color: secondaryText }]}>{productStatus === 'loading' ? 'App Storeの商品情報を確認しています。' : 'App Storeの商品情報を取得後、ローカライズされた価格が表示されます。'}</Text></View> : null}
-            <Text style={[styles.premiumPurchaseNote, { color: secondaryText }]}>月額は7日間の無料トライアル後に自動更新されます。月額・年額とも購入前にApp Storeの表示をご確認ください。解約はApple IDのサブスクリプション管理からいつでも行えます。</Text>
+            <Text style={[styles.premiumPurchaseNote, { color: secondaryText }]}>{monthlyTrialLabel ? `月額は対象の場合、${monthlyTrialLabel}の無料トライアル後に自動更新されます。` : '月額・年額とも購入前にApp Storeの表示をご確認ください。'} 解約はApple IDのサブスクリプション管理からいつでも行えます。</Text>
             {purchaseStatus === 'success' && <View style={[styles.premiumPurchaseStatus, { borderColor: accent }]}><Text style={[styles.premiumPurchaseStatusTitle, { color: accentStrong }]}>プレミアムを有効にしました</Text><Text style={[styles.premiumPurchaseStatusCopy, { color: secondaryText }]}>すべてのプレミアム機能を利用できます。</Text></View>}
             {purchaseStatus === 'unavailable' && <View style={[styles.premiumPurchaseStatus, { borderColor: theme.colors.border }]}><Text style={[styles.premiumPurchaseStatusTitle, { color: primaryText }]}>購入処理を準備しています</Text><Text style={[styles.premiumPurchaseStatusCopy, { color: secondaryText }]}>現在はApp Storeの購入画面を利用できません。しばらくしてから再度お試しください。</Text></View>}
             {purchaseError && <View style={[styles.premiumPurchaseStatus, { borderColor: theme.colors.border }]}><Text style={[styles.premiumPurchaseStatusTitle, { color: primaryText }]}>購入を完了できませんでした</Text><Text style={[styles.premiumPurchaseStatusCopy, { color: secondaryText }]}>App Storeの商品情報を取得できませんでした。時間をおいてもう一度お試しください。</Text></View>}
@@ -442,6 +453,7 @@ export function PremiumModal({ visible, initialFeatureId, designMode, chicPalett
               }
             }} style={[styles.premiumPurchaseButton, { backgroundColor: planTier === 'premium' || !canPurchaseSelectedPlan ? surfaceSoft : accent }]}><Text style={[styles.premiumPurchaseButtonText, { color: planTier === 'premium' || !canPurchaseSelectedPlan ? secondaryText : accentText }]}>{planTier === 'premium' ? 'プレミアム有効中' : purchaseStatus === 'processing' ? '確認中…' : productStatus === 'loading' ? '価格を確認中…' : selectedProduct ? '購入する' : isDevelopment && onMockPlanTier ? '開発用に確認' : '価格を確認できません'}</Text></Pressable>
             <Pressable accessibilityRole="button" style={styles.premiumTextLink} onPress={() => { if (onRestorePurchase) onRestorePurchase(); else setPurchaseStatus('unavailable'); }}><Text style={[styles.premiumTextLinkText, { color: accentStrong }]}>購入を復元</Text></Pressable>
+            <View style={{ flexDirection: 'row', justifyContent: 'center', alignItems: 'center', marginTop: 10 }}><Pressable accessibilityRole="link" hitSlop={8} onPress={() => openLegalLink(TERMS_OF_USE_URL)}><Text style={{ color: accentStrong, fontSize: 11, fontWeight: '800' }}>利用規約</Text></Pressable><Text style={{ color: secondaryText, fontSize: 11, marginHorizontal: 7 }}>・</Text><Pressable accessibilityRole="link" hitSlop={8} onPress={() => openLegalLink(PRIVACY_POLICY_URL)}><Text style={{ color: accentStrong, fontSize: 11, fontWeight: '800' }}>プライバシーポリシー</Text></Pressable></View>
             {isDevelopment && onMockPlanTier && <View style={{ flexDirection: 'row', gap: 8, marginTop: 10 }}>
               <Pressable onPress={() => { onMockPlanTier('free'); setPurchaseStatus('idle'); }} style={[styles.premiumDevButton, { borderColor: theme.colors.border }]}><Text style={{ color: secondaryText, fontSize: 11, fontWeight: '800' }}>無料版で確認</Text></Pressable>
               <Pressable onPress={() => { onMockPlanTier(null); setPurchaseStatus('idle'); }} style={[styles.premiumDevButton, { borderColor: theme.colors.border }]}><Text style={{ color: secondaryText, fontSize: 11, fontWeight: '800' }}>環境設定へ戻す</Text></Pressable>
