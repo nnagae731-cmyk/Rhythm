@@ -52,9 +52,11 @@ import { categories, priorities, completionIcons, categoryColors as baseCategory
 import { planScheduledAt, selectCurrentTask, selectCurrentTasks } from './features/tasks/taskSelectors';
 import { createSharedEventPacket, createSharedEventToken, encodeSharedEventLink, normalizeSharedEvent, parseSharedEventLink, upsertSharedEvent } from './features/shared/sharedUtils';
 import { getMonthlyWishState, normalizeWishMonthsForSave, wishMonthKey } from './features/wish/wishUtils';
-import { cancelPendingTaskNotifications, cancelPendingTaskNotificationsUnsafe } from './features/tasks/taskNotifications';
+import { cancelPendingTaskNotifications, cancelPendingTaskNotificationsUnsafe, getUnreconciledTaskNotificationIds, reconcileTaskNotificationsUnsafe } from './features/tasks/taskNotifications';
 import { cancelPendingDepartureNotifications, cancelPendingDepartureNotificationsUnsafe } from './features/departure/departureNotifications';
 import { enqueueNotificationOperation } from './features/notifications/notificationOperationQueue';
+import { pendingNotificationReconciliations, reconcileNotificationOperation } from './features/notifications/pendingReconciliation';
+import { getPendingNotificationRequests } from './features/notifications/pendingRequests';
 import { getDeparturePlanMode, getPlanScheduledTime, isArrivalReversePlan, isDepartureReminderPlan, normalizeDeparturePlanForSave } from './features/departure/departurePlanMode';
 import { DEFAULT_LIVE_ACTIVITY_CUSTOMIZATION, DEFAULT_LIVE_ACTIVITY_DISPLAY_OPTIONS, endRhythmLiveActivity, getRhythmLiveActivityStatus, isRhythmLiveActivityAvailable, normalizeRhythmLiveActivityCustomization, normalizeRhythmLiveActivityDisplayOptions, startOrUpdateRhythmLiveActivity, type RhythmLiveActivityPayload, type RhythmLiveActivityRuntimeStatus } from './features/widget/rhythmLiveActivity';
 import { WishScreen } from './WishScreen';
@@ -73,7 +75,7 @@ import { pruneBehaviorEvents, pruneFocusSessions, pruneRecoveryHistory, pruneRou
 import { canUseNotifications, getNotificationPermissionAction, getNotificationPermissionStatus, requestRhythmNotificationPermission } from './features/notifications/notificationPermission';
 import { addHours, canCreateWish, canCreateWishAction, canImportCalendar, canStartPremiumDesignTrial, isPremiumDesignTrialActive, isPremiumDesignUnlocked, isWidgetPhotoUnlockActive } from './features/ads/rewardedAccessLogic';
 import { getRequiredAds, REWARDED_AD_RULES, RewardedFeatureId } from './features/ads/rewardedAccess';
-import { DEFAULT_REWARDED_ACCESS_STATE, loadRewardedAccessState, RewardedAccessState, saveRewardedAccessState } from './features/ads/rewardedAccessStorage';
+import { DEFAULT_REWARDED_ACCESS_STATE, isRewardedAccessLoadFailure, loadRewardedAccessState, RewardedAccessState, saveRewardedAccessState } from './features/ads/rewardedAccessStorage';
 import { cancelFocusCompletionNotification, cancelPendingFocusCompletionNotifications, scheduleFocusCompletionNotification } from './features/focus/focusNotifications';
 import { cancelPremiumTrialReminder, schedulePremiumTrialReminder } from './features/notifications/premiumTrialReminder';
 import { buildAffirmationContent, buildCompletionFeedbackContent, buildDeadlineTitle, buildDepartureFollowUpContent, buildDepartureReminderContent, buildDepartureStageContent, buildScheduleSwitchContent, buildTaskActionContent, buildTaskReminderTitle, buildRoutineRemainingContent } from './features/notifications/notificationContent';
@@ -850,17 +852,32 @@ export default function App() {
   const hydratedRef = React.useRef(false);
   useEffect(() => {
     let active = true;
-    void loadRewardedAccessState().then((loaded) => {
-      if (!active) return;
-      setRewardedAccess(loaded);
-      setRewardedAccessHydrated(true);
+    let resolved = false;
+    let loading = false;
+    const load = async () => {
+      if (resolved || loading) return;
+      loading = true;
+      try {
+        const loaded = await loadRewardedAccessState();
+        if (!active || isRewardedAccessLoadFailure(loaded)) return;
+        resolved = true;
+        setRewardedAccess(loaded);
+        setRewardedAccessHydrated(true);
+      } finally { loading = false; }
+    };
+    void load();
+    const subscription = AppState.addEventListener('change', (nextState) => {
+      if (nextState === 'active') void load();
     });
-    return () => { active = false; };
+    return () => { active = false; subscription.remove(); };
   }, []);
   const persistenceDisabledRef = React.useRef(false);
   const saveFailureNotifiedRef = React.useRef(false);
   const persistenceTimerRef = React.useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const latestPersistedStateRef = React.useRef<PersistedState | undefined>(undefined);
+  const latestPersistedWishMonthsRef = React.useRef<WishMonthMap | undefined>(undefined);
+  const pendingWishSavesRef = React.useRef<Array<{ expected?: WishMonthMap; resolve: () => void; reject: (error: Error) => void }>>([]);
+  const startupPhotoReferencesRef = React.useRef<Set<string> | undefined>(undefined);
   const pendingNotificationCompletionIdsRef = React.useRef<string[]>([]);
   const pendingWidgetActionsProcessingRef = React.useRef(false);
   const pendingNotificationNavigationRef = React.useRef<Array<'timeline' | 'routine'>>([]);
@@ -942,6 +959,8 @@ export default function App() {
   const [aiShareOpen, setAiShareOpen] = useState(false);
   const [aiShareWishId, setAiShareWishId] = useState<string>();
   const [focusState, setFocusState] = useState<FocusPersistedState | undefined>();
+  const focusStateRef = React.useRef(focusState);
+  focusStateRef.current = focusState;
   const [focusCustomDurationMinutes, setFocusCustomDurationMinutes] = useState<number | undefined>();
   const [behaviorEvents, setBehaviorEvents] = useState<BehaviorEvent[]>([]);
   const behaviorEventsRef = React.useRef<BehaviorEvent[]>([]);
@@ -996,7 +1015,6 @@ export default function App() {
   const routineRemainingNotifiedDateRef = React.useRef<string | undefined>(undefined);
   const [readNoticeIds, setReadNoticeIds] = useState<string[]>([]);
   const [noticeCenterOpen, setNoticeCenterOpen] = useState(false);
-  const routineRemainingNotificationInFlightRef = React.useRef(false);
   const [homeInitialTab, setHomeInitialTab] = useState<'now' | 'list' | 'routine'>('now');
   const [tomorrowPrepOpen, setTomorrowPrepOpen] = useState(false);
   const [tomorrowPrepStep, setTomorrowPrepStep] = useState<0 | 1 | 2 | 3>(0);
@@ -1469,6 +1487,18 @@ export default function App() {
       return { ...current, [currentWishMonthKey]: updater(previous) };
     });
     void onboarding.complete('wish');
+  }, [currentWishMonthKey, onboarding]);
+  const saveCurrentWishEditor = React.useCallback((updater: (current: MonthlyWishState) => MonthlyWishState): Promise<void> => {
+    if (!hydratedRef.current || persistenceDisabledRef.current) return Promise.reject(new Error('保存データを確認できません'));
+    return new Promise((resolve, reject) => {
+      const pending: { expected?: WishMonthMap; resolve: () => void; reject: (error: Error) => void } = { resolve: () => { void onboarding.complete('wish'); resolve(); }, reject };
+      pendingWishSavesRef.current.push(pending);
+      setWishMonths((current) => {
+        const next = { ...current, [currentWishMonthKey]: updater(getMonthlyWishState(current, currentWishMonthKey)) };
+        pending.expected = next;
+        return next;
+      });
+    });
   }, [currentWishMonthKey, onboarding]);
   const updateWishReview = React.useCallback((monthKey: string, reviewKey: string, updates: Partial<MonthlyReview>) => {
     setWishMonths((current) => {
@@ -2071,6 +2101,10 @@ export default function App() {
   }, [activeDesignTrialId, applyPhotoDesign, canStartPremiumDesignTrial, completeInitialDesignSelection, hasDesignCustomizeAccess, hasMonoPatternAccess, isPremiumDesignUnlocked, now, onboarding, onboardingDesignSelectionPending, pickPhotoForDesignPreview, planTier, rewardedAccess, startDesignTrial, startMonoDesignTrial, startPhotoDesignTrial]);
   const startDesignRewardForCurrent = React.useCallback(() => {
     if (hasDesignCustomizeAccess || planTier === 'premium') return;
+    if (!rewardedAccessHydrated) {
+      Alert.alert('利用状態を確認できません', 'アプリを開き直すか、しばらくしてからもう一度お試しください。');
+      return;
+    }
     const hadTryOnSelection = Boolean(pendingDesignApplyRef.current);
     const currentDesignIsFree = (designMode === 'minimal' || designMode === 'dark')
       ? monoPattern === 'plain'
@@ -2129,7 +2163,7 @@ export default function App() {
       designRewardAfterCustomizeDismissRef.current = undefined;
       startReward?.();
     });
-  }, [applyPhotoDesign, canStartPremiumDesignTrial, chicCheckColor, chicPattern, designMode, hasDesignCustomizeAccess, monoAppearance, monoPattern, photoTheme.imageUri, planTier, requestDesignReward, rewardedAccess, resumeTopImageAfterAccessFlow, startDesignTrial, startMonoDesignTrial, startPhotoDesignTrial]);
+  }, [applyPhotoDesign, canStartPremiumDesignTrial, chicCheckColor, chicPattern, designMode, hasDesignCustomizeAccess, monoAppearance, monoPattern, photoTheme.imageUri, planTier, requestDesignReward, rewardedAccess, rewardedAccessHydrated, resumeTopImageAfterAccessFlow, startDesignTrial, startMonoDesignTrial, startPhotoDesignTrial]);
   const canOpenTopImagePicker = React.useCallback((target: Exclude<PhotoThemePhotoTarget, 'background' | 'focus'>) => {
     const hasWholePhotoAccess = planTier === 'premium'
       || hasDesignCustomizeAccess
@@ -2489,7 +2523,7 @@ export default function App() {
     tasksRef.current = result.tasks;
     setTasks(result.tasks);
     if (result.newlyCompleted.length === 0) return false;
-    result.newlyCompleted.forEach((task) => { void cancelPendingTaskNotifications(task.id); void cancelScheduleSwitchNotificationsForTask(task.id); });
+    result.newlyCompleted.forEach((task) => { void cancelPendingTaskNotifications(task.id).catch((error) => console.warn('Task notification cancellation failed.', error)); void cancelScheduleSwitchNotificationsForTask(task.id); });
     const previousIds = new Set(previousTasks.map((task) => task.id));
     result.tasks.filter((task) => !previousIds.has(task.id) && !task.done).forEach((nextTask) => {
       void scheduleTaskNotificationsRef.current(nextTask);
@@ -2571,7 +2605,7 @@ export default function App() {
     departureCheckInsRef.current = next;
     setDepartureCheckIns(next);
     recordBehaviorEvent(createDepartureStartedEvent({ planId: target.id, planTitle: target.title, planDate: target.date, scheduledAt: moments.leave, actualAt, source }));
-    void cancelPendingDepartureNotifications(target.id);
+    void cancelPendingDepartureNotifications(target.id).catch((error) => console.warn('Departure notification cancellation failed.', error));
   }, [recordBehaviorEvent]);
 
   const markDeparturePreparationStarted = React.useCallback((planId: string, status: DeparturePreparationStatus = 'preparing', source: 'manual' | 'notification' = 'manual') => {
@@ -2699,7 +2733,7 @@ export default function App() {
         if (nextOccurrence) next.push(nextOccurrence);
         tasksRef.current = next;
         setTasks(next);
-        void cancelPendingTaskNotifications(taskId);
+        void cancelPendingTaskNotifications(taskId).catch((error) => console.warn('Task notification cancellation failed.', error));
         void cancelScheduleSwitchNotificationsForTask(taskId);
         if (nextOccurrence) {
           void scheduleTaskNotificationsRef.current(nextOccurrence);
@@ -2740,7 +2774,7 @@ export default function App() {
     tasksRef.current = next;
     setTasks(next);
     setSelectedTaskIds((current) => current.filter((id) => id !== taskId));
-    void cancelPendingTaskNotifications(taskId);
+    void cancelPendingTaskNotifications(taskId).catch((error) => console.warn('Task notification cancellation failed.', error));
     void cancelScheduleSwitchNotificationsForTask(taskId);
   }, []);
 
@@ -2770,6 +2804,9 @@ export default function App() {
     loadRhythmState()
       .then((saved) => {
         if (!saved) return;
+        // Scan the original saved object, including unknown/legacy fields,
+        // before normalizing anything. On error hydration fails closed.
+        startupPhotoReferencesRef.current = collectReferencedManagedPhotoUris(saved);
         const loadedTasks = saved.tasks ? saved.tasks.map((task) => ({
           ...task,
           category: (task.category ?? 'その他') as Category,
@@ -3011,7 +3048,7 @@ export default function App() {
           return;
         }
         completeTaskIdsRef.current([taskId], 'notification');
-        void cancelPendingTaskNotifications(taskId);
+        void cancelPendingTaskNotifications(taskId).catch((error) => console.warn('Task notification cancellation failed.', error));
         void cancelScheduleSwitchNotificationsForTask(taskId);
       }
 
@@ -3055,10 +3092,23 @@ export default function App() {
     if (!hydrated) return;
     const state: PersistedState = { tasks, plan, departurePlans, widgetSize, widgetSettings, showCompleted, completionIcon, designMode, monoAppearance, monoPattern, hapticsEnabled, premiumTrialReminderEnabled, liveActivityEnabled, liveActivityDisplayOptions, liveActivityCustomization, reviewPromptedAt, readNoticeIds: [...new Set(readNoticeIds)], tomorrowPrepPromptedDate, routineRemainingNotifiedDate, taskTemplates, savedTaskTemplates, chicPattern, chicCheckColor, recoveryHistory: pruneRecoveryHistory(recoveryHistory), focusSessions: pruneFocusSessions(focusSessions), focusState, focusCustomDurationMinutes, departureCheckIns, behaviorEvents: pruneBehaviorEvents(behaviorEvents), wishMonths: normalizeWishMonthsForSave(wishMonths), calendarMarks, calendarImportCalendarIds, calendarImportKnownCalendarIds, sharedEvents, sharedParticipantIdsByToken, sharedParticipantPrefsByToken, departurePreparationStatuses, affirmations, affirmationCustomTexts, photoTheme, travelApps, designCustomizePurchased, routineArchives: pruneRoutineArchives(routineArchives), voiceUsage: normalizeVoiceUsage(voiceUsage, dateKey()) };
     latestPersistedStateRef.current = state;
+    latestPersistedWishMonthsRef.current = wishMonths;
     if (persistenceDisabledRef.current) return;
+    const supersededWishSaves = pendingWishSavesRef.current.filter((item) => item.expected && item.expected !== wishMonths);
+    pendingWishSavesRef.current = pendingWishSavesRef.current.filter((item) => !supersededWishSaves.includes(item));
+    supersededWishSaves.forEach((item) => item.reject(new Error('保存中にデータが変更されました。もう一度お試しください。')));
     if (persistenceTimerRef.current) clearTimeout(persistenceTimerRef.current);
     persistenceTimerRef.current = setTimeout(() => {
-      void saveRhythmState(state).catch((error) => {
+      persistenceTimerRef.current = undefined;
+      const pendingForSnapshot = pendingWishSavesRef.current.filter((item) => item.expected === wishMonths);
+      void saveRhythmState(state).then(() => {
+        const unsettled = pendingForSnapshot.filter((item) => pendingWishSavesRef.current.includes(item));
+        pendingWishSavesRef.current = pendingWishSavesRef.current.filter((item) => !unsettled.includes(item));
+        unsettled.forEach((item) => item.resolve());
+      }).catch((error) => {
+        const unsettled = pendingForSnapshot.filter((item) => pendingWishSavesRef.current.includes(item));
+        pendingWishSavesRef.current = pendingWishSavesRef.current.filter((item) => !unsettled.includes(item));
+        unsettled.forEach((item) => item.reject(error instanceof Error ? error : new Error('保存に失敗しました')));
         console.warn('Rhythm state save failed.', error);
         if (!saveFailureNotifiedRef.current) {
           saveFailureNotifiedRef.current = true;
@@ -3081,7 +3131,17 @@ export default function App() {
       }
       const pending = latestPersistedStateRef.current;
       if (pending && !persistenceDisabledRef.current) {
-        void saveRhythmState(pending).catch((error) => console.warn('Rhythm background save failed.', error));
+        const pendingForSnapshot = pendingWishSavesRef.current.filter((item) => item.expected === latestPersistedWishMonthsRef.current);
+        void saveRhythmState(pending).then(() => {
+          const unsettled = pendingForSnapshot.filter((item) => pendingWishSavesRef.current.includes(item));
+          pendingWishSavesRef.current = pendingWishSavesRef.current.filter((item) => !unsettled.includes(item));
+          unsettled.forEach((item) => item.resolve());
+        }).catch((error) => {
+          const unsettled = pendingForSnapshot.filter((item) => pendingWishSavesRef.current.includes(item));
+          pendingWishSavesRef.current = pendingWishSavesRef.current.filter((item) => !unsettled.includes(item));
+          unsettled.forEach((item) => item.reject(error instanceof Error ? error : new Error('保存に失敗しました')));
+          console.warn('Rhythm background save failed.', error);
+        });
       }
     });
     return () => subscription.remove();
@@ -3114,14 +3174,21 @@ export default function App() {
   }, [hydrated]);
 
   useEffect(() => {
-    if (!hydrated) return;
-    // File scanning is deferred and runs only after persisted image references
-    // change; it never happens as part of rendering.
+    if (!hydrated || persistenceDisabledRef.current || !startupPhotoReferencesRef.current) return;
+    // Only scan the successfully read snapshot once. Files used by an editor
+    // or copied during this launch are separately protected for this session.
     const timer = setTimeout(() => {
-      void cleanupUnreferencedManagedPhotos(collectReferencedManagedPhotoUris({ photoTheme, widgetSettings, wishMonths }));
+      const startupReferences = startupPhotoReferencesRef.current;
+      if (!startupReferences || persistenceDisabledRef.current) return;
+      try {
+        const currentReferences = latestPersistedStateRef.current ? collectReferencedManagedPhotoUris(latestPersistedStateRef.current) : startupReferences;
+        cleanupUnreferencedManagedPhotos([...startupReferences, ...currentReferences]);
+      } catch (error) {
+        console.warn('Photo cleanup skipped because references could not be inspected.', error);
+      }
     }, 1_000);
     return () => clearTimeout(timer);
-  }, [hydrated, photoTheme, widgetSettings, wishMonths]);
+  }, [hydrated]);
 
   const requestAppReview = React.useCallback(async () => {
     try {
@@ -3195,7 +3262,7 @@ export default function App() {
   useEffect(() => {
     if (!hydrated || !storeKitEntitlementsResolved || planTier === 'premium') return;
     departurePlans.forEach((item) => {
-      if (item.id && isArrivalReversePlan(item)) void cancelPendingDepartureNotifications(item.id);
+      if (item.id && isArrivalReversePlan(item)) void cancelPendingDepartureNotifications(item.id).catch((error) => console.warn('Departure notification cancellation failed.', error));
     });
   }, [departurePlans, hydrated, planTier, storeKitEntitlementsResolved]);
 
@@ -3570,7 +3637,7 @@ export default function App() {
       setTasks(next);
       next
         .filter((task) => (task.routineId ?? task.id) === routineId && normalizeTaskDateKey(task.scheduledDate) && normalizeTaskDateKey(task.scheduledDate)! > dateKey(endedAt))
-        .forEach((task) => { void cancelPendingTaskNotifications(task.id); void cancelScheduleSwitchNotificationsForTask(task.id); });
+        .forEach((task) => { void cancelPendingTaskNotifications(task.id).catch((error) => console.warn('Task notification cancellation failed.', error)); void cancelScheduleSwitchNotificationsForTask(task.id); });
       setRoutineArchives((current) => pruneRoutineArchives([...current.filter((item) => item.routineId !== routineId), archive]));
       recordBehaviorEvent(createRoutineDeactivatedBehaviorEvent({ routineId, routineTitle: latest.title, taskId: latest.id, occurredAt: new Date(endedAt), targetDate: dateKey(endedAt) }));
     } }]);
@@ -3741,7 +3808,7 @@ export default function App() {
     if (reactivatesRoutine && updated.routineId) {
       recordBehaviorEvent(createRoutineStateChangedBehaviorEvent({ taskId: updated.id, routineId: updated.routineId, routineTitle: updated.title, occurredAt: new Date(), targetDate: dateKey(), completed: Boolean(updated.done), source: 'manual' }));
     }
-    if (updated.done || getTaskStatus(updated) === 'skipped') void cancelPendingTaskNotifications(updated.id);
+    if (updated.done || getTaskStatus(updated) === 'skipped') void cancelPendingTaskNotifications(updated.id).catch((error) => console.warn('Task notification cancellation failed.', error));
     else void scheduleAllTaskNotifications(updated);
     void syncScheduleSwitchNotificationsForTask(updated.id);
     queueScheduleConflictCheck(updated, departurePlansRef.current);
@@ -3912,7 +3979,7 @@ export default function App() {
 
   const syncScheduleSwitchNotificationsForTask = async (taskId: string) => {
     await enqueueNotificationOperation('schedule-switch', async () => {
-      const pending = await Notifications.getAllScheduledNotificationsAsync().catch(() => []);
+      const pending = await getPendingNotificationRequests();
       await Promise.all(pending.filter((request) => {
         const data = request.content.data as Record<string, unknown> | undefined;
         return data?.kind === 'schedule_switch' && data.taskId === taskId;
@@ -3937,7 +4004,7 @@ export default function App() {
 
   const syncScheduleSwitchNotificationsForPlan = async (planId: string) => {
     await enqueueNotificationOperation('schedule-switch', async () => {
-      const pending = await Notifications.getAllScheduledNotificationsAsync().catch(() => []);
+      const pending = await getPendingNotificationRequests();
       await Promise.all(pending.filter((request) => {
         const data = request.content.data as Record<string, unknown> | undefined;
         return data?.kind === 'schedule_switch' && data.departurePlanId === planId;
@@ -3967,7 +4034,7 @@ export default function App() {
 
   const cancelScheduleSwitchNotificationsForTask = async (taskId: string) => {
     await enqueueNotificationOperation('schedule-switch', async () => {
-      const pending = await Notifications.getAllScheduledNotificationsAsync().catch(() => []);
+      const pending = await getPendingNotificationRequests();
       await Promise.all(pending.filter((request) => {
         const data = request.content.data as Record<string, unknown> | undefined;
         return data?.kind === 'schedule_switch' && data.taskId === taskId;
@@ -3977,7 +4044,7 @@ export default function App() {
 
   const cancelScheduleSwitchNotificationsForPlan = async (planId: string) => {
     await enqueueNotificationOperation('schedule-switch', async () => {
-      const pending = await Notifications.getAllScheduledNotificationsAsync().catch(() => []);
+      const pending = await getPendingNotificationRequests();
       await Promise.all(pending.filter((request) => {
         const data = request.content.data as Record<string, unknown> | undefined;
         return data?.kind === 'schedule_switch' && data.departurePlanId === planId;
@@ -3987,13 +4054,13 @@ export default function App() {
 
   const scheduleAllTaskNotifications = async (task: Task) => {
     try {
-      await enqueueNotificationOperation(`task:${task.id}`, async () => {
+      await enqueueNotificationOperation(`task:${task.id}`, () => reconcileTaskNotificationsUnsafe(task.id, async () => {
         await cancelPendingTaskNotificationsUnsafe(task.id);
         const latest = tasksRef.current.find((item) => item.id === task.id);
         if (!latest || latest.done || latest.status === 'skipped') return;
         if (latest.remindAt) await scheduleTaskReminder(latest);
         if (latest.deadlineDate && latest.deadlineTime && latest.deadlineNotifyBefore !== undefined) await scheduleDeadlineReminder(latest);
-      });
+      }));
     } catch (error) {
       // Saving the task must remain successful even when the native
       // notification store is unavailable (e.g. during backgrounding).
@@ -4064,12 +4131,15 @@ export default function App() {
   const scheduleDeparture = async (targetPlan = plan, options?: { silent?: boolean }) => {
     if (!targetPlan.id) return;
     const planId = targetPlan.id;
-    await enqueueNotificationOperation(`departure:${planId}`, async () => {
+    await enqueueNotificationOperation(`departure:${planId}`, () => reconcileNotificationOperation('departure', planId, async () => {
       await cancelPendingDepartureNotificationsUnsafe(planId);
-      if (!departurePlansRef.current.some((item) => item.id === planId)) return;
+      const latestPlan = departurePlansRef.current.find((item) => item.id === planId);
+      if (!latestPlan) return;
+      targetPlan = latestPlan;
       const mode = getDeparturePlanMode(targetPlan);
       if (mode === 'calendar_only') return;
-      if (!await ensureNotifications()) {
+      if (!(options?.silent ? canUseNotifications(await getNotificationPermissionStatus()) : await ensureNotifications())) {
+        if (options?.silent) throw new Error('Notification permission unavailable');
         if (!options?.silent) Alert.alert('通知がオフです', '端末の通知を許可してください。');
         return;
       }
@@ -4134,7 +4204,7 @@ export default function App() {
         count += 1;
       }
       if (!options?.silent) Alert.alert('出発サポートを設定しました', `${formatLiveTime(moments.prepare)}から${count}段階でお知らせします。`);
-    });
+    }));
   };
   useEffect(() => {
     if (!hydrated || !storeKitEntitlementsResolved || planTier !== 'premium') return;
@@ -4144,12 +4214,61 @@ export default function App() {
       for (const item of departurePlans) {
         if (!item.id || getDeparturePlanMode(item) === 'calendar_only' || planDateKey(item) < dateKey()) continue;
         await cancelPendingDepartureNotifications(item.id).catch(() => undefined);
-        await scheduleDeparture(item, { silent: true });
+        await scheduleDeparture(item, { silent: true }).catch((error) => console.warn('Departure notification scheduling failed.', error));
       }
     })();
     return () => { active = false; };
   }, [hydrated, planTier, storeKitEntitlementsResolved]);
   scheduleTaskNotificationsRef.current = scheduleAllTaskNotifications;
+
+  useEffect(() => {
+    if (!hydrated || !storeKitEntitlementsResolved || persistenceDisabledRef.current) return;
+    let active = true;
+    void pendingNotificationReconciliations('departure').then(async (ids) => {
+      for (const id of ids) {
+        if (!active) return;
+        const current = departurePlansRef.current.find((item) => item.id === id);
+        try {
+          if (current) await scheduleDeparture(current, { silent: true });
+          else await cancelPendingDepartureNotifications(id);
+        } catch (error) { console.warn('Departure notification reconciliation failed.', error); }
+      }
+    }).catch((error) => console.warn('Departure notification reconciliation could not be loaded.', error));
+    return () => { active = false; };
+  }, [hydrated, storeKitEntitlementsResolved]);
+
+  useEffect(() => {
+    if (!hydrated || persistenceDisabledRef.current || focusState) return;
+    let active = true;
+    void pendingNotificationReconciliations('focus').then(async (ids) => {
+      for (const id of ids) {
+        if (!active) return;
+        await enqueueNotificationOperation('focus', async () => {
+          if (!active || focusStateRef.current) return;
+          await reconcileNotificationOperation('focus', id, () => cancelPendingFocusCompletionNotifications(id));
+        })
+          .catch((error) => console.warn('Focus notification reconciliation failed.', error));
+      }
+    }).catch((error) => console.warn('Focus notification reconciliation could not be loaded.', error));
+    return () => { active = false; };
+  }, [hydrated, focusState]);
+
+  useEffect(() => {
+    if (!hydrated || !storeKitEntitlementsResolved || persistenceDisabledRef.current) return;
+    let active = true;
+    void getUnreconciledTaskNotificationIds().then(async (ids) => {
+      for (const id of ids) {
+        if (!active) return;
+        const task = tasksRef.current.find((item) => item.id === id);
+        if (task && !task.done && task.status !== 'skipped') {
+          await scheduleTaskNotificationsRef.current(task);
+        } else {
+          await cancelPendingTaskNotifications(id).catch((error) => console.warn('Task notification reconciliation failed.', error));
+        }
+      }
+    }).catch((error) => console.warn('Task notification reconciliation could not be loaded.', error));
+    return () => { active = false; };
+  }, [hydrated, storeKitEntitlementsResolved]);
 
   const moveTaskToTomorrow = React.useCallback((taskId: string) => {
     const target = tasksRef.current.find((item) => item.id === taskId);
@@ -4260,12 +4379,11 @@ export default function App() {
   };
 
   useEffect(() => {
-    if (!hydrated || routineRemainingNotificationInFlightRef.current) return;
-    const day = dateKey(now);
-    const remaining = getTodayRemainingRoutines(tasksRef.current, day);
-    routineRemainingNotificationInFlightRef.current = true;
+    if (!hydrated) return;
     void enqueueNotificationOperation('routine-remaining', async () => {
-      const pending = await Notifications.getAllScheduledNotificationsAsync().catch(() => []);
+      const day = dateKey(new Date());
+      const remaining = getTodayRemainingRoutines(tasksRef.current, day);
+      const pending = await getPendingNotificationRequests();
       const sameDay = pending.filter((request) => {
         const data = request.content.data as Record<string, unknown> | undefined;
         return data?.kind === 'routine_remaining' && data.routineDate === day;
@@ -4308,8 +4426,6 @@ export default function App() {
       });
     }).catch((error) => {
       if (__DEV__) console.warn('[Notifications] routine remaining sync failed', error);
-    }).finally(() => {
-      routineRemainingNotificationInFlightRef.current = false;
     });
   }, [hydrated, now, tasks]);
 
@@ -4332,7 +4448,7 @@ export default function App() {
       date: normalizePlanDate(plan.date),
     });
     if (editTarget?.id) {
-      await cancelPendingDepartureNotifications(editTarget.id);
+      await cancelPendingDepartureNotifications(editTarget.id).catch((error) => console.warn('Departure notification cancellation failed.', error));
       await cancelScheduleSwitchNotificationsForPlan(editTarget.id);
     }
     const nextPlans = editTarget
@@ -4439,7 +4555,7 @@ export default function App() {
           text: '削除する',
           style: 'destructive',
           onPress: () => {
-            void cancelPendingDepartureNotifications(id);
+            void cancelPendingDepartureNotifications(id).catch((error) => console.warn('Departure notification cancellation failed.', error));
             void cancelScheduleSwitchNotificationsForPlan(id);
             const nextPlans = departurePlansRef.current.filter((item) => item.id !== id);
             departurePlansRef.current = nextPlans;
@@ -5804,6 +5920,7 @@ export default function App() {
               state={firstRunDemoActive ? guideDemoWishState : currentWishState}
               wishMonths={firstRunDemoActive ? { [currentWishMonthKey]: guideDemoWishState } : wishMonths}
               onSaveState={firstRunDemoActive ? () => undefined : saveCurrentWishState}
+              onSaveEditor={firstRunDemoActive ? undefined : saveCurrentWishEditor}
               onCreateTaskFromAction={firstRunDemoActive ? () => undefined : createTaskFromWishAction}
               affirmations={firstRunDemoActive ? guideDemoAffirmations : affirmations}
               affirmationCustomTexts={affirmationCustomTexts}
@@ -7040,13 +7157,20 @@ function TimeTabButton({ tab, active, designMode, chicPattern, chicPalette, them
     });
     onFocusActivityChange?.({ taskTitle: session.taskTitle, endsAt: endAt ? new Date(endAt).toISOString() : undefined, elapsedStartAt: focusElapsedStartAtRef.current, elapsedSeconds, remainingSeconds: runningState ? undefined : pausedSecondsRef.current, running: runningState });
   }, [onFocusActivityChange, onFocusStateChange]);
-  const cancelFocusNotification = React.useCallback((sessionIdOverride?: string) => enqueueNotificationOperation('focus', async () => {
-    const notificationId = focusNotificationIdRef.current;
+  const cancelFocusNotification = React.useCallback((sessionIdOverride?: string) => {
     const sessionId = sessionIdOverride ?? sessionRef.current?.id;
-    focusNotificationIdRef.current = null;
-    await cancelFocusCompletionNotification(notificationId);
-    if (sessionId) await cancelPendingFocusCompletionNotifications(sessionId);
-  }), []);
+    return enqueueNotificationOperation('focus', async () => {
+    const isCurrentSession = !sessionRef.current || sessionRef.current.id === sessionId;
+    const notificationId = isCurrentSession ? focusNotificationIdRef.current : null;
+    const cancel = async () => {
+      await cancelFocusCompletionNotification(notificationId);
+      if (sessionId) await cancelPendingFocusCompletionNotifications(sessionId);
+      if (isCurrentSession && focusNotificationIdRef.current === notificationId) focusNotificationIdRef.current = null;
+    };
+    if (sessionId) await reconcileNotificationOperation('focus', sessionId, cancel);
+    else await cancel();
+  });
+  }, []);
 
   useEffect(() => {
     const selectedStillExists = availableTasks.some((task) => task.id === selectedTaskId);
@@ -7072,7 +7196,7 @@ function TimeTabButton({ tab, active, designMode, chicPattern, chicPalette, them
     pausedSecondsRef.current = 0;
     completionCallbackRef.current(session);
     const prompted = onFocusTaskFinished?.(session) === true;
-    void cancelFocusNotification(activeSession.id);
+    void cancelFocusNotification(activeSession.id).catch((error) => console.warn('Focus notification cancellation failed.', error));
     triggerHaptic(hapticsEnabled, [0, 35, 70]);
     if (!prompted) {
       const copy = getFocusCompletionAlertCopy(activeSession.taskTitle);
@@ -7191,7 +7315,7 @@ function TimeTabButton({ tab, active, designMode, chicPattern, chicPalette, them
   };
   const reset = () => {
     if (sessionRef.current) stopActiveSession();
-    void cancelFocusNotification();
+    void cancelFocusNotification().catch((error) => console.warn('Focus notification cancellation failed.', error));
     onFocusRunningChange?.(false);
     setRunning(false);
     setSecondsLeft(duration * 60);
@@ -7223,7 +7347,7 @@ function TimeTabButton({ tab, active, designMode, chicPattern, chicPalette, them
       setRunning(false);
       onFocusRunningChange?.(false);
       publishFocusState(false);
-      void cancelFocusNotification();
+      void cancelFocusNotification().catch((error) => console.warn('Focus notification cancellation failed.', error));
       return;
     }
     const notificationPermissionGranted = onFocusNotificationPermission
@@ -7248,14 +7372,17 @@ function TimeTabButton({ tab, active, designMode, chicPattern, chicPalette, them
     onFocusRunningChange?.(true);
     if (sessionRef.current) {
       void enqueueNotificationOperation('focus', async () => {
-        const notificationId = focusNotificationIdRef.current;
         const sessionId = sessionRef.current?.id;
-        focusNotificationIdRef.current = null;
-        await cancelFocusCompletionNotification(notificationId);
-        if (sessionId) await cancelPendingFocusCompletionNotifications(sessionId);
-        if (!sessionRef.current || !endAtRef.current) return;
-        const scheduledId = await scheduleFocusCompletionNotification({ timerId: sessionRef.current.id, endAt: new Date(endAtRef.current).toISOString(), taskTitle: sessionRef.current.taskTitle, permissionGranted: notificationPermissionGranted });
-        focusNotificationIdRef.current = scheduledId;
+        if (!sessionId) return;
+        await reconcileNotificationOperation('focus', sessionId, async () => {
+          const notificationId = focusNotificationIdRef.current;
+          await cancelFocusCompletionNotification(notificationId);
+          await cancelPendingFocusCompletionNotifications(sessionId);
+          focusNotificationIdRef.current = null;
+          if (sessionRef.current?.id !== sessionId || !endAtRef.current) return;
+          const scheduledId = await scheduleFocusCompletionNotification({ timerId: sessionId, endAt: new Date(endAtRef.current).toISOString(), taskTitle: sessionRef.current.taskTitle, permissionGranted: notificationPermissionGranted });
+          focusNotificationIdRef.current = scheduledId;
+        });
       }).catch((error) => {
         if (__DEV__) console.warn('[Notifications] focus completion scheduling failed', error);
       });

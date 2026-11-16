@@ -2,6 +2,9 @@ import { Directory, File, Paths } from 'expo-file-system';
 import type { PhotoThemeSettings, WidgetSettings, WishMonthMap } from '../../types';
 
 const PHOTO_DIRECTORY_NAME = 'rhythm-photos';
+// Images copied or selected during this process may still belong to an editor
+// or an asynchronous save. Keep them until the next successful hydration.
+const sessionProtectedPhotos = new Set<string>();
 
 function isManagedPhotoUri(uri: string | undefined) {
   return Boolean(uri?.includes(`/${PHOTO_DIRECTORY_NAME}/`));
@@ -23,8 +26,19 @@ function addUri(uris: Set<string>, uri: unknown) {
 }
 
 /** Collects every currently persisted Rhythm-owned image reference. */
-export function collectReferencedManagedPhotoUris(input: { photoTheme?: PhotoThemeSettings; widgetSettings?: WidgetSettings; wishMonths?: WishMonthMap }) {
+export function collectReferencedManagedPhotoUris(input: { photoTheme?: PhotoThemeSettings; widgetSettings?: WidgetSettings; wishMonths?: WishMonthMap; [key: string]: unknown }) {
   const uris = new Set<string>();
+  // Preserve unknown and legacy fields as well as the known photo settings.
+  // A corrupt/cyclic value throws rather than allowing an incomplete scan.
+  const seen = new WeakSet<object>();
+  const visit = (value: unknown): void => {
+    if (typeof value === 'string') { addUri(uris, value); return; }
+    if (!value || typeof value !== 'object') return;
+    if (seen.has(value)) throw new Error('Cannot safely inspect cyclic photo references');
+    seen.add(value);
+    Object.values(value).forEach(visit);
+  };
+  visit(input);
   const photoTheme = input.photoTheme;
   addUri(uris, photoTheme?.imageUri);
   addUri(uris, photoTheme?.focusBackgroundUri);
@@ -59,10 +73,14 @@ export function collectReferencedManagedPhotoUris(input: { photoTheme?: PhotoThe
  */
 export function cleanupUnreferencedManagedPhotos(references: Iterable<string>) {
   try {
-    const retained = new Set(references);
+    const retained = new Set([...references, ...sessionProtectedPhotos]);
+    // Comparing filenames as well handles old app-container prefixes. If any
+    // path cannot be decoded, skip the whole cleanup rather than guess.
+    const fileName = (uri: string) => decodeURIComponent(uri.split('/').pop() ?? '');
+    const retainedNames = new Set([...retained].map(fileName));
     const directory = photoDirectory();
     directory.list().forEach((entry) => {
-      if (!(entry instanceof File) || retained.has(entry.uri)) return;
+      if (!(entry instanceof File) || retained.has(entry.uri) || sessionProtectedPhotos.has(entry.uri) || retainedNames.has(fileName(entry.uri))) return;
       try {
         entry.delete();
       } catch (error) {
@@ -76,10 +94,11 @@ export function cleanupUnreferencedManagedPhotos(references: Iterable<string>) {
 
 /** Copies picker/manipulator output to the app documents directory before persisting its URI. */
 export function persistPhotoUri(sourceUri: string, purpose: string): string {
-  if (isManagedPhotoUri(sourceUri)) return sourceUri;
+  if (isManagedPhotoUri(sourceUri)) { sessionProtectedPhotos.add(sourceUri); return sourceUri; }
   const source = new File(sourceUri);
   const destination = new File(photoDirectory(), `${purpose}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${extensionFor(sourceUri)}`);
-  source.copy(destination);
+  sessionProtectedPhotos.add(destination.uri);
+  try { source.copy(destination); } catch (error) { sessionProtectedPhotos.delete(destination.uri); throw error; }
   return destination.uri;
 }
 
@@ -106,12 +125,8 @@ export function deleteTemporaryPhotoUri(uri: string | undefined) {
 
 /** Deletes only Rhythm-owned copies. Picker, library and legacy URIs are never removed. */
 export function deleteManagedPhotoUri(uri: string | undefined, retainedUris: Iterable<string | undefined> = []) {
-  if (!uri || !isManagedPhotoUri(uri)) return;
-  if ([...retainedUris].some((item) => item === uri)) return;
-  try {
-    const file = new File(uri);
-    if (file.exists) file.delete();
-  } catch (error) {
-    console.warn('Could not remove unused Rhythm photo.', error);
-  }
+  // A caller-local list cannot prove that another feature or a pending save
+  // does not reference this file. Defer deletion to the next startup scan.
+  void uri;
+  void retainedUris;
 }

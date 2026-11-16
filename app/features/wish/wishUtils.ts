@@ -26,8 +26,11 @@ export function createEmptyMonthlyWishState(): MonthlyWishState {
  * are not discarded by this small compatibility cleanup.
  */
 export function normalizeWishMonthsForSave(months: WishMonthMap | undefined): WishMonthMap {
-  if (!months) return {};
+  if (!months || typeof months !== 'object' || Array.isArray(months)) return {};
   return Object.fromEntries(Object.entries(months).map(([monthKey, monthState]) => {
+    // Preserve malformed values for recovery instead of destroying data or
+    // throwing while serializing otherwise valid months.
+    if (!monthState || typeof monthState !== 'object' || Array.isArray(monthState)) return [monthKey, monthState];
     const { theme: _legacyTheme, ...withoutLegacyTheme } = monthState as MonthlyWishState & { theme?: string };
     return [monthKey, withoutLegacyTheme as MonthlyWishState];
   })) as WishMonthMap;

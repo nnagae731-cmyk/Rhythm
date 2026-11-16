@@ -231,6 +231,12 @@ export function normalizeRewardedAccessState(
   };
 }
 
+const failedLoads = new WeakSet<RewardedAccessState>();
+
+export function isRewardedAccessLoadFailure(state: RewardedAccessState): boolean {
+  return failedLoads.has(state);
+}
+
 export async function loadRewardedAccessState(): Promise<RewardedAccessState> {
   try {
     const raw = await AsyncStorage.getItem(
@@ -250,7 +256,10 @@ export async function loadRewardedAccessState(): Promise<RewardedAccessState> {
       error,
     );
 
-    return DEFAULT_REWARDED_ACCESS_STATE;
+    const unavailable = normalizeRewardedAccessState(DEFAULT_REWARDED_ACCESS_STATE);
+    unavailable.premiumDesignTrial.used = true;
+    failedLoads.add(unavailable);
+    return unavailable;
   }
 }
 

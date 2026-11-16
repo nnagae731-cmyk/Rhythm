@@ -1,0 +1,17 @@
+const { buildBehaviorAnalysisShareText } = require('../features/aiShare/aiShareText');
+const { advanceDateValue, completeTasksAndCollectEvents } = require('../features/tasks/taskUtils');
+const { enqueueNotificationOperation } = require('../features/notifications/notificationOperationQueue');
+const { normalizeRhythmLiveActivityDisplayOptions, normalizeRhythmLiveActivityCustomization } = require('../features/widget/rhythmLiveActivity');
+const { isWidgetPhotoUnlockActive, isPremiumDesignTrialActive, isPremiumDesignUnlocked, addHours } = require('../features/ads/rewardedAccessLogic');
+const now = new Date(2026, 4, 20, 12);
+const task = (extra={}) => ({id:'1',title:'対象',done:false,category:'仕事',priority:'中',...extra});
+const summary = tasks => buildBehaviorAnalysisShareText({tasks,behaviorEvents:[],focusSessions:[],now});
+test.each([['2026-05-20',1],['2026-05-19',1],['2026-04-21',1],['2026-04-20',0],['2026-05-21',0]])('分析日付 %s の対象件数 %i', (scheduledDate,n) => expect(summary([task({scheduledDate,createdAt:now.toISOString()})])).toContain(`対象：${n}件`));
+test('予定日なしは締切、両方なしはローカル作成日',()=>{ expect(summary([task({deadlineDate:'2026-05-21',createdAt:now.toISOString()})])).toContain('対象：0件'); expect(summary([task({createdAt:now.toISOString()})])).toContain('対象：1件'); });
+test.each([['2026-05-22','daily','2026-05-23'],['2026-05-22','weekdays','2026-05-25'],['2026-05-22','weekly','2026-05-29'],['2026-01-31','monthly','2026-02-28']])('%s %s の次回', (day,rule,next)=>expect(advanceDateValue(day,rule)).toBe(next));
+test('繰り返し完了の連続実行は次回を重複生成しない',()=>{ jest.useFakeTimers().setSystemTime(now); try { const first=completeTasksAndCollectEvents([task({scheduledDate:'2026-05-20',repeatRule:'daily'})],['1']); const next=completeTasksAndCollectEvents(first.tasks,['1']); expect(next.tasks.filter(t=>t.scheduledDate==='2026-05-21')).toHaveLength(1); expect(next.newlyCompleted).toHaveLength(0); } finally {jest.useRealTimers();} });
+test('通知操作は同じIDで順序を維持し失敗後も続く',async()=>{const order=[]; const a=enqueueNotificationOperation('qa-queue',async()=>{order.push('first');throw Error('失敗');}); const b=enqueueNotificationOperation('qa-queue',async()=>{order.push('second');return true;}); await expect(a).rejects.toThrow(); await expect(b).resolves.toBe(true); expect(order).toEqual(['first','second']);});
+test('Live Activity旧設定は欠けた表示項目を補完',()=>{const x=normalizeRhythmLiveActivityDisplayOptions({currentTask:false}); expect(x.currentTask).toBe(false); expect(x.focusRemaining).toBe(true);});
+test('Live Activity不正な表示設定は安全な値へ正規化',()=>{const x=normalizeRhythmLiveActivityCustomization({fontSize:'invalid',affirmationRotationIntervalMinutes:15}); expect(x.fontSize).toBe('medium'); expect(x.affirmationRotationIntervalMinutes).toBe(60);});
+test('Widget写真7日間の対象種類と期限を区別',()=>{const state={widgetPhotoCustomization:{widgetType:'goal',expiresAt:addHours(now,168)}}; expect(isWidgetPhotoUnlockActive(state,'goal',now)).toBe(true); expect(isWidgetPhotoUnlockActive(state,'today',now)).toBe(false); expect(isWidgetPhotoUnlockActive(state,'goal',new Date(state.widgetPhotoCustomization.expiresAt))).toBe(false);});
+test('Trialと広告解放は独立した期限で判定',()=>{const state={premiumDesignTrial:{used:true,expiresAt:addHours(now,24)},premiumDesign:{unlockedUntil:addHours(now,12)}}; const at=new Date(addHours(now,12)); expect(isPremiumDesignTrialActive(state,at)).toBe(true); expect(isPremiumDesignUnlocked(state,at)).toBe(false);});

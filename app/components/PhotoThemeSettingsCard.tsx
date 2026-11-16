@@ -65,9 +65,9 @@ export function PhotoThemeSettingsCard({ photoTheme, designMode, chicPalette, pl
           {uri ? <Image source={{ uri }} style={localStyles.slotPreview} /> : <View style={[localStyles.slotEmpty, { backgroundColor: themeColors.accentSoft, borderColor: themeColors.primaryAccent }]}><Text style={[localStyles.slotEmptyText, { color: themeColors.primaryAccent }]}>＋</Text></View>}
           <Text numberOfLines={2} style={[localStyles.slotLabel, { color: themeColors.textPrimary }]}>{slot.label}</Text>
           <View style={localStyles.slotActions}>
-            <Pressable hitSlop={6} style={[localStyles.slotActionButton, { backgroundColor: themeColors.accentSoft, borderColor: themeColors.primaryAccent }, !uri && localStyles.slotActionButtonFull]} onPress={() => onPick(slot.id)}><Text style={[localStyles.slotActionText, { color: themeColors.primaryAccent }]}>{uri ? '変更' : '選ぶ'}</Text></Pressable>
-            {uri && <Pressable hitSlop={6} style={[localStyles.slotActionButton, { borderColor: themeColors.primaryAccent }]} onPress={() => onAdjust(slot.id)}><Text style={[localStyles.slotActionText, { color: themeColors.textPrimary }]}>再調整</Text></Pressable>}
-            {uri && <Pressable hitSlop={6} style={localStyles.slotRemoveButton} onPress={() => onClear(slot.id)}><Text style={localStyles.slotRemoveText}>外す</Text></Pressable>}
+            <Pressable accessibilityRole="button" accessibilityLabel={`${slot.label}を${uri ? '変更' : '選ぶ'}`} style={[localStyles.slotActionButton, { backgroundColor: themeColors.accentSoft, borderColor: themeColors.primaryAccent }, !uri && localStyles.slotActionButtonFull]} onPress={() => onPick(slot.id)}><Text style={[localStyles.slotActionText, { color: themeColors.primaryAccent }]}>{uri ? '変更' : '選ぶ'}</Text></Pressable>
+            {uri && <Pressable accessibilityRole="button" accessibilityLabel={`${slot.label}を再調整`} style={[localStyles.slotActionButton, { borderColor: themeColors.primaryAccent }]} onPress={() => onAdjust(slot.id)}><Text style={[localStyles.slotActionText, { color: themeColors.textPrimary }]}>再調整</Text></Pressable>}
+            {uri && <Pressable accessibilityRole="button" accessibilityLabel={`${slot.label}を外す`} style={localStyles.slotRemoveButton} onPress={() => onClear(slot.id)}><Text style={localStyles.slotRemoveText}>外す</Text></Pressable>}
           </View>
         </View>;
       })}
@@ -99,9 +99,9 @@ const localStyles = StyleSheet.create({
   slotEmptyText: { fontSize: 20, fontWeight: '700' },
   slotLabel: { fontSize: 11, lineHeight: 15, fontWeight: '900', marginTop: 6, minHeight: 30 },
   slotActions: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 7 },
-  slotActionButton: { minHeight: 34, minWidth: 44, paddingHorizontal: 9, paddingVertical: 7, borderRadius: 9, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
+  slotActionButton: { minHeight: 44, flex: 1, minWidth: 54, paddingHorizontal: 3, paddingVertical: 7, borderRadius: 9, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
   slotActionButtonFull: { flex: 1 },
-  slotRemoveButton: { minHeight: 34, minWidth: 38, paddingHorizontal: 8, paddingVertical: 7, borderRadius: 9, alignItems: 'center', justifyContent: 'center', backgroundColor: '#FFF0F2' },
+  slotRemoveButton: { minHeight: 44, minWidth: 44, width: '100%', marginTop: 2, paddingHorizontal: 8, paddingVertical: 7, borderRadius: 9, alignItems: 'center', justifyContent: 'center', backgroundColor: '#FFF0F2' },
   slotActionText: { fontSize: 11, fontWeight: '900' },
   slotRemoveText: { color: '#B85060', fontSize: 11, fontWeight: '900' },
 });

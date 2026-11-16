@@ -1,0 +1,13 @@
+jest.mock('expo-notifications', () => ({getAllScheduledNotificationsAsync:jest.fn(),cancelScheduledNotificationAsync:jest.fn()}));
+const N=require('expo-notifications');
+const {buildRhythmWidgetSnapshot}=require('../features/widget/rhythmWidgetSnapshot');
+const {WIDGET_TYPE_OPTIONS}=require('../features/widget/widgetSettings');
+const {cancelPendingAffirmationNotifications}=require('../features/notifications/affirmationNotifications');
+const now=new Date(2026,4,20,12);
+const snapshot=(extra={})=>buildRhythmWidgetSnapshot({tasks:[],departurePlans:[],departureCheckIns:[],canShowArrivalReverseCountdown:true,now,...extra});
+beforeEach(()=>{jest.clearAllMocks();N.getAllScheduledNotificationsAsync.mockResolvedValue([]);N.cancelScheduledNotificationAsync.mockResolvedValue();});
+test('Widgetの一般公開候補は識別子に重複がない',()=>{const ids=WIDGET_TYPE_OPTIONS.map(x=>x.id);expect(new Set(ids).size).toBe(ids.length);});
+test('Widgetの今月と今週は日付境界と今日を保持する',()=>{const s=snapshot();expect(s.calendarMonth.year).toBe(2026);expect(s.calendarMonth.month).toBe(5);expect(s.calendarMonth.days.filter(x=>x.isToday)).toHaveLength(1);expect(s.calendarWeek.days).toHaveLength(7);expect(s.calendarWeek.days.find(x=>x.isToday).date).toBe('2026-05-20');});
+test('Widgetのチェックリストは未来・完了タスクを除外し、項目順を保持',()=>{const base={title:'作業',done:false,status:'active',bucket:'now',priority:'中',category:'その他'};const item=(id,order,text,checked=false)=>({id,order,text,checked});const s=snapshot({tasks:[{...base,id:'now',scheduledDate:'2026-05-20',listItems:[item('b',2,'2番'),item('a',1,'1番',true)]},{...base,id:'future',scheduledDate:'2026-05-21',listItems:[item('f',0,'未来')]},{...base,id:'done',done:true,listItems:[item('d',0,'完了')]}]});expect(s.checklist.map(x=>[x.title,x.done])).toEqual([['1番',true],['2番',false]]);});
+test('Widgetのアファメーションは無効・空文字を除外して8件まで',()=>{const affirmations=Array.from({length:10},(_,i)=>({id:String(i),text:`文${i}`,enabled:true})).concat([{id:'off',text:'非表示',enabled:false},{id:'blank',text:' ',enabled:true}]);const s=snapshot({affirmations});expect(s.affirmations).toHaveLength(8);expect(s.affirmations.some(x=>x.id==='off'||x.id==='blank')).toBe(false);});
+test('アファメーション個別取消に失敗した場合は失敗を伝え、他のIDも取消を試みる',async()=>{jest.spyOn(console,'warn').mockImplementation(()=>{});N.getAllScheduledNotificationsAsync.mockResolvedValue([{identifier:'legacy',content:{data:{affirmationId:'a'}}}]);N.cancelScheduledNotificationAsync.mockImplementation(async id=>{if(id==='legacy')throw Error('failed');});await expect(cancelPendingAffirmationNotifications('a')).rejects.toThrow('cleanup incomplete');expect(N.cancelScheduledNotificationAsync).toHaveBeenCalledWith('affirmation:a');jest.restoreAllMocks();});

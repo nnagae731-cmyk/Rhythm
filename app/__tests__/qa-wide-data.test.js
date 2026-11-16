@@ -1,0 +1,22 @@
+jest.mock('@react-native-async-storage/async-storage', () => require('@react-native-async-storage/async-storage/jest/async-storage-mock'));
+const storage=require('@react-native-async-storage/async-storage');
+const {loadRhythmState,saveRhythmState}=require('../storage/rhythmStorage');
+const {STORAGE_KEY}=require('../storage/rhythmState');
+const {completeTasksAndCollectEvents,advanceDateValue}=require('../features/tasks/taskUtils');
+const {normalizeUpcomingItems}=require('../features/tasks/taskSelectors');
+const {calculateWishProgress,normalizeMonthlyReview,createEmptyMonthlyWishState,normalizeWishMonthsForSave}=require('../features/wish/wishUtils');
+const {getRoutineHistories}=require('../features/analytics/routineInterruptionAnalysis');
+const task=(extra={})=>({id:'a',title:'対象',category:'仕事',priority:'中',done:false,...extra});
+beforeEach(async()=>{jest.restoreAllMocks();await storage.clear();});
+test('旧形式の日記写真は重複なく残りメモも保持する',()=>{const result=normalizeMonthlyReview({photo:'a',photos:['b','a'],shortNote:'ひとこと',memo:'詳細'});expect(result.photos).toEqual(['b','a']);expect(result.shortNote).toBe('ひとこと');expect(result.memo).toBe('詳細');});
+test('空の目標は進捗0で割り算エラーを起こさない',()=>{expect(calculateWishProgress(createEmptyMonthlyWishState())).toMatchObject({total:0,completed:0,progress:0});});
+test('完了時はサブタスクを完了し次回の状態を未完了に戻す',()=>{jest.useFakeTimers().setSystemTime(new Date(2026,4,20,12));try{const result=completeTasksAndCollectEvents([task({repeatRule:'daily',scheduledDate:'2026-05-20',subtasks:[{id:'s',title:'子',done:false}],listItems:[{id:'l',title:'項目',checked:true}]})],['a']);const original=result.tasks.find(x=>x.id==='a');const next=result.tasks.find(x=>x.id!=='a');expect(original.subtasks[0].done).toBe(true);expect(next.subtasks[0].done).toBe(false);expect(next.listItems[0].checked).toBe(false);}finally{jest.useRealTimers();}});
+test('停止したルーティンには次回を生成しない',()=>{const result=completeTasksAndCollectEvents([task({routineId:'r',routineEndedAt:'2026-05-01T00:00:00.000Z',repeatRule:'daily',scheduledDate:'2026-05-20'})],['a']);expect(result.tasks).toHaveLength(1);expect(result.tasks[0].done).toBe(true);});
+test('うるう年の月末は翌月末を維持する',()=>expect(advanceDateValue('2024-01-31','monthly')).toBe('2024-02-29'));
+test('終日予定と完了済みタスクを次の時刻付き予定へ含めない',()=>{const now=new Date(2026,4,20,9);const tasks=[task({done:true,scheduledDate:'2026-05-20',scheduledTime:'10:00'})];const plans=[{id:'p',title:'終日',date:'2026-05-20',allDay:true}];expect(normalizeUpcomingItems(tasks,plans,now)).toEqual([]);});
+test('古いルーティンイベントは現在も有効なタスクを無効化しない',()=>{const items=getRoutineHistories([{type:'routine_deactivated',routineId:'r',occurredAt:'2026-05-19T00:00:00Z'}],[task({routineId:'r',isRoutine:true})]);expect(items).toHaveLength(1);expect(items[0].active).toBe(true);});
+test('壊れた保存データは読み込み失敗を通知し元データを保持する',async()=>{jest.spyOn(console,'warn').mockImplementation(()=>{});await storage.setItem(STORAGE_KEY,'{bad');await expect(loadRhythmState()).rejects.toThrow();expect(await storage.getItem(STORAGE_KEY)).toBe('{bad');});
+test('保存失敗では以前に保存したデータが残る',async()=>{jest.spyOn(console,'warn').mockImplementation(()=>{});await saveRhythmState({tasks:[task()]});jest.spyOn(storage,'setItem').mockRejectedValueOnce(Error('failed'));await expect(saveRhythmState({tasks:[]})).rejects.toThrow('failed');expect((await loadRhythmState()).tasks).toHaveLength(1);});
+test('部分的に壊れた月別データの読込後も保存処理がクラッシュしない',()=>{
+ expect(()=>normalizeWishMonthsForSave({'2026-05':null})).not.toThrow();
+});

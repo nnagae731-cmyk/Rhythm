@@ -152,8 +152,11 @@ export function buildBehaviorAnalysisShareText({ tasks, behaviorEvents, focusSes
   const taskWindow = tasks.filter((task) => {
     if (completed.some((item) => item.id === task.id)) return true;
     if (isCompleted(task)) return false;
-    return [task.createdAt, task.scheduledDate, task.deadlineDate]
-      .some((date) => typeof date === 'string' && /^\d{4}-\d{2}-\d{2}/.test(date) && date.slice(0, 10) >= startDate && date.slice(0, 10) <= today);
+    // Scheduled day is authoritative; a deadline is used only if no day is
+    // scheduled. Undated tasks retain the existing creation-date fallback.
+    const created = task.createdAt ? new Date(task.createdAt) : undefined;
+    const date = task.scheduledDate || task.deadlineDate || (created && !Number.isNaN(created.getTime()) ? localDateKey(created) : undefined);
+    return typeof date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(date) && date >= startDate && date <= today;
   });
   const incomplete = taskWindow.filter((task) => !completed.some((item) => item.id === task.id));
   const overdue = incomplete.filter((task) => (task.scheduledDate && task.scheduledDate < today) || (task.deadlineDate && task.deadlineDate < today));

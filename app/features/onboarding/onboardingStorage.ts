@@ -104,17 +104,7 @@ export function normalizeOnboardingState(
 
 export async function loadOnboardingState(): Promise<OnboardingState> {
   try {
-    const raw = await AsyncStorage.getItem(
-      ONBOARDING_STORAGE_KEY,
-    );
-
-    if (!raw) {
-      return DEFAULT_ONBOARDING_STATE;
-    }
-
-    return normalizeOnboardingState(
-      JSON.parse(raw),
-    );
+    return await readOnboardingState();
   } catch (error) {
     console.warn(
       '[Onboarding] State could not be loaded.',
@@ -123,6 +113,20 @@ export async function loadOnboardingState(): Promise<OnboardingState> {
 
     return DEFAULT_ONBOARDING_STATE;
   }
+}
+
+async function readOnboardingState(): Promise<OnboardingState> {
+  const raw = await AsyncStorage.getItem(ONBOARDING_STORAGE_KEY);
+  return raw ? normalizeOnboardingState(JSON.parse(raw)) : DEFAULT_ONBOARDING_STATE;
+}
+
+// All mutations, including resets, operate on the latest persisted value.
+// A rejected write must not prevent the next operation from running.
+let mutationQueue: Promise<unknown> = Promise.resolve();
+function serializeMutation<T>(operation: () => Promise<T>): Promise<T> {
+  const result = mutationQueue.then(operation);
+  mutationQueue = result.catch(() => undefined);
+  return result;
 }
 
 export function hasCompletedOnboarding(
@@ -135,7 +139,8 @@ export function hasCompletedOnboarding(
 export async function markOnboardingCompleted(
   featureId: OnboardingFeatureId,
 ): Promise<OnboardingState> {
-  const current = await loadOnboardingState();
+  return serializeMutation(async () => {
+  const current = await readOnboardingState();
 
   const next: OnboardingState = {
     ...current,
@@ -151,12 +156,14 @@ export async function markOnboardingCompleted(
   );
 
   return next;
+  });
 }
 
 export async function resetOnboardingFeature(
   featureId: OnboardingFeatureId,
 ): Promise<OnboardingState> {
-  const current = await loadOnboardingState();
+  return serializeMutation(async () => {
+  const current = await readOnboardingState();
 
   const completed = {
     ...current.completed,
@@ -175,22 +182,25 @@ export async function resetOnboardingFeature(
   );
 
   return next;
+  });
 }
 
 export async function resetAllOnboarding(): Promise<void> {
-  await AsyncStorage.removeItem(
+  return serializeMutation(() => AsyncStorage.removeItem(
     ONBOARDING_STORAGE_KEY,
-  );
+  ));
 }
 
 export async function setOnboardingFirstRunStage(
   stage: OnboardingState['firstRunStage'],
 ): Promise<OnboardingState> {
-  const current = await loadOnboardingState();
+  return serializeMutation(async () => {
+  const current = await readOnboardingState();
   const next: OnboardingState = {
     ...current,
     ...(stage ? { firstRunStage: stage } : { firstRunStage: undefined }),
   };
   await AsyncStorage.setItem(ONBOARDING_STORAGE_KEY, JSON.stringify(next));
   return next;
+  });
 }
