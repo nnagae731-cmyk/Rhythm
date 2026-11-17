@@ -203,6 +203,8 @@ export function HistoryScreen({ tasks, wishMonths, calendarMarks, onSetCalendarM
   const [reviewEditMemo, setReviewEditMemo] = useState('');
   const [journalDraft, setJournalDraft] = useState<MonthlyReview>({ date: dateKey(now), photos: [], photo: '', shortNote: '', memo: '', satisfaction: 0 });
   const [journalEditing, setJournalEditing] = useState(false);
+  const [journalSaving, setJournalSaving] = useState(false);
+  const journalSavingRef = useRef(false);
   const [journalSaveMessage, setJournalSaveMessage] = useState('');
   const [monthlyCardPhotoCount, setMonthlyCardPhotoCount] = useState(0);
   const [monthlyCardModel, setMonthlyCardModel] = useState<ReflectionCardModel>();
@@ -368,11 +370,23 @@ export function HistoryScreen({ tasks, wishMonths, calendarMarks, onSetCalendarM
       return { ...current, photo: photos[0] ?? '', photos };
     });
   };
-  const saveJournal = () => {
+  const saveJournal = async () => {
+    if (journalSavingRef.current) return;
+    journalSavingRef.current = true;
+    setJournalSaving(true);
+    setJournalEditing(true);
     const photos = [...new Set([...(journalDraft.photos ?? []), journalDraft.photo ?? ''].filter(Boolean))];
-    onSaveDailyReview(selectedKey.slice(0, 7), { ...journalDraft, id: selectedDayReview?.id ?? journalDraft.id, date: selectedKey, photo: photos[0] ?? '', photos, shortNote: journalDraft.shortNote?.trim() ?? '', memo: journalDraft.memo?.trim() ?? '' });
-    setJournalEditing(false);
-    setJournalSaveMessage(photos.length > 0 ? '写真と記録を更新しました' : '記録を更新しました');
+    setJournalSaveMessage('');
+    try {
+      await onSaveDailyReview(selectedKey.slice(0, 7), { ...journalDraft, id: selectedDayReview?.id ?? journalDraft.id, date: selectedKey, photo: photos[0] ?? '', photos, shortNote: journalDraft.shortNote?.trim() ?? '', memo: journalDraft.memo?.trim() ?? '' });
+      setJournalEditing(false);
+      setJournalSaveMessage(photos.length > 0 ? '写真と記録を更新しました' : '記録を更新しました');
+    } catch {
+      Alert.alert('保存できませんでした', '記録は入力したまま残っています。もう一度お試しください。');
+    } finally {
+      journalSavingRef.current = false;
+      setJournalSaving(false);
+    }
   };
   const confirmDeleteJournal = () => {
     if (!selectedDayReviewEntry) return;
@@ -461,7 +475,7 @@ export function HistoryScreen({ tasks, wishMonths, calendarMarks, onSetCalendarM
     <View style={styles.journalPhotoRow}>{selectedJournalPhotos.map((uri, index) => <View key={`${uri}-${index}`} style={styles.journalPhotoWrap}><Pressable onPress={() => { setSelectedReview({ ...journalDraft, photo: uri, photos: selectedJournalPhotos }); setSelectedReviewPhotoIndex(index); }}><Image source={{ uri }} style={styles.journalPhotoThumb} /></Pressable><Pressable style={styles.journalPhotoRemove} onPress={() => setJournalDraft((current) => { const photos = [...new Set([...(current.photos ?? []), current.photo ?? ''].filter(Boolean))].filter((_, photoIndex) => photoIndex !== index); return { ...current, photo: photos[0] ?? '', photos }; })}><Text style={styles.journalPhotoRemoveText}>×</Text></Pressable></View>)}{selectedJournalPhotos.length < maxJournalPhotos && <Pressable style={[styles.journalPhotoAdd, { borderColor: journalTheme.border, backgroundColor: journalTheme.secondarySurface }]} onPress={() => void chooseJournalPhoto()}><Text style={[styles.journalPhotoAddIcon, { color: journalTheme.accent }]}>＋</Text><Text style={[styles.journalPhotoAddText, { color: journalTheme.accent }]}>写真を追加</Text></Pressable>}</View>
     <TextInput value={journalDraft.shortNote ?? ''} onChangeText={(shortNote) => setJournalDraft((current) => ({ ...current, shortNote }))} placeholder="今日のひとこと" placeholderTextColor={journalTheme.muted} style={[styles.journalInput, { backgroundColor: journalTheme.surface, borderColor: journalTheme.border, color: journalTheme.text }]} />
     <TextInput value={journalDraft.memo ?? ''} onChangeText={(memo) => setJournalDraft((current) => ({ ...current, memo }))} placeholder="今日のことを少し残す" placeholderTextColor={journalTheme.muted} multiline style={[styles.journalInput, styles.journalMemo, { backgroundColor: journalTheme.surface, borderColor: journalTheme.border, color: journalTheme.text }]} />
-    <View style={styles.journalActions}><Pressable style={[styles.journalSaveButton, { backgroundColor: journalTheme.accent }]} onPress={saveJournal}><Text style={[styles.journalSaveButtonText, { color: journalTheme.onAccent }]}>{selectedDayReviewEntry ? '更新する' : '保存する'}</Text></Pressable>{selectedDayReviewEntry && <Pressable style={[styles.journalDeleteButton, { borderColor: guideTheme.colors.danger }]} onPress={confirmDeleteJournal}><Text style={[styles.journalDeleteButtonText, { color: guideTheme.colors.danger }]}>削除</Text></Pressable>}</View>
+    <View style={styles.journalActions}><Pressable disabled={journalSaving} style={[styles.journalSaveButton, { backgroundColor: journalTheme.accent }]} onPress={saveJournal}><Text style={[styles.journalSaveButtonText, { color: journalTheme.onAccent }]}>{journalSaving ? '保存中…' : selectedDayReviewEntry ? '更新する' : '保存する'}</Text></Pressable>{selectedDayReviewEntry && <Pressable disabled={journalSaving} style={[styles.journalDeleteButton, { borderColor: guideTheme.colors.danger }]} onPress={confirmDeleteJournal}><Text style={[styles.journalDeleteButtonText, { color: guideTheme.colors.danger }]}>削除</Text></Pressable>}</View>
     {journalSaveMessage ? <Text style={[styles.journalPhotoHint, { color: journalTheme.muted }]}>{journalSaveMessage}</Text> : null}
   </View> : <View style={[styles.journalEditor, isDark && styles.darkJournalEditor, { backgroundColor: journalTheme.surface, borderColor: journalTheme.border }]}>
     <View style={styles.journalEditorHeader}><View><Text style={[styles.journalEditorTitle, { color: journalTheme.text }]}>今日の記録</Text><Text style={[styles.journalEditorDate, { color: journalTheme.accent }]}>{selectedKey.replaceAll('-', '.')}</Text></View><Text style={[styles.journalEditorCount, { color: journalTheme.accent }]}>写真 {selectedJournalPhotos.length} / {maxJournalPhotos}</Text></View>
@@ -554,7 +568,7 @@ export function HistoryScreen({ tasks, wishMonths, calendarMarks, onSetCalendarM
           </View>
           <TextInput value={journalDraft.shortNote ?? ''} onChangeText={(shortNote) => setJournalDraft((current) => ({ ...current, shortNote }))} placeholder="今日のひとこと" placeholderTextColor={journalTheme.muted} style={[styles.journalInput, { backgroundColor: journalTheme.surface, borderColor: journalTheme.border, color: journalTheme.text }]} />
           <TextInput value={journalDraft.memo ?? ''} onChangeText={(memo) => setJournalDraft((current) => ({ ...current, memo }))} placeholder="今日のことを少し残す" placeholderTextColor={journalTheme.muted} multiline style={[styles.journalInput, styles.journalMemo, { backgroundColor: journalTheme.surface, borderColor: journalTheme.border, color: journalTheme.text }]} />
-          <View style={styles.journalActions}><Pressable style={[styles.journalSaveButton, { backgroundColor: journalTheme.accent }]} onPress={saveJournal}><Text style={[styles.journalSaveButtonText, { color: journalTheme.onAccent }]}>{selectedDayReviewEntry ? '更新する' : '保存する'}</Text></Pressable>{selectedDayReviewEntry && <Pressable style={[styles.journalDeleteButton, { borderColor: guideTheme.colors.danger }]} onPress={confirmDeleteJournal}><Text style={[styles.journalDeleteButtonText, { color: guideTheme.colors.danger }]}>削除</Text></Pressable>}</View>
+          <View style={styles.journalActions}><Pressable disabled={journalSaving} style={[styles.journalSaveButton, { backgroundColor: journalTheme.accent }]} onPress={saveJournal}><Text style={[styles.journalSaveButtonText, { color: journalTheme.onAccent }]}>{journalSaving ? '保存中…' : selectedDayReviewEntry ? '更新する' : '保存する'}</Text></Pressable>{selectedDayReviewEntry && <Pressable disabled={journalSaving} style={[styles.journalDeleteButton, { borderColor: guideTheme.colors.danger }]} onPress={confirmDeleteJournal}><Text style={[styles.journalDeleteButtonText, { color: guideTheme.colors.danger }]}>削除</Text></Pressable>}</View>
           {journalSaveMessage ? <Text style={[styles.journalPhotoHint, { color: journalTheme.muted }]}>{journalSaveMessage}</Text> : null}
         </View> : <View style={[styles.journalEditor, isDark && styles.darkJournalEditor, designMode === 'chic' && chicPalette && { backgroundColor: chicPalette.cardSurface, borderColor: chicPalette.border }]}>
           <View style={styles.journalEditorHeader}><View><Text style={[styles.journalEditorTitle, { color: journalTheme.text }]}>今日の記録</Text><Text style={[styles.journalEditorDate, { color: journalTheme.accent }]}>{selectedKey.replaceAll('-', '.')}</Text></View><Text style={[styles.journalEditorCount, { color: journalTheme.accent }]}>写真 {selectedJournalPhotos.length} / {maxJournalPhotos}</Text></View>

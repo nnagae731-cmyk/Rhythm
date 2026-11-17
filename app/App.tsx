@@ -1303,7 +1303,7 @@ export default function App() {
   const focusBackgroundUri = photoThemeEnabled && (hasDesignCustomizeAccess || photoDesignTemporaryAccess || rewardedAccess.photoCustomization.focusUnlocked) ? photoTheme.focusBackgroundUri : undefined;
   // A temporary trial is an explicit, time-bounded override. Persisted free
   // users still fall back to plain when no trial is active.
-  const effectiveChicPattern = (activeDesignTrial ?? getEffectiveChicPattern(planTier, chicPattern, hasDesignCustomizeAccess)) as ChicPattern;
+  const effectiveChicPattern = (activeDesignTrial ?? getEffectiveChicPattern(planTier, chicPattern, hasDesignCustomizeAccess || isPremiumDesignUnlocked(rewardedAccess, now))) as ChicPattern;
   // Keep decorative pattern and UI color independent. Night Sky is the one
   // exception: its completed artwork has a fixed foreground palette, while
   // the selected color remains persisted and is restored on exit.
@@ -1519,16 +1519,25 @@ export default function App() {
     });
   }, []);
   const saveDailyReview = React.useCallback((monthKey: string, draft: MonthlyReview) => {
-    setWishMonths((current) => {
+    if (!hydratedRef.current || persistenceDisabledRef.current) return Promise.reject(new Error('保存データを確認できません'));
+    return new Promise<void>((resolve, reject) => {
+      const pending: { expected?: WishMonthMap; resolve: () => void; reject: (error: Error) => void } = { resolve: () => {
+        if (planTier === 'premium' && [...(draft.photos ?? []), draft.photo ?? ''].some(Boolean)) void onboarding.complete('photoLog');
+        resolve();
+      }, reject };
+      pendingWishSavesRef.current.push(pending);
+      setWishMonths((current) => {
       const monthState = getMonthlyWishState(current, monthKey);
       const reviews = reviewsForMonth(monthState);
       const photos = [...new Set([...(draft.photos ?? []), draft.photo ?? ''].filter(Boolean))];
       const nextReview: MonthlyReview = { ...draft, id: draft.id ?? `journal-${draft.date ?? Date.now()}`, photo: photos[0] ?? '', photos };
       const existingIndex = reviews.findIndex((review) => review.id === nextReview.id || review.date === nextReview.date);
       const nextReviews = existingIndex >= 0 ? reviews.map((review, index) => index === existingIndex ? { ...review, ...nextReview } : review) : [...reviews, nextReview];
-      return { ...current, [monthKey]: { ...monthState, review: {}, reviews: nextReviews } };
+        const next = { ...current, [monthKey]: { ...monthState, review: {}, reviews: nextReviews } };
+        pending.expected = next;
+        return next;
+      });
     });
-    if (planTier === 'premium' && [...(draft.photos ?? []), draft.photo ?? ''].some(Boolean)) void onboarding.complete('photoLog');
   }, [onboarding, planTier]);
   const saveMonthlyReflectionCard = React.useCallback((monthKey: string, card: MonthlyReflectionCard) => {
     setWishMonths((current) => {
