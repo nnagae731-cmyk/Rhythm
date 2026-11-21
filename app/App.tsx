@@ -58,7 +58,7 @@ import { enqueueNotificationOperation } from './features/notifications/notificat
 import { pendingNotificationReconciliations, reconcileNotificationOperation } from './features/notifications/pendingReconciliation';
 import { getPendingNotificationRequests } from './features/notifications/pendingRequests';
 import { getDeparturePlanMode, getPlanScheduledTime, isArrivalReversePlan, isDepartureReminderPlan, normalizeDeparturePlanForSave } from './features/departure/departurePlanMode';
-import { DEFAULT_LIVE_ACTIVITY_CUSTOMIZATION, DEFAULT_LIVE_ACTIVITY_DISPLAY_OPTIONS, endRhythmLiveActivity, getRhythmLiveActivityStatus, isRhythmLiveActivityAvailable, normalizeRhythmLiveActivityCustomization, normalizeRhythmLiveActivityDisplayOptions, startOrUpdateRhythmLiveActivity, type RhythmLiveActivityPayload, type RhythmLiveActivityRuntimeStatus } from './features/widget/rhythmLiveActivity';
+import { DEFAULT_LIVE_ACTIVITY_CUSTOMIZATION, DEFAULT_LIVE_ACTIVITY_DISPLAY_OPTIONS, endRhythmLiveActivity, getRhythmLiveActivityStatus, getRhythmLiveActivityAvailability, normalizeRhythmLiveActivityCustomization, normalizeRhythmLiveActivityDisplayOptions, startOrUpdateRhythmLiveActivity, type RhythmLiveActivityPayload, type RhythmLiveActivityRuntimeStatus } from './features/widget/rhythmLiveActivity';
 import { WishScreen } from './WishScreen';
 import { VoiceInputModal } from './components/VoiceInputModal';
 import { VoiceParseResult } from './features/voiceParser';
@@ -834,6 +834,8 @@ export default function App() {
   const [liveActivityDisplayOptions, setLiveActivityDisplayOptions] = useState<LiveActivityDisplayOptions>(() => ({ ...DEFAULT_LIVE_ACTIVITY_DISPLAY_OPTIONS }));
   const [liveActivityCustomization, setLiveActivityCustomization] = useState<LiveActivityCustomizationSettings>(() => ({ ...DEFAULT_LIVE_ACTIVITY_CUSTOMIZATION }));
   const liveActivitySerializedRef = React.useRef<string | undefined>(undefined);
+  const liveActivitySyncGenerationRef = React.useRef(0);
+  const liveActivityOperationRef = React.useRef<Promise<unknown>>(Promise.resolve());
   const [voiceFocusRequest, setVoiceFocusRequest] = useState<{ durationMinutes: number; id: number }>();
   const [rewardedAccess, setRewardedAccess] = useState<RewardedAccessState>(DEFAULT_REWARDED_ACCESS_STATE);
   const [rewardedAccessHydrated, setRewardedAccessHydrated] = useState(false);
@@ -877,6 +879,17 @@ export default function App() {
   const latestPersistedStateRef = React.useRef<PersistedState | undefined>(undefined);
   const latestPersistedWishMonthsRef = React.useRef<WishMonthMap | undefined>(undefined);
   const pendingWishSavesRef = React.useRef<Array<{ expected?: WishMonthMap; resolve: () => void; reject: (error: Error) => void }>>([]);
+  const pendingSettingsSavesRef = React.useRef<Array<{ matches: (state: PersistedState) => boolean; resolve: () => void; reject: (error: Error) => void }>>([]);
+  const departureSavingRef = React.useRef(false);
+  const waitForSettingsSave = (matches: (state: PersistedState) => boolean) => new Promise<void>((resolve, reject) => {
+    if (!hydratedRef.current || persistenceDisabledRef.current) { reject(new Error('保存データを確認できません')); return; }
+    pendingSettingsSavesRef.current.push({ matches, resolve, reject });
+  });
+  const settleSettingsSave = (state: PersistedState, error?: unknown, snapshotPending = pendingSettingsSavesRef.current) => {
+    const pending = snapshotPending.filter((item) => pendingSettingsSavesRef.current.includes(item) && item.matches(state));
+    pendingSettingsSavesRef.current = pendingSettingsSavesRef.current.filter((item) => !pending.includes(item));
+    pending.forEach((item) => error ? item.reject(error instanceof Error ? error : new Error('保存に失敗しました')) : item.resolve());
+  };
   const startupPhotoReferencesRef = React.useRef<Set<string> | undefined>(undefined);
   const pendingNotificationCompletionIdsRef = React.useRef<string[]>([]);
   const pendingWidgetActionsProcessingRef = React.useRef(false);
@@ -1867,17 +1880,17 @@ export default function App() {
   const saveAffirmation = React.useCallback(async (draft: Affirmation) => {
     if (!hasPremiumAccess(planTier, 'affirmations')) {
       openPremiumFeature('affirmation');
-      return;
+      throw new Error('Premiumの利用権を確認してください');
     }
     const existing = affirmations.find((item) => item.id === draft.id);
     if (!existing && affirmations.length >= MAX_AFFIRMATIONS) {
       Alert.alert(`アファメーションは最大${MAX_AFFIRMATIONS}件までです`, '不要な通知を削除してから追加してください。');
-      return;
+      throw new Error('登録上限に達しています');
     }
     const duplicateTime = affirmations.find((item) => item.id !== draft.id && item.time === draft.time);
     if (duplicateTime) {
       Alert.alert('同じ時刻の通知があります', '別の時刻を選択してください。');
-      return;
+      throw new Error('別の通知時刻を選択してください');
     }
     const generation = (affirmationOperationGenerationRef.current[draft.id] ?? 0) + 1;
     affirmationOperationGenerationRef.current[draft.id] = generation;
@@ -1899,16 +1912,18 @@ export default function App() {
             next.enabled = false;
             Alert.alert('通知を許可すると、指定した時間に言葉を届けられます。');
           } else {
-            next.notificationId = await scheduleAffirmationNotification(next).catch(() => undefined);
+            next.notificationId = await scheduleAffirmationNotification(next);
           }
         }
       });
     } catch (error) {
       if (__DEV__) console.warn('[Notifications] affirmation save transaction failed', error);
-      return;
+      throw new Error('通知を更新できませんでした。もう一度お試しください。');
     }
-    if (affirmationOperationGenerationRef.current[draft.id] !== generation) return;
+    if (affirmationOperationGenerationRef.current[draft.id] !== generation) throw new Error('通知の設定が変更されました。もう一度お試しください。');
+    const persisted = waitForSettingsSave((state) => state.affirmations?.some((item) => item.id === next.id && item.text === next.text && item.time === next.time && item.enabled === next.enabled && item.notificationId === next.notificationId) === true);
     setAffirmations((current) => current.some((item) => item.id === next.id) ? current.map((item) => item.id === next.id ? next : item) : [next, ...current]);
+    await persisted;
     void onboarding.complete('affirmation');
   }, [affirmations, onboarding, openPremiumFeature, planTier]);
   const saveAffirmationCustomText = React.useCallback((draft: AffirmationCustomText) => {
@@ -3103,6 +3118,9 @@ export default function App() {
     latestPersistedStateRef.current = state;
     latestPersistedWishMonthsRef.current = wishMonths;
     if (persistenceDisabledRef.current) return;
+    const supersededSettingsSaves = pendingSettingsSavesRef.current.filter((item) => !item.matches(state));
+    pendingSettingsSavesRef.current = pendingSettingsSavesRef.current.filter((item) => !supersededSettingsSaves.includes(item));
+    supersededSettingsSaves.forEach((item) => item.reject(new Error('保存中に設定が変更されました。もう一度お試しください。')));
     const supersededWishSaves = pendingWishSavesRef.current.filter((item) => item.expected && item.expected !== wishMonths);
     pendingWishSavesRef.current = pendingWishSavesRef.current.filter((item) => !supersededWishSaves.includes(item));
     supersededWishSaves.forEach((item) => item.reject(new Error('保存中にデータが変更されました。もう一度お試しください。')));
@@ -3110,11 +3128,14 @@ export default function App() {
     persistenceTimerRef.current = setTimeout(() => {
       persistenceTimerRef.current = undefined;
       const pendingForSnapshot = pendingWishSavesRef.current.filter((item) => item.expected === wishMonths);
+      const pendingSettingsForSnapshot = pendingSettingsSavesRef.current.filter((item) => item.matches(state));
       void saveRhythmState(state).then(() => {
+        settleSettingsSave(state, undefined, pendingSettingsForSnapshot);
         const unsettled = pendingForSnapshot.filter((item) => pendingWishSavesRef.current.includes(item));
         pendingWishSavesRef.current = pendingWishSavesRef.current.filter((item) => !unsettled.includes(item));
         unsettled.forEach((item) => item.resolve());
       }).catch((error) => {
+        settleSettingsSave(state, error, pendingSettingsForSnapshot);
         const unsettled = pendingForSnapshot.filter((item) => pendingWishSavesRef.current.includes(item));
         pendingWishSavesRef.current = pendingWishSavesRef.current.filter((item) => !unsettled.includes(item));
         unsettled.forEach((item) => item.reject(error instanceof Error ? error : new Error('保存に失敗しました')));
@@ -3141,11 +3162,14 @@ export default function App() {
       const pending = latestPersistedStateRef.current;
       if (pending && !persistenceDisabledRef.current) {
         const pendingForSnapshot = pendingWishSavesRef.current.filter((item) => item.expected === latestPersistedWishMonthsRef.current);
+        const pendingSettingsForSnapshot = pendingSettingsSavesRef.current.filter((item) => item.matches(pending));
         void saveRhythmState(pending).then(() => {
+          settleSettingsSave(pending, undefined, pendingSettingsForSnapshot);
           const unsettled = pendingForSnapshot.filter((item) => pendingWishSavesRef.current.includes(item));
           pendingWishSavesRef.current = pendingWishSavesRef.current.filter((item) => !unsettled.includes(item));
           unsettled.forEach((item) => item.resolve());
         }).catch((error) => {
+          settleSettingsSave(pending, error, pendingSettingsForSnapshot);
           const unsettled = pendingForSnapshot.filter((item) => pendingWishSavesRef.current.includes(item));
           pendingWishSavesRef.current = pendingWishSavesRef.current.filter((item) => !unsettled.includes(item));
           unsettled.forEach((item) => item.reject(error instanceof Error ? error : new Error('保存に失敗しました')));
@@ -3422,30 +3446,42 @@ export default function App() {
       });
     }
     if (!hydrated || !storeKitEntitlementsResolved) return;
+    const generation = ++liveActivitySyncGenerationRef.current;
+    const isCurrent = () => generation === liveActivitySyncGenerationRef.current;
+    const enqueueNative = (operation: () => Promise<unknown>) => {
+      const pending = liveActivityOperationRef.current.catch(() => undefined).then(operation);
+      liveActivityOperationRef.current = pending;
+      return pending;
+    };
     const serialized = liveActivityPayload ? JSON.stringify(liveActivityPayload) : undefined;
     if (!serialized || !liveActivityPayload) {
       liveActivitySerializedRef.current = undefined;
       setLiveActivityRuntimeStatus('off');
       if (__DEV__) console.log('[LiveActivity] sync-action', { action: 'end', reason: 'payload-unavailable' });
-      void endRhythmLiveActivity();
-      return;
+      void enqueueNative(async () => { if (isCurrent()) await endRhythmLiveActivity(); }).catch(() => { if (isCurrent()) setLiveActivityRuntimeStatus('failed'); });
+      return () => { liveActivitySyncGenerationRef.current += 1; };
     }
     if (serialized === liveActivitySerializedRef.current) return;
     const payload = liveActivityPayload;
     if (__DEV__) console.log('[LiveActivity] sync-action', { action: 'start-or-update', mode: payload.mode, tier: payload.tier });
     setLiveActivityRuntimeStatus('starting');
     void (async () => {
-      const available = await isRhythmLiveActivityAvailable();
+      const { available, reason } = await getRhythmLiveActivityAvailability();
+      if (!isCurrent()) return;
       if (!available) {
         // Never cache a failed call as if it had started. This makes a later
         // native-capable build or a manual re-enable retry the same payload.
         liveActivitySerializedRef.current = undefined;
-        setLiveActivityRuntimeStatus('unavailable');
+        setLiveActivityRuntimeStatus(reason ?? 'unavailable');
         if (__DEV__) console.log('[LiveActivity] sync-complete', { action: 'start-or-update', result: false, reason: 'unavailable' });
         return;
       }
+      await enqueueNative(async () => {
+      if (!isCurrent()) return;
       const result = await startOrUpdateRhythmLiveActivity(payload);
+      if (!isCurrent()) return;
       const status = await getRhythmLiveActivityStatus();
+      if (!isCurrent()) return;
       if (result && status.active) {
         liveActivitySerializedRef.current = serialized;
         setLiveActivityRuntimeStatus('active');
@@ -3457,7 +3493,12 @@ export default function App() {
         console.log('[LiveActivity] sync-complete', { action: 'start-or-update', result });
         console.log('[LiveActivity] status', status);
       }
-    })();
+      });
+    })().catch((error) => {
+      if (isCurrent()) { liveActivitySerializedRef.current = undefined; setLiveActivityRuntimeStatus('failed'); }
+      if (__DEV__) console.warn('[LiveActivity] sync failed', error);
+    });
+    return () => { liveActivitySyncGenerationRef.current += 1; };
   }, [hydrated, liveActivityEnabled, liveActivityPayload, storeKitEntitlementsResolved]);
 
   const syncRhythmWidgetSnapshot = React.useCallback(async () => {
@@ -4321,6 +4362,7 @@ export default function App() {
   const createEmptyPlanDraft = (): DeparturePlan => ({ ...initialPlan, title: '', planMode: 'calendar_only', countdownEnabled: false, date: todayInputValue() });
 
   const closePlanEditor = React.useCallback(() => {
+    if (departureSavingRef.current) return;
     setPlanEditorOpen(false);
     setPlan(createEmptyPlanDraft());
   }, []);
@@ -4443,6 +4485,9 @@ export default function App() {
   }, [screen]);
 
   const saveDeparturePlan = async (): Promise<boolean> => {
+    if (departureSavingRef.current) return false;
+    departureSavingRef.current = true;
+    try {
     // 編集対象が実際に存在する時だけ更新する。削除済み予定のIDがフォームに残っても、
     // 新しい予定として追加し、カウントダウン中の別予定を上書きしない。
     const editTarget = plan.id ? departurePlansRef.current.find((item) => item.id === plan.id) : undefined;
@@ -4456,15 +4501,20 @@ export default function App() {
       id: editTarget?.id ?? `${Date.now()}-${Math.random().toString(16).slice(2)}-departure`,
       date: normalizePlanDate(plan.date),
     });
-    if (editTarget?.id) {
-      await cancelPendingDepartureNotifications(editTarget.id).catch((error) => console.warn('Departure notification cancellation failed.', error));
-      await cancelScheduleSwitchNotificationsForPlan(editTarget.id);
-    }
     const nextPlans = editTarget
       ? departurePlansRef.current.map((item) => item.id === editTarget.id ? saved : item)
       : [...departurePlansRef.current, saved];
     departurePlansRef.current = nextPlans;
+    const persisted = waitForSettingsSave((state) => state.departurePlans?.some((item) => item.id === saved.id && JSON.stringify(item) === JSON.stringify(saved)) === true);
     setDeparturePlans(nextPlans);
+    // Keep the generated ID in the draft so a failed write can be retried
+    // without creating a second plan. The global save queue owns durability.
+    setPlan((current) => ({ ...current, id: saved.id }));
+    await persisted;
+    if (editTarget?.id) {
+      await cancelPendingDepartureNotifications(editTarget.id).catch((error) => console.warn('Departure notification cancellation failed.', error));
+      await cancelScheduleSwitchNotificationsForPlan(editTarget.id).catch((error) => console.warn('Schedule switch notification cancellation failed.', error));
+    }
     try {
       await scheduleDeparture(saved);
     } catch {
@@ -4472,10 +4522,18 @@ export default function App() {
     }
     if (saved.id) void syncScheduleSwitchNotificationsForPlan(saved.id);
     if (mode === 'calendar_only') Alert.alert(plan.id ? '予定を保存しました' : '予定を追加しました', '予定表に表示しました。');
+    departureSavingRef.current = false;
     closePlanEditor();
     void onboarding.complete('planRegistration');
     queuePlanConflictCheck(saved, tasksRef.current);
     return true;
+    } catch (error) {
+      if (__DEV__) console.warn('Departure plan save failed.', error);
+      Alert.alert('予定を保存できませんでした', '入力内容は残っています。もう一度保存してください。');
+      return false;
+    } finally {
+      departureSavingRef.current = false;
+    }
   };
 
   const performImportCalendarEventAsPlan = (event: Calendar.Event) => {
@@ -7429,7 +7487,7 @@ function TimeTabButton({ tab, active, designMode, chicPattern, chicPalette, them
       <View style={[styles.focusProgressTrack, !isMinimal && styles.focusProgressTrackLight, isChic && chicPalette && { backgroundColor: chicPalette.accentSoft }]}><View style={[styles.focusProgressFill, isMinimal && styles.focusProgressFillMinimal, isDark && styles.focusProgressFillDark, isChic && styles.focusProgressFillChic, isChic && chicPalette && { backgroundColor: chicPalette.accent }, { width: `${Math.max(2, progress * 100)}%` }]} /></View>
       <View style={styles.focusActions}>
         <Pressable style={[styles.focusResetButton, !isMinimal && styles.focusResetButtonLight, isChic && chicPalette && { borderColor: chicPalette.border, backgroundColor: chicPalette.cardSurface }]} onPress={reset}><Text style={[styles.focusResetText, isMinimal && styles.focusResetTextMinimal, !isMinimal && styles.focusResetTextLight, isChic && chicPalette && { color: chicPalette.textSecondary }]}>リセット</Text></Pressable>
-        <Pressable style={[styles.focusStartButton, isMinimal && styles.focusStartButtonMinimal, isDark && styles.focusStartButtonDark, isChic && styles.focusStartButtonChic, isChic && chicPalette && { backgroundColor: chicPalette.accent }]} onPress={() => void toggleTimer()}><Text style={[styles.focusStartText, { color: isChic && chicPalette ? chicPalette.onAccent : isDark ? getThemeTokens('dark').colors.screenBackground : '#FFFFFF' }]}>{running ? '一時停止' : secondsLeft === 0 ? 'もう一度' : 'スタート'}</Text></Pressable>
+        <Pressable style={[styles.focusStartButton, isMinimal && styles.focusStartButtonMinimal, isDark && styles.focusStartButtonDark, isChic && styles.focusStartButtonChic, isChic && chicPalette && { backgroundColor: chicPalette.accent }]} onPress={() => void toggleTimer()}><Text style={[styles.focusStartText, { color: isChic && chicPalette ? chicPalette.onAccent : isDark ? getThemeTokens('dark').colors.screenBackground : '#FFFFFF' }]}>{running ? '一時停止' : secondsLeft === 0 ? 'もう一度' : sessionRef.current ? '再開' : 'スタート'}</Text></Pressable>
       </View>
     </View>
     <Text style={[styles.focusSectionTitle, isMinimal && styles.focusSectionTitleMinimal, isDark && styles.focusSectionTitleDark, isChic && chicPalette && { color: chicPalette.textPrimary }]}>集中時間</Text>
@@ -7980,13 +8038,14 @@ function ChicPatternSelector({ designMode, chicPattern, chicCheckColor, planTier
 /** Compact shared palette picker. It is intentionally independent of the
  * Design pattern picker so Mono, Design and Photo all use the same source of
  * truth without showing a large nine-card palette by default. */
-function ThemeColorSelector({ color, onChange, designMode }: { color: ChicCheckColor; onChange: (color: ChicCheckColor) => void; designMode: DesignMode }) {
+function ThemeColorSelector({ color, onChange, designMode, surfaceMode }: { color: ChicCheckColor; onChange: (color: ChicCheckColor) => void; designMode: DesignMode; surfaceMode?: DesignMode }) {
   const [expanded, setExpanded] = useState(false);
   const selected = getChicCheckColor(color);
   const selectedLabel = getDesignCheckColorLabel(color);
-  const textColor = designMode === 'dark' ? '#F4F7FC' : selected.textPrimary;
-  return <View style={[styles.themeColorSelector, { borderColor: selected.border, backgroundColor: designMode === 'dark' ? '#181F2E' : selected.cardSurface }]}>
-    <Pressable accessibilityRole="button" accessibilityState={{ expanded }} onPress={() => setExpanded((value) => !value)} style={styles.themeColorSelectorHeader}>
+  const isDarkSurface = (surfaceMode ?? designMode) === 'dark';
+  const textColor = isDarkSurface ? '#F4F7FC' : selected.textPrimary;
+  return <View style={[styles.themeColorSelector, { borderColor: isDarkSurface ? '#40506A' : selected.border, backgroundColor: isDarkSurface ? '#181F2E' : selected.cardSurface }]}>
+    <Pressable accessibilityRole="button" accessibilityLabel={`テーマカラー、現在${selectedLabel}`} accessibilityState={{ expanded }} onPress={() => setExpanded((value) => !value)} style={styles.themeColorSelectorHeader}>
       <View style={[styles.themeColorSelectorSwatch, { backgroundColor: selected.accent, borderColor: selected.border }]} />
       <Text style={[styles.themeColorSelectorLabel, { color: textColor }]} numberOfLines={1}>{selectedLabel}</Text>
       <Text style={[styles.themeColorSelectorChevron, { color: selected.accent }]}>{expanded ? '⌃' : '⌄'}</Text>
@@ -7994,9 +8053,9 @@ function ThemeColorSelector({ color, onChange, designMode }: { color: ChicCheckC
     {expanded && <View style={[styles.themeColorGrid, { borderTopColor: selected.border }]}>
       {chicCheckColorChoices.map((choice) => {
         const active = choice.id === color;
-        return <Pressable key={choice.id} accessibilityRole="button" accessibilityLabel={getDesignCheckColorLabel(choice.id)} accessibilityState={{ selected: active }} onPress={() => { onChange(choice.id); setExpanded(false); }} style={[styles.themeColorGridItem, { backgroundColor: designMode === 'dark' ? '#20293A' : choice.cardSurface, borderColor: active ? choice.accent : choice.border }, active && { borderWidth: 2 }]}>
+        return <Pressable key={choice.id} accessibilityRole="button" accessibilityLabel={getDesignCheckColorLabel(choice.id)} accessibilityState={{ selected: active }} onPress={() => { onChange(choice.id); setExpanded(false); }} style={[styles.themeColorGridItem, { backgroundColor: isDarkSurface ? '#20293A' : choice.cardSurface, borderColor: active ? choice.accent : choice.border }, active && { borderWidth: 2 }]}>
           <View style={[styles.themeColorGridSwatch, { backgroundColor: choice.accent, borderColor: choice.border }]} />
-          <Text style={[styles.themeColorGridText, { color: active ? choice.accent : (designMode === 'dark' ? '#D7DEEA' : choice.textSecondary) }]} numberOfLines={1}>{getDesignCheckColorLabel(choice.id)}</Text>
+          <Text style={[styles.themeColorGridText, { color: isDarkSurface ? '#D7DEEA' : active ? choice.accent : choice.textSecondary }]} numberOfLines={1}>{getDesignCheckColorLabel(choice.id)}</Text>
         </Pressable>;
       })}
     </View>}

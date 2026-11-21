@@ -20,6 +20,7 @@ type Props = {
   planTier: PlanTier;
   designCustomizePurchased?: boolean;
   accessStatusLabel?: string;
+  backgroundPreviewOnly?: boolean;
   onPremium: (featureId?: PremiumGuideFeatureId) => void;
   onPick: (target: PhotoThemePhotoTarget) => void;
   onAdjust: (target: PhotoThemeTopSlot) => void;
@@ -27,11 +28,11 @@ type Props = {
   styles: any;
 };
 
-function PhotoPreview({ uri, label }: { uri?: string; label: string }) {
-  return uri ? <Image source={{ uri }} style={localStyles.preview} /> : <View style={localStyles.emptyPreview}><Text style={localStyles.emptyPreviewText}>{label}</Text></View>;
+function PhotoPreview({ uri, label, colors }: { uri?: string; label: string; colors: { accentSoft: string; primaryAccent: string; textSecondary: string } }) {
+  return uri ? <Image source={{ uri }} style={localStyles.preview} /> : <View style={[localStyles.emptyPreview, { backgroundColor: colors.accentSoft, borderColor: colors.primaryAccent }]}><Text style={[localStyles.emptyPreviewText, { color: colors.textSecondary }]}>{label}</Text></View>;
 }
 
-export function PhotoThemeSettingsCard({ photoTheme, designMode, chicPalette, planTier, designCustomizePurchased = false, accessStatusLabel, onPremium, onPick, onAdjust, onClear, styles }: Props) {
+export function PhotoThemeSettingsCard({ photoTheme, designMode, chicPalette, planTier, designCustomizePurchased = false, accessStatusLabel, backgroundPreviewOnly = false, onPremium, onPick, onAdjust, onClear, styles }: Props) {
   const isDark = designMode === 'dark';
   const themeColors = chicPalette && designMode === 'chic'
     ? { textPrimary: chicPalette.textPrimary, textSecondary: chicPalette.textSecondary, primaryAccent: chicPalette.accent, accentSoft: chicPalette.accentSoft, onAccent: chicPalette.onAccent }
@@ -47,13 +48,13 @@ export function PhotoThemeSettingsCard({ photoTheme, designMode, chicPalette, pl
   return <View style={[styles.settingsCard, isDark && styles.darkSurface]}>
     <View style={styles.historyHeader}><View><Text style={[styles.settingsTitle, isDark && styles.darkBodyText]}>写真デザイン</Text><Text style={[styles.switchCopy, isDark && styles.darkAccentText]}>デザインの雰囲気はそのままに、好きな一枚を添えます</Text></View><Text style={styles.taskTemplateSavePremium}>{accessStatusLabel ?? (planTier === 'premium' ? 'プレミアムで利用中' : designCustomizePurchased ? '利用中' : '未購入')}</Text></View>
 
-    <Text style={[styles.fieldLabel, isDark && styles.darkAccentText]}>背景写真</Text>
-    <PhotoPreview uri={photoTheme.imageUri} label="背景にしたい写真を選ぶ" />
+    <Text style={[styles.fieldLabel, isDark && styles.darkAccentText]}>{backgroundPreviewOnly ? '設定中の背景写真' : '背景写真'}</Text>
+    <PhotoPreview uri={photoTheme.imageUri} label="背景にしたい写真を選ぶ" colors={themeColors} />
     <View style={localStyles.controls}>
-      <Pressable style={[styles.templateAddButton, { backgroundColor: themeColors.primaryAccent }]} onPress={() => onPick('background')}><Text style={[styles.templateAddButtonText, { color: themeColors.onAccent }]}>{photoTheme.imageUri ? '背景写真を変更' : '背景写真を選ぶ'}</Text></Pressable>
+      {!backgroundPreviewOnly && <Pressable style={[styles.templateAddButton, { backgroundColor: themeColors.primaryAccent }]} onPress={() => onPick('background')}><Text style={[styles.templateAddButtonText, { color: themeColors.onAccent }]}>{photoTheme.imageUri ? '背景写真を変更' : '背景写真を選ぶ'}</Text></Pressable>}
       {photoTheme.imageUri && <Pressable style={localStyles.clearButton} onPress={() => onClear('background')}><Text style={localStyles.clearText}>外す</Text></Pressable>}
     </View>
-    <Text style={[localStyles.note, { color: themeColors.textSecondary }]}>色味は変えず、そのまま背景に表示します。</Text>
+    <Text style={[localStyles.note, { color: themeColors.textSecondary }]}>{backgroundPreviewOnly ? '背景の変更は上の「写真を選んでプレビュー」から。プレビュー内で適用できます。' : '色味は変えず、そのまま背景に表示します。'}</Text>
 
     <View style={localStyles.divider} />
     <Text style={[styles.fieldLabel, isDark && styles.darkAccentText]}>画面ごとのトップ画像</Text>
@@ -75,7 +76,7 @@ export function PhotoThemeSettingsCard({ photoTheme, designMode, chicPalette, pl
 
     <View style={localStyles.divider} />
     <Text style={[styles.fieldLabel, isDark && styles.darkAccentText]}>集中タイマーの背景</Text>
-    <PhotoPreview uri={photoTheme.focusBackgroundUri} label="集中中に見たい写真を選ぶ" />
+    <PhotoPreview uri={photoTheme.focusBackgroundUri} label="集中中に見たい写真を選ぶ" colors={themeColors} />
     <View style={localStyles.controls}>
       <Pressable style={[styles.templateAddButton, { backgroundColor: themeColors.primaryAccent }]} onPress={() => onPick('focus')}><Text style={[styles.templateAddButtonText, { color: themeColors.onAccent }]}>{photoTheme.focusBackgroundUri ? '集中背景を変更' : '集中背景を選ぶ'}</Text></Pressable>
       {photoTheme.focusBackgroundUri && <Pressable style={localStyles.clearButton} onPress={() => onClear('focus')}><Text style={localStyles.clearText}>外す</Text></Pressable>}
@@ -86,18 +87,18 @@ export function PhotoThemeSettingsCard({ photoTheme, designMode, chicPalette, pl
 const localStyles = StyleSheet.create({
   preview: { width: '100%', height: 126, borderRadius: 14, marginBottom: 10, backgroundColor: '#EEE7E8' },
   emptyPreview: { height: 104, borderRadius: 14, marginBottom: 10, borderWidth: 1, borderStyle: 'dashed', borderColor: '#D9C8CF', alignItems: 'center', justifyContent: 'center', backgroundColor: '#FFF9F8' },
-  emptyPreviewText: { color: '#8A737B', fontSize: 11, fontWeight: '800' },
-  controls: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 7 },
-  clearButton: { paddingVertical: 9, paddingHorizontal: 12 },
+  emptyPreviewText: { color: '#8A737B', fontSize: 13, lineHeight: 19, textAlign: 'center', paddingHorizontal: 12, fontWeight: '700' },
+  controls: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 10, marginBottom: 7 },
+  clearButton: { minHeight: 44, justifyContent: 'center', paddingVertical: 9, paddingHorizontal: 12 },
   clearText: { color: '#B85060', fontSize: 12, fontWeight: '900' },
-  note: { color: '#7B7180', fontSize: 10, lineHeight: 16, fontWeight: '700', marginBottom: 12 },
+  note: { color: '#7B7180', fontSize: 13, lineHeight: 19, fontWeight: '500', marginBottom: 12 },
   divider: { height: 1, backgroundColor: '#E8DCE3', marginVertical: 14 },
   slotRow: { flexDirection: 'row', gap: 8, paddingRight: 4 },
   slotCard: { width: 148, minHeight: 132, padding: 7, borderRadius: 12, borderWidth: 1 },
   slotPreview: { width: '100%', aspectRatio: 2.5, borderRadius: 8, backgroundColor: '#EEE7E8' },
   slotEmpty: { width: '100%', aspectRatio: 2.5, borderRadius: 8, alignItems: 'center', justifyContent: 'center', borderWidth: 1 },
   slotEmptyText: { fontSize: 20, fontWeight: '700' },
-  slotLabel: { fontSize: 11, lineHeight: 15, fontWeight: '900', marginTop: 6, minHeight: 30 },
+  slotLabel: { fontSize: 13, lineHeight: 18, fontWeight: '700', marginTop: 6, minHeight: 36 },
   slotActions: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 7 },
   slotActionButton: { minHeight: 44, flex: 1, minWidth: 54, paddingHorizontal: 3, paddingVertical: 7, borderRadius: 9, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
   slotActionButtonFull: { flex: 1 },

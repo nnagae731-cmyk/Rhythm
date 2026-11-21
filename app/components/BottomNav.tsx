@@ -31,7 +31,7 @@ export function BottomNav({ screen, designMode, chicPalette, onChange }: { scree
       {items.map((item) => {
         const active = item.id === screen;
         return (
-          <Pressable key={item.id} style={styles.navItem} onPress={() => onChange(item.id)}>
+          <Pressable key={item.id} accessibilityRole="tab" accessibilityLabel={item.label} accessibilityState={{ selected: active }} style={styles.navItem} onPress={() => onChange(item.id)}>
             {renderIcon(item, active ? (designColors?.accent ?? theme.colors.primaryAccent) : (designColors?.textSecondary ?? theme.colors.secondaryText))}
             <Text style={[styles.navLabel, { color: active ? (designColors?.accent ?? theme.colors.primaryAccent) : (designColors?.textSecondary ?? theme.colors.secondaryText) }]}>{item.label}</Text>
           </Pressable>
@@ -46,7 +46,7 @@ const styles = StyleSheet.create({
   bottomNavMinimal: { left: 12, right: 12, bottom: 12, borderRadius: 18, height: 70, borderWidth: 1, borderColor: '#DCE2EC', shadowColor: '#1B2B4A', shadowOpacity: 0.08, shadowRadius: 12, shadowOffset: { width: 0, height: 4 }, elevation: 3 },
   bottomNavChic: { backgroundColor: '#FFF7FA', borderWidth: 2, borderColor: '#FFFFFF', shadowColor: '#D96C9B', shadowOpacity: 0.16 },
   bottomNavDark: { backgroundColor: '#181F2E', borderColor: '#303B50', shadowColor: '#000000', shadowOpacity: 0.3 },
-  navItem: { flex: 1, alignItems: 'center', gap: 3 },
+  navItem: { flex: 1, minHeight: 48, justifyContent: 'center', alignItems: 'center', gap: 3 },
   navIcon: { color: '#A39DAA', fontSize: 20, fontWeight: '900' },
-  navLabel: { color: '#A39DAA', fontSize: 10, fontWeight: '800' },
+  navLabel: { color: '#A39DAA', fontSize: 11, fontWeight: '800' },
 });

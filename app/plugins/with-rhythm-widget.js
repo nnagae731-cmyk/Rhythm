@@ -1,4 +1,4 @@
-const { withDangerousMod, withEntitlementsPlist, withPodfile, withXcodeProject } = require('expo/config-plugins');
+const { withDangerousMod, withEntitlementsPlist, withPodfile, withPodfileProperties, withXcodeProject } = require('expo/config-plugins');
 const fs = require('fs');
 const path = require('path');
 
@@ -410,6 +410,12 @@ function addWidgetTarget(project, appConfig) {
 
 module.exports = function withRhythmWidget(config) {
   config = declareEasAppExtension(config);
+  // CocoaPods evaluates Expo module platform compatibility before Xcode
+  // target settings apply. Match the Podfile target to the iOS 17 module.
+  config = withPodfileProperties(config, (nextConfig) => {
+    nextConfig.modResults['ios.deploymentTarget'] = MIN_IOS_VERSION;
+    return nextConfig;
+  });
   config = withEntitlementsPlist(config, (nextConfig) => {
     const existing = nextConfig.modResults['com.apple.security.application-groups'] ?? [];
     nextConfig.modResults['com.apple.security.application-groups'] = Array.from(new Set([...existing, APP_GROUP]));

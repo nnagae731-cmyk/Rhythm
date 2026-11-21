@@ -79,10 +79,12 @@ export function LiveActivitySettingsSheet({
     ? '表示中'
     : runtimeStatus === 'starting' || runtimeStatus === 'waiting'
       ? '表示を開始しています'
+      : runtimeStatus === 'native-missing'
+        ? 'このビルドには連携機能が含まれていません（無料版の制限ではありません）'
       : runtimeStatus === 'unavailable'
-        ? 'この端末またはBuildでは利用できません（無料版の制限ではありません）'
+        ? 'この端末・OS・システム設定では利用できません（無料版の制限ではありません）'
         : runtimeStatus === 'failed'
-          ? '開始できませんでした。iPhoneのライブアクティビティ設定を確認してください'
+          ? '開始できませんでした。設定を確認し、スイッチを入れ直してください'
           : 'オフ';
   const updateOption = (key: keyof LiveActivityDisplayOptions) => {
     if (!canEditDisplayOptions) return;
@@ -112,7 +114,9 @@ export function LiveActivitySettingsSheet({
 
           <View style={{ marginTop: 10, padding: 11, borderRadius: 12, backgroundColor: runtimeStatus === 'active' ? colors.soft : colors.secondarySurface, borderWidth: 1, borderColor: runtimeStatus === 'active' ? colors.accent : colors.border }}>
             <Text style={{ color: runtimeStatus === 'active' ? colors.accent : colors.text, fontSize: 13, fontWeight: '900' }}>現在の表示状態：{runtimeLabel}</Text>
-            <Text style={{ color: colors.muted, fontSize: 13, marginTop: 4 }}>{runtimeStatus === 'active' ? '未完了の「今やるTODO」や集中中の内容を自動で更新します。' : runtimeStatus === 'unavailable' ? '無料版の制限ではありません。端末の対応状況または、インストール済みのBuildの構成を確認してください。' : 'ONにすると、TODOがまだない場合も「今日のTODOを追加」を表示します。'}</Text>
+            <Text style={{ color: colors.muted, fontSize: 13, marginTop: 4 }}>{runtimeStatus === 'active' ? '未完了の「今やるTODO」や集中中の内容を自動で更新します。' : runtimeStatus === 'native-missing'
+        ? 'このビルドには連携機能が含まれていません（無料版の制限ではありません）'
+      : runtimeStatus === 'unavailable' ? '無料版の制限ではありません。端末の対応状況または、インストール済みのBuildの構成を確認してください。' : 'ONにすると、TODOがまだない場合も「今日のTODOを追加」を表示します。'}</Text>
           </View>
 
           <Text style={{ color: colors.text, fontSize: 14, fontWeight: '900', marginTop: 17 }}>表示する内容</Text>
@@ -125,16 +129,16 @@ export function LiveActivitySettingsSheet({
 
           <Text style={{ color: colors.text, fontSize: 14, fontWeight: '900', marginTop: 10 }}>アファメーション</Text>
           <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}>
-            {(['fixed', 'automatic'] as const).map((mode) => <Pressable key={mode} disabled={!canInteractive} onPress={() => { if (canInteractive) updateCustomization('affirmationRotationMode', mode); }} style={{ flex: 1, minHeight: 40, borderRadius: 10, borderWidth: 1, borderColor: draftCustomization.affirmationRotationMode === mode ? colors.accent : colors.border, backgroundColor: draftCustomization.affirmationRotationMode === mode ? colors.soft : colors.secondarySurface, alignItems: 'center', justifyContent: 'center', opacity: canInteractive ? 1 : 0.65 }}><Text style={{ color: draftCustomization.affirmationRotationMode === mode ? colors.accent : colors.text, fontSize: 13, fontWeight: '800' }}>{mode === 'fixed' ? '固定' : '自動'}</Text></Pressable>)}
+            {(['fixed', 'automatic'] as const).map((mode) => <Pressable key={mode} disabled={!canInteractive} onPress={() => { if (canInteractive) updateCustomization('affirmationRotationMode', mode); }} style={{ flex: 1, minHeight: 44, borderRadius: 10, borderWidth: 1, borderColor: draftCustomization.affirmationRotationMode === mode ? colors.accent : colors.border, backgroundColor: draftCustomization.affirmationRotationMode === mode ? colors.soft : colors.secondarySurface, alignItems: 'center', justifyContent: 'center', opacity: canInteractive ? 1 : 0.65 }}><Text style={{ color: draftCustomization.affirmationRotationMode === mode ? colors.accent : colors.text, fontSize: 13, fontWeight: '800' }}>{mode === 'fixed' ? '固定' : '自動'}</Text></Pressable>)}
           </View>
-          {draftCustomization.affirmationRotationMode === 'automatic' ? <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}>{INTERVAL_OPTIONS.map(([value, label]) => <Pressable key={value} disabled={!canInteractive} onPress={() => { if (canInteractive) updateCustomization('affirmationRotationIntervalMinutes', value); }} style={{ flex: 1, minHeight: 36, borderRadius: 9, borderWidth: 1, borderColor: draftCustomization.affirmationRotationIntervalMinutes === value ? colors.accent : colors.border, alignItems: 'center', justifyContent: 'center', opacity: canInteractive ? 1 : 0.65 }}><Text style={{ color: colors.text, fontSize: 13, fontWeight: '700' }}>{label}</Text></Pressable>)}</View> : null}
+          {draftCustomization.affirmationRotationMode === 'automatic' ? <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}>{INTERVAL_OPTIONS.map(([value, label]) => <Pressable key={value} disabled={!canInteractive} onPress={() => { if (canInteractive) updateCustomization('affirmationRotationIntervalMinutes', value); }} style={{ flex: 1, minHeight: 44, borderRadius: 9, borderWidth: 1, borderColor: draftCustomization.affirmationRotationIntervalMinutes === value ? colors.accent : colors.border, alignItems: 'center', justifyContent: 'center', opacity: canInteractive ? 1 : 0.65 }}><Text style={{ color: colors.text, fontSize: 13, fontWeight: '700' }}>{label}</Text></Pressable>)}</View> : null}
 
           <Text style={{ color: colors.text, fontSize: 14, fontWeight: '900', marginTop: 16 }}>文字</Text>
           <Text style={{ color: colors.muted, fontSize: 13, marginTop: 4 }}>プレビューのAaで見た目を確認できます</Text>
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 8 }}>{RHYTHM_FONT_DESIGN_OPTIONS.map((option) => <Pressable key={option.id} disabled={!canCustomize} onPress={() => updateCustomization('fontDesign', option.id)} style={{ width: '47%', minHeight: 55, borderRadius: 11, borderWidth: 1, borderColor: draftCustomization.fontDesign === option.id ? colors.accent : colors.border, backgroundColor: draftCustomization.fontDesign === option.id ? colors.soft : colors.secondarySurface, alignItems: 'center', justifyContent: 'center', opacity: canCustomize ? 1 : 0.6 }}><Text style={{ color: draftCustomization.fontDesign === option.id ? colors.accent : colors.text, fontFamily: reactNativeFontFamily(option.id), fontSize: previewSizes.aa, fontWeight: reactNativeFontWeight(option.id) }}>Aa</Text><Text style={{ color: colors.muted, fontFamily: reactNativeFontFamily(option.id), fontSize: 13, fontWeight: reactNativeFontWeight(option.id), marginTop: 1 }}>{option.label}</Text></Pressable>)}</View>
-          <View style={{ flexDirection: 'row', gap: 8, marginTop: 14 }}>{SIZE_OPTIONS.map(([value, label]) => <Pressable key={value} disabled={!canCustomize} onPress={() => updateCustomization('fontSize', value)} style={{ flex: 1, minHeight: 36, borderRadius: 9, borderWidth: 1, borderColor: draftCustomization.fontSize === value ? colors.accent : colors.border, alignItems: 'center', justifyContent: 'center' }}><Text style={{ color: colors.text, fontSize: 13, fontWeight: '700' }}>{label}</Text></Pressable>)}</View>
+          <View style={{ flexDirection: 'row', gap: 8, marginTop: 14 }}>{SIZE_OPTIONS.map(([value, label]) => <Pressable key={value} disabled={!canCustomize} onPress={() => updateCustomization('fontSize', value)} style={{ flex: 1, minHeight: 44, borderRadius: 9, borderWidth: 1, borderColor: draftCustomization.fontSize === value ? colors.accent : colors.border, alignItems: 'center', justifyContent: 'center' }}><Text style={{ color: colors.text, fontSize: 13, fontWeight: '700' }}>{label}</Text></Pressable>)}</View>
 
-          <Pressable onPress={() => { onSave(draftOptions, { ...draftCustomization, interactiveChecks: canInteractive && draftCustomization.interactiveChecks }); }} style={{ minHeight: 46, borderRadius: 13, backgroundColor: colors.accent, alignItems: 'center', justifyContent: 'center', marginTop: 20 }}><Text style={{ color: colors.onAccent, fontSize: 14, fontWeight: '900' }}>設定を保存</Text></Pressable>
+          <Text style={{ color: colors.muted, fontSize: 13, lineHeight: 19, marginTop: 14 }}>変更は「設定を保存」で反映されます。</Text><Pressable onPress={() => { onSave(draftOptions, { ...draftCustomization, interactiveChecks: canInteractive && draftCustomization.interactiveChecks }); }} style={{ minHeight: 46, borderRadius: 13, backgroundColor: colors.accent, alignItems: 'center', justifyContent: 'center', marginTop: 20 }}><Text style={{ color: colors.onAccent, fontSize: 14, fontWeight: '900' }}>設定を保存</Text></Pressable>
         </ScrollView>
       </View>
     </View>

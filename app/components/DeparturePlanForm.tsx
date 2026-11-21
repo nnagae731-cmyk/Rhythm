@@ -87,6 +87,8 @@ export function DeparturePlanForm({
   const [durationEditor, setDurationEditor] = useState<DurationEditor>();
   const [showOtherDuration, setShowOtherDuration] = useState(false);
   const [learningMessage, setLearningMessage] = useState<string>();
+  const [submitting, setSubmitting] = useState(false);
+  const submittingRef = useRef(false);
   const manuallyAdjustedPreparationRef = useRef(false);
   const autoAppliedRef = useRef(false);
   const previousPlanIdRef = useRef<string | undefined>(plan.id);
@@ -196,6 +198,7 @@ export function DeparturePlanForm({
   };
 
   const handleSubmit = async () => {
+    if (submittingRef.current) return;
     if (!plan.title.trim()) {
       Alert.alert('予定名を入力してください');
       return;
@@ -208,7 +211,9 @@ export function DeparturePlanForm({
       Alert.alert('終了時間を確認してください', '終了時間は開始時間より後にしてください。');
       return;
     }
-    await onSubmit();
+    submittingRef.current = true;
+    setSubmitting(true);
+    try { await onSubmit(); } finally { submittingRef.current = false; setSubmitting(false); }
   };
 
   const fieldText = { color: theme.colors.primaryText };
@@ -216,7 +221,7 @@ export function DeparturePlanForm({
   const panel = { backgroundColor: theme.colors.surface, borderColor: theme.colors.border };
   const input = { backgroundColor: usesDarkInputSurface ? theme.colors.secondarySurface : theme.colors.surface, borderColor: theme.colors.border, color: theme.colors.primaryText };
 
-  return <View style={styles.root}>
+  return <View pointerEvents={submitting ? 'none' : 'auto'} accessibilityState={{ busy: submitting }} style={styles.root}>
     <View style={[styles.editorHeader, { borderColor: theme.colors.border }]}>
       <View style={styles.editorTitleRow}><View style={{ flex: 1 }}><Text style={[styles.editorTitle, fieldText]}>{plan.id ? '予定を編集' : '予定を追加'}</Text><Text style={[styles.editorCopy, secondaryText]}>予定の形に合わせて、必要な項目だけ登録できます</Text></View></View>
     </View>
@@ -389,8 +394,8 @@ export function DeparturePlanForm({
 
     <View style={[styles.submitArea, { borderColor: theme.colors.border }]}>
       {canUseReverse && <Text style={[styles.finalTimeline, secondaryText]}>{formatLiveTime(moments.prepare)} 準備開始 ・ {formatLiveTime(moments.leave)} 出発</Text>}
-      <Pressable accessibilityRole="button" style={[styles.submitButton, { backgroundColor: theme.colors.primaryAccent }]} onPress={() => void handleSubmit()}>
-        <Text style={[styles.submitButtonText, { color: onAccent }]}>{plan.id ? '変更を保存' : canUseReverse ? 'この予定を登録' : isDirectDeparture ? '出発時刻を登録' : '予定表に追加'}</Text>
+      <Pressable accessibilityRole="button" accessibilityState={{ busy: submitting, disabled: submitting }} disabled={submitting} style={[styles.submitButton, { backgroundColor: theme.colors.primaryAccent, opacity: submitting ? 0.65 : 1 }]} onPress={() => void handleSubmit()}>
+        <Text style={[styles.submitButtonText, { color: onAccent }]}>{submitting ? '保存中…' : plan.id ? '変更を保存' : canUseReverse ? 'この予定を登録' : isDirectDeparture ? '出発時刻を登録' : '予定表に追加'}</Text>
       </Pressable>
       <Pressable accessibilityRole="button" accessibilityLabel="予定の追加を閉じる" style={[styles.bottomCloseButton, { borderColor: theme.colors.border, backgroundColor: usesDarkInputSurface ? theme.colors.secondarySurface : theme.colors.surface }]} onPress={onClose}>
         <Text style={[styles.bottomCloseButtonText, fieldText]}>閉じる</Text>

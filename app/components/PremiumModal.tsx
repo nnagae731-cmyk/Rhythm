@@ -163,7 +163,7 @@ const PREMIUM_COMPARISON_ROWS: Array<{ label: string; free: '○' | '△' | '×'
   { label: 'カレンダー取り込み', free: '△', premium: '○', note: 'Freeは広告1回で1予定' },
   { label: '出発カウントダウン・地図・共有', free: '×', premium: '○', note: 'プレミアムで利用できます' },
   { label: '詳細な履歴・検索', free: '×', premium: '○' },
-  { label: '叶えたいこと', free: '△', premium: '○', note: '叶えたいことは広告、行動はプレミアム限定' },
+  { label: '叶えたいこと', free: '△', premium: '○', note: '目標・行動の追加は広告でも利用可能。Premiumなら広告不要' },
   { label: '選べるデザイン・写真', free: '△', premium: '○', note: 'Trial・広告・買い切りで利用可' },
   { label: 'アファメーション', free: '×', premium: '○' },
 ];
@@ -415,8 +415,8 @@ export function PremiumModal({ visible, initialFeatureId, designMode, chicPalett
           <View style={{ flex: 1 }}>
             <Text style={[styles.premiumCarouselBrand, { color: primaryText }]}>Rhythmプレミアム</Text>
             <Text style={[styles.premiumCarouselCopy, { color: secondaryText }]}>Rhythmをもっと自分仕様に。</Text>
-            <Text style={[styles.premiumCarouselCopy, { color: accentStrong }, { marginTop: 5, fontSize: 11, fontWeight: '800' }]}>実際の機能を見てから、必要なものだけ選べます。</Text>
-            <Text style={[styles.premiumCarouselCopy, { color: secondaryText }, { marginTop: 4, fontSize: 10 }]}>{purchaseOpen ? 'プレミアムを始める準備をしています。' : '記録・分析・デザイン・共有を、あなたの使い方に合わせて広げます。'}</Text>
+            <Text style={[styles.premiumCarouselCopy, { color: accentStrong }, { marginTop: 5, fontSize: 13, fontWeight: '800' }]}>実際の機能を見てから、必要なものだけ選べます。</Text>
+            <Text style={[styles.premiumCarouselCopy, { color: secondaryText }, { marginTop: 4, fontSize: 13 }]}>{purchaseOpen ? 'プレミアムを始める準備をしています。' : '記録・分析・デザイン・共有を、あなたの使い方に合わせて広げます。'}</Text>
           </View>
           {purchaseOpen ? <Pressable accessibilityRole="button" accessibilityLabel="プレミアム購入画面から戻る" hitSlop={10} style={styles.premiumHeaderClose} onPress={() => { setPurchaseOpen(false); setPurchaseStatus('idle'); }}><Text style={[styles.premiumCloseButtonText, { color: accentStrong }]}>戻る</Text></Pressable> : <Pressable accessibilityRole="button" accessibilityLabel="プレミアム案内を閉じる" hitSlop={10} style={styles.premiumHeaderClose} onPress={onClose}><Text style={[styles.premiumHeaderCloseText, { color: accentStrong }]}>×</Text></Pressable>}
         </View>
@@ -453,10 +453,10 @@ export function PremiumModal({ visible, initialFeatureId, designMode, chicPalett
               }
             }} style={[styles.premiumPurchaseButton, { backgroundColor: planTier === 'premium' || !canPurchaseSelectedPlan ? surfaceSoft : accent }]}><Text style={[styles.premiumPurchaseButtonText, { color: planTier === 'premium' || !canPurchaseSelectedPlan ? secondaryText : accentText }]}>{planTier === 'premium' ? 'プレミアム有効中' : purchaseStatus === 'processing' ? '確認中…' : productStatus === 'loading' ? '価格を確認中…' : selectedProduct ? '購入する' : isDevelopment && onMockPlanTier ? '開発用に確認' : '価格を確認できません'}</Text></Pressable>
             <Pressable accessibilityRole="button" style={styles.premiumTextLink} onPress={() => { if (onRestorePurchase) onRestorePurchase(); else setPurchaseStatus('unavailable'); }}><Text style={[styles.premiumTextLinkText, { color: accentStrong }]}>購入を復元</Text></Pressable>
-            <View style={{ flexDirection: 'row', justifyContent: 'center', alignItems: 'center', marginTop: 10 }}><Pressable accessibilityRole="link" hitSlop={8} onPress={() => openLegalLink(TERMS_OF_USE_URL)}><Text style={{ color: accentStrong, fontSize: 11, fontWeight: '800' }}>利用規約</Text></Pressable><Text style={{ color: secondaryText, fontSize: 11, marginHorizontal: 7 }}>・</Text><Pressable accessibilityRole="link" hitSlop={8} onPress={() => openLegalLink(PRIVACY_POLICY_URL)}><Text style={{ color: accentStrong, fontSize: 11, fontWeight: '800' }}>プライバシーポリシー</Text></Pressable></View>
+            <View style={{ flexDirection: 'row', justifyContent: 'center', alignItems: 'center', marginTop: 10 }}><Pressable accessibilityRole="link" hitSlop={8} onPress={() => openLegalLink(TERMS_OF_USE_URL)}><Text style={{ color: accentStrong, fontSize: 13, fontWeight: '800' }}>利用規約</Text></Pressable><Text style={{ color: secondaryText, fontSize: 13, marginHorizontal: 7 }}>・</Text><Pressable accessibilityRole="link" hitSlop={8} onPress={() => openLegalLink(PRIVACY_POLICY_URL)}><Text style={{ color: accentStrong, fontSize: 13, fontWeight: '800' }}>プライバシーポリシー</Text></Pressable></View>
             {isDevelopment && onMockPlanTier && <View style={{ flexDirection: 'row', gap: 8, marginTop: 10 }}>
-              <Pressable onPress={() => { onMockPlanTier('free'); setPurchaseStatus('idle'); }} style={[styles.premiumDevButton, { borderColor: theme.colors.border }]}><Text style={{ color: secondaryText, fontSize: 11, fontWeight: '800' }}>無料版で確認</Text></Pressable>
-              <Pressable onPress={() => { onMockPlanTier(null); setPurchaseStatus('idle'); }} style={[styles.premiumDevButton, { borderColor: theme.colors.border }]}><Text style={{ color: secondaryText, fontSize: 11, fontWeight: '800' }}>環境設定へ戻す</Text></Pressable>
+              <Pressable onPress={() => { onMockPlanTier('free'); setPurchaseStatus('idle'); }} style={[styles.premiumDevButton, { borderColor: theme.colors.border }]}><Text style={{ color: secondaryText, fontSize: 13, fontWeight: '800' }}>無料版で確認</Text></Pressable>
+              <Pressable onPress={() => { onMockPlanTier(null); setPurchaseStatus('idle'); }} style={[styles.premiumDevButton, { borderColor: theme.colors.border }]}><Text style={{ color: secondaryText, fontSize: 13, fontWeight: '800' }}>環境設定へ戻す</Text></Pressable>
             </View>}
           </View>
           <Pressable style={styles.premiumTextLink} onPress={onClose}><Text style={[styles.premiumTextLinkText, { color: accentStrong }]}>閉じる</Text></Pressable>

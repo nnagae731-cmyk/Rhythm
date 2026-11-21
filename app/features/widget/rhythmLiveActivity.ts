@@ -76,7 +76,7 @@ export type RhythmLiveActivityPayload = {
 
 /** Runtime-only state. ActivityKit owns the actual lifecycle, so this is
  * deliberately never written into the persisted app state. */
-export type RhythmLiveActivityRuntimeStatus = 'off' | 'waiting' | 'starting' | 'active' | 'unavailable' | 'failed';
+export type RhythmLiveActivityRuntimeStatus = 'off' | 'waiting' | 'starting' | 'active' | 'native-missing' | 'unavailable' | 'failed';
 
 type RhythmLiveActivityNativeModule = {
   isLiveActivityAvailable?: () => Promise<boolean>;
@@ -108,20 +108,24 @@ function moduleForIOS() {
   return nativeModule;
 }
 
-export async function isRhythmLiveActivityAvailable() {
+export async function getRhythmLiveActivityAvailability(): Promise<{ available: boolean; reason?: 'native-missing' | 'unavailable' | 'failed' }> {
   const nativeModule = moduleForIOS();
   if (!nativeModule?.isLiveActivityAvailable) {
     logLiveActivityDiagnostic('availability-skipped', { reason: 'native-method-missing' });
-    return false;
+    return { available: false, reason: 'native-missing' };
   }
   try {
     const available = await nativeModule.isLiveActivityAvailable();
     logLiveActivityDiagnostic('availability-result', { available });
-    return available;
+    return { available, reason: available ? undefined : 'unavailable' };
   } catch (error) {
     logLiveActivityDiagnostic('availability-error', { error: String(error) });
-    return false;
+    return { available: false, reason: 'failed' };
   }
+}
+
+export async function isRhythmLiveActivityAvailable() {
+  return (await getRhythmLiveActivityAvailability()).available;
 }
 
 export async function startOrUpdateRhythmLiveActivity(payload: RhythmLiveActivityPayload) {

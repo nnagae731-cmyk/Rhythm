@@ -346,8 +346,8 @@ export function AnalysisScreen({
 
   return (
     <>
-      {onAIShare ? <Pressable accessibilityRole="button" onPress={onAIShare} style={[styles.aiShareCard, { backgroundColor: theme.colors.surface, borderColor: isChic && chicPalette ? chicPalette.border : theme.colors.border }]}>
-        <View style={styles.aiShareCopy}><Text style={[styles.aiShareTitle, { color: isChic && chicPalette ? chicPalette.accent : theme.colors.primaryAccent }]}>AIに共有</Text><Text style={[styles.aiShareDescription, { color: isChic && chicPalette ? chicPalette.textSecondary : theme.colors.secondaryText }]}>今日のTODOや記録を、必要なときだけ共有できます</Text></View><Text style={[styles.aiShareChevron, { color: isChic && chicPalette ? chicPalette.accent : theme.colors.primaryAccent }]}>›</Text>
+    {onAIShare ? <Pressable accessibilityRole="button" onPress={onAIShare} style={styles.aiShareCard}>
+        <View style={styles.aiShareCopy}><Text style={[styles.aiShareTitle, { color: isChic && chicPalette ? chicPalette.accent : theme.colors.primaryAccent }]}>AIに共有</Text><Text style={[styles.aiShareDescription, { color: isChic && chicPalette ? chicPalette.textSecondary : theme.colors.secondaryText }]}>内容を確認して共有</Text></View><Text style={[styles.aiShareChevron, { color: isChic && chicPalette ? chicPalette.accent : theme.colors.primaryAccent }]}>›</Text>
       </Pressable> : null}
       <View style={styles.tabs}>
         {([
@@ -365,7 +365,7 @@ export function AnalysisScreen({
         <>
           <View style={[styles.activityCard, designMode === 'dark' && styles.activityCardDark, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
             <Text style={[styles.activityTitle, { color: theme.colors.primaryText }]}>出発・準備の実績</Text>
-            <View style={styles.activityRow}>
+            {departureActivity.preparationCount === 0 && departureActivity.departureCount === 0 ? <Text style={{ color: theme.colors.secondaryText, fontSize: 13, lineHeight: 19, marginTop: 6 }}>準備・出発の記録がここにまとまります</Text> : <View style={styles.activityRow}>
               <View style={styles.activityMetric}>
                 <Text style={[styles.activityValue, { color: theme.colors.primaryAccent }]}>{departureActivity.preparationCount}</Text>
                 <Text style={[styles.activityLabel, { color: theme.colors.secondaryText }]}>準備開始</Text>
@@ -380,7 +380,7 @@ export function AnalysisScreen({
                   {departureActivity.latest ? departureActivity.latest.type === 'departure_started' ? '出発しました' : '準備を始めました' : 'まだ記録はありません'}
                 </Text>
               </View>
-            </View>
+            </View>}
           </View>
           {recordContent}
         </>
@@ -396,10 +396,10 @@ export function AnalysisScreen({
 }
 
 const styles = StyleSheet.create({
-  aiShareCard: { minHeight: 66, marginBottom: 12, borderWidth: 1, borderRadius: 16, paddingHorizontal: 14, paddingVertical: 11, flexDirection: 'row', alignItems: 'center', gap: 10 },
-  aiShareCopy: { flex: 1 },
-  aiShareTitle: { fontSize: 14, fontWeight: '900' },
-  aiShareDescription: { fontSize: 11, lineHeight: 16, fontWeight: '700', marginTop: 3 },
+  aiShareCard: { minHeight: 44, marginBottom: 8, paddingHorizontal: 4, paddingVertical: 8, flexDirection: 'row', alignItems: 'center', gap: 10 },
+  aiShareCopy: { flex: 1, flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 8 },
+  aiShareTitle: { fontSize: 13, fontWeight: '700' },
+  aiShareDescription: { fontSize: 12, lineHeight: 18 },
   aiShareChevron: { fontSize: 24, fontWeight: '500' },
   tabs: { flexDirection: 'row', gap: 7, marginBottom: 20 },
   tab: { flex: 1, paddingVertical: 11, backgroundColor: '#EEEAF0', borderRadius: 12, alignItems: 'center' },

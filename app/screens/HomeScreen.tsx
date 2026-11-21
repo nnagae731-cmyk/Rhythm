@@ -1,5 +1,5 @@
-import React, { useEffect, useState } from 'react';
-import { Modal, Pressable, ScrollView, Text, View } from 'react-native';
+import React, { useEffect, useRef, useState } from 'react';
+import { InteractionManager, Modal, Platform, Pressable, ScrollView, Text, View } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { ChicThemePalette, DesignMode } from '../theme';
 import { Category, Priority, Task, TaskBucket, TaskListItem } from '../types';
@@ -118,6 +118,19 @@ export function HomeScreen({
   const [bucketFilter, setBucketFilter] = useState<TaskBucket | 'all'>('now');
   const [bucketTask, setBucketTask] = useState<Task | null>(null);
   const [actionTask, setActionTask] = useState<Task | null>(null);
+  const afterActionDismissRef = useRef<(() => void) | undefined>(undefined);
+  const finishActionDismiss = () => {
+    const next = afterActionDismissRef.current;
+    afterActionDismissRef.current = undefined;
+    next?.();
+  };
+  const closeActionThen = (next: () => void) => {
+    if (afterActionDismissRef.current) return;
+    afterActionDismissRef.current = next;
+    setActionTask(null);
+    if (Platform.OS !== 'ios') InteractionManager.runAfterInteractions(finishActionDismiss);
+  };
+  useEffect(() => () => { afterActionDismissRef.current = undefined; }, []);
   const [tomorrowOpen, setTomorrowOpen] = useState(false);
   const [expandedSubtasks, setExpandedSubtasks] = useState<Record<string, boolean>>({});
   const [listTask, setListTask] = useState<Task | undefined>();
@@ -340,27 +353,27 @@ export function HomeScreen({
           </Pressable>
         </Pressable>
       </Modal>
-      <Modal visible={Boolean(actionTask)} transparent animationType="fade" onRequestClose={() => setActionTask(null)}>
+      <Modal testID="task-action-modal" visible={Boolean(actionTask)} transparent animationType="fade" onDismiss={finishActionDismiss} onRequestClose={() => setActionTask(null)}>
         <Pressable style={styles.bucketModalBackdrop} onPress={() => setActionTask(null)}>
           <Pressable style={[styles.taskActionCard, { backgroundColor: popupSurface, borderColor: popupBorder }]} onPress={(event) => event.stopPropagation()}>
             <Text numberOfLines={1} style={[styles.bucketModalTitle, { color: popupText }]}>{actionTask?.title}</Text>
             <Text style={[styles.taskActionHint, { color: popupMuted }]}>タスクの操作</Text>
             {actionTask?.isRoutine ? <>
               <View style={styles.taskActionGrid}>
-                <Pressable style={[styles.taskActionOption, { backgroundColor: popupSoft, borderColor: popupBorder }]} onPress={() => { if (actionTask) onEdit(actionTask); setActionTask(null); }}><Text style={[styles.taskActionIcon, { color: popupAccent }]}>✎</Text><Text style={[styles.taskActionLabel, { color: popupText }]}>編集</Text></Pressable>
+                <Pressable style={[styles.taskActionOption, { backgroundColor: popupSoft, borderColor: popupBorder }]} onPress={() => { const target = actionTask; if (target) closeActionThen(() => onEdit(target)); }}><Text style={[styles.taskActionIcon, { color: popupAccent }]}>✎</Text><Text style={[styles.taskActionLabel, { color: popupText }]}>編集</Text></Pressable>
                 {actionTask.status !== 'skipped' && !actionTask.done && <Pressable style={[styles.taskActionOption, { backgroundColor: popupSoft, borderColor: popupBorder }]} onPress={() => { if (actionTask) onSkip(actionTask.id); setActionTask(null); }}><Text style={[styles.taskActionIcon, { color: popupAccent }]}>◌</Text><Text style={[styles.taskActionLabel, { color: popupText }]}>今日は休む</Text></Pressable>}
-                {onRemoveRoutine && <Pressable style={[styles.taskActionOption, styles.taskActionDelete, { backgroundColor: popupSurface, borderColor: popupDanger }]} onPress={() => { if (actionTask) onRemoveRoutine(actionTask.id); setActionTask(null); }}><Text style={[styles.taskActionIcon, styles.taskActionDeleteText, { color: popupDanger }]}>×</Text><Text style={[styles.taskActionLabel, styles.taskActionDeleteText, { color: popupDanger }]}>Routine解除</Text></Pressable>}
+                {onRemoveRoutine && <Pressable style={[styles.taskActionOption, styles.taskActionDelete, { backgroundColor: popupSurface, borderColor: popupDanger }]} onPress={() => { const target = actionTask; if (target) closeActionThen(() => onRemoveRoutine?.(target.id)); }}><Text style={[styles.taskActionIcon, styles.taskActionDeleteText, { color: popupDanger }]}>×</Text><Text style={[styles.taskActionLabel, styles.taskActionDeleteText, { color: popupDanger }]}>ルーティンを解除</Text></Pressable>}
               </View>
             </> : <>
               <View style={styles.taskActionGrid}>
-                <Pressable style={[styles.taskActionOption, { backgroundColor: popupSoft, borderColor: popupBorder }]} onPress={() => { if (actionTask) onEdit(actionTask); setActionTask(null); }}><Text style={[styles.taskActionIcon, { color: popupAccent }]}>✎</Text><Text style={[styles.taskActionLabel, { color: popupText }]}>編集</Text></Pressable>
+                <Pressable style={[styles.taskActionOption, { backgroundColor: popupSoft, borderColor: popupBorder }]} onPress={() => { const target = actionTask; if (target) closeActionThen(() => onEdit(target)); }}><Text style={[styles.taskActionIcon, { color: popupAccent }]}>✎</Text><Text style={[styles.taskActionLabel, { color: popupText }]}>編集</Text></Pressable>
                 <Pressable style={[styles.taskActionOption, { backgroundColor: popupSoft, borderColor: popupBorder }]} onPress={() => { if (actionTask) onDuplicate(actionTask); setActionTask(null); }}><Text style={[styles.taskActionIcon, { color: popupAccent }]}>▣</Text><Text style={[styles.taskActionLabel, { color: popupText }]}>複製</Text></Pressable>
-                <Pressable style={[styles.taskActionOption, { backgroundColor: popupSoft, borderColor: popupBorder }]} onPress={() => { const target = actionTask; setActionTask(null); if (target) setTimeout(() => setPostponeTask(target), 0); }}><Text style={[styles.taskActionIcon, { color: popupAccent }]}>→</Text><View><Text style={[styles.taskActionLabel, { color: popupText }]}>延期する</Text><Text style={[styles.taskActionSubcopy, { color: popupMuted }]}>明日・週末・日付を指定</Text></View></Pressable>
-                <Pressable style={[styles.taskActionOption, styles.taskActionDelete, { backgroundColor: popupSurface, borderColor: popupDanger }]} onPress={() => { if (actionTask) onDelete(actionTask.id); setActionTask(null); }}><Text style={[styles.taskActionIcon, styles.taskActionDeleteText, { color: popupDanger }]}>×</Text><Text style={[styles.taskActionLabel, styles.taskActionDeleteText, { color: popupDanger }]}>削除</Text></Pressable>
+                <Pressable style={[styles.taskActionOption, { backgroundColor: popupSoft, borderColor: popupBorder }]} onPress={() => { const target = actionTask; if (target) closeActionThen(() => setPostponeTask(target)); }}><Text style={[styles.taskActionIcon, { color: popupAccent }]}>→</Text><View><Text style={[styles.taskActionLabel, { color: popupText }]}>延期する</Text><Text style={[styles.taskActionSubcopy, { color: popupMuted }]}>明日・週末・日付を指定</Text></View></Pressable>
+                <Pressable style={[styles.taskActionOption, styles.taskActionDelete, { backgroundColor: popupSurface, borderColor: popupDanger }]} onPress={() => { const target = actionTask; if (target) closeActionThen(() => onDelete(target.id)); }}><Text style={[styles.taskActionIcon, styles.taskActionDeleteText, { color: popupDanger }]}>×</Text><Text style={[styles.taskActionLabel, styles.taskActionDeleteText, { color: popupDanger }]}>削除</Text></Pressable>
               </View>
               <View style={styles.taskActionGrid}>
-                <Pressable style={[styles.taskActionOption, { backgroundColor: popupSoft, borderColor: popupBorder }]} onPress={() => { const target = actionTask; setActionTask(null); if (target) setTimeout(() => setListTask(target), 0); }}><Text style={[styles.taskActionIcon, { color: popupAccent }]}>☷</Text><Text style={[styles.taskActionLabel, { color: popupText }]}>リスト・メモ{actionTask?.listItems?.length ? ` ${actionTask.listItems.length}件` : ''}</Text></Pressable>
-                <Pressable style={[styles.taskActionOption, { backgroundColor: popupSoft, borderColor: popupBorder }]} onPress={() => { const target = actionTask; setActionTask(null); if (target) setTimeout(() => setBucketTask(target), 0); }}><Text style={[styles.taskActionIcon, { color: popupAccent }]}>⇄</Text><View><Text style={[styles.taskActionLabel, { color: popupText }]}>振り分ける</Text><Text style={[styles.taskActionSubcopy, { color: popupMuted }]}>今やる・あとで・待ち</Text></View></Pressable>
+                <Pressable style={[styles.taskActionOption, { backgroundColor: popupSoft, borderColor: popupBorder }]} onPress={() => { const target = actionTask; if (target) closeActionThen(() => setListTask(target)); }}><Text style={[styles.taskActionIcon, { color: popupAccent }]}>☷</Text><Text style={[styles.taskActionLabel, { color: popupText }]}>リスト・メモ{actionTask?.listItems?.length ? ` ${actionTask.listItems.length}件` : ''}</Text></Pressable>
+                <Pressable style={[styles.taskActionOption, { backgroundColor: popupSoft, borderColor: popupBorder }]} onPress={() => { const target = actionTask; if (target) closeActionThen(() => setBucketTask(target)); }}><Text style={[styles.taskActionIcon, { color: popupAccent }]}>⇄</Text><View><Text style={[styles.taskActionLabel, { color: popupText }]}>振り分ける</Text><Text style={[styles.taskActionSubcopy, { color: popupMuted }]}>今やる・あとで・待ち</Text></View></Pressable>
               </View>
               <Pressable style={[styles.taskTemplateSaveAction, { backgroundColor: popupSoft, borderColor: popupBorder }]} onPress={() => { if (actionTask) onSaveTemplate(actionTask); setActionTask(null); }}><View><Text style={[styles.taskTemplateSaveTitle, { color: popupText }]}>設定ごとひな型に保存</Text><Text style={[styles.taskTemplateSaveCopy, { color: popupMuted }]}>カテゴリ・通知・間に合うナビも再利用</Text></View><Text style={[styles.taskTemplateSavePremium, { color: popupAccent }]}>Premium</Text></Pressable>
             </>}

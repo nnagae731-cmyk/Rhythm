@@ -13,6 +13,87 @@ const {Alert,Modal,Platform}=require('react-native');
 const Notifications=require('expo-notifications');
 afterEach(()=>{cleanup();jest.restoreAllMocks();Notifications.getAllScheduledNotificationsAsync.mockReset().mockResolvedValue([]);});
 function dismissTomorrowPrompt(view){const button=view.queryByText('今日はしない');if(button)fireEvent.press(button);}
+function dismissTaskAction(view){if(Platform.OS==='ios'){const modal=view.UNSAFE_getAllByType(Modal).find(item=>item.props.testID==='task-action-modal'&&!item.props.visible);if(modal)act(()=>modal.props.onDismiss());}}
+test('予定の保存待ち中にTODOが完了しても両方の変更を永続化する',async()=>{
+ let release;const gate=new Promise(resolve=>{release=resolve});let writing=false;
+ try{
+  await storage.clear();await saveRhythmState({tasks:[{id:'plan-parallel',title:'予定と並行するTODO',done:false,category:'その他',priority:'中',bucket:'now'}],departurePlans:[]});
+  await storage.setItem(ONBOARDING_STORAGE_KEY,JSON.stringify({version:1,completed:{intro:'2026-01-01',todo:'2026-01-01',todoComplete:'2026-01-01',schedule:'2026-01-01',planRegistration:'2026-01-01'},firstRunStage:'done'}));
+  const original=storage.setItem.getMockImplementation();jest.spyOn(storage,'setItem').mockImplementation((key,value)=>{if(key===STORAGE_KEY&&value.includes('並行保存する予定')){writing=true;return gate.then(()=>original(key,value));}return original(key,value)});const alert=jest.spyOn(Alert,'alert').mockImplementation(()=>{});
+  const App=require('../App').default;const view=render(<App/>);await waitFor(()=>expect(view.getAllByText('予定と並行するTODO').length).toBeGreaterThan(0),{timeout:7000});dismissTomorrowPrompt(view);fireEvent.press(view.getByText('予定'));fireEvent.press(view.getByText('＋ 予定を追加'));fireEvent.changeText(view.getByPlaceholderText('例：友人と待ち合わせ'),'並行保存する予定');fireEvent.press(view.getByText('予定表に追加'));
+  await waitFor(()=>expect(writing).toBe(true),{timeout:7000});expect(alert.mock.calls.some(a=>a[0]==='予定を追加しました')).toBe(false);
+  const listener=Notifications.addNotificationResponseReceivedListener.mock.calls.at(-1)[0];await act(async()=>listener({actionIdentifier:'DONE',notification:{request:{identifier:'parallel-n',content:{data:{taskId:'plan-parallel'}}}}}));
+  release();await waitFor(async()=>{const saved=await loadRhythmState();expect(saved.tasks.find(t=>t.id==='plan-parallel').done).toBe(true);expect(saved.departurePlans.filter(p=>p.title==='並行保存する予定')).toHaveLength(1);},{timeout:7000});await waitFor(()=>expect(view.queryByPlaceholderText('例：友人と待ち合わせ')).toBeNull(),{timeout:7000});
+ }finally{release();}
+},90000);
+test('アファメーションは実ストレージの完了まで保存中の編集画面を維持する',async()=>{
+ const previous=process.env.EXPO_PUBLIC_RHYTHM_PLAN;process.env.EXPO_PUBLIC_RHYTHM_PLAN='premium';let release;const gate=new Promise(resolve=>{release=resolve});let writing=false;
+ try{
+  await storage.clear();await saveRhythmState({tasks:[{id:'affirm-pending',title:'言葉保留の読込目印',done:false,category:'その他',priority:'中',bucket:'now'}],affirmations:[]});await storage.setItem(ONBOARDING_STORAGE_KEY,JSON.stringify({version:1,completed:{intro:'2026-01-01',todo:'2026-01-01',wish:'2026-01-01',affirmation:'2026-01-01'},firstRunStage:'done'}));
+  const original=storage.setItem.getMockImplementation();jest.spyOn(storage,'setItem').mockImplementation((key,value)=>{if(key===STORAGE_KEY&&value.includes('永続化を待つ言葉QA')){writing=true;return gate.then(()=>original(key,value));}return original(key,value)});
+  const App=require('../App').default;const view=render(<App/>);await waitFor(()=>expect(view.getAllByText('言葉保留の読込目印').length).toBeGreaterThan(0),{timeout:7000});dismissTomorrowPrompt(view);fireEvent.press(view.getByText('叶えたいこと'));fireEvent.press(view.getByText('管理する ›'));fireEvent.changeText(view.getByPlaceholderText('文章を選ぶか、自分で入力'),'永続化を待つ言葉QA');fireEvent.press(view.getByText('通知を追加'));
+  await waitFor(()=>expect(writing).toBe(true),{timeout:7000});expect(view.getByText('保存中…')).toBeTruthy();expect(view.getByPlaceholderText('文章を選ぶか、自分で入力').props.editable).toBe(false);expect((await loadRhythmState()).affirmations||[]).toHaveLength(0);
+  release();await waitFor(async()=>expect((await loadRhythmState()).affirmations.filter(a=>a.text==='永続化を待つ言葉QA')).toHaveLength(1),{timeout:7000});await waitFor(()=>expect(view.queryByPlaceholderText('文章を選ぶか、自分で入力')).toBeNull(),{timeout:7000});
+ }finally{release();if(previous===undefined)delete process.env.EXPO_PUBLIC_RHYTHM_PLAN;else process.env.EXPO_PUBLIC_RHYTHM_PLAN=previous;}
+},90000);
+test('予定は保存失敗時に入力を残し、同じIDで再試行して復元できる',async()=>{
+ await storage.clear();await saveRhythmState({tasks:[{id:'plan-retry',title:'予定再試行の読込目印',done:false,category:'その他',priority:'中',bucket:'now'}],departurePlans:[]});
+ await storage.setItem(ONBOARDING_STORAGE_KEY,JSON.stringify({version:1,completed:{intro:'2026-01-01',todo:'2026-01-01',schedule:'2026-01-01',planRegistration:'2026-01-01'},firstRunStage:'done'}));
+ let failing=true;const original=storage.setItem.getMockImplementation();jest.spyOn(storage,'setItem').mockImplementation((key,value)=>key===STORAGE_KEY&&value.includes('予定の再試行QA')&&failing?Promise.reject(Error('disk full')):original(key,value));
+ const alert=jest.spyOn(Alert,'alert').mockImplementation(()=>{});const App=require('../App').default;let view=render(<App/>);
+ await waitFor(()=>expect(view.getAllByText('予定再試行の読込目印').length).toBeGreaterThan(0),{timeout:7000});dismissTomorrowPrompt(view);fireEvent.press(view.getByText('予定'));fireEvent.press(view.getByText('＋ 予定を追加'));fireEvent.changeText(view.getByPlaceholderText('例：友人と待ち合わせ'),'予定の再試行QA');
+ fireEvent.press(view.getByText('予定表に追加'));
+ await waitFor(()=>expect(alert.mock.calls.some(args=>args[0]==='予定を保存できませんでした')).toBe(true),{timeout:7000});
+ expect(view.getByPlaceholderText('例：友人と待ち合わせ').props.value).toBe('予定の再試行QA');expect((await loadRhythmState()).departurePlans).toHaveLength(0);expect(alert.mock.calls.some(args=>args[0]==='予定を追加しました'||args[0]==='予定を保存しました')).toBe(false);
+ failing=false;fireEvent.press(view.getByText('変更を保存'));
+ await waitFor(async()=>expect((await loadRhythmState()).departurePlans.filter(p=>p.title==='予定の再試行QA')).toHaveLength(1),{timeout:7000});
+ view.unmount();view=render(<App/>);await waitFor(()=>expect(view.getAllByText('予定再試行の読込目印').length).toBeGreaterThan(0),{timeout:7000});dismissTomorrowPrompt(view);fireEvent.press(view.getByText('予定'));fireEvent.press(view.getByText('予定表'));await waitFor(()=>expect(view.getAllByText('予定の再試行QA').length).toBeGreaterThan(0),{timeout:7000});
+},90000);
+test('アファメーションは永続化失敗後も入力を保持し、再試行・再読込できる',async()=>{
+ const previous=process.env.EXPO_PUBLIC_RHYTHM_PLAN;process.env.EXPO_PUBLIC_RHYTHM_PLAN='premium';
+ try{
+  await storage.clear();await saveRhythmState({tasks:[{id:'affirm-retry',title:'言葉再試行の読込目印',done:false,category:'その他',priority:'中',bucket:'now'}],affirmations:[]});
+  await storage.setItem(ONBOARDING_STORAGE_KEY,JSON.stringify({version:1,completed:{intro:'2026-01-01',todo:'2026-01-01',wish:'2026-01-01',affirmation:'2026-01-01'},firstRunStage:'done'}));
+  let failing=true;const original=storage.setItem.getMockImplementation();jest.spyOn(storage,'setItem').mockImplementation((key,value)=>key===STORAGE_KEY&&value.includes('再試行する言葉QA')&&failing?Promise.reject(Error('disk full')):original(key,value));jest.spyOn(Alert,'alert').mockImplementation(()=>{});
+  const App=require('../App').default;let view=render(<App/>);await waitFor(()=>expect(view.getAllByText('言葉再試行の読込目印').length).toBeGreaterThan(0),{timeout:7000});dismissTomorrowPrompt(view);fireEvent.press(view.getByText('叶えたいこと'));fireEvent.press(view.getByText('管理する ›'));fireEvent.changeText(view.getByPlaceholderText('文章を選ぶか、自分で入力'),'再試行する言葉QA');fireEvent.press(view.getByText('通知を追加'));
+  await waitFor(()=>expect(view.getByRole('alert')).toBeTruthy(),{timeout:7000});expect(view.getByPlaceholderText('文章を選ぶか、自分で入力').props.value).toBe('再試行する言葉QA');expect((await loadRhythmState()).affirmations||[]).toHaveLength(0);
+  failing=false;fireEvent.press(view.getByText('通知を追加'));await waitFor(async()=>expect((await loadRhythmState()).affirmations.filter(a=>a.text==='再試行する言葉QA')).toHaveLength(1),{timeout:7000});
+  await waitFor(()=>expect(view.queryByPlaceholderText('文章を選ぶか、自分で入力')).toBeNull(),{timeout:7000});
+  view.unmount();view=render(<App/>);await waitFor(()=>expect(view.getAllByText('言葉再試行の読込目印').length).toBeGreaterThan(0),{timeout:7000});dismissTomorrowPrompt(view);fireEvent.press(view.getByText('叶えたいこと'));expect(view.getAllByText('再試行する言葉QA').length).toBeGreaterThan(0);
+ }finally{if(previous===undefined)delete process.env.EXPO_PUBLIC_RHYTHM_PLAN;else process.env.EXPO_PUBLIC_RHYTHM_PLAN=previous;}
+},90000);
+test('予定追加の永続化が保留中は保存成功Alertを出さない',async()=>{
+ let release;const gate=new Promise(resolve=>{release=resolve});let pending;let writing=false;
+ try {
+  await storage.clear();await saveRhythmState({tasks:[{id:'plan-audit',title:'予定保存監査QA',done:false,category:'その他',priority:'中',bucket:'now'}],departurePlans:[]});
+  await storage.setItem(ONBOARDING_STORAGE_KEY,JSON.stringify({version:1,completed:{intro:'2026-01-01',todo:'2026-01-01',schedule:'2026-01-01',planRegistration:'2026-01-01'},firstRunStage:'done'}));
+  const original=storage.setItem.getMockImplementation();jest.spyOn(storage,'setItem').mockImplementation((key,value)=>{if(key===STORAGE_KEY&&value.includes('未保存予定QA')){writing=true;pending=gate.then(()=>original(key,value));return pending;}return original(key,value)});
+  const alert=jest.spyOn(Alert,'alert').mockImplementation(()=>{});const App=require('../App').default;const view=render(<App/>);await waitFor(()=>expect(view.getAllByText('予定保存監査QA').length).toBeGreaterThan(0),{timeout:7000});dismissTomorrowPrompt(view);fireEvent.press(view.getByText('予定'));fireEvent.press(view.getByText('＋ 予定を追加'));fireEvent.changeText(view.getByPlaceholderText('例：友人と待ち合わせ'),'未保存予定QA');fireEvent.press(view.getByText('予定表に追加'));
+  await waitFor(()=>expect(writing).toBe(true),{timeout:7000});expect((await loadRhythmState()).departurePlans).toHaveLength(0);expect(alert.mock.calls.some(args=>args[0]==='予定を追加しました')).toBe(false);
+ } finally {release();if(pending)await pending;}
+},90000);
+test('アファメーション通知の取消失敗時は編集文章を保持する',async()=>{
+ const previous=process.env.EXPO_PUBLIC_RHYTHM_PLAN;process.env.EXPO_PUBLIC_RHYTHM_PLAN='premium';
+ try {
+  await storage.clear();await saveRhythmState({tasks:[{id:'affirm-audit',title:'言葉監査QA',done:false,category:'その他',priority:'中',bucket:'now'}],affirmations:[]});
+  await storage.setItem(ONBOARDING_STORAGE_KEY,JSON.stringify({version:1,completed:{intro:'2026-01-01',todo:'2026-01-01',wish:'2026-01-01',affirmation:'2026-01-01'},firstRunStage:'done'}));
+  const App=require('../App').default;const view=render(<App/>);await waitFor(()=>expect(view.getAllByText('言葉監査QA').length).toBeGreaterThan(0),{timeout:7000});dismissTomorrowPrompt(view);fireEvent.press(view.getByText('叶えたいこと'));fireEvent.press(view.getByText('管理する ›'));
+  fireEvent.changeText(view.getByPlaceholderText('文章を選ぶか、自分で入力'),'失敗しても保持する言葉');Notifications.getAllScheduledNotificationsAsync.mockRejectedValue(Error('API unavailable'));fireEvent.press(view.getByText('通知を追加'));
+  await waitFor(()=>expect(Notifications.getAllScheduledNotificationsAsync).toHaveBeenCalled(),{timeout:7000});await act(async()=>{await Promise.resolve();await Promise.resolve();});
+  expect(view.getByPlaceholderText('文章を選ぶか、自分で入力').props.value).toBe('失敗しても保持する言葉');expect((await loadRhythmState()).affirmations||[]).toHaveLength(0);
+ } finally {Notifications.getAllScheduledNotificationsAsync.mockResolvedValue([]);if(previous===undefined)delete process.env.EXPO_PUBLIC_RHYTHM_PLAN;else process.env.EXPO_PUBLIC_RHYTHM_PLAN=previous;}
+},90000);
+test('無料の記録画面は重複見出しなしで振り返りを残し、写真案内はプレビュー外に表示する',async()=>{
+ await storage.clear();await saveRhythmState({designMode:'dark',monoAppearance:'dark',tasks:[{id:'visual-qa',title:'表示QA準備',done:false,category:'その他',priority:'中',bucket:'now'}]});
+ await storage.setItem(ONBOARDING_STORAGE_KEY,JSON.stringify({version:1,completed:{intro:'2026-01-01',todo:'2026-01-01',analysis:'2026-01-01'},firstRunStage:'done'}));
+ const App=require('../App').default;const view=render(<App/>);await waitFor(()=>expect(view.getAllByText('表示QA準備').length).toBeGreaterThan(0),{timeout:7000});dismissTomorrowPrompt(view);fireEvent.press(view.getByText('分析'));
+ await waitFor(()=>expect(view.getByText('今月を振り返る')).toBeTruthy(),{timeout:7000});expect(view.queryByText('1か月を振り返ろう')).toBeNull();
+ fireEvent.press(view.getByText('設定'));fireEvent.press(view.getByLabelText('デザイン設定を開く'));fireEvent.press(view.getByRole('tab',{name:'写真'}));expect(view.queryByText('写真を選ぶとここに表示されます')).toBeNull();expect(view.getByText('写真を選ぶとプレビューに反映されます')).toBeTruthy();
+ const preview=view.getByLabelText('デザイン適用イメージ');expect(preview.findAll(node=>node.props.children==='写真を選ぶとプレビューに反映されます')).toHaveLength(0);
+ expect(view.getByLabelText('全画面でプレビュー（無料）')).toBeTruthy();expect(view.getByText('タスクを確認')).toBeTruthy();
+ expect(view.getByLabelText('写真を選んでプレビュー')).toBeTruthy();expect(view.queryByText(/写真デザインを適用/)).toBeNull();expect(view.queryByText('背景写真を選ぶ')).toBeNull();expect(view.getByText(/正式適用はプレビュー内から/)).toBeTruthy();
+ const selector=view.UNSAFE_root.findAll(n=>typeof n.type==='function'&&n.type.name==='ThemeColorSelector'&&n.props.surfaceMode==='dark')[0];expect(selector).toBeTruthy();const rn=require('react-native');expect(rn.StyleSheet.flatten(selector.findAllByType(rn.View)[0].props.style).backgroundColor).toBe('#181F2E');
+},90000);
 test('日記の本番保存中は成功表示しない',async()=>{
  const previous=process.env.EXPO_PUBLIC_RHYTHM_PLAN;process.env.EXPO_PUBLIC_RHYTHM_PLAN='premium';let release;const gate=new Promise(r=>{release=r});let pending;let writing=false;
  try {
@@ -21,7 +102,7 @@ test('日記の本番保存中は成功表示しない',async()=>{
   const original=storage.setItem.getMockImplementation();jest.spyOn(storage,'setItem').mockImplementation((key,value)=>{if(key===STORAGE_KEY&&value.includes('保存中日記QA')){writing=true;pending=gate.then(()=>original(key,value));return pending;}return original(key,value)});
   const App=require('../App').default;const view=render(<App/>);await waitFor(()=>expect(view.getAllByText('日記QA準備').length).toBeGreaterThan(0),{timeout:7000});dismissTomorrowPrompt(view);
   fireEvent.press(view.getByText('今日を記録'));await waitFor(()=>expect(view.getByPlaceholderText('今日のひとこと')).toBeTruthy(),{timeout:7000});fireEvent.changeText(view.getByPlaceholderText('今日のひとこと'),'保存中日記QA');fireEvent.press(view.getByText('保存する'));
-  await waitFor(()=>expect(writing).toBe(true),{timeout:7000});expect(view.queryByText('記録を更新しました')).toBeNull();expect(view.getByPlaceholderText('今日のひとこと').props.value).toBe('保存中日記QA');
+  await waitFor(()=>expect(writing).toBe(true),{timeout:7000});expect(view.queryByText('記録を更新しました')).toBeNull();expect(view.getByPlaceholderText('今日のひとこと').props.value).toBe('保存中日記QA');expect(view.getByPlaceholderText('今日のひとこと').props.editable).toBe(false);expect(view.getByPlaceholderText('今日のことを少し残す').props.editable).toBe(false);
  } finally {release();if(pending)await pending;if(previous===undefined)delete process.env.EXPO_PUBLIC_RHYTHM_PLAN;else process.env.EXPO_PUBLIC_RHYTHM_PLAN=previous;}
 },90000);
 
@@ -65,9 +146,9 @@ test('日記を登録・編集・削除しそれぞれ再読込する',async()=>
   await storage.setItem(ONBOARDING_STORAGE_KEY,JSON.stringify({version:1,completed:{intro:'2026-01-01',todo:'2026-01-01',photoLog:'2026-01-01'},firstRunStage:'done'}));
   const App=require('../App').default;let view=render(<App/>);const open=async()=>{await waitFor(()=>expect(view.getAllByText('日記復元確認').length).toBeGreaterThan(0),{timeout:7000});dismissTomorrowPrompt(view);fireEvent.press(view.getByText('今日を記録'));};
   const reviews=async()=>Object.values((await loadRhythmState()).wishMonths).flatMap(m=>m.reviews||[]);
-  await open();fireEvent.changeText(view.getByPlaceholderText('今日のひとこと'),'日記登録QA');fireEvent.press(view.getByText('保存する'));await waitFor(async()=>expect((await reviews()).some(r=>r.shortNote==='日記登録QA')).toBe(true),{timeout:7000});
-  view.unmount();view=render(<App/>);await waitFor(()=>expect(view.getAllByText('日記復元確認').length).toBeGreaterThan(0),{timeout:7000});dismissTomorrowPrompt(view);fireEvent.press(view.getByText('今日の記録を編集'));await waitFor(()=>expect(view.getByText('日記登録QA')).toBeTruthy(),{timeout:7000});fireEvent.press(view.getByText('編集'));fireEvent.changeText(view.getByPlaceholderText('今日のひとこと'),'日記編集QA');fireEvent.press(view.getByText('更新する'));await waitFor(async()=>expect((await reviews()).some(r=>r.shortNote==='日記編集QA')).toBe(true),{timeout:7000});
-  view.unmount();view=render(<App/>);await waitFor(()=>expect(view.getAllByText('日記復元確認').length).toBeGreaterThan(0),{timeout:7000});dismissTomorrowPrompt(view);fireEvent.press(view.getByText('今日の記録を編集'));await waitFor(()=>expect(view.getByText('日記編集QA')).toBeTruthy(),{timeout:7000});const alert=jest.spyOn(Alert,'alert').mockImplementation(()=>{});fireEvent.press(view.getByText('削除'));const call=alert.mock.calls.find(a=>a[0]==='記録を削除しますか？');act(()=>call[2].find(b=>b.style==='destructive').onPress());await waitFor(async()=>expect((await reviews()).some(r=>r.shortNote==='日記編集QA')).toBe(false),{timeout:7000});
+  await open();fireEvent.changeText(view.getByPlaceholderText('今日のひとこと'),'日記登録QA');fireEvent.press(view.getByText('保存する'));await waitFor(async()=>expect((await reviews()).some(r=>r.shortNote==='日記登録QA')).toBe(true),{timeout:7000});await waitFor(()=>expect(view.getByText('記録を更新しました')).toBeTruthy(),{timeout:7000});
+  view.unmount();view=render(<App/>);await waitFor(()=>expect(view.getAllByText('日記復元確認').length).toBeGreaterThan(0),{timeout:7000});dismissTomorrowPrompt(view);fireEvent.press(view.getByText('今日の記録を編集'));await waitFor(()=>expect(view.getByText('日記登録QA')).toBeTruthy(),{timeout:7000});fireEvent.press(view.getByText('編集'));dismissTaskAction(view);fireEvent.changeText(view.getByPlaceholderText('今日のひとこと'),'日記編集QA');fireEvent.press(view.getByText('更新する'));await waitFor(async()=>expect((await reviews()).some(r=>r.shortNote==='日記編集QA')).toBe(true),{timeout:7000});
+  view.unmount();view=render(<App/>);await waitFor(()=>expect(view.getAllByText('日記復元確認').length).toBeGreaterThan(0),{timeout:7000});dismissTomorrowPrompt(view);fireEvent.press(view.getByText('今日の記録を編集'));await waitFor(()=>expect(view.getByText('日記編集QA')).toBeTruthy(),{timeout:7000});const alert=jest.spyOn(Alert,'alert').mockImplementation(()=>{});fireEvent.press(view.getByText('削除'));dismissTaskAction(view);const call=alert.mock.calls.find(a=>a[0]==='記録を削除しますか？');act(()=>call[2].find(b=>b.style==='destructive').onPress());await waitFor(async()=>expect((await reviews()).some(r=>r.shortNote==='日記編集QA')).toBe(false),{timeout:7000});
   view.unmount();view=render(<App/>);await waitFor(()=>expect(view.getAllByText('日記復元確認').length).toBeGreaterThan(0),{timeout:7000});dismissTomorrowPrompt(view);expect(view.getByText('今日を記録')).toBeTruthy();
  } finally {if(previous===undefined)delete process.env.EXPO_PUBLIC_RHYTHM_PLAN;else process.env.EXPO_PUBLIC_RHYTHM_PLAN=previous;}
 },90000);
@@ -121,7 +202,7 @@ test('本番AppでTODO完了・取消・削除を操作し各状態を再読込�
  fireEvent.press(view.getByLabelText('今日できたことを確認'));await waitFor(()=>expect(view.getByText('操作QA')).toBeTruthy(),{timeout:7000});
  fireEvent.press(view.getByText('元に戻す'));await waitFor(async()=>expect((await loadRhythmState()).tasks.find(t=>t.id==='life-task').done).toBe(false),{timeout:7000});
  view.unmount();view=render(<App/>);await waitFor(()=>expect(view.getAllByText('操作QA').length).toBeGreaterThan(0),{timeout:7000});dismissTomorrowPrompt(view);
- fireEvent.press(view.getAllByText('操作QA')[0],{stopPropagation:()=>{}});fireEvent.press(view.getByText('削除'));
+ fireEvent.press(view.getAllByText('操作QA')[0],{stopPropagation:()=>{}});fireEvent.press(view.getByText('削除'));dismissTaskAction(view);
  await waitFor(async()=>expect((await loadRhythmState()).tasks.some(t=>t.id==='life-task')).toBe(false),{timeout:7000});
  view.unmount();view=render(<App/>);await waitFor(()=>expect(view.getAllByText('復元確認QA').length).toBeGreaterThan(0),{timeout:7000});expect(view.queryByText('操作QA')).toBeNull();
 },90000);
@@ -143,7 +224,7 @@ test('本番AppでTODOを編集し保存後の再読込でも維持する',async
  await storage.setItem(ONBOARDING_STORAGE_KEY,JSON.stringify({version:1,completed:{intro:'2026-01-01',todo:'2026-01-01'},firstRunStage:'done'}));
  const App=require('../App').default;const view=render(<App/>);
  await waitFor(()=>expect(view.getAllByText('変更前QA').length).toBeGreaterThan(0),{timeout:7000});
- fireEvent.press(view.getAllByText('変更前QA')[0],{stopPropagation:()=>{}});fireEvent.press(view.getByText('編集'));
+ fireEvent.press(view.getAllByText('変更前QA')[0],{stopPropagation:()=>{}});fireEvent.press(view.getByText('編集'));dismissTaskAction(view);
  fireEvent.changeText(view.getByPlaceholderText('例：資料をバッグに入れる'),'変更後QA');fireEvent.press(view.getByText('変更を保存'));
  await waitFor(()=>expect(view.getAllByText('変更後QA').length).toBeGreaterThan(0),{timeout:7000});
  await waitFor(async()=>expect((await loadRhythmState()).tasks.find(t=>t.id==='edit-task').title).toBe('変更後QA'),{timeout:7000});
@@ -153,7 +234,7 @@ test('複数TODOの一方を編集中にキャンセルしても元のデータ�
  await storage.clear();await saveRhythmState({tasks:[{id:'a',title:'キャンセル対象',done:false,category:'その他',priority:'中',bucket:'now'},{id:'b',title:'別のTODO',done:false,category:'その他',priority:'中',bucket:'later'}]});
  await storage.setItem(ONBOARDING_STORAGE_KEY,JSON.stringify({version:1,completed:{intro:'2026-01-01',todo:'2026-01-01'},firstRunStage:'done'}));
  const App=require('../App').default;let view=render(<App/>);await waitFor(()=>expect(view.getAllByText('キャンセル対象').length).toBeGreaterThan(0),{timeout:7000});dismissTomorrowPrompt(view);
- fireEvent.press(view.getAllByText('キャンセル対象')[0],{stopPropagation:()=>{}});fireEvent.press(view.getByText('編集'));
+ fireEvent.press(view.getAllByText('キャンセル対象')[0],{stopPropagation:()=>{}});fireEvent.press(view.getByText('編集'));dismissTaskAction(view);
  fireEvent.changeText(view.getByPlaceholderText('例：資料をバッグに入れる'),'変更を破棄');fireEvent.press(view.getByText('キャンセル'));
  await waitFor(()=>expect(view.getAllByText('キャンセル対象').length).toBeGreaterThan(0),{timeout:7000});
  const saved=await loadRhythmState();expect(saved.tasks.find(t=>t.id==='a').title).toBe('キャンセル対象');expect(saved.tasks.find(t=>t.id==='b').title).toBe('別のTODO');
@@ -168,14 +249,14 @@ test('本番Appから予定を追加し保存後に再読込する',async()=>{
  await waitFor(async()=>expect((await loadRhythmState()).departurePlans.some(p=>p.title==='予定連動QA')).toBe(true),{timeout:7000});
  view.unmount();view=render(<App/>);await waitFor(()=>expect(view.getAllByText('予定復元確認').length).toBeGreaterThan(0),{timeout:7000});dismissTomorrowPrompt(view);fireEvent.press(view.getByText('予定'));fireEvent.press(view.getByText('予定表'));
  await waitFor(()=>expect(view.getAllByText('予定連動QA').length).toBeGreaterThan(0),{timeout:7000});
- fireEvent.press(view.getByText('編集'),{stopPropagation:()=>{}});
+ fireEvent.press(view.getByText('編集'),{stopPropagation:()=>{}});dismissTaskAction(view);
  Notifications.getAllScheduledNotificationsAsync.mockRejectedValue(Error('notification unavailable'));
  fireEvent.changeText(view.getByPlaceholderText('例：友人と待ち合わせ'),'変更済み予定QA');fireEvent.press(view.getByText('変更を保存'));
  await waitFor(async()=>expect((await loadRhythmState()).departurePlans.some(p=>p.title==='変更済み予定QA')).toBe(true),{timeout:7000});
  Notifications.getAllScheduledNotificationsAsync.mockResolvedValue([]);
  view.unmount();view=render(<App/>);await waitFor(()=>expect(view.getAllByText('予定復元確認').length).toBeGreaterThan(0),{timeout:7000});dismissTomorrowPrompt(view);fireEvent.press(view.getByText('予定'));fireEvent.press(view.getByText('予定表'));
  await waitFor(()=>expect(view.getAllByText('変更済み予定QA').length).toBeGreaterThan(0),{timeout:7000});
- const alert=jest.spyOn(Alert,'alert').mockImplementation(()=>{});fireEvent.press(view.getByText('削除'),{stopPropagation:()=>{}});
+ const alert=jest.spyOn(Alert,'alert').mockImplementation(()=>{});fireEvent.press(view.getByText('削除'),{stopPropagation:()=>{}});dismissTaskAction(view);
  const call=alert.mock.calls.find(args=>args[0]==='この予定を削除しますか？');expect(call).toBeTruthy();act(()=>call[2].find(button=>button.text==='削除する').onPress());
  await waitFor(async()=>expect((await loadRhythmState()).departurePlans.some(p=>p.title==='変更済み予定QA')).toBe(false),{timeout:7000});
  view.unmount();view=render(<App/>);await waitFor(()=>expect(view.getAllByText('予定復元確認').length).toBeGreaterThan(0),{timeout:7000});dismissTomorrowPrompt(view);fireEvent.press(view.getByText('予定'));fireEvent.press(view.getByText('予定表'));expect(view.queryByText('変更済み予定QA')).toBeNull();
@@ -257,7 +338,7 @@ test('本番Appの集中開始・一時停止・再開・終了を保存状態�
  fireEvent.press(view.getByText('スタート'));await waitFor(()=>expect(view.getByText('一時停止')).toBeTruthy(),{timeout:7000});
  await waitFor(async()=>expect((await loadRhythmState()).focusState.running).toBe(true),{timeout:7000});
  fireEvent.press(view.getByText('一時停止'));await waitFor(async()=>expect((await loadRhythmState()).focusState.running).toBe(false),{timeout:7000});
- fireEvent.press(view.getByText('スタート'));await waitFor(async()=>expect((await loadRhythmState()).focusState.running).toBe(true),{timeout:7000});
+ fireEvent.press(view.getByText('再開'));await waitFor(async()=>expect((await loadRhythmState()).focusState.running).toBe(true),{timeout:7000});
  const clock=Date.now();jest.spyOn(Date,'now').mockReturnValue(clock+60*60*1000);
  await waitFor(async()=>expect((await loadRhythmState()).focusSessions.some(s=>s.taskId==='f')).toBe(true),{timeout:7000});
  const saved=await loadRhythmState();expect(saved.behaviorEvents.some(e=>e.type==='focus_completed'&&e.taskId==='f')).toBe(true);expect(saved.focusState).toBeUndefined();
@@ -273,5 +354,5 @@ test('未来TODOを残数に含めず完了・取消・削除を表示に反映�
  await waitFor(async()=>expect((await loadRhythmState()).tasks.find(t=>t.id==='count').done).toBe(true),{timeout:7000});fireEvent.press(view.getByText('今'));expect(view.getByText(/残り\s*0/)).toBeTruthy();
  fireEvent.press(view.getByLabelText('今日できたことを確認'));fireEvent.press(view.getByText('元に戻す'));fireEvent.press(view.getByText('閉じる'));
  await waitFor(()=>expect(view.getByText(/残り\s*1/)).toBeTruthy(),{timeout:7000});
- fireEvent.press(view.getAllByText('残数QA')[0],{stopPropagation:()=>{}});fireEvent.press(view.getByText('削除'));await waitFor(()=>expect(view.getByText(/残り\s*0/)).toBeTruthy(),{timeout:7000});
+ fireEvent.press(view.getAllByText('残数QA')[0],{stopPropagation:()=>{}});fireEvent.press(view.getByText('削除'));dismissTaskAction(view);await waitFor(()=>expect(view.getByText(/残り\s*0/)).toBeTruthy(),{timeout:7000});
 },30000);

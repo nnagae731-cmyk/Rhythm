@@ -1,5 +1,154 @@
 # RhythmPace 全機能QA一次点検
 
+## 最新：2026-11-22 一括改修
+
+ユーザー承認に基づき、再現済み不具合3件とUI/UX候補16項目を改修。既存LOCAL差分を保持。commit・push・EAS Buildは未実施。
+改修前159件（156 PASS / 3 FAIL）に10件追加し、169件 PASS / 0 FAILを確認。下の改修前FAIL記録・提案・過去の一次点検は履歴として保持する。
+
+### 不具合3件の修正
+
+- **予定**：グローバル保存キューが対象予定を含むsnapshotをAsyncStorageへ書き終えた後にのみ成功を返す。失敗時は編集を保持し、生成済みIDで再試行。保存中は二重送信・終了・フォーム変更を抑止。通知失敗とデータ保存失敗を分離し、永続化後の通知エラーで保存成功を取り消さない。
+- **アファメーション**：取消/予約の失敗・重複時刻・上限等を正常returnにしない。画面が失敗を受け取り入力を保持。永続化完了も待つ。再試行で同一IDを使い、二重登録を抑止。Switch更新のrejectも画面側で処理。
+- **Live Activity**：effectの世代を照合し、古いavailability結果を無効化。Native開始/更新/終了を同じキューで順序付ける。開始API中にOFFになった場合も、開始の後で終了する。古い完了結果でruntime状態を上書きしない。
+
+予定/アファメーションの保存待ちは既存の全体保存を利用する。他データを読み直して古いsnapshotを個別保存する方式にはしていない。保存完了通知はその書込み開始時に存在した待機要求だけを対象とし、対象設定が変更された場合は再試行可能なエラーにする。既存Wish/日記の保存待機は維持。
+
+### UI/UXの対応結果
+
+| 候補 | 反映内容 |
+|---|---|
+| UX01 | 下部ナビ48pt領域、11ptラベル、tabの名称・選択状態 |
+| UX02 | リストのチェック・削除・閉じるを44pt程度へ。チェックの見た目は25ptのまま。サブタスクの移動/削除も44pt、入力欄と操作行を折返し可能に |
+| UX03 | アファメーション本文と操作を折返し可能にし、編集・削除・保存した言葉の操作領域を拡大 |
+| UX04 | Widget/Live Activityの36/40/42ptの主要設定ボタンを44ptへ。縮小プレビュー内文字は一律拡大しない |
+| UX05 | Premium説明・規約リンク等の10～11ptを13ptへ。価格・契約条件・購入/復元経路を維持 |
+| UX06 | 集中セッションが一時停止中なら「再開」。未開始の「スタート」と区別 |
+| UX07 | 「Routine解除」を「ルーティンを解除」に統一。「今日は休む」と繰返し自体の解除を区別 |
+| UX08 | Premium比較表の「行動はプレミアム限定」を、広告でも追加可能な実際の条件へ修正。権限判定自体は変更なし |
+| UX09 | 写真Sheetの背景選択入口を上の無料プレビューへ一本化。重複する直接適用ボタンを廃止し、正式適用はプレビュー内へ。保存済み背景の表示・外す・トップ画像5枠・集中背景は残す。単体Photoカードの背景選択機能も維持 |
+| UX10 | Widgetの自動保存と、Live Activityの「設定を保存」での反映を短く明記。保存方式の変更なし |
+| UX11 | 分析の出発/準備0件では大きな0指標を出さず短い説明へ。記録があれば従来の実績カード |
+| UX12 | 日記の保存成功を閲覧側でも表示。約2.8秒で消し、表示ごとにタイマーを更新。アンマウント時に解除。永続化成功前には表示しない |
+| UX13 | 月間カードの編集用テンプレート/色選択を13ptにし、選択にチェックとaccessibilityStateを追加。生成画像の作風は変更なし |
+| UX14 | 今日画面の編集・延期・リスト・振分け等を、操作Modalのdismiss後に実行。削除/解除確認も同じ順序。iOSはonDismiss、他OSはInteractionManager。タップ数は追加しない |
+| UX15 | 自分の言葉の保存と通知予約を、見出し・「言葉を保存」で区別 |
+| UX16 | Native未搭載・システム利用不可・API失敗を区別。無料版制限との誤解を防ぐ。Nativeの追加実装やSwift変更ではない |
+
+### テストと確認の限界
+
+- 改修前のFAIL3件は削除・期待値緩和せずPASS。既存の「スタート」や重複写真ボタンの期待値は、承認されたUI仕様の変更に合わせて更新。Modalのdismissは必要なテストでNative境界イベントとして明示発火。
+- 追加10件：本番Appで予定の失敗/再試行/再読込、予定保存中のTODO更新、アファメーションの失敗/再試行/再読込・保存保留、Native開始API中のOFF、利用不可理由の判定、4件の本番UIコンポーネント操作。
+- 本番Appテストでは状態管理・保存・利用権・通知管理を置換していない。ストレージとNative APIがMock。コンポーネント単体テストの外部コールバックMockは、その画面の操作制御だけを検証し、永続化の証明には含めない。
+- 最終コードで全22 suite / 169件 PASS・0 FAIL。追加の画面操作テストは本番コンポーネントを使用。`pnpm typecheck`・`npx expo export --platform ios`・`git diff --check`もPASS（改行コード変換の警告あり、diffエラーなし）。
+- 実寸の見切れ、物理タッチ、VoiceOverの実際の読み上げ、Swiftコンパイル、Widget/Live ActivityのNative表示は今回未確認。
+- 以前のNative deployment target修正はそのまま保持。今回Swift/autolinking/App Group/StoreKit商品ID/本番広告ID/写真保存形式・crop/利用権仕様は変更していない。既存BuildのNative module未解決はJSの改修だけで解消した扱いにしない。
+
+## 改修前：2026-11-22 LOCAL総点検
+
+対象：HEAD de1064b と既存未commit差分。過去の記録は下に保存する。
+今回は本番コードを変更せず、再現テスト3件を追加。Native API・AsyncStorageは境界Mock。
+全Jest：159件中156 PASS / 3 FAIL。既存156件は回帰なし。
+typecheck・iOS JS export・git diff --check：PASS。Swiftコンパイルや実機全画面操作の証明ではない。
+
+### 全20領域の一次点検範囲
+
+「既存テストあり」は今回再実行した特定の処理に限る。領域全体PASSを意味しない。
+
+| 領域 | 確認した本番入口 | 実行結果・残作業 |
+|---|---|---|
+| 今日・タスク | HomeScreen / TaskModal / Appのタスク更新 | CRUD・再読込等の既存AppテストPASS。全サブタスク操作は未網羅 |
+| 予定 | DeparturePlanForm / saveDeparturePlan | 既存CRUD PASS。永続化前の成功Alertを追加テストで再現 |
+| 通知 | tasks/departure/focus/notifications | 既存復旧テストPASS。OS到達・全画面との競合は未網羅 |
+| 集中 | AppのFocus画面・focusState | 開始/停止/再開/記録の既存テストPASS。バックグラウンド実機待ち |
+| ルーティン | Appの次回生成・skip / routineInterruptionAnalysis | 既存重複/日付等のテストPASS。全CRUDのApp連動未網羅 |
+| 分析 | AnalysisScreen / insightDashboard / aiShareText | 既存境界・集計テストPASS。全グラフの視覚評価未実施 |
+| 目標 | WishScreen / saveCurrentWishEditor | 保存失敗・再試行・再読込の既存AppテストPASS |
+| 日記 | HistoryScreen / saveDailyReview | 文章CRUD・保存保留/失敗/再試行PASS。写真付き同時保存は未網羅 |
+| アファメーション | AffirmationSettingsCard / saveAffirmation | 取消API失敗時に入力消失を追加Appテストで再現 |
+| Widget | syncRhythmWidgetSnapshot / Swift WidgetBundle | 9種類のカタログ確認。既存JS更新テストPASS。Native修正後Build待ち |
+| Live Activity | App同期effect / rhythmLiveActivity | 既存Focus連動PASS。OFF中の古い開始を追加Appテストで再現 |
+| デザイン | DesignSettingsSheet / effectiveChicPattern | 既存広告解放・実画面への柄受渡しPASS。背景写真の入口が重複 |
+| 課金 | useRhythmStoreKit / PremiumModal | 判定テストPASS。実購入・復元・失効は実機必須。紹介文に不一致あり |
+| 広告・Trial | rewardedAds / rewardedAccessStorage | 既存広告成功/キャンセル・期限テストPASS。SDKエラー全組合せ未網羅 |
+| 初回・GUIDE | useOnboarding / onboardingStorage / embedded preview | 既存保存競合・初回判定テストPASS。全ツアー実機操作未実施 |
+| 音声 | VoiceInputModal / voiceParser / voiceUsage | 既存解析・回数テストPASS。認識・権限は実機必須 |
+| 設定 | SettingsScreen / 各Sheet | 写真/テーマ等の既存UIテストPASS。全設定の再読込は未網羅 |
+| 永続化 | rhythmStorage / persistentPhoto / historyCleanup | 既存キュー・破損/写真保護テストPASS。強制終了原子性は未保証 |
+| Siri・外部連携 | Swift App Intents / SharedEventScreen / travelApps | コード確認のみ。Siri実行・他端末間共有・外部アプリは未実施 |
+| 起動・遷移・UI全体 | App / Modal / BottomNav | App描画・一部再起動テストPASS。全Modalの物理タッチ/全端末表示は未実施 |
+
+### 再現済み：修正優先度A
+
+1. **予定の保存成功が早い**：画面から予定表用予定を追加し、STORAGE_KEYへの書込みを保留。永続データには予定がないのに「予定を追加しました」が出る。`saveDeparturePlan`はstate変更と通知処理後にAlertを出すが、主データ保存は別の80ms debounce effect。保存Promise連携を追加し、失敗時の編集保持も検証する必要がある。`qa-app-root-probe.test.js`にFAILを保存。
+2. **アファメーション失敗時の入力消失**：Premiumで管理画面を開き、通知一覧取得を失敗させて追加。Appの`saveAffirmation`はcatch後に正常returnし、画面は`await onSave()`後にclose/resetする。成功/失敗を返して成功時だけ閉じる必要がある。重複時刻や上限によるreturnも同構造で、別途再現が必要。`qa-app-root-probe.test.js`にFAILを保存。
+3. **Live Activity OFF後の古い開始**：availabilityを保留し、UIでOFF→endを確認した後にavailabilityを成功させる。古いeffectがstartOrUpdateを呼ぶ。Appの同期effectに取消/世代確認がない。開始・更新・終了の直列化や最新世代照合が必要。availability後だけのチェックでは既に開始API中の競合を防げない。`qa-widget-live-app.test.js`にFAILを保存。実ActivityKit表示は未確認。
+
+### 表記・導線（コード確認で確定、機能FAILと区別）
+
+- `PremiumModal.tsx`比較表は「叶えたいこと：行動はプレミアム限定」と説明するが、`App.tsx`のcanCreateWishActionは広告利用権でもtrue。`WishScreen.tsx`にも広告2回で行動追加の案内がある。実装を変えず紹介文を揃えるのが妥当。
+- 写真設定は「写真を選んでプレビュー」「写真デザインを適用」とPhotoThemeSettingsCardの「背景写真を選ぶ」が併存する。単純削除せず、権限確認・Picker・CropのModal復帰を維持する統合設計が必要。
+- 小さい説明・操作領域はアファメーション等に残る。コード上の改善候補であり、全画面の見切れを実機確認したわけではない。
+
+### リリース判断
+
+現時点で「全機能に問題なし」とはしない。上記Aの3件を優先修正し、Native deployment target修正を反映したBuildでRhythmWidgetのruntime解決と書込みを確認する。
+Native設定修正後のBuildは未実施。現在インストール済みBuildのavailable:falseは既知。
+今回commit・push・EAS Buildは実行していない。本番コードに今回の新規修正はない。
+
+---
+
+## 2026-11-22 追加：不具合以外も含むUI・UX改善の一括候補
+
+目的：不具合だけを小出しに直すのではなく、毎日の操作・文言・見た目・導線をまとめて改善するための対象を確定する。
+この追加作業は監査・提案のみ。本番コードは変更していない。上記159件（156 PASS / 3 FAIL）は直前の実行結果であり、以下の改善候補をテストで再現した件数ではない。
+ユーザー提供の写真2枚以外について、新しい実画面・スクリーンショットは取得していない。以下は最新LOCALのコンポーネント・スタイル・状態遷移を根拠とする。物理タッチ、実寸、文字拡大時の見切れ、視覚的な完成度は未検証。
+
+### 一括改修候補16項目
+
+優先度：P1＝保存・誤操作・利用条件に関わるものを先行、P2＝日常の読みやすさ・操作性、P3＝既存デザインを保つ仕上げ。上記の再現済み不具合A・3件は別枠で最優先。
+
+| ID / 優先 | 対象・現状の根拠 | 改善内容・効果 | 操作数・副作用・維持条件 |
+|---|---|---|---|
+| UX01 / P2 | `components/BottomNav.tsx`：ラベル10、navItemは高さ指定なし。選択状態のアクセシビリティ指定なし | アイコンの見た目は維持し、各タブの操作領域を44以上に確保。選択状態・名称を読み上げ可能にする。文字は幅と両立する範囲で調整 | 画面切替1→1タップ。5タブ構成は変更しない。長い「叶えたいこと」の折返しを確認 |
+| UX02 / P2 | `components/TaskListSheet.tsx`：チェック25×25、削除・閉じるは文字だけのPressable。`TaskModal.tsx`にも小さい並替え操作 | 見た目のチェック径を増やさず外側の操作領域を拡大。項目名付き操作ラベル。削除と並替えを離す | 各操作1→1。hitSlopの重なりで隣の操作を拾わせない。リストの下書き・保存仕様は維持 |
+| UX03 / P2 | `components/AffirmationSettingsCard.tsx`：本文・Switch・編集・削除が横1行、編集/削除に最小領域なし | 本文と操作行を分離できる可変レイアウト、44程度の独立した操作領域。削除は他操作から離す | 編集・削除の操作数は維持。長文と小画面に対応。通知Switchの権限制御を変えない |
+| UX04 / P2 | `WidgetSettingsCard.tsx`の写真操作42・確認操作36、`LiveActivitySettingsSheet.tsx`の文字サイズ/間隔選択36 | 主な設定コントロールを44程度に揃える。必要な行のみ折返す | 操作数不変。縮小Widgetプレビュー自体を拡大しない。設定項目・権限は維持 |
+| UX05 / P2 | `components/PremiumModal.tsx`：重要説明10～11、規約リンク11 | 利用条件・購入説明・リンクを優先して読みやすくする。装飾コピーより購入判断情報に強弱を付ける | 購入確認回数不変。価格・更新条件・復元・法的説明を省略しない。縦スクロール維持 |
+| UX06 / P2 | `App.tsx`の集中画面：running=falseかつ残時間ありは一律「スタート」 | 未開始は「スタート」、実際の一時停止中は「再開」。既存セッション状態に基づき出し分ける | 1→1。タイマー・履歴・通知処理に変更不要。残時間だけで一時停止と決めない |
+| UX07 / P2 | `screens/HomeScreen.tsx`：「Routine解除」と「今日は休む」 | 「ルーティンを解除」など日本語に統一し、当日の休みと繰返し自体の解除の意味を区別 | 操作数不変。スキップの連続記録・分析への扱いは一切変えない |
+| UX08 / P1 | `components/PremiumModal.tsx`：「行動はプレミアム限定」。App/Wishでは広告利用権でも行動追加可 | 比較表を実際の広告・Premium条件に合わせる。購入・一時解放・無料プレビューの文言を混同しない | 購入導線不変。権限実装を文言に合わせて制限しない。広告回数/期間は機能別仕様を参照 |
+| UX09 / P2・導線設計 | `screens/SettingsScreen.tsx`と`PhotoThemeSettingsCard.tsx`：背景写真にプレビュー選択・正式適用・背景を選ぶ入口が併存 | 背景写真の主入口を1つに整理し、その先の無料プレビュー→正式適用を明確化。トップ画像・タイマー写真は別用途として残す | 選択後に再度別入口を探す負担を削減。現状の全経路の正確なタップ差は未計測。購入判定、元画像、Crop、Sheet suspend/resume維持が必須 |
+| UX10 / P2 | `WidgetSettingsCard.tsx`は変更ごとにonChange、`LiveActivitySettingsSheet.tsx`はdraftと「設定を保存」 | 自動反映される設定と、保存が必要な設定を短い表示で区別する | 操作数不変。自動保存へ統一するなど保存方式を勝手に変更しない。永続化未完了で「保存済み」と出さない |
+| UX11 / P3 | `AnalysisScreen.tsx`：出発・準備とも0でも実績カード全体を表示。提供画像1でも大きな空カードが上部を占有 | 記録0件では説明を短い空状態へ縮約、記録ありでは既存実績表示。日記・カレンダーへ早く到達できる密度にする | 必須操作数不変、縦スクロール量の削減見込みは未実測。数値や機能は削除しない |
+| UX12 / P2 | `screens/HistoryScreen.tsx`：保存後setJournalEditing(false)、完了文言は編集側の分岐内に配置 | 編集→閲覧へ移った後も見える共通位置に短い完了表示。成功確定のタイミングは現在の永続化完了を維持 | 追加タップ0。新しいAlertに戻さない。Modal背面へ隠さない。現行構造の確認であり、今回の表示再現テストは未追加 |
+| UX13 / P3 | `screens/HistoryScreen.tsx`：月間カード編集のテンプレート/パレット選択文字10 | 操作用UIだけ読みやすくし、選択状態を文字と枠でも判別可能にする | 操作数不変。生成画像内の装飾文字は一律拡大しない。カードの作風・保存形式を維持 |
+| UX14 / P1・導線設計 | `screens/HomeScreen.tsx`：操作メニューの編集はonEditとclose同時、リスト等はsetTimeout(0)で次Modalへ | 親Sheetの終了を確認して次を開く遷移へ揃える。Cropで用いた競合防止の原則を適用 | メニュー→編集の2操作は維持。現在の経路でフリーズを再現したわけではなく予防候補。戻る先・キャンセル時の下書きを保持 |
+| UX15 / P2 | `components/AffirmationSettingsCard.tsx`：「通知を追加」と自分の言葉の「保存」が同じ画面に存在 | 「言葉の保存」と「時刻を指定した通知」の役割を見出し・ボタン名で区別。「言葉を保存」等の具体名にする | 操作数不変。保存した言葉だけで通知が始まるような仕様変更をしない。テンプレートも維持 |
+| UX16 / P1・状態設計 | `screens/SettingsScreen.tsx`：Live Activityの利用不可案内と基本ON/OFF、別途Native module available:falseが既知 | Free制限ではないことを明示。判別できる場合に限り、端末/OS・システム許可・Native未搭載・一時エラーを区別して次の行動を示す | 基本スイッチはFreeでも使用可能を維持。原因未判定を「設定で直る」と案内しない。Native原因解決の代わりに文言だけ変えて完了扱いしない |
+
+### 全体をまとめて改修する順序
+
+1. 再現済みAの3件：予定の永続化完了判定、アファメーションの失敗伝達/入力保持、Live Activityの古い非同期処理の無効化。
+2. UX08・UX12・UX16：利用条件と操作結果の表示を正確にする。UX16は取得可能な状態の範囲を確認して設計。
+3. UX01～05・UX07・UX13・UX15：押しやすさ、文字、名称、操作の意味を一括統一。
+4. UX06・UX10・UX11：開始/再開、保存方式、空状態を整理。
+5. UX09・UX14：写真入口の統合とModal遷移は、既存経路を記録してから段階的に変更し回帰テストする。ボタンの削除だけで済ませない。
+
+### 維持する設計・今回不要な変更
+
+- Mono/Design/Photoの方向性とテーマトークンを維持。全面リデザイン、タブ削減、背景色の固定化は不要。
+- デザイン試着は無料、正式適用時のみTrial/広告/購入判定。現在の全画面プレビュー・各画面rendererを維持。
+- 写真は元画像から最終crop。高解像度preview、編集中写真の保護、全機能共有参照、cleanupを維持。
+- カレンダーの幅・4本帯・＋N・今日・選択日・シール・無料7日/Premium月表示を維持。
+- Wish/日記の実永続化後の成功判定、失敗時の入力保持を維持。他画面を成功表示だけで取り繕わない。
+- Widget9種類の整理済み構成、基本Live Activityの無料ON/OFF、課金・広告仕様は変更しない。
+- 初回案内の静的埋込みプレビューと明示CTA、GUIDE/FAQの再確認経路を維持。案内Modalを増やさない。
+- 音声・Siri・カレンダー取込・外部アプリの実動作は、今回コードだけで使いやすさまで確認済みとはしない。根拠のない画面追加・仕様変更は提案しない。
+
+今回まとめたものは、再現済み機能不具合3件＋UI/UX改善候補16件。改善候補を確定バグ件数に加算しない。ユーザーの「点検して、その後に全改修する」に合わせた改修台帳であり、この追記時点では一括改修は未実施。
+
+## 以下は過去の一次点検記録（最新状況ではない）
+
 対象: LOCAL HEAD 229be98 と既存未コミット差分。2026-11-15。iOS実機操作なし。
 
 ## 検証表

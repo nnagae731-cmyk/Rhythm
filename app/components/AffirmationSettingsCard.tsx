@@ -1,5 +1,5 @@
 import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import { Alert, Modal, Platform, Pressable, ScrollView, Switch, Text, TextInput, View } from 'react-native';
 import { PlanTier } from '../premiumAccess';
 import { PremiumGuideFeatureId } from '../premiumGuide';
@@ -35,6 +35,10 @@ function clockToDate(time: string) {
 
 export function AffirmationSettingsCard({ affirmations, customTexts, designMode, chicPalette, planTier, onPremium, onSave, onDelete, onSaveCustomText, onDeleteCustomText, styles, compact = false, previewMode = false }: Props) {
   const [sheetOpen, setSheetOpen] = useState(false);
+  const savingRef = useRef(false);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState('');
+  const draftIdRef = useRef<string | undefined>(undefined);
   const [text, setText] = useState('');
   const [time, setTime] = useState('09:00');
   const [enabled, setEnabled] = useState(true);
@@ -61,16 +65,34 @@ export function AffirmationSettingsCard({ affirmations, customTexts, designMode,
   const switchThumbColor = (value: boolean) => value ? (isChic && chicPalette ? chicPalette.onAccent : isDark ? baseTheme.screenBackground : baseTheme.surface) : baseTheme.secondarySurface;
 
   const reset = () => {
+    draftIdRef.current = undefined;
+    setSaveError('');
     setText(''); setTime('09:00'); setEnabled(true); setEditingId(undefined); setEditingCustomId(undefined); setShowTimePicker(false); setTemplateId(undefined); setCustomDraft('');
   };
-  const closeSheet = () => { setSheetOpen(false); reset(); };
+  const closeSheet = () => { if (savingRef.current) return; setSheetOpen(false); reset(); };
   const chooseTemplate = (id: string, value: string) => { setText(value); setTemplateId(id); setEditingCustomId(undefined); };
   const chooseCustom = (item: AffirmationCustomText) => { setText(item.text); setTemplateId(undefined); setEditingCustomId(item.id); };
   const submit = async () => {
+    if (savingRef.current) return;
     const clean = text.trim();
     if (!clean) { Alert.alert('言葉を入力してね'); return; }
-    await onSave({ id: editing?.id ?? `affirmation:${Date.now()}:${Math.random().toString(36).slice(2, 8)}`, text: clean, time, enabled, createdAt: editing?.createdAt ?? new Date().toISOString(), notificationId: editing?.notificationId, templateId, source: templateId ? 'template' : editingCustomId ? 'custom' : undefined, customTextId: editingCustomId });
-    closeSheet();
+    savingRef.current = true;
+    setSaving(true);
+    setSaveError('');
+    draftIdRef.current ??= editing?.id ?? `affirmation:${Date.now()}:${Math.random().toString(36).slice(2, 8)}`;
+    try {
+      await onSave({ id: draftIdRef.current, text: clean, time, enabled, createdAt: editing?.createdAt ?? new Date().toISOString(), notificationId: editing?.notificationId, templateId, source: templateId ? 'template' : editingCustomId ? 'custom' : undefined, customTextId: editingCustomId });
+      setSheetOpen(false);
+      reset();
+    } catch (error) {
+      setSaveError(error instanceof Error ? error.message : '保存できませんでした。もう一度お試しください。');
+    } finally {
+      savingRef.current = false;
+      setSaving(false);
+    }
+  };
+  const updateNotification = async (item: Affirmation) => {
+    try { await onSave(item); } catch { Alert.alert('通知を更新できませんでした', 'もう一度お試しください。'); }
   };
   const saveCustom = () => {
     const clean = customDraft.trim();
@@ -79,27 +101,28 @@ export function AffirmationSettingsCard({ affirmations, customTexts, designMode,
     onSaveCustomText(item);
     setText(clean); setTemplateId(undefined); setEditingCustomId(item.id); setCustomDraft('');
   };
-  const beginEdit = (item: Affirmation) => { setEditingId(item.id); setText(item.text); setTime(item.time); setEnabled(item.enabled); setTemplateId(item.templateId); setEditingCustomId(item.customTextId); setSheetOpen(true); };
+  const beginEdit = (item: Affirmation) => { draftIdRef.current = item.id; setSaveError(''); setEditingId(item.id); setText(item.text); setTime(item.time); setEnabled(item.enabled); setTemplateId(item.templateId); setEditingCustomId(item.customTextId); setSheetOpen(true); };
 
-  const managementContentBody = <>
+  const managementContentBody = <View pointerEvents={saving ? 'none' : 'auto'} accessibilityState={{ busy: saving }}>
     <Text style={{ color: secondary, marginTop: 4 }}>最大{MAX_AFFIRMATIONS}件・同じ時刻の重複は登録できません</Text>
-    {affirmations.map((item) => <View key={item.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 10, padding: 10, borderRadius: 14, backgroundColor: surfaceSoft, borderColor: border, borderWidth: 1 }}><View style={{ flex: 1 }}><Text numberOfLines={2} style={{ color: primary, fontWeight: '700' }}>{item.text}</Text><Text style={{ color: secondary, marginTop: 3 }}>{item.time}</Text></View><Switch value={item.enabled} onValueChange={(value) => void onSave({ ...item, enabled: value })} trackColor={switchTrackColor} thumbColor={switchThumbColor(item.enabled)} /><Pressable onPress={() => beginEdit(item)}><Text style={{ color: accent, fontWeight: '700' }}>編集</Text></Pressable><Pressable onPress={() => Alert.alert('この通知を削除しますか？', '予約済みの通知も停止します。', [{ text: 'キャンセル', style: 'cancel' }, { text: '削除', style: 'destructive', onPress: () => void onDelete(item) }])}><Text style={{ color: isDark ? '#FF8F9C' : '#A55E66', fontWeight: '700' }}>削除</Text></Pressable></View>)}
+    {affirmations.map((item) => <View key={item.id} style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 8, marginTop: 10, padding: 10, borderRadius: 14, backgroundColor: surfaceSoft, borderColor: border, borderWidth: 1 }}><View style={{ flexBasis: '100%' }}><Text numberOfLines={2} style={{ color: primary, fontWeight: '700' }}>{item.text}</Text><Text style={{ color: secondary, marginTop: 3 }}>{item.time}</Text></View><Switch value={item.enabled} onValueChange={(value) => void updateNotification({ ...item, enabled: value })} trackColor={switchTrackColor} thumbColor={switchThumbColor(item.enabled)} /><Pressable accessibilityRole="button" accessibilityLabel={`「${item.text}」を編集`} style={{ minHeight: 44, minWidth: 44, alignItems: 'center', justifyContent: 'center' }} onPress={() => beginEdit(item)}><Text style={{ color: accent, fontWeight: '700' }}>編集</Text></Pressable><Pressable accessibilityRole="button" style={{ minHeight: 44, minWidth: 52, alignItems: 'center', justifyContent: 'center' }} onPress={() => Alert.alert('この通知を削除しますか？', '予約済みの通知も停止します。', [{ text: 'キャンセル', style: 'cancel' }, { text: '削除', style: 'destructive', onPress: () => void onDelete(item) }])}><Text style={{ color: isDark ? '#FF8F9C' : '#A55E66', fontWeight: '700' }}>削除</Text></Pressable></View>)}
     <Text style={{ color: primary, fontWeight: '800', marginTop: 18 }}>通知を追加・編集</Text>
-    <TextInput value={text} onChangeText={(value) => { setText(value); setTemplateId(undefined); }} placeholder="文章を選ぶか、自分で入力" placeholderTextColor={secondary} style={{ minHeight: 48, marginTop: 8, paddingHorizontal: 12, borderRadius: 12, borderWidth: 1, borderColor: border, backgroundColor: surfaceSoft, color: primary }} multiline />
+    <TextInput editable={!saving} value={text} onChangeText={(value) => { setText(value); setTemplateId(undefined); }} placeholder="文章を選ぶか、自分で入力" placeholderTextColor={secondary} style={{ minHeight: 48, marginTop: 8, paddingHorizontal: 12, borderRadius: 12, borderWidth: 1, borderColor: border, backgroundColor: surfaceSoft, color: primary }} multiline />
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 8 }}><Pressable onPress={() => setShowTimePicker((value) => !value)} style={{ flex: 1, minHeight: 44, justifyContent: 'center', paddingHorizontal: 12, borderRadius: 12, borderWidth: 1, borderColor: border, backgroundColor: surfaceSoft }}><Text style={{ color: primary }}>通知時刻 {time}</Text></Pressable><View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}><Text style={{ color: secondary }}>通知</Text><Switch value={enabled} onValueChange={setEnabled} trackColor={switchTrackColor} thumbColor={switchThumbColor(enabled)} /></View></View>
     {showTimePicker && <DateTimePicker themeVariant={isDark ? 'dark' : 'light'} value={clockToDate(time)} mode="time" display={Platform.OS === 'ios' ? 'spinner' : 'default'} textColor={primary} accentColor={accent} onChange={(event: DateTimePickerEvent, selected) => { if (Platform.OS !== 'ios') setShowTimePicker(false); if (event.type === 'set' && selected) { setTime(formatLiveTime(selected)); if (Platform.OS !== 'ios') setShowTimePicker(false); } }} />}
-    <Pressable disabled={!editing && affirmations.length >= MAX_AFFIRMATIONS} onPress={() => void submit()} style={{ minHeight: 46, marginTop: 10, alignItems: 'center', justifyContent: 'center', borderRadius: 12, backgroundColor: !editing && affirmations.length >= MAX_AFFIRMATIONS ? border : accent }}><Text style={{ color: !editing && affirmations.length >= MAX_AFFIRMATIONS ? secondary : onAccent, fontWeight: '800' }}>{editing ? '保存' : '通知を追加'}</Text></Pressable>
+    <Pressable disabled={saving || (!editing && affirmations.length >= MAX_AFFIRMATIONS)} onPress={() => void submit()} style={{ minHeight: 46, marginTop: 10, alignItems: 'center', justifyContent: 'center', borderRadius: 12, backgroundColor: !editing && affirmations.length >= MAX_AFFIRMATIONS ? border : accent }}><Text style={{ color: !editing && affirmations.length >= MAX_AFFIRMATIONS ? secondary : onAccent, fontWeight: '800' }}>{saving ? '保存中…' : editing ? '保存' : '通知を追加'}</Text></Pressable>
     <Text style={{ color: primary, fontWeight: '800', marginTop: 18 }}>ジャンル別テンプレート</Text>
     <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 7, paddingVertical: 8 }}>{affirmationTemplateCategories.map((item) => <Pressable key={item} onPress={() => setCategory(item)} style={{ paddingHorizontal: 10, paddingVertical: 7, borderRadius: 999, backgroundColor: category === item ? accent : surfaceSoft, borderColor: border, borderWidth: 1 }}><Text style={{ color: category === item ? onAccent : secondary, fontSize: 12 }}>{item}</Text></Pressable>)}</ScrollView>
     {selectedTemplates.map((item) => <Pressable key={item.id} onPress={() => chooseTemplate(item.id, item.text)} style={{ paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: border }}><Text style={{ color: text === item.text ? accent : primary }}>{item.text}</Text></Pressable>)}
-    <Text style={{ color: primary, fontWeight: '800', marginTop: 18 }}>自分で追加</Text>
-    <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}><TextInput value={customDraft} onChangeText={setCustomDraft} placeholder="自分の言葉を追加" placeholderTextColor={secondary} style={{ flex: 1, minHeight: 44, paddingHorizontal: 10, borderRadius: 12, borderWidth: 1, borderColor: border, backgroundColor: surfaceSoft, color: primary }} /><Pressable onPress={saveCustom} style={{ minWidth: 64, alignItems: 'center', justifyContent: 'center', borderRadius: 12, backgroundColor: accent }}><Text style={{ color: onAccent, fontWeight: '800' }}>保存</Text></Pressable></View>
-    {customTexts.map((item) => <View key={item.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 8 }}><Pressable style={{ flex: 1 }} onPress={() => chooseCustom(item)}><Text numberOfLines={2} style={{ color: text === item.text ? accent : primary }}>{item.text}</Text></Pressable><Pressable onPress={() => { setCustomDraft(item.text); setEditingCustomId(item.id); }}><Text style={{ color: accent }}>編集</Text></Pressable><Pressable onPress={() => onDeleteCustomText(item.id)}><Text style={{ color: isDark ? '#FF8F9C' : '#A55E66' }}>削除</Text></Pressable></View>)}
-  </>;
+    {saveError ? <Text accessibilityRole="alert" style={{ color: baseTheme.danger, marginTop: 8, fontSize: 13, lineHeight: 19 }}>{saveError}</Text> : null}
+    <Text style={{ color: primary, fontWeight: '800', marginTop: 18 }}>言葉を保存（通知は上で設定）</Text>
+    <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}><TextInput value={customDraft} onChangeText={setCustomDraft} placeholder="自分の言葉を追加" placeholderTextColor={secondary} style={{ flex: 1, minHeight: 44, paddingHorizontal: 10, borderRadius: 12, borderWidth: 1, borderColor: border, backgroundColor: surfaceSoft, color: primary }} /><Pressable onPress={saveCustom} style={{ minWidth: 64, alignItems: 'center', justifyContent: 'center', borderRadius: 12, backgroundColor: accent }}><Text style={{ color: onAccent, fontWeight: '800' }}>言葉を保存</Text></Pressable></View>
+    {customTexts.map((item) => <View key={item.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 8 }}><Pressable style={{ flex: 1, minHeight: 44, justifyContent: 'center' }} onPress={() => chooseCustom(item)}><Text numberOfLines={2} style={{ color: text === item.text ? accent : primary }}>{item.text}</Text></Pressable><Pressable accessibilityRole="button" accessibilityLabel={`保存した言葉「${item.text}」を編集`} style={{ minHeight: 44, minWidth: 44, justifyContent: 'center', alignItems: 'center' }} onPress={() => { setCustomDraft(item.text); setEditingCustomId(item.id); }}><Text style={{ color: accent }}>編集</Text></Pressable><Pressable accessibilityRole="button" accessibilityLabel={`保存した言葉「${item.text}」を削除`} style={{ minHeight: 44, minWidth: 52, justifyContent: 'center', alignItems: 'center' }} onPress={() => onDeleteCustomText(item.id)}><Text style={{ color: isDark ? '#FF8F9C' : '#A55E66' }}>削除</Text></Pressable></View>)}
+  </View>;
   const managementContent = <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 20 }}>{managementContentBody}</ScrollView>;
 
   if (!canUse) return compact
-    ? <Pressable style={{ minHeight: 52, flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: border }} onPress={() => onPremium('affirmation')}><View style={{ flex: 1 }}><Text style={{ color: primary, fontSize: 14, fontWeight: '800' }}>アファメーション</Text><Text style={{ color: secondary, fontSize: 11, lineHeight: 17, fontWeight: '700', marginTop: 2 }}>好きな言葉を、選んだ時間に届けます。</Text></View><Text style={{ color: accent, fontSize: 12, fontWeight: '900' }}>Premiumで設定 ›</Text></Pressable>
+    ? <Pressable style={{ minHeight: 52, flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: border }} onPress={() => onPremium('affirmation')}><View style={{ flex: 1 }}><Text style={{ color: primary, fontSize: 14, fontWeight: '800' }}>アファメーション</Text><Text style={{ color: secondary, fontSize: 13, lineHeight: 19, fontWeight: '700', marginTop: 2 }}>好きな言葉を、選んだ時間に届けます。</Text></View><Text style={{ color: accent, fontSize: 12, fontWeight: '900' }}>Premiumで設定 ›</Text></Pressable>
     : <Pressable style={[styles.settingsCard, isDark && styles.darkSurface]} onPress={() => onPremium('affirmation')}><Text style={[styles.settingsTitle, isDark && styles.darkBodyText]}>アファメーション</Text><Text style={[styles.switchCopy, isDark && styles.darkMutedText]}>好きな言葉を、選んだ時間に届けます</Text><Text style={styles.taskTemplateSavePremium}>Premium</Text></Pressable>;
 
   if (previewMode) return <View style={[styles.premiumPreview, { backgroundColor: surface, borderColor: border, borderWidth: 1, padding: 14, maxHeight: undefined, overflow: 'visible' }]} pointerEvents="none"><Text style={{ color: primary, fontSize: 20, fontWeight: '800' }}>アファメーション</Text>{managementContentBody}</View>;
@@ -109,7 +132,7 @@ export function AffirmationSettingsCard({ affirmations, customTexts, designMode,
     <Modal visible={sheetOpen} transparent animationType="slide" onRequestClose={closeSheet}>
       <Pressable style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.35)' }} onPress={closeSheet}>
         <Pressable style={{ maxHeight: '92%', borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 18, backgroundColor: surface, borderColor: border, borderWidth: 1 }} onPress={(event) => event.stopPropagation()}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}><Text style={{ color: primary, fontSize: 20, fontWeight: '800' }}>アファメーション</Text><Pressable onPress={closeSheet}><Text style={{ color: accent, fontWeight: '800' }}>閉じる</Text></Pressable></View>
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}><Text style={{ color: primary, fontSize: 20, fontWeight: '800' }}>アファメーション</Text><Pressable disabled={saving} style={{ minHeight: 44, minWidth: 52, justifyContent: 'center' }} onPress={closeSheet}><Text style={{ color: accent, fontWeight: '800' }}>閉じる</Text></Pressable></View>
           {managementContent}
         </Pressable>
       </Pressable>
