@@ -32,6 +32,8 @@ test('アファメーション画面で入力し通知追加を呼び出す',asy
 test('無料Widgetの選択画面が開き有料Widgetはロック案内へ進む',()=>{
  const locked=jest.fn();const colors={surface:'#fff',border:'#bbb',primaryText:'#111',secondaryText:'#555',primaryAccent:'#456',softAccent:'#eee',screenBackground:'#fff'};
  const view=render(<WidgetSettingsCard settings={DEFAULT_WIDGET_SETTINGS} onChange={()=>{}} colors={colors} styles={{}} planTier="free" onLockedWidget={locked}/>);
+ expect(view.getAllByText('ウィジェットギャラリー')).toHaveLength(1);
+ expect(view.getAllByText('設定の変更は自動で保存されます。')).toHaveLength(1);
  fireEvent.press(view.getByLabelText(/今やるTODO。/));expect(view.getByText('このウィジェットには写真が設定されていません。')).toBeTruthy();
  fireEvent.press(view.getByLabelText('閉じる'));
  fireEvent.press(view.getByLabelText(/叶えたいこと。/));expect(locked).toHaveBeenCalledWith('premium');

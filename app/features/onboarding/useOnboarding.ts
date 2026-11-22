@@ -5,6 +5,8 @@ import {
 } from 'react';
 import {
   DEFAULT_ONBOARDING_STATE,
+  finishInitialIntro,
+  finishInitialDesign,
   hasCompletedOnboarding,
   loadOnboardingState,
   markOnboardingCompleted,
@@ -86,25 +88,29 @@ export function useOnboarding() {
    */
   const finishIntro = useCallback(
     async () => {
-      await complete('intro');
-      const next = await setOnboardingFirstRunStage('design');
+      const next = await finishInitialIntro();
       setState(next);
+      setIntroVisible(false);
     },
-    [complete],
+    [],
   );
 
   /**
-   * Skip the first-run introduction without entering the design handoff.
-   * The design selector is opened only by the final page's explicit CTA.
+   * New users skip the explanation, not the optional Design handoff.
+   * Settings replays are closed by closeIntro without touching saved progress.
    */
   const skipIntro = useCallback(
     async () => {
-      await complete('intro');
-      const next = await setOnboardingFirstRunStage('done');
-      setState(next);
+      await finishIntro();
     },
-    [complete],
+    [finishIntro],
   );
+
+  const completeInitialDesign = useCallback(async () => {
+    const next = await finishInitialDesign();
+    setState(next);
+    return next;
+  }, []);
 
   const setFirstRunStage = useCallback(async (stage: OnboardingState['firstRunStage']) => {
     const next = await setOnboardingFirstRunStage(stage);
@@ -140,6 +146,7 @@ export function useOnboarding() {
     closeIntro,
     finishIntro,
     skipIntro,
+    completeInitialDesign,
     setFirstRunStage,
 
     isCompleted,

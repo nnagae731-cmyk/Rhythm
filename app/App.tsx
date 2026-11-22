@@ -31,6 +31,7 @@ import { PremiumTrialStarted, useRhythmStoreKit } from './features/purchases/use
 import { STORE_PRODUCT_IDS } from './features/purchases/storeProducts';
 import { RewardedAccessModal, RewardedAccessResult } from './components/RewardedAccessModal';
 import { BottomNav } from './components/BottomNav';
+import { NotificationManagerCard } from './components/NotificationManagerCard';
 import { OnboardingCarousel } from './features/onboarding/OnboardingCarousel';
 import { OnboardingCaptureStudio } from './features/onboarding/OnboardingCaptureStudio';
 import { OnboardingHint } from './features/onboarding/OnboardingHint';
@@ -42,6 +43,7 @@ import { DesignCustomizeModal } from './components/DesignCustomizeModal';
 import { TravelAppsSettingsCard } from './components/TravelAppsSettingsCard';
 import { styles } from './styles/appStyles';
 import { Affirmation, AffirmationCustomText, AppNotice, AppNoticeCategory, CalendarMarks, Category, DeparturePlan, DeparturePreparationStatus, FocusPersistedState, LiveActivityCustomizationSettings, LiveActivityDisplayOptions, MonthlyReflectionCard, MonthlyReview, MonthlyWishState, MonoPattern, NudgeMode, PersistedState, PhotoThemePhotoTarget, PhotoThemeSettings, Priority, RepeatRule, Screen, SharedEvent, SharedParticipantPrefs, Subtask, Task, TaskBucket, TaskListItem, ThemeMode, TimeTab, UrgencyStatus, WidgetSettings, WidgetSize, WidgetType, WishAction, WishMonthMap } from './types';
+import { isOneOffWishTask, linkedWishAction, readWishTaskOrigin, sameWishTaskOrigin, taskChangesAfterWishEdit, wishMonthsAfterTaskCompletion } from './features/wish/wishTaskLink';
 import { initialPlan } from './storage/rhythmState';
 import { DEFAULT_TRAVEL_APP_SETTINGS, normalizeTravelAppSettings, TravelAppSettings } from './features/travel/travelApps';
 import { loadRhythmState, saveRhythmState } from './storage/rhythmStorage';
@@ -568,6 +570,7 @@ function buildNextRepeatedTask(task: Task, current: Task[], now = new Date()): T
     ...task,
     id: `${stamp}-${task.id}`,
     createdAt: task.createdAt ?? task.id,
+    origin: undefined,
     done: false,
     status: 'active',
     skippedAt: undefined,
@@ -838,6 +841,12 @@ export default function App() {
   const liveActivityOperationRef = React.useRef<Promise<unknown>>(Promise.resolve());
   const [voiceFocusRequest, setVoiceFocusRequest] = useState<{ durationMinutes: number; id: number }>();
   const [rewardedAccess, setRewardedAccess] = useState<RewardedAccessState>(DEFAULT_REWARDED_ACCESS_STATE);
+  const rewardedAccessRef = React.useRef(rewardedAccess);
+  rewardedAccessRef.current = rewardedAccess;
+  // Preserve an earned reward across storage retries without showing another
+  // ad. Do not publish access until the real write succeeds. This receipt is
+  // in memory: if storage remains unavailable, do not quit before retrying.
+  const earnedRewardRef = React.useRef<{ featureId: RewardedFeatureId; earnedAt: Date; widgetType: WidgetType | null } | undefined>(undefined);
   const [rewardedAccessHydrated, setRewardedAccessHydrated] = useState(false);
   const [rewardedPrompt, setRewardedPrompt] = useState<{ featureId: RewardedFeatureId; title: string; description: string } | null>(null);
   const [rewardedPromptClosing, setRewardedPromptClosing] = useState(false);
@@ -875,6 +884,10 @@ export default function App() {
   }, []);
   const persistenceDisabledRef = React.useRef(false);
   const saveFailureNotifiedRef = React.useRef(false);
+  const [persistenceIssue, setPersistenceIssue] = useState<'read' | 'write' | undefined>(undefined);
+  const [hydrationRetry, setHydrationRetry] = useState(0);
+  const [saveRetry, setSaveRetry] = useState(0);
+  const [persistenceRetrying, setPersistenceRetrying] = useState(false);
   const persistenceTimerRef = React.useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const latestPersistedStateRef = React.useRef<PersistedState | undefined>(undefined);
   const latestPersistedWishMonthsRef = React.useRef<WishMonthMap | undefined>(undefined);
@@ -914,7 +927,7 @@ export default function App() {
   const widgetSnapshotSerializedRef = React.useRef<string | undefined>(undefined);
   const widgetSnapshotInFlightRef = React.useRef<{ requestId: number; serialized: string } | undefined>(undefined);
   const widgetSnapshotRequestRef = React.useRef(0);
-  const widgetSnapshotSaveChainRef = React.useRef<Promise<void>>(Promise.resolve());
+  const widgetSnapshotSaveChainRef = React.useRef<Promise<unknown>>(Promise.resolve());
   const [showCompleted, setShowCompleted] = useState(false);
   const [completionIcon, setCompletionIcon] = useState('✓');
   // Mono is available to every plan. Keep the persisted design mode stable and
@@ -939,6 +952,7 @@ export default function App() {
   const affirmationsRef = React.useRef<Affirmation[]>([]);
   const affirmationOperationGenerationRef = React.useRef<Record<string, number>>({});
   const completeTaskIdsRef = React.useRef<(ids: string[], source?: 'manual' | 'notification') => void>(() => undefined);
+  const restoreLinkedTaskRef = React.useRef<(id: string) => void>(() => undefined);
   const [completionAffirmation, setCompletionAffirmation] = useState<string>();
   const completionAffirmationTimerRef = React.useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const completionAffirmationLastRef = React.useRef<string | undefined>(undefined);
@@ -983,7 +997,24 @@ export default function App() {
   const pendingDepartureFollowUpsRef = React.useRef(new Set<string>());
   const pendingSharedEventPacketsRef = React.useRef<SharedEvent[]>([]);
   const pendingSharedEventTokensRef = React.useRef<string[]>([]);
-  const [wishMonths, setWishMonths] = useState<WishMonthMap>({});
+  const [wishMonths, setWishMonthsState] = useState<WishMonthMap>({});
+  const wishMonthsRef = React.useRef<WishMonthMap>({});
+  // One synchronous mutation boundary, not mutually observing effects. Ref
+  // updates happen before nested completion handlers and async save receipts.
+  const setWishMonths = React.useCallback((updater: React.SetStateAction<WishMonthMap>) => {
+    const previous = wishMonthsRef.current;
+    const next = typeof updater === 'function' ? updater(previous) : updater;
+    if (next === previous) return;
+    wishMonthsRef.current = next;
+    setWishMonthsState(next);
+    const linked = taskChangesAfterWishEdit(previous, next, tasksRef.current);
+    if (linked.tasks !== tasksRef.current) { tasksRef.current = linked.tasks; setTasks(linked.tasks); }
+    linked.completeIds.forEach(id => {
+      if (tasksRef.current.find(task => task.id === id)?.status === 'skipped') restoreLinkedTaskRef.current(id);
+      completeTaskIdsRef.current([id]);
+    });
+    linked.restoreIds.forEach(id => restoreLinkedTaskRef.current(id));
+  }, []);
   const [calendarMarks, setCalendarMarks] = useState<CalendarMarks>({});
   const [calendarImportCalendarIds, setCalendarImportCalendarIds] = useState<string[] | undefined>();
   const [calendarImportKnownCalendarIds, setCalendarImportKnownCalendarIds] = useState<string[] | undefined>();
@@ -1054,6 +1085,8 @@ export default function App() {
   const [captureStudioOpen, setCaptureStudioOpen] = useState(false);
   const [onboardingDesignSelectionPending, setOnboardingDesignSelectionPending] = useState(false);
   const completingInitialDesignSelectionRef = React.useRef(false);
+  const [introDismissing, setIntroDismissing] = useState(false);
+  const introTransitionRef = React.useRef(false);
   const [designTrialNoticeOpen, setDesignTrialNoticeOpen] = useState(false);
   const pendingDesignApplyRef = React.useRef<(() => void) | undefined>(undefined);
   const designRewardAfterCustomizeDismissRef = React.useRef<(() => void) | undefined>(undefined);
@@ -1178,7 +1211,7 @@ export default function App() {
     && typeof storeKit.premiumTrialEndAt === 'number'
     && storeKit.premiumTrialEndAt > now.getTime();
   useEffect(() => {
-    if (!hydrated || !storeKitEntitlementsResolved) return;
+    if (!hydrated || !storeKitEntitlementsResolved || persistenceDisabledRef.current) return;
     const trialEndAt = storeKit.premiumTrialEndAt;
     const trialKey = trialEndAt ? `${STORE_PRODUCT_IDS.premiumMonthly}:${trialEndAt}` : undefined;
     if (trialKey && pendingPremiumTrialChoiceRef.current === trialKey) return;
@@ -1362,12 +1395,18 @@ export default function App() {
   }, [rewardedAccess]);
 
   const grantRewarded = React.useCallback(async (featureId: RewardedFeatureId): Promise<RewardedAccessResult> => {
-    if (planTier === 'premium') return { success: true, completed: true };
-    if (featureId === 'routineSkipBonus' && rewardedAccess.routine.skipBonusAdded >= 2) return { success: true, completed: true, message: 'Skip Bonusは最大まで取得済みです。' };
-    if (featureId === 'photoTop' && rewardedAccess.photoCustomization.topExtraSlotsUnlocked >= 5) return { success: true, completed: true, message: '写真枠は最大まで解放済みです。' };
+    if (!rewardedAccessHydrated) return { success: false, message: '利用状態を確認できません。読み込み完了後にお試しください。' };
+    if (earnedRewardRef.current && earnedRewardRef.current.featureId !== featureId) return { success: false, message: '視聴済み広告の保存が未完了です。元の画面から保存を再試行してください。' };
+    if (!earnedRewardRef.current) {
+      if (planTier === 'premium') return { success: true, completed: true };
+      if (featureId === 'routineSkipBonus' && rewardedAccessRef.current.routine.skipBonusAdded >= 2) return { success: true, completed: true, message: 'Skip Bonusは最大まで取得済みです。' };
+      if (featureId === 'photoTop' && rewardedAccessRef.current.photoCustomization.topExtraSlotsUnlocked >= 5) return { success: true, completed: true, message: '写真枠は最大まで解放済みです。' };
+      if (featureId === 'widgetPhoto' && !widgetPhotoUnlockTargetRef.current) return { success: false, message: '写真を使うWidgetを選択してください。' };
+    }
     if (rewardedGenericBusyRef.current) return { success: false, message: '広告を準備しています…' };
     rewardedGenericBusyRef.current = true;
     try {
+      if (!earnedRewardRef.current) {
       let showTestRewardedAd: typeof import('./services/rewardedAds').showTestRewardedAd;
       try {
         ({ showTestRewardedAd } = require('./services/rewardedAds') as typeof import('./services/rewardedAds'));
@@ -1380,8 +1419,11 @@ export default function App() {
         return false;
       });
       if (!earned) return { success: false, message: '広告を読み込めませんでした。もう一度お試しください。' };
+        earnedRewardRef.current = { featureId, earnedAt: new Date(), widgetType: widgetPhotoUnlockTargetRef.current };
+      }
+      const receipt = earnedRewardRef.current;
       const required = getRequiredAds(featureId);
-      const base = rewardedAccess;
+      const base = rewardedAccessRef.current;
       let next: RewardedAccessState = base;
       let completed = true;
       if (featureId === 'wishCreate') {
@@ -1393,7 +1435,7 @@ export default function App() {
         next = { ...base, wishActionCreateProgress: progress };
         completed = progress >= required;
       } else if (featureId === 'premiumDesign' || featureId === 'premiumDesignTrialExpired') {
-        next = { ...base, premiumDesign: { unlockedUntil: addHours(new Date(), 12) } };
+        next = { ...base, premiumDesign: { unlockedUntil: addHours(receipt.earnedAt, 12) } };
       } else if (featureId === 'calendarImport') {
         next = { ...base, calendarImportCredits: base.calendarImportCredits + 1 };
       } else if (featureId === 'photoTop') {
@@ -1403,9 +1445,9 @@ export default function App() {
       } else if (featureId === 'photoFocus') {
         next = { ...base, photoCustomization: { ...base.photoCustomization, focusUnlocked: true } };
       } else if (featureId === 'widgetPhoto') {
-        const widgetType = widgetPhotoUnlockTargetRef.current;
+        const widgetType = receipt.widgetType;
         if (!widgetType) return { success: false, message: '写真を使うWidgetを選択してください。' };
-        const unlockedAt = new Date();
+        const unlockedAt = receipt.earnedAt;
         next = { ...base, widgetPhotoCustomization: { widgetType, unlockedAt: unlockedAt.toISOString(), expiresAt: addHours(unlockedAt, 24 * REWARDED_AD_RULES.widgetPhoto.unlockDurationDays) } };
       } else if (featureId === 'routineSkip') {
         next = { ...base, routine: { ...base.routine, skipStock: base.routine.skipStock + 1 } };
@@ -1415,14 +1457,20 @@ export default function App() {
         next = { ...base, routine: { ...base.routine, skipBonusProgress: reached ? 0 : progress, skipBonusAdded: reached ? Math.min(2, base.routine.skipBonusAdded + 1) : base.routine.skipBonusAdded, skipStock: reached ? base.routine.skipStock + (base.routine.skipBonusAdded < 2 ? 1 : 0) : base.routine.skipStock } };
         completed = reached;
       }
+      try {
+        await saveRewardedAccessState(next);
+      } catch {
+        return { success: false, completed: false, retryWithoutAd: true, message: '広告は視聴済みです。アプリを閉じずに保存を再試行してください。広告を見直す必要はありません。' };
+      }
+      earnedRewardRef.current = undefined;
+      rewardedAccessRef.current = next;
       setRewardedAccess(next);
-      await saveRewardedAccessState(next);
       const nextProgress = getRewardedPromptProgress(featureId).current + 1;
       return { success: true, completed, message: completed ? '取得しました' : `広告を1回確認しました。あと${Math.max(0, required - nextProgress)}回です。` };
     } finally {
       rewardedGenericBusyRef.current = false;
     }
-  }, [getRewardedPromptProgress, planTier, rewardedAccess]);
+  }, [getRewardedPromptProgress, planTier, rewardedAccessHydrated]);
 
   const openRewardedPrompt = React.useCallback((featureId: RewardedFeatureId, title: string, description: string, onCompleted?: () => void) => {
     if (planTier === 'premium') {
@@ -1521,15 +1569,36 @@ export default function App() {
       return { ...current, [monthKey]: { ...monthState, review: updated[updated.length - 1] ?? monthState.review, reviews: updated } };
     });
   }, []);
-  const deleteWishReview = React.useCallback((monthKey: string, reviewKey: string) => {
+  const deleteWishReview = React.useCallback(async (monthKey: string, reviewKey: string) => {
+    if (!hydratedRef.current || persistenceDisabledRef.current) throw new Error('保存データを確認できません');
+    let removed: MonthlyReview[] = [];
+    try {
+    await new Promise<void>((resolve, reject) => {
+    const pending: { expected?: WishMonthMap; resolve: () => void; reject: (error: Error) => void } = { resolve, reject };
+    pendingWishSavesRef.current.push(pending);
     setWishMonths((current) => {
       const monthState = getMonthlyWishState(current, monthKey);
       const reviews = reviewsForMonth(monthState);
+      removed = reviews.filter((review) => reviewIdentity(review) === reviewKey);
       const remaining = reviews.filter((review) => reviewIdentity(review) !== reviewKey);
       // 履歴から削除した直後に、前のレビューを入力欄へ復元しない。
       // 旧形式 review は互換用に残すが、現在の入力 draft は常に空へ戻す。
-      return { ...current, [monthKey]: { ...monthState, review: {}, reviews: remaining } };
+      const next = { ...current, [monthKey]: { ...monthState, review: {}, reviews: remaining } };
+      pending.expected = next;
+      return next;
     });
+    });
+    } catch (error) {
+      // Restore only the removed entries; never overwrite concurrent tasks,
+      // other months, goals, or newly edited reviews with an old snapshot.
+      setWishMonths((current) => {
+        const monthState = getMonthlyWishState(current, monthKey);
+        const reviews = reviewsForMonth(monthState);
+        const restore = removed.filter((review) => !reviews.some((item) => reviewIdentity(item) === reviewIdentity(review) || Boolean(review.date && item.date === review.date)));
+        return restore.length ? { ...current, [monthKey]: { ...monthState, reviews: [...reviews, ...restore] } } : current;
+      });
+      throw error;
+    }
   }, []);
   const saveDailyReview = React.useCallback((monthKey: string, draft: MonthlyReview) => {
     if (!hydratedRef.current || persistenceDisabledRef.current) return Promise.reject(new Error('保存データを確認できません'));
@@ -1709,7 +1778,7 @@ export default function App() {
     setDesignTrialNoticeOpen(true);
   }, [chicPattern, designMode, designTrialNoticeOpen, hasDesignCustomizeAccess, isPremiumDesignUnlocked, markDesignNoticeSeen, now, planTier, rewardedAccess]);
   const completeInitialDesignSelection = React.useCallback(() => {
-    if (!onboardingDesignSelectionPending) return;
+    if (!onboardingDesignSelectionPending || completingInitialDesignSelectionRef.current) return;
     if (__DEV__) {
       console.log('[FirstRunDiagnostic]', {
         ready: onboarding.ready,
@@ -1722,20 +1791,33 @@ export default function App() {
         event: 'design-selection-complete',
       });
     }
-    setOnboardingDesignSelectionPending(false);
-    setScreen('home');
-    if (onboarding.state.firstRunStage === 'design') {
-      // Mark the handoff complete before the async persistence finishes. The
-      // resume effect observes firstRunStage and would otherwise see the
-      // transient `design` value after pending=false and reopen Settings in a
-      // loop, which makes the app appear frozen on first launch.
-      completingInitialDesignSelectionRef.current = true;
-      void onboarding.setFirstRunStage('done').then(() => {
-        completingInitialDesignSelectionRef.current = false;
-        void onboarding.complete('design');
-      });
-    }
-  }, [onboarding.introVisible, onboarding.ready, onboarding.state.completed.intro, onboarding.state.firstRunStage, onboardingDesignSelectionPending, screen]);
+    completingInitialDesignSelectionRef.current = true;
+    void onboarding.completeInitialDesign().then(() => {
+      setOnboardingDesignSelectionPending(false);
+      setScreen('home');
+    }).catch(() => {
+      Alert.alert('初回設定を保存できませんでした', '設定のデザインを開き、もう一度選択してください。');
+    }).finally(() => { completingInitialDesignSelectionRef.current = false; });
+  }, [onboarding.completeInitialDesign, onboarding.introVisible, onboarding.ready, onboarding.state.completed.intro, onboarding.state.firstRunStage, onboardingDesignSelectionPending, screen]);
+  const deferInitialDesignSelection = () => {
+    setDesignMode('minimal');
+    setMonoAppearance('auto');
+    setMonoPattern('plain');
+    setChicPattern('plain');
+    completeInitialDesignSelection();
+  };
+  const beginInitialDesignFromIntro = () => {
+    if (introTransitionRef.current) return;
+    introTransitionRef.current = true;
+    setIntroDismissing(true);
+    void onboarding.finishIntro().then(() => {
+      if (Platform.OS !== 'ios') InteractionManager.runAfterInteractions(() => { introTransitionRef.current = false; setIntroDismissing(false); });
+    }).catch(() => {
+      introTransitionRef.current = false;
+      setIntroDismissing(false);
+      Alert.alert('案内の状態を保存できませんでした', 'この画面からもう一度お試しください。');
+    });
+  };
   const startDesignTrial = React.useCallback((pattern: ChicPattern, color: ChicCheckColor = chicCheckColor) => {
     if (hasDesignCustomizeAccess) {
       setDesignMode('chic');
@@ -1814,26 +1896,11 @@ export default function App() {
     rewardedDesignBusyRef.current = true;
     try {
       if (__DEV__) console.log('[Ads] design-reward-request', { rewardedDesignBusy: true });
-      let showTestRewardedAd: typeof import('./services/rewardedAds').showTestRewardedAd;
-      try {
-        ({ showTestRewardedAd } = require('./services/rewardedAds') as typeof import('./services/rewardedAds'));
-      } catch (error) {
-        if (__DEV__) console.log('[Ads] show:error', error instanceof Error ? error.message : String(error));
-        Alert.alert('広告を利用できません', '広告の確認にはDevelopment Buildが必要です。');
+      const result = await grantRewarded('premiumDesign');
+      if (!result.success || !result.completed) {
+        Alert.alert(result.retryWithoutAd ? '広告の保存を再試行してください' : '広告を完了できませんでした', result.message ?? 'デザインは解放されていません。');
         return false;
       }
-      const earned = await showTestRewardedAd().catch((error) => {
-        if (__DEV__) console.log('[Ads] show:error', error instanceof Error ? error.message : String(error));
-        return false;
-      });
-      if (__DEV__) console.log('[Ads] design-reward-result', { earned });
-      if (!earned) {
-        Alert.alert('広告を完了できませんでした', '報酬を受け取れなかったため、デザインは解放されていません。');
-        return false;
-      }
-      const next: RewardedAccessState = { ...rewardedAccess, premiumDesign: { unlockedUntil: addHours(new Date(), 12) } };
-      setRewardedAccess(next);
-      await saveRewardedAccessState(next);
       setDesignTrialNoticeOpen(false);
       const continuation = pendingDesignApplyRef.current;
       pendingDesignApplyRef.current = undefined;
@@ -1845,7 +1912,7 @@ export default function App() {
     } finally {
       rewardedDesignBusyRef.current = false;
     }
-  }, [planTier, rewardedAccess, rewardedAccessHydrated]);
+  }, [grantRewarded, planTier, rewardedAccessHydrated]);
   const openWish = React.useCallback(() => {
     setScreen('wish');
   }, []);
@@ -2546,6 +2613,7 @@ export default function App() {
     if (result.tasks === tasksRef.current) return false;
     tasksRef.current = result.tasks;
     setTasks(result.tasks);
+    setWishMonths(current => wishMonthsAfterTaskCompletion(current, result.tasks, result.newlyCompleted.map(task => task.id)));
     if (result.newlyCompleted.length === 0) return false;
     result.newlyCompleted.forEach((task) => { void cancelPendingTaskNotifications(task.id).catch((error) => console.warn('Task notification cancellation failed.', error)); void cancelScheduleSwitchNotificationsForTask(task.id); });
     const previousIds = new Set(previousTasks.map((task) => task.id));
@@ -2569,7 +2637,7 @@ export default function App() {
       if (task.isRoutine) recordBehaviorEvent(createRoutineStateChangedBehaviorEvent({ taskId: task.id, routineId: task.routineId ?? task.id, routineTitle: task.title, occurredAt: completedAt, targetDate: dateKey(completedAt), completed: true, source }));
     });
     return true;
-  }, [hapticsEnabled, recordBehaviorEvent, showCompletionAffirmation]);
+  }, [hapticsEnabled, recordBehaviorEvent, setWishMonths, showCompletionAffirmation]);
   affirmationsRef.current = affirmations;
   completeTaskIdsRef.current = completeTaskIds;
 
@@ -2589,8 +2657,9 @@ export default function App() {
     const next = tasksRef.current.map((task) => task.id === taskId ? updated : task);
     tasksRef.current = next;
     setTasks(next);
+    if (current.done) setWishMonths(months => wishMonthsAfterTaskCompletion(months, next, [taskId]));
     if (allDone && !current.done) { void playCompletionSound(); triggerHaptic(hapticsEnabled, 18); showCompletionAffirmation('task'); }
-  }, [completeTaskIds]);
+  }, [completeTaskIds, setWishMonths]);
 
   const completeParentTask = React.useCallback((taskId: string) => {
     const current = tasksRef.current.find((task) => task.id === taskId);
@@ -2722,6 +2791,7 @@ export default function App() {
     const next = tasksRef.current.map((task) => task.id === taskId ? { ...task, done: false, status: 'active' as const, skippedAt: undefined, completedAt: undefined } : task);
     tasksRef.current = next;
     setTasks(next);
+    if (wasCompleted) setWishMonths(current => wishMonthsAfterTaskCompletion(current, next, [taskId]));
     const restored = next.find((task) => task.id === taskId);
     if (restored) {
       void scheduleTaskNotificationsRef.current(restored);
@@ -2740,8 +2810,9 @@ export default function App() {
       }));
       recordBehaviorEvent(createRoutineStateChangedBehaviorEvent({ taskId: target.id, routineId: target.routineId, routineTitle: target.title, occurredAt: new Date(), targetDate: dateKey(target.completedAt), completed: false, source }));
     }
-  }, [recordBehaviorEvent]);
+  }, [recordBehaviorEvent, setWishMonths]);
 
+  restoreLinkedTaskRef.current = restoreTaskById;
   const applySkipTaskById = React.useCallback((taskId: string, onApplied?: () => void) => {
     const target = tasksRef.current.find((task) => task.id === taskId);
     if (!target || target.done || getTaskStatus(target) === 'skipped') return;
@@ -2825,8 +2896,14 @@ export default function App() {
   useEffect(() => { planTierRef.current = planTier; }, [planTier]);
 
   useEffect(() => {
+    let active = true;
+    hydratedRef.current = false;
+    persistenceDisabledRef.current = true;
+    setHydrated(false);
+    setPersistenceRetrying(true);
     loadRhythmState()
       .then((saved) => {
+        if (!active) return;
         if (!saved) return;
         // Scan the original saved object, including unknown/legacy fields,
         // before normalizing anything. On error hydration fails closed.
@@ -2960,12 +3037,22 @@ export default function App() {
         sharedParticipantPrefsByTokenRef.current = loadedSharedParticipantPrefsByToken;
         setSharedParticipantPrefsByToken(loadedSharedParticipantPrefsByToken);
       })
+      .then(() => {
+        if (!active) return;
+        persistenceDisabledRef.current = false;
+        setPersistenceIssue(undefined);
+      })
       .catch((error) => {
+        if (!active) return;
         console.warn('Rhythm hydration failed; keeping the persisted value untouched.', error);
         persistenceDisabledRef.current = true;
+        setPersistenceIssue('read');
         Alert.alert('保存データを読み込めませんでした', 'データは初期化せず、そのまま残しています。');
       })
       .finally(() => {
+        if (!active) return;
+        setPersistenceRetrying(false);
+        if (persistenceDisabledRef.current) return;
         hydratedRef.current = true;
         setHydrated(true);
         const pendingIds = [...new Set(pendingNotificationCompletionIdsRef.current)];
@@ -3104,8 +3191,8 @@ export default function App() {
       }
     });
 
-    return () => responseSubscription.remove();
-  }, [handleDepartureStill, markDeparturePlanAsDeparted, markDeparturePreparationStarted, openPremiumFeature, recordBehaviorEvent, recordNotificationBehaviorAction]);
+    return () => { active = false; responseSubscription.remove(); };
+  }, [handleDepartureStill, markDeparturePlanAsDeparted, markDeparturePreparationStarted, openPremiumFeature, recordBehaviorEvent, recordNotificationBehaviorAction, hydrationRetry]);
 
   useEffect(() => {
     const timer = setInterval(() => setNow(new Date()), 30_000);
@@ -3130,11 +3217,13 @@ export default function App() {
       const pendingForSnapshot = pendingWishSavesRef.current.filter((item) => item.expected === wishMonths);
       const pendingSettingsForSnapshot = pendingSettingsSavesRef.current.filter((item) => item.matches(state));
       void saveRhythmState(state).then(() => {
+        if (!persistenceDisabledRef.current && latestPersistedStateRef.current === state) { setPersistenceIssue(undefined); setPersistenceRetrying(false); saveFailureNotifiedRef.current = false; }
         settleSettingsSave(state, undefined, pendingSettingsForSnapshot);
         const unsettled = pendingForSnapshot.filter((item) => pendingWishSavesRef.current.includes(item));
         pendingWishSavesRef.current = pendingWishSavesRef.current.filter((item) => !unsettled.includes(item));
         unsettled.forEach((item) => item.resolve());
       }).catch((error) => {
+        if (!persistenceDisabledRef.current) { setPersistenceIssue('write'); setPersistenceRetrying(false); }
         settleSettingsSave(state, error, pendingSettingsForSnapshot);
         const unsettled = pendingForSnapshot.filter((item) => pendingWishSavesRef.current.includes(item));
         pendingWishSavesRef.current = pendingWishSavesRef.current.filter((item) => !unsettled.includes(item));
@@ -3149,7 +3238,7 @@ export default function App() {
     return () => {
       if (persistenceTimerRef.current) clearTimeout(persistenceTimerRef.current);
     };
-  }, [tasks, plan, departurePlans, widgetSize, widgetSettings, showCompleted, completionIcon, designMode, monoAppearance, monoPattern, hapticsEnabled, premiumTrialReminderEnabled, liveActivityEnabled, liveActivityDisplayOptions, liveActivityCustomization, reviewPromptedAt, readNoticeIds, tomorrowPrepPromptedDate, routineRemainingNotifiedDate, taskTemplates, savedTaskTemplates, chicPattern, chicCheckColor, recoveryHistory, focusSessions, focusState, focusCustomDurationMinutes, departureCheckIns, behaviorEvents, wishMonths, calendarMarks, calendarImportCalendarIds, calendarImportKnownCalendarIds, sharedEvents, sharedParticipantIdsByToken, sharedParticipantPrefsByToken, departurePreparationStatuses, affirmations, affirmationCustomTexts, photoTheme, travelApps, designCustomizePurchased, routineArchives, voiceUsage, hydrated]);
+  }, [tasks, plan, departurePlans, widgetSize, widgetSettings, showCompleted, completionIcon, designMode, monoAppearance, monoPattern, hapticsEnabled, premiumTrialReminderEnabled, liveActivityEnabled, liveActivityDisplayOptions, liveActivityCustomization, reviewPromptedAt, readNoticeIds, tomorrowPrepPromptedDate, routineRemainingNotifiedDate, taskTemplates, savedTaskTemplates, chicPattern, chicCheckColor, recoveryHistory, focusSessions, focusState, focusCustomDurationMinutes, departureCheckIns, behaviorEvents, wishMonths, calendarMarks, calendarImportCalendarIds, calendarImportKnownCalendarIds, sharedEvents, sharedParticipantIdsByToken, sharedParticipantPrefsByToken, departurePreparationStatuses, affirmations, affirmationCustomTexts, photoTheme, travelApps, designCustomizePurchased, routineArchives, voiceUsage, hydrated, saveRetry]);
 
   useEffect(() => {
     if (!hydrated) return;
@@ -3164,11 +3253,13 @@ export default function App() {
         const pendingForSnapshot = pendingWishSavesRef.current.filter((item) => item.expected === latestPersistedWishMonthsRef.current);
         const pendingSettingsForSnapshot = pendingSettingsSavesRef.current.filter((item) => item.matches(pending));
         void saveRhythmState(pending).then(() => {
+          if (!persistenceDisabledRef.current && latestPersistedStateRef.current === pending) { setPersistenceIssue(undefined); setPersistenceRetrying(false); saveFailureNotifiedRef.current = false; }
           settleSettingsSave(pending, undefined, pendingSettingsForSnapshot);
           const unsettled = pendingForSnapshot.filter((item) => pendingWishSavesRef.current.includes(item));
           pendingWishSavesRef.current = pendingWishSavesRef.current.filter((item) => !unsettled.includes(item));
           unsettled.forEach((item) => item.resolve());
         }).catch((error) => {
+          if (!persistenceDisabledRef.current) { setPersistenceIssue('write'); setPersistenceRetrying(false); }
           settleSettingsSave(pending, error, pendingSettingsForSnapshot);
           const unsettled = pendingForSnapshot.filter((item) => pendingWishSavesRef.current.includes(item));
           pendingWishSavesRef.current = pendingWishSavesRef.current.filter((item) => !unsettled.includes(item));
@@ -3445,7 +3536,7 @@ export default function App() {
         serializedRefSet: liveActivitySerializedRef.current !== undefined,
       });
     }
-    if (!hydrated || !storeKitEntitlementsResolved) return;
+    if (!hydrated || !storeKitEntitlementsResolved || persistenceDisabledRef.current) return;
     const generation = ++liveActivitySyncGenerationRef.current;
     const isCurrent = () => generation === liveActivitySyncGenerationRef.current;
     const enqueueNative = (operation: () => Promise<unknown>) => {
@@ -3504,7 +3595,7 @@ export default function App() {
   const syncRhythmWidgetSnapshot = React.useCallback(async () => {
     // The first-run tour is deliberately read-only; its temporary data must
     // never escape to the user's home-screen widget.
-    if (!hydrated || !storeKitEntitlementsResolved || onboarding.state.firstRunStage === 'demo') return;
+    if (!hydrated || !storeKitEntitlementsResolved || persistenceDisabledRef.current || onboarding.state.firstRunStage === 'demo') return 'waiting' as const;
     const requestId = widgetSnapshotRequestRef.current + 1;
     widgetSnapshotRequestRef.current = requestId;
     const selectedPhotoUri = widgetSettings.style === 'photo'
@@ -3635,18 +3726,20 @@ export default function App() {
     // Async photo preparation can finish out of order. Only the most
     // recently requested snapshot may enter the save queue; otherwise an old
     // request could overwrite a newer theme/task state after it completes.
-    if (requestId !== widgetSnapshotRequestRef.current) return;
-    if (!photoWasCopied && serialized === widgetSnapshotSerializedRef.current) return;
+    if (requestId !== widgetSnapshotRequestRef.current) return 'superseded' as const;
+    if (!photoWasCopied && serialized === widgetSnapshotSerializedRef.current) return 'unchanged' as const;
     widgetSnapshotInFlightRef.current = { requestId, serialized };
     const persist = async () => {
-      if (requestId !== widgetSnapshotRequestRef.current) return;
+      if (requestId !== widgetSnapshotRequestRef.current) return 'superseded' as const;
       try {
         const saved = await saveRhythmWidgetSnapshot(snapshot);
         if (__DEV__) console.log('[CalendarDiagnostic] WIDGET_SNAPSHOT_WRITE', { timestamp: new Date().toISOString(), success: saved, departurePlansCount: departurePlans.length, calendarPlansCount: snapshot.calendarPlans?.length ?? 0 });
         if (saved && requestId === widgetSnapshotRequestRef.current) widgetSnapshotSerializedRef.current = serialized;
+        return saved ? requestId === widgetSnapshotRequestRef.current ? 'updated' as const : 'superseded' as const : 'unavailable' as const;
       } catch (error) {
         // Expo Go has no WidgetKit module. Native failures should not affect app state.
         console.warn('Rhythm widget snapshot save failed.', error);
+        return 'unavailable' as const;
       } finally {
         if (widgetSnapshotInFlightRef.current?.requestId === requestId) widgetSnapshotInFlightRef.current = undefined;
       }
@@ -3656,7 +3749,7 @@ export default function App() {
     // that write and becomes the final write; an older queued request skips.
     const queuedPersist = widgetSnapshotSaveChainRef.current.then(persist, persist);
     widgetSnapshotSaveChainRef.current = queuedPersist.catch(() => undefined);
-    await queuedPersist;
+    return await queuedPersist;
   }, [affirmationCustomTexts, affirmations, chicCheckColor, designMode, departureCheckIns, departurePlans, effectiveChicPattern, hasDesignCustomizeAccess, hydrated, onboarding.state.firstRunStage, planTier, rewardedAccess.widgetPhotoCustomization, storeKitEntitlementsResolved, tasks, widgetPhotoSyncedUriRef, widgetCustomPhotoSyncedUrisRef, widgetSettings, wishMonths, wishTopImageUri]);
 
   const markWidgetGuideSeen = React.useCallback(() => {
@@ -3694,7 +3787,12 @@ export default function App() {
   }, [recordBehaviorEvent]);
   const openWidgetSection = React.useCallback(() => undefined, []);
   const refreshWidgetFromSettings = React.useCallback(() => syncRhythmWidgetSnapshot()
-    .then(() => Alert.alert('Widgetを更新しました', '最新の予定とタスクを同期しました。'))
+    .then((result) => {
+      if (result === 'updated') Alert.alert('Widgetを更新しました', '最新の予定とタスクを同期しました。');
+      else if (result === 'unchanged') Alert.alert('Widgetは最新の状態です', '前回の同期から変更はありません。');
+      else if (result === 'waiting' || result === 'superseded') Alert.alert('Widgetの更新を確認中です', '読込・利用状況の確認が終わってから、もう一度お試しください。');
+      else Alert.alert('Widgetを更新できませんでした', 'このビルドのWidget連携と端末の状態を確認してください。');
+    })
     .catch(() => Alert.alert('Widgetを更新できませんでした', '時間をおいてもう一度お試しください。')), [syncRhythmWidgetSnapshot]);
 
   useEffect(() => {
@@ -3837,13 +3935,16 @@ export default function App() {
       Alert.alert('ルーティン登録数の上限', `現在のプランでは${routineLimit}件まで登録できます。`);
       return;
     }
-    const reactivatesRoutine = isRoutine && !editingTask.isRoutine && Boolean(editingTask.routineId);
-    const endedAt = editingTask.isRoutine && !isRoutine ? new Date().toISOString() : editingTask.routineEndedAt;
-    const existingStatus = getTaskStatus(editingTask);
-    const updated = { ...editingTask, title, category, priority, remindDate, remindAt, deadlineDate, deadlineTime, deadlineNotifyBefore, navigationEnabled, preparationMinutes, travelMinutes, bufferMinutes, repeatRule, isRoutine, routineId: isRoutine ? editingTask.routineId ?? editingTask.id : editingTask.routineId, routineEndedAt: isRoutine ? undefined : endedAt, nudgeMode, scheduledDate: scheduledDate ?? editingTask.scheduledDate ?? dateKey(now), scheduledTime, endAt: endAt && /^\d{2}:\d{2}$/.test(endAt) ? endAt : undefined, estimatedMinutes: normalizeEstimatedMinutes(estimatedMinutes), done: editingTask.done, status: existingStatus, completedAt: editingTask.completedAt, skippedAt: editingTask.skippedAt, subtasks: subtasks.map((item, index) => ({ ...item, order: index, done: Boolean(item.done) })), listItems: (listItems ?? editingTask.listItems ?? []).map((item, index) => ({ ...item, text: item.text.trim(), order: index, checked: Boolean(item.checked) })).filter((item) => item.text) };
+    const applyUpdate = (detachOrigin = false) => {
+    const latestTask = tasksRef.current.find(task => task.id === editingTask.id);
+    if (!latestTask) return;
+    const reactivatesRoutine = isRoutine && !latestTask.isRoutine && Boolean(latestTask.routineId);
+    const endedAt = latestTask.isRoutine && !isRoutine ? new Date().toISOString() : latestTask.routineEndedAt;
+    const existingStatus = getTaskStatus(latestTask);
+    const updated = { ...latestTask, origin: detachOrigin ? undefined : latestTask.origin, title, category, priority, remindDate, remindAt, deadlineDate, deadlineTime, deadlineNotifyBefore, navigationEnabled, preparationMinutes, travelMinutes, bufferMinutes, repeatRule, isRoutine, routineId: isRoutine ? latestTask.routineId ?? latestTask.id : latestTask.routineId, routineEndedAt: isRoutine ? undefined : endedAt, nudgeMode, scheduledDate: scheduledDate ?? latestTask.scheduledDate ?? dateKey(now), scheduledTime, endAt: endAt && /^\d{2}:\d{2}$/.test(endAt) ? endAt : undefined, estimatedMinutes: normalizeEstimatedMinutes(estimatedMinutes), done: latestTask.done, status: existingStatus, completedAt: latestTask.completedAt, skippedAt: latestTask.skippedAt, subtasks: subtasks.map((item, index) => ({ ...item, order: index, done: Boolean(item.done) })), listItems: (listItems ?? latestTask.listItems ?? []).map((item, index) => ({ ...item, text: item.text.trim(), order: index, checked: Boolean(item.checked) })).filter((item) => item.text) };
     const nextTasks = tasksRef.current.map((task) => {
-      if (task.id === editingTask.id) return updated;
-      if (editingTask.isRoutine && !isRoutine && (task.routineId ?? task.id) === existingRoutineId) {
+      if (task.id === latestTask.id) return updated;
+      if (latestTask.isRoutine && !isRoutine && (task.routineId ?? task.id) === existingRoutineId) {
         return { ...task, isRoutine: false, routineEndedAt: endedAt };
       }
       return task;
@@ -3852,8 +3953,8 @@ export default function App() {
     setTasks(nextTasks);
     setEditingTask(null);
     if (isRoutine) void onboarding.complete('routine');
-    if (editingTask.isRoutine && !isRoutine && updated.routineId && endedAt) {
-      recordBehaviorEvent(createRoutineDeactivatedBehaviorEvent({ routineId: updated.routineId, routineTitle: editingTask.title, taskId: editingTask.id, occurredAt: new Date(endedAt), targetDate: dateKey(endedAt) }));
+    if (latestTask.isRoutine && !isRoutine && updated.routineId && endedAt) {
+      recordBehaviorEvent(createRoutineDeactivatedBehaviorEvent({ routineId: updated.routineId, routineTitle: latestTask.title, taskId: latestTask.id, occurredAt: new Date(endedAt), targetDate: dateKey(endedAt) }));
     }
     if (reactivatesRoutine && updated.routineId) {
       recordBehaviorEvent(createRoutineStateChangedBehaviorEvent({ taskId: updated.id, routineId: updated.routineId, routineTitle: updated.title, occurredAt: new Date(), targetDate: dateKey(), completed: Boolean(updated.done), source: 'manual' }));
@@ -3862,6 +3963,12 @@ export default function App() {
     else void scheduleAllTaskNotifications(updated);
     void syncScheduleSwitchNotificationsForTask(updated.id);
     queueScheduleConflictCheck(updated, departurePlansRef.current);
+    };
+    if (readWishTaskOrigin(tasksRef.current.find(task => task.id === editingTask.id)?.origin) && (repeatRule !== 'none' || isRoutine)) {
+      Alert.alert('目標との連動を解除しますか？', '繰り返しに変更すると、このToDoと目標の行動の完了連動を解除します。元の行動と完了状態は残ります。', [
+        { text: 'キャンセル', style: 'cancel' }, { text: '連動を解除して変更', onPress: () => applyUpdate(true) },
+      ]);
+    } else applyUpdate();
   };
 
   const updateTaskList = React.useCallback((taskId: string, items: TaskListItem[]) => {
@@ -3879,6 +3986,9 @@ export default function App() {
     try {
       const actions = await getRhythmWidgetPendingActions();
       if (!actions.length) return;
+      const linkedActionIds = new Set(actions.filter((raw: any) => typeof raw?.id === 'string' && raw.type === 'completeTask'
+        && tasksRef.current.some(task => task.id === raw.taskId && isOneOffWishTask(task))).map((raw: any) => raw.id));
+      const linkedActionTaskIds = new Set(actions.filter((raw: any) => linkedActionIds.has(raw?.id)).map((raw: any) => raw.taskId));
       const handledIds: string[] = [];
       const taskIdsToComplete: string[] = [];
       const createdTasks: Task[] = [];
@@ -3991,7 +4101,23 @@ export default function App() {
       }
       if (createdPlans.length) void onboarding.complete('planRegistration');
       if (taskIdsToComplete.length) completeTaskIds(taskIdsToComplete, 'manual');
-      if (handledIds.length) await acknowledgeRhythmWidgetPendingActions(handledIds);
+      const ordinaryActionIds = handledIds.filter(id => !linkedActionIds.has(id));
+      if (ordinaryActionIds.length) await acknowledgeRhythmWidgetPendingActions(ordinaryActionIds);
+      if (linkedActionIds.size) {
+        // Do not consume the native completion before the corresponding main
+        // state is durable. Match the latest intent (including a later undo or
+        // deletion), not the stale completed snapshot captured above.
+        const saved = waitForSettingsSave(state => state.tasks === tasksRef.current && state.tasks.every(task => {
+          if (!linkedActionTaskIds.has(task.id) || !isOneOffWishTask(task)
+            || state.tasks.filter(other => sameWishTaskOrigin(other.origin, task.origin)).length !== 1) return true;
+          const action = linkedWishAction(state.wishMonths ?? {}, task.origin);
+          return !action || action.completed === task.done;
+        }));
+        setSaveRetry(value => value + 1);
+        try { await saved; }
+        catch (error) { console.warn('Linked Widget completion is not saved; native action retained.', error); return; }
+        await acknowledgeRhythmWidgetPendingActions(handledIds.filter(id => linkedActionIds.has(id)));
+      }
     } finally {
       pendingWidgetActionsProcessingRef.current = false;
     }
@@ -4350,13 +4476,28 @@ export default function App() {
     void syncScheduleSwitchNotificationsForTask(nextTask.id);
   }, []);
 
-  const createTaskFromWishAction = (action: WishAction) => {
-    if (tasks.some((task) => !task.done && task.title.trim() === action.title.trim())) {
-      Alert.alert('同じタスクがあります', '今日のタスク一覧から確認できます。');
-      return;
+  const createTaskFromWishAction = async (action: WishAction) => {
+    if (!hydratedRef.current || persistenceDisabledRef.current) throw new Error('保存データを確認できません');
+    const origin = { monthKey: currentWishMonthKey, wishId: action.wishId, actionId: action.id };
+    const source = linkedWishAction(wishMonthsRef.current, origin);
+    if (!source) { Alert.alert('行動が見つかりません', '元の行動を保存してから、もう一度お試しください。'); return; }
+    const existing = tasksRef.current.find(task => sameWishTaskOrigin(task.origin, origin));
+    let linkedId = existing?.id;
+    if (!existing) {
+      const created = addTask(action.title, categories[0]!, priorities[1]!);
+      if (!created) return;
+      linkedId = created.id;
+      const next = tasksRef.current.map(task => task.id === created.id ? { ...task, origin } : task);
+      tasksRef.current = next;
+      setTasks(next);
+      if (source.completed) completeTaskIds([created.id]);
     }
-    addTask(action.title, categories[0]!, priorities[1]!);
-    Alert.alert('タスクに追加しました', '今日のタスクとして登録しました。');
+    // Reuse the main save receipt/queue. Retrying a failed creation persists
+    // the existing explicit link rather than generating another task.
+    const saved = waitForSettingsSave(state => Boolean(state.tasks?.some(task => task.id === linkedId && sameWishTaskOrigin(task.origin, origin))));
+    setSaveRetry(value => value + 1);
+    await saved;
+    Alert.alert(existing ? '関連するToDoがあります' : 'タスクに追加しました', '今日のタスク一覧から確認できます。');
   };
 
   const createEmptyPlanDraft = (): DeparturePlan => ({ ...initialPlan, title: '', planMode: 'calendar_only', countdownEnabled: false, date: todayInputValue() });
@@ -5072,33 +5213,14 @@ export default function App() {
   const renderAppearanceSettingsPreview = (): React.ReactNode => renderOnboardingCaptureStep('customize');
 
   const renderEmbeddedAppearancePreview = (): React.ReactNode => {
-    const monoColors = getThemeTokens('minimal', chicPalette.id).colors;
-    const designVisual = getChicPatternVisual('floral', chicPalette);
-    const photoAsset = designBackgroundAssets.botanicalBackground;
-    return <View pointerEvents="none" style={{ width: '100%', padding: 12 }}>
-      <Text style={{ color: monoColors.primaryText, fontSize: 13, fontWeight: '900', marginBottom: 8 }}>見た目を選ぶ</Text>
-      <View style={{ flexDirection: 'row', gap: 8 }}>
-        <View style={{ flex: 1, height: 116, borderRadius: 14, overflow: 'hidden', borderWidth: 1, borderColor: monoColors.border, backgroundColor: monoColors.surface, padding: 10 }}>
-          <Text style={{ color: monoColors.secondaryText, fontSize: 10, fontWeight: '800' }}>シンプル</Text>
-          <View style={{ marginTop: 12, gap: 8 }}>
-            <View style={{ height: 8, borderRadius: 4, backgroundColor: monoColors.primaryText, opacity: 0.78 }} />
-            <View style={{ height: 8, width: '72%', borderRadius: 4, backgroundColor: monoColors.primaryAccent, opacity: 0.58 }} />
-            <View style={{ height: 8, width: '52%', borderRadius: 4, backgroundColor: monoColors.border }} />
-          </View>
-        </View>
-        <View style={{ flex: 1, height: 116, borderRadius: 14, overflow: 'hidden', borderWidth: 1, borderColor: chicPalette.border, backgroundColor: designVisual.background }}>
-          <View style={{ height: 78, overflow: 'hidden' }}><ChicPatternDecor pattern="floral" accent={designVisual.accent} warm={designVisual.warm} checkColor={chicCheckColor} preview /></View>
-          <Text style={{ color: chicPalette.textPrimary, fontSize: 10, fontWeight: '800', paddingHorizontal: 10, paddingVertical: 7 }}>デザイン</Text>
-        </View>
-        <View style={{ flex: 1, height: 116, borderRadius: 14, overflow: 'hidden', borderWidth: 1, borderColor: monoColors.border, backgroundColor: monoColors.surface }}>
-          <Image source={photoAsset.previewSource} resizeMode="cover" style={{ width: '100%', height: 78 }} />
-          <Text style={{ color: monoColors.primaryText, fontSize: 10, fontWeight: '800', paddingHorizontal: 10, paddingVertical: 7 }}>写真</Text>
-        </View>
-      </View>
-      <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 10, gap: 6 }}>
-        {[chicPalette.accent, '#9D8DDF', '#E7A9BC', '#8DAFD7'].map((color) => <View key={color} style={{ width: 14, height: 14, borderRadius: 7, backgroundColor: color, borderWidth: 1, borderColor: monoColors.border }} />)}
-        <Text style={{ color: monoColors.secondaryText, fontSize: 10, marginLeft: 2 }}>色や柄を組み合わせて選べます</Text>
-      </View>
+    const colors = getThemeTokens('minimal', chicPalette.id).colors;
+    const samplePhoto = Image.resolveAssetSource(designBackgroundAssets.botanicalBackground.previewSource)?.uri;
+    const previewColors = { background: colors.screenBackground, surface: colors.surface, border: colors.border, text: colors.primaryText, muted: colors.secondaryText, accent: colors.primaryAccent, soft: colors.softAccent, onAccent: '#FFFFFF' };
+    return <View pointerEvents="none" style={{ width: '100%', padding: 8, gap: 10 }}>
+      {(['mono', 'chic', 'photo'] as const).map((tab) => <View key={tab}>
+        <Text style={{ color: colors.primaryText, fontSize: 13, fontWeight: '800', marginBottom: 4 }}>{tab === 'mono' ? 'シンプル' : tab === 'chic' ? 'デザイン' : '写真'}</Text>
+        <DesignAppliedPreview tab={tab} selectedMode={tab === 'mono' ? 'minimal' : tab} designMode="minimal" monoAppearance="light" monoPattern="plain" chicPattern="floral" chicCheckColor={chicCheckColor} chicPalette={chicPalette} photoTheme={{ imageUri: samplePhoto, placement: 'background' }} previewPhotoUri={samplePhoto} colors={previewColors} styles={styles} helpers={{ getThemeTokens: getThemedThemeTokens, getChicPatternVisual, getChicCheckColor, getNightSkyPalette }} components={{ ChicPatternDecor, BThemeRibbonDecoration, CThemeRibbonDecoration }} />
+      </View>)}
     </View>;
   };
 
@@ -5230,9 +5352,24 @@ export default function App() {
     return undefined;
   };
 
-  const renderOnboardingEmbeddedStep = (id: IntroCardId | 'customize'): React.ReactNode => (
-    id === 'customize' ? renderEmbeddedAppearancePreview() : renderOnboardingCaptureStep(id)
-  );
+  const renderOnboardingEmbeddedStep = (id: IntroCardId | 'customize'): React.ReactNode => {
+    const previewColors = getThemeTokens(uiDesignMode, chicPalette.id).colors;
+    const pane = (title: string, child: React.ReactNode, height = 220) => <View key={title}><Text style={{ color: previewColors.primaryText, fontSize: 13, fontWeight: '800', marginBottom: 5 }}>{title}</Text><View style={{ height, overflow: 'hidden' }}>{child}</View></View>;
+    if (id === 'customize') return renderEmbeddedAppearancePreview();
+    if (id === 'voice') return <View pointerEvents="none" style={{ width: '100%', gap: 12 }}>
+      {pane('TODO登録', renderGuideCaptureStep('todo'))}
+      {pane('音声入力（サンプル）', <VoiceInputModal visible={false} inlinePreview dateKey={dateKey} designMode={uiDesignMode} chicPalette={chicPalette} remainingUses={3} onClose={() => undefined} onRoute={() => false} hapticsEnabled={false} />, 280)}
+    </View>;
+    if (id === 'schedule') return <View pointerEvents="none" style={{ width: '100%', gap: 12 }}>
+      {pane('予定表', renderOnboardingCaptureStep('schedule'))}
+      {pane('集中タイマー', renderPremiumReadOnlyPreview('calendar', true, { initialTab: 'focus', previewMode: true, previewCustomDurationOpen: false }), 300)}
+    </View>;
+    if (id === 'records') return <View pointerEvents="none" style={{ width: '100%', gap: 12 }}>
+      {pane('叶えたいこと', renderWishCapturePreview(false), 260)}
+      {pane('記録（サンプル）', renderPremiumReadOnlyPreview('records'), 260)}
+    </View>;
+    return renderOnboardingCaptureStep(id);
+  };
 
   const renderGuideCaptureStep = (id: Exclude<OnboardingFeatureId, 'intro'>): React.ReactNode => {
     const previewDate = dateKey(now);
@@ -5329,7 +5466,9 @@ export default function App() {
   // New users run the Free demo before choosing a design.  Existing users do
   // not have firstRunStage, so the legacy Premium tour remains gated by their
   // completed design selection and is never unexpectedly restarted.
-  const premiumTourReady = planTier === 'premium' && onboarding.isCompleted('intro') && onboarding.isCompleted('design');
+  // Premium does not opt a user into the old automatic multi-screen tour.
+  // Normal users receive the same contextual, dismissible help as Free users.
+  const premiumTourReady = firstRunDemoActive && planTier === 'premium' && onboarding.isCompleted('intro') && onboarding.isCompleted('design');
   const firstIncompleteGuide = onboarding.ready && onboarding.isCompleted('intro') && (firstRunDemoActive || premiumTourReady)
     ? activeGuideTour.find((feature) => !onboarding.isCompleted(feature))
     : undefined;
@@ -5414,8 +5553,9 @@ export default function App() {
   React.useEffect(() => {
     // The design handoff is valid only after the intro was completed. This
     // keeps a stale/legacy stage from opening the Design sheet for a new user
-    // before the five-page introduction (or after an early skip).
-    if (!onboarding.ready || onboarding.introVisible || !onboarding.isCompleted('intro')) return;
+    // before the five-page introduction. A fresh skip now explicitly hands
+    // off to the optional Design step just like the final CTA.
+    if (!onboarding.ready || onboarding.introVisible || introDismissing || !onboarding.isCompleted('intro')) return;
     if (onboarding.state.firstRunStage === 'design' && !onboardingDesignSelectionPending && !completingInitialDesignSelectionRef.current) {
       if (__DEV__) {
         console.log('[FirstRunDiagnostic]', {
@@ -5434,7 +5574,7 @@ export default function App() {
       setPendingGuideFeature(undefined);
       setScreen('settings');
     }
-  }, [onboarding.introVisible, onboarding.ready, onboarding.state.completed.intro, onboarding.state.firstRunStage, onboardingDesignSelectionPending, screen]);
+  }, [onboarding.introVisible, onboarding.ready, onboarding.state.completed.intro, onboarding.state.firstRunStage, onboardingDesignSelectionPending, screen, introDismissing]);
 
   const navigateToGuideFeature = React.useCallback((feature: Exclude<OnboardingFeatureId, 'intro'>) => {
     setAddOpen(false);
@@ -5510,9 +5650,9 @@ export default function App() {
   }, [firstRunDemoActive, guideDemoTasks, guideDemoTasksState, openNewPlanEditor]);
 
   React.useEffect(() => {
-    if (!productionGuideFeature || onboarding.introVisible || onboardingDesignSelectionPending || guideTransitioning) return;
+    if (!productionGuideFeature || onboarding.introVisible || introDismissing || onboarding.state.firstRunStage === 'design' || onboardingDesignSelectionPending || guideTransitioning) return;
     navigateToGuideFeature(productionGuideFeature);
-  }, [guideTransitioning, navigateToGuideFeature, onboarding.introVisible, onboardingDesignSelectionPending, productionGuideFeature]);
+  }, [guideTransitioning, navigateToGuideFeature, onboarding.introVisible, onboarding.state.firstRunStage, introDismissing, onboardingDesignSelectionPending, productionGuideFeature]);
 
   const releaseGuideTransition = React.useCallback(() => {
     setPendingGuideFeature(undefined);
@@ -5559,7 +5699,7 @@ export default function App() {
   }, [activeGuideTour, firstRunDemoActive, guideTransitioning, navigateToGuideFeature, onboarding, pendingGuideFeature, planTier, premiumTourReady, releaseGuideTransition]);
 
   React.useEffect(() => {
-    if (!onboarding.ready || onboarding.introVisible || onboardingDesignSelectionPending || guideTransitioning || pendingGuideFeature) return;
+    if (!onboarding.ready || onboarding.introVisible || introDismissing || onboarding.state.firstRunStage === 'design' || onboardingDesignSelectionPending || guideTransitioning || pendingGuideFeature) return;
     if (!currentGuideFeature) {
       const nextGuide = firstIncompleteGuide ?? contextualGuideFeature;
       if (nextGuide) {
@@ -5571,7 +5711,7 @@ export default function App() {
     if (!activeGuideTour.includes(currentGuideFeature) || onboarding.isCompleted(currentGuideFeature)) {
       void advanceGuide(currentGuideFeature);
     }
-  }, [activeGuideTour, advanceGuide, contextualGuideFeature, currentGuideFeature, firstIncompleteGuide, guideTransitioning, navigateToGuideFeature, onboarding, onboardingDesignSelectionPending, pendingGuideFeature]);
+  }, [activeGuideTour, advanceGuide, contextualGuideFeature, currentGuideFeature, firstIncompleteGuide, guideTransitioning, introDismissing, navigateToGuideFeature, onboarding, onboardingDesignSelectionPending, pendingGuideFeature]);
 
   React.useEffect(() => {
     if (!pendingGuideFeature) return;
@@ -5766,6 +5906,8 @@ export default function App() {
     if (action === 'continue') { setTimelineInitialTab('focus'); setScreen('timeline'); }
   };
 
+  if (persistenceIssue === 'read') return <SafeAreaView style={{ flex: 1, backgroundColor: theme.colors.screenBackground, justifyContent: 'center', padding: 24 }}><Text accessibilityRole="alert" style={{ color: theme.colors.primaryText, fontSize: 20, fontWeight: '800' }}>保存データを読み込めませんでした</Text><Text style={{ color: theme.colors.secondaryText, fontSize: 14, lineHeight: 22, marginTop: 12 }}>データは消去していません。誤った上書きを防ぐため、読込ができるまで編集を停止しています。</Text><Pressable accessibilityRole="button" disabled={persistenceRetrying} onPress={() => { if (persistenceRetrying) return; setPersistenceRetrying(true); setHydrationRetry((value) => value + 1); }} style={{ minHeight: 48, marginTop: 20, alignItems: 'center', justifyContent: 'center', borderRadius: 12, backgroundColor: theme.colors.primaryAccent }}><Text style={{ color: uiDesignMode === 'chic' ? chicPalette.onAccent : uiDesignMode === 'dark' ? theme.colors.screenBackground : '#FFFFFF', fontSize: 14, fontWeight: '800' }}>{persistenceRetrying ? '読み込み中…' : 'もう一度読み込む'}</Text></Pressable></SafeAreaView>;
+
   return (
     <View style={{ flex: 1, backgroundColor: imageDesignBackground?.background ?? (uiDesignMode === 'chic' ? getChicPatternVisual(effectiveChicPattern, chicPalette).background : theme.colors.screenBackground) }}>
       {imageDesignBackground && imageDesignBackgroundSize && <View pointerEvents="none" style={[StyleSheet.absoluteFillObject, { overflow: 'hidden', backgroundColor: imageDesignBackground.background }]}><Image source={imageDesignBackground.source} style={[imageDesignBackgroundSize, { position: 'absolute', top: 0, alignSelf: 'center' }]} /></View>}
@@ -5775,6 +5917,7 @@ export default function App() {
       {isMonoDesign && effectiveMonoPattern === 'chic' && <MonoChicBackground dark={uiDesignMode === 'dark'} />}
       {photoBackgroundUri && <View pointerEvents="none" style={styles.photoThemeBackgroundWrap}><Image source={{ uri: photoBackgroundUri }} resizeMode="cover" style={styles.photoThemeBackground} /></View>}
       <View style={styles.app} pointerEvents={hydrated ? 'auto' : 'none'}>
+      {persistenceIssue === 'write' && <View accessibilityRole="alert" style={{ padding: 12, borderRadius: 12, marginBottom: 8, borderWidth: 1, borderColor: theme.colors.danger, backgroundColor: theme.colors.surface }}><Text style={{ color: theme.colors.primaryText, fontSize: 13, lineHeight: 19 }}>未保存の変更があります。アプリを閉じる前に保存を再試行してください。</Text><Pressable accessibilityRole="button" disabled={persistenceRetrying} style={{ minHeight: 44, justifyContent: 'center' }} onPress={() => { if (persistenceRetrying) return; setPersistenceRetrying(true); setSaveRetry((value) => value + 1); }}><Text style={{ color: theme.colors.primaryAccent, fontSize: 14, fontWeight: '800' }}>{persistenceRetrying ? '保存を再試行中…' : '保存を再試行'}</Text></Pressable></View>}
         <BThemeRibbonPreload />
         <CThemeRibbonPreload />
         {uiDesignMode === 'chic' && !photoThemeEnabled && !isImageDesignPattern(effectiveChicPattern) && <View pointerEvents="none" style={StyleSheet.absoluteFillObject}><ChicPatternDecor pattern={effectiveChicPattern} accent={chicPalette.accent} warm={chicPalette.accentSoft} checkColor={chicCheckColor} /></View>}
@@ -5915,6 +6058,7 @@ export default function App() {
                 // 過去のルーティンIDも引き継がない独立したタスクにする。
                  const duplicateId = `${Date.now()}-${Math.random().toString(16).slice(2)}-copy`;
                  const duplicate = { ...task, id: duplicateId, createdAt: new Date().toISOString(), title: `${task.title}（コピー）`, done: false, status: 'active' as const, skippedAt: undefined, completedAt: undefined, isRoutine: false, routineId: undefined, routineEndedAt: undefined, remindDate: undefined, remindAt: undefined, deadlineNotifyBefore: undefined, nudgeMode: 'once' as NudgeMode, subtasks: task.subtasks?.map((item, index) => ({ ...item, id: `${duplicateId}-subtask-${index}-${Math.random().toString(16).slice(2)}`, done: false, order: index })), listItems: task.listItems?.map((item, index) => ({ ...item, id: `${duplicateId}-list-${index}-${Math.random().toString(16).slice(2)}`, checked: false, order: index })) };
+                delete duplicate.origin;
                 tasksRef.current = [duplicate, ...tasksRef.current];
                 setTasks(tasksRef.current);
                 void syncScheduleSwitchNotificationsForTask(duplicate.id);
@@ -6292,6 +6436,8 @@ export default function App() {
                onOpenDesignAccess={openDesignAccess}
                initialAppearanceOpen={onboardingDesignSelectionPending && onboarding.ready && !onboarding.introVisible}
                onboardingDesignSelectionPending={onboardingDesignSelectionPending}
+               onDeferInitialAppearance={deferInitialDesignSelection}
+               onOpenIntro={onboarding.openIntro}
                currentScreen={screen}
                           styles={styles}
               helpers={{ colors: themedColors, getThemeTokens: getThemedThemeTokens, getChicPatternVisual, getNightSkyPalette, hasPremiumAccess, getChicCheckColor, chicCheckColorChoices, countdownToClock, getUrgencyStatus, getNextBestAction, designModes, completionIcons, summarizePremiumTaskTemplate }}
@@ -6729,10 +6875,12 @@ export default function App() {
             event: 'skip-intro',
           });
         }
-        void onboarding.skipIntro();
+        beginInitialDesignFromIntro();
       }
   }
-  finalActionLabel="デザインを選ぶ"
+  finalActionLabel={onboarding.isCompleted('intro') ? '閉じる' : 'デザインを選ぶ'}
+  busy={introDismissing}
+  onDismissComplete={() => { introTransitionRef.current = false; setIntroDismissing(false); }}
   designMode={uiDesignMode}
   chicPalette={chicPalette}
   onFinalAction={() => {
@@ -6752,7 +6900,7 @@ export default function App() {
         event: 'finish-intro-design-request',
       });
     }
-    void onboarding.finishIntro();
+    beginInitialDesignFromIntro();
   }}
   renderStep={renderOnboardingEmbeddedStep}
 />
@@ -8126,51 +8274,6 @@ function MonoChicBackground({ dark }: { dark: boolean }) {
   </View>;
 }
 
-function NotificationManagerCard({ designMode, chicPalette, readOnly = false }: { designMode?: DesignMode; chicPalette?: ChicThemePalette; readOnly?: boolean }) {
-  const isDark = designMode === 'dark';
-  const isChic = designMode === 'chic' && !!chicPalette;
-  const theme = getThemeTokens(designMode ?? 'minimal', chicPalette?.id ?? 'cool').colors;
-  const notificationColors = isChic ? {
-    surface: chicPalette!.cardSurface,
-    border: chicPalette!.border,
-    text: chicPalette!.textPrimary,
-    muted: chicPalette!.textSecondary,
-    accent: chicPalette!.accent,
-    danger: chicPalette!.danger,
-  } : {
-    surface: theme.surface,
-    border: theme.border,
-    text: theme.primaryText,
-    muted: theme.secondaryText,
-    accent: theme.primaryAccent,
-    danger: theme.danger,
-  };
-  const [pending, setPending] = useState<Notifications.NotificationRequest[]>([]);
-  const [loading, setLoading] = useState(false);
-  const refresh = React.useCallback(async () => {
-    setLoading(true);
-    try { setPending(await Notifications.getAllScheduledNotificationsAsync()); }
-    finally { setLoading(false); }
-  }, []);
-  useEffect(() => {
-    // Premium previews are read-only and must not inspect or touch the
-    // user's scheduled notifications. The production card refreshes only
-    // when it is actually shown in Settings.
-    if (readOnly) return;
-    void refresh();
-  }, [readOnly, refresh]);
-  const stopAll = () => Alert.alert('予約通知をすべて停止しますか？', 'タスクと出発の予約通知が停止されます。', [
-    { text: 'キャンセル', style: 'cancel' },
-    { text: '停止する', style: 'destructive', onPress: () => { void Notifications.cancelAllScheduledNotificationsAsync().then(refresh); } },
-  ]);
-  if (readOnly) return <View style={[styles.notificationManagerCard, isDark && styles.darkSurface, isChic && { backgroundColor: notificationColors.surface, borderColor: notificationColors.border }]}><View style={styles.notificationManagerHeader}><View><Text style={[styles.settingsTitle, { color: notificationColors.text }]}>高度な通知</Text><Text style={[styles.switchCopy, { color: notificationColors.muted }]}>段階的な通知を設定できます</Text></View><Text style={[styles.notificationRefreshText, { color: notificationColors.accent }]}>Premium</Text></View>{[['09:00', 'そろそろ始められそう？'], ['09:05', 'もう一度確認しよう'], ['09:08', '今からできることを選ぶ']].map(([time, copy]) => <View key={time} style={styles.notificationPendingRow}><View style={[styles.notificationPendingDot, { backgroundColor: notificationColors.accent }]} /><View style={{ flex: 1 }}><Text style={[styles.notificationPendingTitle, { color: notificationColors.text }]}>{time}</Text><Text style={[styles.notificationPendingBody, { color: notificationColors.muted }]}>{copy}</Text></View></View>)}</View>;
-  return <View style={[styles.notificationManagerCard, isDark && styles.darkSurface, isChic && { backgroundColor: notificationColors.surface, borderColor: notificationColors.border }]}>
-    <View style={styles.notificationManagerHeader}><View><Text style={[styles.settingsTitle, { color: notificationColors.text }]}>通知管理</Text><Text style={[styles.switchCopy, { color: notificationColors.muted }]}>{loading ? '確認中…' : `${pending.length}件の通知を予約中`}</Text></View><Pressable style={styles.notificationRefresh} onPress={() => void refresh()}><Text style={[styles.notificationRefreshText, { color: notificationColors.accent }]}>更新</Text></Pressable></View>
-    {pending.slice(0, 4).map((request) => <View key={request.identifier} style={styles.notificationPendingRow}><View style={[styles.notificationPendingDot, { backgroundColor: notificationColors.accent }]} /><View style={{ flex: 1 }}><Text numberOfLines={1} style={[styles.notificationPendingTitle, { color: notificationColors.text }]}>{request.content.title ?? '通知'}</Text><Text numberOfLines={1} style={[styles.notificationPendingBody, { color: notificationColors.muted }]}>{request.content.body ?? ''}</Text></View></View>)}
-    {pending.length > 4 && <Text style={[styles.notificationMore, { color: notificationColors.muted }]}>ほか{pending.length - 4}件</Text>}
-    <Pressable disabled={pending.length === 0} style={[styles.notificationStopButton, isChic && { borderColor: notificationColors.danger }, pending.length === 0 && styles.batchDisabled]} onPress={stopAll}><Text style={[styles.notificationStopText, isChic && { color: notificationColors.danger }]}>予約通知をすべて停止</Text></Pressable>
-  </View>;
-}
 
 function TodayWinStrip({ tasks, designMode, chicPattern, chicPalette, onRestore, onOpenCompleted, onOpenFocus, onToggleTask, onOpenTaskActions, selectionMode = false, selectedTaskIds = [] }: { tasks: Task[]; designMode: ThemeMode; chicPattern: ChicPattern; chicPalette: ChicThemePalette; onRestore: (id: string) => void; onOpenCompleted?: () => void; onOpenFocus?: () => void; onToggleTask?: (id: string) => void; onOpenTaskActions?: (task: Task) => void; selectionMode?: boolean; selectedTaskIds?: string[] }) {
   const theme = getThemeTokens(designMode, chicPalette.id);
@@ -8243,8 +8346,8 @@ function TodayWinStrip({ tasks, designMode, chicPattern, chicPalette, onRestore,
             <View style={styles.todayHeroMinimalLeft}>
               <Text style={[styles.todayHeroMinimalKicker, designMode === 'dark' && styles.todayHeroMinimalKickerDark]}>TODAY</Text>
               <Text style={[styles.todayHeroMinimalNowLabel, designMode === 'dark' && styles.todayHeroMinimalTextDark]}>今はこれ</Text>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}><Pressable disabled={!nextNowTask || !onToggleTask} onPress={(event) => { event.stopPropagation(); if (nextNowTask) onToggleTask?.(nextNowTask.id); }} style={[styles.check, designMode === 'dark' && styles.checkDark, nextNowTaskChecked && styles.checkDone, nextNowTaskSelected && styles.selectionChecked]}><Text style={styles.checkMark}>{nextNowTaskChecked ? '✓' : ''}</Text></Pressable><Pressable disabled={!nextNowTask || !onOpenTaskActions} onPress={(event) => { event.stopPropagation(); if (nextNowTask) onOpenTaskActions?.(nextNowTask); }} style={{ flex: 1 }}><Text numberOfLines={2} adjustsFontSizeToFit={scheduledToday.length === 0} minimumFontScale={0.9} style={[styles.todayHeroMinimalTask, designMode === 'dark' && styles.todayHeroMinimalTextDark]}>{nextNowTask ? nextNowTask.title : scheduledToday.length === 0 ? '今日はまだ未登録' : remainingNow === 0 ? '今日の分は完了。いい感じ' : '次にやる1つをここで決めます'}</Text></Pressable></View>
-              <Text style={[styles.todayHeroMinimalStats, designMode === 'dark' && styles.todayHeroMinimalStatsDark]}>完了 {count} / 残り {remainingNow}</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}><Pressable disabled={!nextNowTask || !onToggleTask} onPress={(event) => { event.stopPropagation(); if (nextNowTask) onToggleTask?.(nextNowTask.id); }} style={[styles.check, designMode === 'dark' && styles.checkDark, nextNowTaskChecked && styles.checkDone, nextNowTaskSelected && styles.selectionChecked]}><Text style={styles.checkMark}>{nextNowTaskChecked ? '✓' : ''}</Text></Pressable><Pressable disabled={!nextNowTask || !onOpenTaskActions} onPress={(event) => { event.stopPropagation(); if (nextNowTask) onOpenTaskActions?.(nextNowTask); }} style={{ flex: 1 }}><Text numberOfLines={2} adjustsFontSizeToFit={scheduledToday.length === 0} minimumFontScale={0.9} style={[styles.todayHeroMinimalTask, designMode === 'dark' && styles.todayHeroMinimalTextDark]}>{nextNowTask ? nextNowTask.title : scheduledToday.length === 0 ? '今日はまだ未登録' : remainingNow === 0 ? scheduledToday.some((task) => !task.done) ? '今やる分は完了。あとで・待ちは一覧へ' : '今日の分は完了。いい感じ' : '次にやる1つをここで決めます'}</Text></Pressable></View>
+              <Text style={[styles.todayHeroMinimalStats, designMode === 'dark' && styles.todayHeroMinimalStatsDark]}>完了 {count} / 今やる残り {remainingNow}</Text>
             </View>
             <Pressable accessibilityRole="button" accessibilityLabel="今日できたことを確認" onPress={() => { onOpenCompleted?.(); setDetailsOpen(true); }} style={styles.todayUnifiedAchievementMinimal}>
               <Text style={[styles.todayHeroMinimalKicker, { color: theme.colors.primaryAccent }]}>達成グラフ</Text>
@@ -8270,8 +8373,8 @@ function TodayWinStrip({ tasks, designMode, chicPattern, chicPalette, onRestore,
           <View style={[styles.todayHeroChicPlate, { backgroundColor: chicPalette.cardSurface }] }>
             <View style={[styles.todayChicMark, { backgroundColor: chicPalette.accentSoft }]}><Text style={[styles.todayChicMarkText, { color: chicPalette.accent }]}>✿</Text></View>
             <Text style={[styles.todayHeroKicker, { color: chicPalette.textSecondary }]}>今はこれ</Text>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}><Pressable disabled={!nextNowTask || !onToggleTask} onPress={(event) => { event.stopPropagation(); if (nextNowTask) onToggleTask?.(nextNowTask.id); }} style={[styles.check, nextNowTaskChecked && styles.checkDone, nextNowTaskSelected && { backgroundColor: chicPalette.accent, borderColor: chicPalette.accent }, { borderColor: chicPalette.accent }]}><Text style={styles.checkMark}>{nextNowTaskChecked ? '✓' : ''}</Text></Pressable><Pressable disabled={!nextNowTask || !onOpenTaskActions} onPress={(event) => { event.stopPropagation(); if (nextNowTask) onOpenTaskActions?.(nextNowTask); }} style={{ flex: 1 }}><Text numberOfLines={2} adjustsFontSizeToFit={scheduledToday.length === 0} minimumFontScale={0.9} style={[styles.todayHeroCopy, { color: chicPalette.textPrimary }]}>{nextNowTask ? nextNowTask.title : scheduledToday.length === 0 ? '今日はまだ未登録' : remainingNow === 0 ? '今日の分は完了。いい感じ' : '次にやる1つをここで決めます'}</Text></Pressable></View>
-            <Text style={[styles.todayHeroStats, { color: chicPalette.textSecondary }]}>完了 {count}　残り {remainingNow}</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}><Pressable disabled={!nextNowTask || !onToggleTask} onPress={(event) => { event.stopPropagation(); if (nextNowTask) onToggleTask?.(nextNowTask.id); }} style={[styles.check, nextNowTaskChecked && styles.checkDone, nextNowTaskSelected && { backgroundColor: chicPalette.accent, borderColor: chicPalette.accent }, { borderColor: chicPalette.accent }]}><Text style={styles.checkMark}>{nextNowTaskChecked ? '✓' : ''}</Text></Pressable><Pressable disabled={!nextNowTask || !onOpenTaskActions} onPress={(event) => { event.stopPropagation(); if (nextNowTask) onOpenTaskActions?.(nextNowTask); }} style={{ flex: 1 }}><Text numberOfLines={2} adjustsFontSizeToFit={scheduledToday.length === 0} minimumFontScale={0.9} style={[styles.todayHeroCopy, { color: chicPalette.textPrimary }]}>{nextNowTask ? nextNowTask.title : scheduledToday.length === 0 ? '今日はまだ未登録' : remainingNow === 0 ? scheduledToday.some((task) => !task.done) ? '今やる分は完了。あとで・待ちは一覧へ' : '今日の分は完了。いい感じ' : '次にやる1つをここで決めます'}</Text></Pressable></View>
+            <Text style={[styles.todayHeroStats, { color: chicPalette.textSecondary }]}>完了 {count}　今やる残り {remainingNow}</Text>
           </View>
           <Pressable accessibilityRole="button" accessibilityLabel="今日できたことを確認" onPress={() => { onOpenCompleted?.(); setDetailsOpen(true); }} style={styles.todayHeroJarWrap}>
             <View style={styles.miniJarWrap}>

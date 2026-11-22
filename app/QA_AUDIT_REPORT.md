@@ -1,6 +1,136 @@
 # RhythmPace 全機能QA一次点検
 
-## 最新：2026-11-22 一括改修
+## 最新：2026-11-22 WishActionとTODOの1対1連動
+
+基準：branch `qa-checkpoint-20261117`、HEAD `7a17a30a7e374a7dda3c536ab351a185f51ae601`、既存194 PASS。開始時のLOCAL変更・未追跡ファイルをすべて保持。今回commit・push・EAS Buildは行わない。
+
+### 実装
+
+- Taskのoptional `origin: { monthKey, wishId, actionId }` を追加。WishActionや保存キーは変更せず、旧Task・旧Wish・関連なしTaskをそのまま読み込む。同名から推測して関連付けない。
+- `features/wish/wishTaskLink.ts` がID・関連先・1対1の一意性を検査。破損・不在・曖昧な複数関連・繰り返し/ルーティンは自動連動から除外する。
+- Appの最新refに対するWish変更入口と、既存のTask完了/取消入口を接続。相互監視useEffectは追加しない。通知取消・再予約、Focus等からの完了、既存の分析イベント生成を同じ共通入口で維持する。
+- Task/WishActionを同じApp全体snapshotに含め、既存グローバル保存キューの一回のJSON書込みで保存する。Wish専用の別保存経路は作らない。保存保留中の他TODO編集・連続取消/完了で、古いsnapshotによる片方だけの更新を防ぐ。
+- 同じoriginが既に存在する場合は完了済みでも新規Taskを作らず案内。新規作成/再試行の成功Alertは既存の永続化receiptが成功してから出す。失敗時はEditorと入力を保持し、再試行で同じTaskを保存する。
+- Task編集は最新Taskのorigin・完了状態を保持し、元行動の文章は変更しない。編集中の通知完了を、古い編集開始時のdoneで巻き戻さない。
+- Task削除は元行動/完了状態を維持。行動・親目標削除はTaskを残してoriginだけ解除。関連Taskを繰り返しへ変更する場合は明示確認し、取消なら変更しない。複製/次回生成Taskへoriginを複製しない。
+- 関連TaskのNative保留完了は、最新の両状態の保存成功後だけNativeキューへACK。保存失敗時はキューを残す。保存中の取消・削除を古い完了で上書きせず、最新状態の保存を待ってACKする。
+
+### 必須ケースの検証範囲
+
+| 項目 | 実行した検証 | 結果 |
+| --- | --- | --- |
+| 行動→TODO作成・関連ID保存・重複防止 | 本番Wish UI、ボタン連打、同じ行動から再作成、同名独立TODO | PASS |
+| TODO完了/取消→行動 | 本番今日画面、完了一覧から取消、永続データ・再読込 | PASS |
+| 行動完了/取消→TODO | 本番Wishチェック操作、Task状態と保存内容 | PASS |
+| 進捗率 | 既存calculateWishProgressを直接検証＋Wish UIの50%表示。目標自体を勝手に完了させない | PASS |
+| タイトル編集と同名別TODO | 本番TaskModalで編集、origin維持、元行動の文章/別TODOが変わらない | PASS |
+| Task削除 | 本番UI削除後に再読込、元行動を保持。共通関数でも削除による行動の未完了化なしを確認 | PASS |
+| 行動削除 | 本番Wish UI削除、Taskを独立化、再読込後もTaskの完了操作可能 | PASS |
+| 旧データ・不在/破損参照 | 本番関連関数・saveRhythmState/loadRhythmStateで互換性、不正origin6種、null月、存在しない目標を確認 | PASS |
+| 過去月 | 本番今日操作から過去月の行動だけを更新、現在月は変更せず再読込 | PASS |
+| 保存保留・失敗・再試行 | 本番作成と完了で失敗を制御。成功表示抑制、Editor保持、UI再試行、両データの復元を確認 | PASS |
+| 非同期競合 | 書込を保留中に別TODOを編集、全書込snapshotでTaskと行動の完了状態を比較。編集途中の通知完了も確認 | PASS |
+| 連続操作 | 連打による一件生成、行動チェックの連続取消/完了、再読込後の整合 | PASS |
+| Widget/App Intents | Native完了キュー→本番JS→保存→ACK→Widget goal snapshot。保存失敗と再試行、保存中のWish側取消も確認 | PASS（JS境界まで） |
+| 通知 | 本番通知DONEコールバック→共通完了→関連行動。既存取消処理も実行 | PASS（OS配信は対象外） |
+| 繰り返し | 本番編集UIで解除確認取消/承認、通常の次回生成。共通繰り返し関数でorigin非継承を確認 | PASS |
+| 保存直前のiOS強制終了・Siri発話・Native描画 | Windowsのunmount/remountとNative APIのMockでは実際のOS停止・発話・描画を再現できない | 実機必須 |
+
+### テスト結果
+
+- 既存194件を含む **29 suite / 218 PASS・0 FAIL**。追加24ケース＝共通本番処理13件＋本番App連動11件。
+- テスト：`__tests__/qa-wish-task-link.test.js`、`__tests__/qa-wish-task-app.test.js`。本番App、WishScreen、HomeScreen、TaskModal、本番保存・関連処理はMockに置き換えていない。
+- Mock境界：AsyncStorage、Native通知API、Widget Native Module、StoreKit/広告SDK。Native SDKのテストfixture不足（getStorefront）、複数の同名UI/checkbox、一覧と今タブの違いはテスト実装を訂正し、期待する連動結果は緩和していない。
+- `pnpm typecheck`、iOS向けJS export、`git diff --check` PASS。Jest終了時の非同期ハンドル警告は継続しており、全ハンドル解放済みとは判定しない。
+- 既存の写真保護・日記/Wish保存・通知復旧・権限・オンボーディングを含む全回帰がPASS。Native compile・iPhoneの表示は未実施。
+
+### 変更ファイル（今回分のみ）
+
+`App.tsx`、`WishScreen.tsx`、`types.ts`、`features/tasks/taskUtils.ts`、`features/wish/wishTaskLink.ts`（新規）、`features/wish/README.md`（新規）、上記テスト2ファイル（新規）、本レポート。その他の開始時LOCAL差分はそのまま保持。
+
+### 残るリスクと実機確認
+
+- 保存完了前にプロセスが即時終了すると、直前の変更が未保存になる可能性は残る。今回は一つのsnapshotに両方を含めることで、アプリがTaskと行動を別々の書込みとして保存しない設計。iOSのOS停止・電源断まで保証したとはしない。
+- Widget/App Intents由来の変更は、既存どおりApp起動/復帰後のJS取込みで目標データへ反映する。JS未稼働中にSwiftだけでWishを保存する新経路は追加していない。Siriの実際の発話からIntentの選択・実行成功は未検証。
+- 実機最小手順：①行動からTODO作成→TODO完了/取消→目標進捗確認→再起動、②目標側の完了/取消→TODO確認、③Widgetから完了→App復帰→目標/Widget更新、④繰り返し変更の取消/解除確認。保存中は未保存表示も確認する。
+- 目標の一つに複数Task、部分進捗、繰り返し自動連動は実装しない。既存の月間振り返り・日記・写真・課金・テーマ・画面構成・Widget種類・Live Activity仕様は変更していない。
+
+## 前回：2026-11-22 独立レビュー追加対応（PHASE 1優先）
+
+生活の一元管理をコンセプトとして維持。既存LOCAL差分を保持し、Native・商品ID・写真crop・通知仕様は変更していない。commit・push・EAS Buildは未実施。
+
+### 指摘の分類
+
+| 指摘 | 分類 | 対応・確認結果 |
+| --- | --- | --- |
+| 初回5枚の内容・順序 | 1：未対応だったため修正 | 今日→登録/音声→予定/集中→目標/記録→デザイン。依頼されたタイトル・説明・最終CTAを採用。写真日記等のPremium条件も明記。 |
+| 本番UIのread-onlyプレビュー | 1：不足分を修正 | HomeScreen・TaskModal・VoiceInputModal・DailyScheduleTimeline・集中/記録画面・WishScreen・DesignAppliedPreviewを使用。Voiceは権限要求・Nativeイベント購読なしのinlinePreview。DesignはCapture Studio専用captureDesignOnlyを呼ばない。 |
+| 新規ユーザーのスキップ | 1：未対応だったため修正 | 最終CTAと同じ任意Design選択へ。intro完了とstage=designを直列化した一回の書込みで確定。設定からの再表示は完了状態を変更せず閉じる。 |
+| あとで選ぶ | 1：未対応だったため修正 | 初回だけ表示。無料Mono Plainへ設定して今日へ。購入・広告は必須ではない旨、設定で後から変更できる旨を表示。Design完了とstage=doneを同時保存。 |
+| GUIDE・再起動の競合 | 1：未対応だったため修正 | Design復帰と今日GUIDEの同時実行でhomeへ戻される競合を新規Appテストで検出・修正。intro dismiss中/Design途中はGUIDEを開始しない。Premium購入だけで旧自動連続ツアーを起動しない。 |
+| 既存完了状態、旧demo状態 | 2：すでに対応済み | 完了済みの通常起動では紹介/Designを自動再表示しない。旧demoをDesign途中と解釈しない既存normalizeを維持。 |
+| PHASE2 A WishとTODO | 3：仕様確認が必要 | Taskには元WishActionのIDがなく、未完了の同名タイトルで重複を抑えるだけ。自動完了連動は実装していない。下記設計案を参照。 |
+| PHASE2 B 日記権限 | 2：現行導線では整合 | Freeの「今日を記録」はPremium案内へ進むことを本番Appでテスト。Historyの編集はPremium条件、Premium紹介のFree利用不可と一致。写真2枚のFree分岐は正規の無料編集入口を開放するものではない。権限仕様は変更しない。 |
+| PHASE2 C 広告保存失敗・例外 | 1：安全な範囲を修正／3：強制終了の保証は別設計 | grantRewardedとDesign専用経路を同じ保存確認へ接続。永続化前は権限を公開せず、失敗時は視聴済み受領情報を同一起動内で保持し、再視聴なしで再保存。受領時刻固定で再試行による12h延長を防ぐ。Modal例外を表示し、連打・処理中の閉じる操作・古い自動閉じタイマーを抑制。下記残存リスクあり。 |
+| PHASE2 D Widget重複 | 1：未対応だったため修正 | ギャラリー見出し・自動保存説明を一回に整理。カテゴリ/種類数は維持。種類・権限・保存機能は削除しない。 |
+| 多対多の目標連動やFree日記への仕様拡張 | 4：公開後の改善候補 | 今回実装しない。購入価値・既存保存データに影響するため、別途仕様を決める。 |
+
+### A：Wish–TODO連携の変更設計（未実装）
+
+- Taskにoptionalなorigin `{monthKey, wishId, actionId}` を追加する案。既存Task/Wishはそのまま読み込む。同名タイトルから旧データを推測関連付けしない。
+- 新規の同じoriginからの生成は一つのTaskへ誘導する。タイトル編集で関連が切れない設計とする。
+- 完了/取消はTask更新を共通入口としてWishActionと一つの保存操作で反映する案。UI以外のWidget/Siri経路も同じ処理を通す必要がある。相互useEffectで同期しない。
+- 確認が必要：一行動に複数Taskを許すか、繰り返しTask・スキップ・部分進捗をどう数えるか、Task/Action削除時に何を残すか。削除をもう一方へ自動伝播してデータ損失させないことを優先。
+- Native共有形式・月替わり・分析・TODO削除/取消への回帰が必要。今回はデータ形式を変更していない。
+
+### C：広告受領情報の残存リスク（未解決として明記）
+
+- 現在の保存失敗リトライは同一App起動中のメモリ受領情報を使う。保存が一度も成功しないまま強制終了した場合、この情報の復元は保証できない。「アプリを閉じずに保存を再試行」と案内するが、全ケース解決とはしない。
+- 全プロセス終了に耐えるには、earned受領記録の耐久保存と付与済みIDによる冪等化、他の広告クレジット消費/Trial更新との直列化が必要。ストレージ自体が書込不能な間の終了まで保証することはできない。今回は初回UI改善と大きな保存形式変更を混在させず、別設計として残す。
+- 課金/Trial/広告の全更新経路が競合する状況を今回のテストで網羅したとはしない。
+
+### 自動検証と限界
+
+- 既存182件 + 新規12件 = **27 suite / 194 PASS・0 FAIL**。既存UIテストにもWidget見出し/説明が一回だけであることを追加。
+- 新規 `qa-first-run-app.test.js` 9ケース：新規/5枚/最初・途中スキップ/無料選択/あとで選ぶ/intro途中とDesign途中の再描画/Free・Premium既存ユーザー/設定再表示/Free日記入口。本番App・本番保存を使用。Modal dismissのイベントとNative API、AsyncStorageのみ境界を模擬。
+- 新規 `qa-rewarded-save-app.test.js`：実際の設定画面から広告→書込保留→失敗→権限未公開→同じ広告の保存再試行→dot実表示→再読込。Native SDKのearnedのみ模擬、広告生成回数が一回であることも確認。
+- 新規 `qa-independent-review-ui.test.js` 2件：本番Voice inlineのNative非実行、本番RewardedAccessModalの例外表示/連打防止/再試行表示。後者のonRewardは境界例外を返すテスト用コールバックであり、権限付与成功の証明には使わない。
+- 紹介を閉じている間はプレビュー子画面をアンマウントし、通常利用中の不要な本番画面描画を停止。完了後にinline音声プレビューが残らないことも検証。
+- 再実行の一回で既存のTODO編集キャンセルテストが編集メニューの表示直前に失敗したため、固定待機ではなく実際の「編集」表示を待つように修正。保存内容・キャンセル・再読込の期待値は変更していない。単独再実行PASS後、全体を再実行した。
+- `pnpm typecheck`、iOS向けJS `expo export`、`git diff --check` PASS。Windows上の確認であり、iOS Native compile・物理的なModal dismiss・写真選択・小画面のスクロール/読みやすさ・実広告の表示は未確認。
+- 最終全体実行は194 PASS、終了コード0。ただしJest終了直後に未終了の非同期ハンドル警告が出た。テストは終了したが、テスト基盤の全ハンドル解除まで検証済みとはしない。
+- Appのunmount/remountで永続状態の復元を確認したが、iOSの実際の強制終了を再現したとはしない。Capture Studioのcapture経路は変更しておらず、実機撮影操作の回帰は未実施。
+
+### 今回の変更ファイル（前からあるLOCAL変更は別途保持）
+
+`App.tsx`、`screens/SettingsScreen.tsx`、`components/VoiceInputModal.tsx`、`components/RewardedAccessModal.tsx`、`components/WidgetSettingsCard.tsx`、`features/onboarding/OnboardingCarousel.tsx`、`onboardingSteps.ts`、`onboardingStorage.ts`、`useOnboarding.ts`、同README、新規テスト3ファイル、`__tests__/qa-ui-first-pass.test.js`、`__tests__/qa-app-root-probe.test.js`、本レポート。
+
+## 前回：2026-11-22 ビルド前レビューの追加修正
+
+対象：push済み `7a17a30` を基準に、ユーザー承認された9項目を修正。既存機能・保存形式・課金条件を維持。今回commit・push・EAS Buildは行わない。
+
+### 対応内容
+
+1. **今日の完了表示**：未完了の「あとで／待ち」がある場合に「今日の分は完了」と案内しない。「今やる分は完了。あとで・待ちは一覧へ」とし、残数のラベルも「今やる残り」に限定。
+2. **Widget手動更新**：同期結果を更新済み・変更なし・確認待ち/世代交代・失敗として返す。Nativeのfalseや同期未実行を成功Alertに変換しない。自動同期の世代管理と保存キューは維持。
+3. **読込・書込失敗からの復帰**：読込失敗時は通常編集画面を出さず、既存保存データを残した復帰画面から再読込する。読込が不明な間はWidget/Live Activity/通知再照合等も保存状態不明のまま操作しない。書込失敗は未保存表示を継続し、既存の全体保存キューへ最新状態を再送できる。正常保存後に失敗通知抑制を解除し、次の失敗も検知できる。
+4. **日記削除**：既存のWish保存待機へ削除要求も接続し、AsyncStorage成功後だけ完了表示。失敗時は削除対象の記録を戻し、他の月・目標・TODOや既に編集された同日の記録を古いsnapshotで上書きしない。写真参照を保持し再試行可能。編集画面と写真閲覧側の削除経路を対応。
+5. **通知管理**：`components/NotificationManagerCard.tsx`へ最小限の切り出し。一覧取得失敗を0件と表示しない。「現在の予約をすべて取り消す」とし、集中・アファメーション等も対象であることと、通知設定OFFとは異なり再予約され得ることを確認文へ明記。取消直前に再取得したIDだけを操作し、途中で新規予約された通知をcancelAllで巻き込まない。個別失敗・取得失敗を表示し、再試行と連打防止に対応。
+6. **音声入力の用語**：Routine/Wish/Wish Actionをルーティン/叶えたいこと/目標の行動へ統一。
+7. **ユーザー向けエラー**：音声入力・月間カード共有のエラーからDevelopment Buildという案内を除き、一般ユーザー向けの更新・再試行案内へ変更。
+8. **AI共有確認**：内容選択→共有文の全文確認/編集→明示的な共有操作→Sheet dismiss後にOS共有画面。確認だけ・キャンセル・空文章では共有せず、ユーザーが編集した文章だけを渡す。ネットワーク送信・AI API・新しい永続保存は追加しない。
+9. **選択月の表記**：「今月を振り返る」を「この月を振り返る」に変更し、過去月にも適合。見出しやカード説明も選択月に合わせる。
+
+### 検証
+
+- 前回169件に追加13件。全24 suite / **182件 PASS・0 FAIL**を確認。
+- 本番App：新規再現2件、読込失敗/再読込、書込失敗/再試行/再度の失敗、日記削除の保存保留/失敗/復元/再試行/再読込、Widget Native保存false→true。
+- 本番UI：通知管理4件、AI共有3件。通知API・Share等のNative境界とAsyncStorageはMock。保存・状態管理・共有文生成・通知管理をMockに置き換えていない。
+- 初回の全体実行でApp依存の初回読込/変換が最初のUIテストの30秒枠を超えたため、Appのrequireをsuite準備へ移動。固定待機や期待値緩和で成功扱いにはしていない。
+- 最終コードで `pnpm typecheck`、iOS向けJS export、`git diff --check` はPASS。改行コード変換の警告のみ。全24 suite / 182件 PASS・0 FAIL。
+- Native表示・OSへの通知到達・iPhoneでのキーボードと共有画面の実レイアウトは未確認。通知取消は現在の予約に対する操作であり、アプリ全体の通知を恒久OFFにする新設定は追加していない。
+
+## 前回：2026-11-22 一括改修
 
 ユーザー承認に基づき、再現済み不具合3件とUI/UX候補16項目を改修。既存LOCAL差分を保持。commit・push・EAS Buildは未実施。
 改修前159件（156 PASS / 3 FAIL）に10件追加し、169件 PASS / 0 FAILを確認。下の改修前FAIL記録・提案・過去の一次点検は履歴として保持する。

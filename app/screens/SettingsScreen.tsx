@@ -197,6 +197,7 @@ function WidgetSettingsSheet({ visible, onClose, onDismiss, widgetSettings, onWi
 }
 
 type DesignSettingsSheetProps = {
+  initialSelection?: boolean;
   visible: boolean;
   onClose: () => void;
   selectedMode: DesignMode;
@@ -319,7 +320,7 @@ export function DesignAppliedPreview({ tab, selectedMode, designMode, systemColo
   </View>;
 }
 
-function DesignSettingsSheet({ visible, onClose, onDismiss, closeSheetThen, selectedMode, designMode, chicPalette, monoAppearance, monoPattern, previewMonoPattern, chicPattern, chicCheckColor, photoTheme, previewPhotoUri, canUseMonoPaidPattern = false, canUsePaidDesign = false, planTier, designCustomizePurchased, designAccessStatus, designCustomizePrice, designCustomizePriceStatus, onDesignMode, onMonoAppearance, onMonoPattern, onMonoPreview, onChicPattern, onChicCheckColor, onDesignPreview, onPickPhotoTheme, onPickPhotoPreview, onAdjustPhotoTheme, onClearPhotoTheme, onPremium, onOpenDesignCustomize, onOpenDesignAccess, topImageCropResumeToken, fullscreenPreview, diagnosticInitialAppearanceOpen, diagnosticCaptureDesignOnly, diagnosticOnboardingDesignSelectionPending, diagnosticCurrentScreen, styles, helpers, components }: DesignSettingsSheetProps) {
+function DesignSettingsSheet({ visible, initialSelection = false, onClose, onDismiss, closeSheetThen, selectedMode, designMode, chicPalette, monoAppearance, monoPattern, previewMonoPattern, chicPattern, chicCheckColor, photoTheme, previewPhotoUri, canUseMonoPaidPattern = false, canUsePaidDesign = false, planTier, designCustomizePurchased, designAccessStatus, designCustomizePrice, designCustomizePriceStatus, onDesignMode, onMonoAppearance, onMonoPattern, onMonoPreview, onChicPattern, onChicCheckColor, onDesignPreview, onPickPhotoTheme, onPickPhotoPreview, onAdjustPhotoTheme, onClearPhotoTheme, onPremium, onOpenDesignCustomize, onOpenDesignAccess, topImageCropResumeToken, fullscreenPreview, diagnosticInitialAppearanceOpen, diagnosticCaptureDesignOnly, diagnosticOnboardingDesignSelectionPending, diagnosticCurrentScreen, styles, helpers, components }: DesignSettingsSheetProps) {
   const { ChicPatternSelector, ThemeColorSelector, PremiumFeatureIcon } = components;
   const systemColorScheme = useColorScheme();
   useEffect(() => {
@@ -417,6 +418,7 @@ function DesignSettingsSheet({ visible, onClose, onDismiss, closeSheetThen, sele
         <View style={{ alignSelf: 'center', width: 42, height: 4, borderRadius: 3, backgroundColor: colors.border }} />
         <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 18, paddingTop: 14, paddingBottom: 10 }}><View style={{ flex: 1 }}><Text style={{ color: colors.text, fontSize: 20, fontWeight: '900' }}>デザインを変更</Text><Text style={{ color: colors.muted, fontSize: 13, lineHeight: 19, marginTop: 3 }}>シンプル・デザイン・写真をここから選べます</Text></View><Pressable accessibilityRole="button" accessibilityLabel="閉じる" onPress={onClose} style={{ width: 40, height: 40, alignItems: 'center', justifyContent: 'center' }}><Text style={{ color: colors.muted, fontSize: 26, fontWeight: '300' }}>×</Text></Pressable></View>
         <View style={{ flexDirection: 'row', gap: 8, paddingHorizontal: 18, paddingBottom: 12 }}>{tabButton('mono', 'シンプル')}{tabButton('chic', 'デザイン')}{tabButton('photo', '写真')}</View>
+        {initialSelection && <Text style={{ color: colors.muted, fontSize: 13, lineHeight: 19, paddingHorizontal: 18, paddingBottom: 10 }}>無料の標準デザインでも始められます。あとから設定で変更できます。購入や広告視聴は必須ではありません。</Text>}
         <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: 18, paddingBottom: 72 }} showsVerticalScrollIndicator={false}>
           <DesignAppliedPreview tab={tab} selectedMode={selectedMode} designMode={designMode} systemColorScheme={systemColorScheme} monoAppearance={monoAppearance} monoPattern={visibleMonoPattern} chicPattern={chicPattern} chicCheckColor={chicCheckColor} chicPalette={chicPalette} photoTheme={photoTheme} previewPhotoUri={previewPhotoUri} colors={colors} styles={styles} helpers={helpers} components={components} />
           {tab === 'photo' && !(previewPhotoUri ?? photoTheme.imageUri) ? <Text style={{ color: colors.muted, fontSize: 13, lineHeight: 19, marginTop: 8 }}>写真を選ぶとプレビューに反映されます</Text> : null}
@@ -426,7 +428,7 @@ function DesignSettingsSheet({ visible, onClose, onDismiss, closeSheetThen, sele
           {tab === 'chic' && <View style={{ marginTop: 12 }}><View style={{ padding: 12, borderRadius: 14, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface }}><Text style={{ color: colors.text, fontSize: 13, fontWeight: '900' }}>テーマカラー</Text><Text style={{ color: colors.muted, fontSize: 13, lineHeight: 19, marginTop: 3 }}>選択した色でプレビューします</Text><View style={{ marginTop: 8 }}><ThemeColorSelector color={chicCheckColor} onChange={onChicCheckColor} designMode="chic" surfaceMode={designMode} /></View></View><ChicPatternSelector designMode="chic" chicPattern={chicPattern} chicCheckColor={chicCheckColor} planTier={planTier} designCustomizePurchased={canUsePaidDesign} onPattern={(pattern: ChicPattern) => { onDesignMode('chic'); onChicPattern(pattern); }} onCheckColor={onChicCheckColor} onPremium={() => onPremium('photo_design')} onPreview={onDesignPreview} /></View>}
           {tab === 'photo' && <View style={{ marginTop: 12 }}><View style={{ padding: 12, borderRadius: 14, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface }}><Text style={{ color: colors.text, fontSize: 13, fontWeight: '900' }}>テーマカラー</Text><Text style={{ color: colors.muted, fontSize: 13, lineHeight: 19, marginTop: 3 }}>写真に重ねるUIの色を選べます</Text><View style={{ marginTop: 8 }}><ThemeColorSelector color={chicCheckColor} onChange={onChicCheckColor} designMode="photo" surfaceMode={designMode} /></View></View><Text style={{ color: colors.text, fontSize: 14, fontWeight: '900', marginTop: 12 }}>写真を使う</Text><Text style={{ color: colors.muted, fontSize: 13, lineHeight: 19, marginTop: 3 }}>写真を選ぶと全画面で試せます。正式適用はプレビュー内から。適用時に無料体験・広告・購入の利用権を確認します。</Text><Pressable accessibilityRole="button" accessibilityLabel={(previewPhotoUri ?? photoTheme.imageUri) ? '別の写真でプレビュー' : '写真を選んでプレビュー'} onPress={async () => { if (!onPickPhotoPreview) { onPickPhotoTheme('background'); return; } const picked = await onPickPhotoPreview(); if (picked) setSheetView('fullscreenPreview'); }} style={{ marginTop: 9, minHeight: 44, borderRadius: 11, backgroundColor: colors.accent, borderWidth: 1, borderColor: colors.accent, alignItems: 'center', justifyContent: 'center' }}><Text style={{ color: colors.onAccent, fontSize: 12, fontWeight: '900' }}>{(previewPhotoUri ?? photoTheme.imageUri) ? '別の写真でプレビュー' : '写真を選んでプレビュー'}</Text></Pressable><PhotoThemeSettingsCard backgroundPreviewOnly photoTheme={photoTheme} designMode={designMode} chicPalette={chicPalette} planTier={planTier} designCustomizePurchased={designCustomizePurchased} accessStatusLabel={designAccessStatus === '未購入 ›' ? '未購入' : designAccessStatus} onPremium={onPremium} onPick={onPickPhotoTheme} onAdjust={onAdjustPhotoTheme} onClear={onClearPhotoTheme} styles={styles} /></View>}
         </ScrollView>
-        <Pressable accessibilityRole="button" onPress={onClose} style={{ marginHorizontal: 18, marginBottom: 18, minHeight: 46, borderRadius: 13, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.accent }}><Text style={{ color: colors.onAccent, fontSize: 13, fontWeight: '900' }}>閉じる</Text></Pressable>
+        <Pressable accessibilityRole="button" onPress={onClose} style={{ marginHorizontal: 18, marginBottom: 18, minHeight: 46, borderRadius: 13, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.accent }}><Text style={{ color: colors.onAccent, fontSize: 13, fontWeight: '900' }}>{initialSelection ? 'あとで選ぶ' : '閉じる'}</Text></Pressable>
         </View>
       </View>
     </View>
@@ -502,6 +504,7 @@ export function SettingsScreen({
   onPremium,
   onDeleteSavedTemplate,
   onOpenCaptureStudio,
+  onOpenIntro,
   designCustomizePurchased = false,
   designAccessStatus,
   canUseMonoPaidPattern = false,
@@ -518,6 +521,7 @@ export function SettingsScreen({
   topImageCropResumeToken,
   fullscreenPreview,
   initialAppearanceOpen = false,
+  onDeferInitialAppearance,
   captureDesignOnly = false,
   onboardingDesignSelectionPending = false,
   currentScreen = 'settings',
@@ -595,6 +599,7 @@ export function SettingsScreen({
   onPremium: (featureId?: PremiumGuideFeatureId) => void;
   onDeleteSavedTemplate: (template: PremiumTaskTemplate) => void;
   onOpenCaptureStudio?: () => void;
+  onOpenIntro?: () => void;
   designCustomizePurchased?: boolean;
   designAccessStatus?: string;
   canUseMonoPaidPattern?: boolean;
@@ -613,6 +618,7 @@ export function SettingsScreen({
   fullscreenPreview?: (onBack: () => void, sheetVisible: boolean, closeSheetThen: (action: () => void) => void) => React.ReactNode;
   /** Opens the appearance section for the first-run design choice. */
   initialAppearanceOpen?: boolean;
+  onDeferInitialAppearance?: () => void;
   /** Development capture only: stop after the production design selector. */
   captureDesignOnly?: boolean;
   onboardingDesignSelectionPending?: boolean;
@@ -829,7 +835,8 @@ export function SettingsScreen({
       </View>}
       <DesignSettingsSheet
         visible={designSheetOpen}
-        onClose={() => setDesignSheetOpenWithDiagnostic(false, 'design-sheet-close')}
+        initialSelection={onboardingDesignSelectionPending && Boolean(onDeferInitialAppearance)}
+        onClose={() => { if (onboardingDesignSelectionPending && onDeferInitialAppearance) closeDesignSheetThen(onDeferInitialAppearance); else setDesignSheetOpenWithDiagnostic(false, 'design-sheet-close'); }}
         onDismiss={() => {
           flushDesignSheetDismissAction();
         }}
@@ -1020,6 +1027,7 @@ export function SettingsScreen({
            <Text style={[styles.settingsDisclosureChevron, { color: isDesign && chicPalette ? guideColors.accent : baseTheme.primaryAccent }]}>›</Text>
          </Pressable>
        </View>
+       {onOpenIntro && <SettingsDisclosure icon="info" designMode={designMode} chicPalette={chicPalette} title="RhythmPaceの使い方" subtitle="5枚の紹介をもう一度見る" expanded={false} onPress={onOpenIntro} />}
        <SettingsDisclosure icon="info" designMode={designMode} chicPalette={chicPalette} title="アプリについて" subtitle="情報・プライバシー・お問い合わせ" expanded={false} onPress={() => setAboutSheetOpen(true)} />
        <AboutAppSheet visible={aboutSheetOpen} onClose={() => setAboutSheetOpen(false)} colors={{ background: isDesign && chicPalette ? chicPalette.background : baseTheme.screenBackground, surface: isDesign && chicPalette ? chicPalette.cardSurface : baseTheme.surface, border: isDesign && chicPalette ? chicPalette.border : baseTheme.border, text: isDesign && chicPalette ? chicPalette.textPrimary : baseTheme.primaryText, muted: isDesign && chicPalette ? chicPalette.textSecondary : baseTheme.secondaryText, accent: isDesign && chicPalette ? chicPalette.accent : baseTheme.primaryAccent, onAccent: isDesign && chicPalette ? chicPalette.onAccent : (isDark ? baseTheme.screenBackground : '#FFFFFF') }} />
       </>}

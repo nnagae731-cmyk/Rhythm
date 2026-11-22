@@ -28,17 +28,18 @@ try {
   speechModule = undefined;
 }
 
-function useSpeechEvent(eventName: string, listener: (event: SpeechEvent) => void) {
+function useSpeechEvent(eventName: string, listener: (event: SpeechEvent) => void, enabled = true) {
   useEffect(() => {
+    if (!enabled) return;
     const subscription = speechModule?.addListener?.(eventName, listener);
     return () => subscription?.remove();
-  }, [eventName, listener]);
+  }, [eventName, listener, enabled]);
 }
 
-type Props = { visible: boolean; designMode: DesignMode; chicPalette?: ChicThemePalette; dateKey: (date: Date) => string; onClose: () => void; onRoute: (result: VoiceParseResult) => boolean; hapticsEnabled?: boolean; isPremium?: boolean; remainingUses?: number; onRecognitionAccepted?: () => void; autoStart?: boolean };
-const INTENT_LABELS: Array<[VoiceIntent, string]> = [['todo', 'ToDo'], ['schedule', '予定'], ['routine', 'Routine'], ['focus', '集中'], ['wish', 'Wish'], ['wishAction', 'Wish Action']];
+type Props = { visible: boolean; designMode: DesignMode; chicPalette?: ChicThemePalette; dateKey: (date: Date) => string; onClose: () => void; onRoute: (result: VoiceParseResult) => boolean; hapticsEnabled?: boolean; isPremium?: boolean; remainingUses?: number; onRecognitionAccepted?: () => void; autoStart?: boolean; inlinePreview?: boolean };
+const INTENT_LABELS: Array<[VoiceIntent, string]> = [['todo', 'ToDo'], ['schedule', '予定'], ['routine', 'ルーティン'], ['focus', '集中'], ['wish', '叶えたいこと'], ['wishAction', '目標の行動']];
 
-export function VoiceInputModal({ visible, designMode, chicPalette, dateKey, onClose, onRoute, hapticsEnabled = true, isPremium = false, remainingUses, onRecognitionAccepted, autoStart = false }: Props) {
+export function VoiceInputModal({ visible, designMode, chicPalette, dateKey, onClose, onRoute, hapticsEnabled = true, isPremium = false, remainingUses, onRecognitionAccepted, autoStart = false, inlinePreview = false }: Props) {
   const theme = getThemeTokens(designMode, chicPalette?.id ?? 'cool');
   const isChic = designMode === 'chic' && !!chicPalette;
   const surface = isChic ? chicPalette!.cardSurface : theme.colors.surface;
@@ -79,14 +80,14 @@ export function VoiceInputModal({ visible, designMode, chicPalette, dateKey, onC
     await new Promise<void>((resolve) => setTimeout(resolve, 120));
   };
 
-  useSpeechEvent('start', () => { if (hapticsEnabled) Vibration.vibrate(12); setStatus('listening'); });
+  useSpeechEvent('start', () => { if (hapticsEnabled) Vibration.vibrate(12); setStatus('listening'); }, visible && !inlinePreview);
   useSpeechEvent('result', (event) => {
     const next = event.results?.[0]?.transcript ?? '';
     if (!next) return;
     setTranscript(next);
     if (event.isFinal) { setStatus('processing'); setParsed(parseVoiceInput(next, new Date(), dateKey)); }
-  });
-  useSpeechEvent('end', () => { if (hapticsEnabled) Vibration.vibrate(10); setStatus((current) => current === 'processing' || current === 'recognized' ? current : transcript ? 'processing' : 'idle'); });
+  }, visible && !inlinePreview);
+  useSpeechEvent('end', () => { if (hapticsEnabled) Vibration.vibrate(10); setStatus((current) => current === 'processing' || current === 'recognized' ? current : transcript ? 'processing' : 'idle'); }, visible && !inlinePreview);
   useSpeechEvent('error', (event) => {
     if (event.error === 'aborted') return;
     setErrorMessage(
@@ -99,7 +100,7 @@ export function VoiceInputModal({ visible, designMode, chicPalette, dateKey, onC
             : '音声入力を開始できませんでした。もう一度お試しください。',
     );
     setStatus('error');
-  });
+  }, visible && !inlinePreview);
 
   useEffect(() => {
     if (status !== 'listening') {
@@ -116,7 +117,7 @@ export function VoiceInputModal({ visible, designMode, chicPalette, dateKey, onC
   }, [pulse, status]);
 
   const startRecognition = () => {
-    if (!speechModule) { setErrorMessage('この環境では音声認識を利用できません。Development Buildでお試しください。'); setStatus('error'); return; }
+    if (!speechModule) { setErrorMessage('音声入力を利用できません。アプリを最新版に更新して、もう一度お試しください。'); setStatus('error'); return; }
     if (!permissionReady || recognitionStartingRef.current) return;
     recognitionStartingRef.current = true;
     setTranscript('');
@@ -155,7 +156,7 @@ export function VoiceInputModal({ visible, designMode, chicPalette, dateKey, onC
   }, [onRecognitionAccepted, onRoute]);
 
   useEffect(() => {
-    if (!visible) { routedRef.current = false; usageConsumedRef.current = false; autoStartRunRef.current = false; setPermissionReady(false); setStatus('idle'); setErrorMessage(undefined); setTranscript(''); setParsed(undefined); return; }
+    if (!visible || inlinePreview) { routedRef.current = false; usageConsumedRef.current = false; autoStartRunRef.current = false; setPermissionReady(false); setStatus('idle'); setErrorMessage(undefined); setTranscript(''); setParsed(undefined); return; }
     let active = true;
     const checkPermissions = async (requestMissing: boolean) => {
       if (permissionCheckInFlightRef.current) return;
@@ -215,7 +216,7 @@ export function VoiceInputModal({ visible, designMode, chicPalette, dateKey, onC
         setStatus('idle');
       } catch {
         setPermissionReady(false);
-        setErrorMessage('音声認識モジュールを利用できません。Development Buildを確認してください。');
+        setErrorMessage('音声入力を利用できません。アプリを最新版に更新して、もう一度お試しください。');
         setStatus('error');
       } finally {
         permissionCheckInFlightRef.current = false;
@@ -226,13 +227,13 @@ export function VoiceInputModal({ visible, designMode, chicPalette, dateKey, onC
       if (nextState === 'active') void checkPermissions(false);
     });
     return () => { active = false; appStateSubscription.remove(); try { speechModule?.stop(); } catch { /* Expo Go has no native module. */ } };
-  }, [dateKey, visible]);
+  }, [dateKey, visible, inlinePreview]);
 
   useEffect(() => {
-    if (!visible || !autoStart || !permissionReady || autoStartRunRef.current || status !== 'idle') return;
+    if (inlinePreview || !visible || !autoStart || !permissionReady || autoStartRunRef.current || status !== 'idle') return;
     autoStartRunRef.current = true;
     startRecognition();
-  }, [autoStart, permissionReady, status, visible]);
+  }, [autoStart, permissionReady, status, visible, inlinePreview]);
 
   useEffect(() => {
     if (!parsed || status !== 'processing') return;
@@ -250,7 +251,7 @@ export function VoiceInputModal({ visible, designMode, chicPalette, dateKey, onC
   const stop = () => { try { speechModule?.stop(); } catch { /* no-op */ } if (transcript && !parsed) { setParsed(parseVoiceInput(transcript, new Date(), dateKey)); setStatus('processing'); } };
   const statusLabel = status === 'listening' ? '聞き取り中…' : status === 'processing' ? '解析しています…' : status === 'recognized' ? '認識しました' : status === 'error' ? (errorMessage ?? '音声入力を利用できません') : '話してください';
 
-  return <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}><Pressable style={styles.backdrop} onPress={onClose}><Pressable style={[styles.sheet, { backgroundColor: background, borderColor: border }]} onPress={(event) => event.stopPropagation()}>
+  const content = <Pressable style={[styles.sheet, { backgroundColor: background, borderColor: border }]} onPress={(event) => event.stopPropagation()}>
     <View style={styles.header}><Text style={[styles.title, { color: text }]}>何を登録する？</Text><Pressable onPress={onClose}><Text style={[styles.close, { color: muted }]}>閉じる</Text></Pressable></View>
     <Text style={[styles.status, { color: muted }]}>{statusLabel}</Text>
     {status === 'error' && errorMessage?.includes('設定') ? <Pressable accessibilityRole="button" onPress={() => { void Linking.openSettings().catch(() => undefined); }}><Text style={[styles.settingsLink, { color: accent }]}>設定を開く</Text></Pressable> : null}
@@ -259,7 +260,9 @@ export function VoiceInputModal({ visible, designMode, chicPalette, dateKey, onC
     {transcript ? <Text style={[styles.transcript, { color: text }]}>{transcript}</Text> : <Text style={[styles.example, { color: muted }]}>「明日の予定を追加」{`\n`}「今日やることを追加」</Text>}
     {parsed?.intent === 'ambiguous' ? <View style={styles.choiceWrap}><Text style={[styles.choiceTitle, { color: muted }]}>どこに登録する？</Text><View style={styles.choiceRow}>{INTENT_LABELS.map(([intent, label]) => <Pressable key={intent} onPress={() => chooseIntent(intent)} style={[styles.choice, { backgroundColor: surface, borderColor: border }]}><Text style={[styles.choiceText, { color: text }]}>{label}</Text></Pressable>)}</View></View> : null}
     <Pressable onPress={onClose} style={styles.cancel}><Text style={[styles.cancelText, { color: muted }]}>キャンセル</Text></Pressable>
-  </Pressable></Pressable></Modal>;
+  </Pressable>;
+  if (inlinePreview) return <View pointerEvents="none" style={{ width: '100%' }}>{content}</View>;
+  return <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}><Pressable style={styles.backdrop} onPress={onClose}>{content}</Pressable></Modal>;
 }
 
 const styles = StyleSheet.create({

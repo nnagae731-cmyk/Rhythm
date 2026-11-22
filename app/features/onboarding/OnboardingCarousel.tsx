@@ -20,6 +20,8 @@ import {
 type Props = {
   visible: boolean;
   onDismiss: () => void;
+  onDismissComplete?: () => void;
+  busy?: boolean;
   /** The final CTA opens the real design selector instead of ending on Today. */
   onFinalAction?: () => void;
   /** Production screen renderer used by the app and Capture Studio. */
@@ -106,6 +108,8 @@ function OnboardingPreviewViewport({ children, colors, height = 320 }: { childre
 export function OnboardingCarousel({
   visible,
   onDismiss,
+  onDismissComplete,
+  busy = false,
   onFinalAction,
   renderStep,
   showSkip = true,
@@ -143,6 +147,7 @@ export function OnboardingCarousel({
   }, [visible]);
 
   const goNext = () => {
+    if (busy) return;
     if (isLast) {
       (onFinalAction ?? onDismiss)();
       return;
@@ -167,8 +172,10 @@ export function OnboardingCarousel({
       animationType="fade"
       presentationStyle="fullScreen"
       onRequestClose={onDismiss}
+      onDismiss={onDismissComplete}
+      testID="onboarding-intro-modal"
     >
-      <SafeAreaView style={[styles.screen, { backgroundColor: appearance.screenBackground }]}>
+      {visible ? <SafeAreaView style={[styles.screen, { backgroundColor: appearance.screenBackground }]}>
         <View style={styles.top}>
           <Text style={[styles.brand, { color: appearance.primaryText }]}>
             {brandName}
@@ -177,6 +184,7 @@ export function OnboardingCarousel({
           {showSkip && !isLast ? (
             <Pressable
               accessibilityRole="button"
+              disabled={busy}
               accessibilityLabel="使い方をスキップ"
               hitSlop={10}
               style={[styles.skipButton, { backgroundColor: appearance.secondarySurface }]}
@@ -277,6 +285,7 @@ export function OnboardingCarousel({
 
           <Pressable
             accessibilityRole="button"
+            disabled={busy}
             accessibilityLabel={
               isLast
                 ? finalActionLabel
@@ -297,7 +306,7 @@ export function OnboardingCarousel({
             </Text>
           </Pressable>
         </View>
-      </SafeAreaView>
+      </SafeAreaView> : null}
     </Modal>
   );
 }

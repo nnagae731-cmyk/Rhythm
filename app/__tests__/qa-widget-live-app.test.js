@@ -13,6 +13,14 @@ const {ONBOARDING_STORAGE_KEY}=require('../features/onboarding/onboardingStorage
 const native={saveSnapshot:jest.fn(async()=>true),isLiveActivityAvailable:jest.fn(async()=>true),startOrUpdateLiveActivity:jest.fn(async()=>true),endLiveActivity:jest.fn(async()=>true),getLiveActivityStatus:jest.fn(async()=>JSON.stringify({available:true,active:true})),getPendingWidgetActions:jest.fn(async()=> '[]')};
 beforeEach(async()=>{jest.clearAllMocks();expo.requireOptionalNativeModule.mockReturnValue(native);await storage.clear();await storage.setItem(ONBOARDING_STORAGE_KEY,JSON.stringify({version:1,completed:{intro:'2026-01-01',todo:'2026-01-01',todoComplete:'2026-01-01'},firstRunStage:'done'}));});
 afterEach(()=>cleanup());
+test('Widget手動更新はNative保存の失敗・成功を区別する',async()=>{
+ const {Alert}=require('react-native');const alert=jest.spyOn(Alert,'alert').mockImplementation(()=>{});native.saveSnapshot.mockResolvedValue(false);
+ try{
+  await saveRhythmState({tasks:[{id:'manual-widget',title:'Widget保存結果の目印',done:false,category:'その他',priority:'中',bucket:'now'}]});const App=require('../App').default;const view=render(<App/>);await waitFor(()=>expect(view.getAllByText('Widget保存結果の目印').length).toBeGreaterThan(0),{timeout:7000});await waitFor(()=>expect(native.saveSnapshot).toHaveBeenCalled(),{timeout:7000});const prompt=view.queryByText('今日はしない');if(prompt)fireEvent.press(prompt);fireEvent.press(view.getByText('設定'));fireEvent.press(view.getByLabelText('ウィジェットを更新'));
+  await waitFor(()=>expect(alert.mock.calls.some(a=>a[0]==='Widgetを更新できませんでした')).toBe(true),{timeout:7000});expect(alert.mock.calls.some(a=>a[0]==='Widgetを更新しました')).toBe(false);await waitFor(()=>expect(view.getByLabelText('ウィジェットを更新').props.accessibilityState.busy).toBe(false));
+  native.saveSnapshot.mockResolvedValue(true);fireEvent.press(view.getByLabelText('ウィジェットを更新'));await waitFor(()=>expect(alert.mock.calls.some(a=>a[0]==='Widgetを更新しました')).toBe(true),{timeout:7000});
+ }finally{native.saveSnapshot.mockResolvedValue(true);alert.mockRestore();}
+},30000);
 test('Live Activity開始APIの実行中にOFFになっても最後は終了する',async()=>{
  let release;const gate=new Promise(resolve=>{release=resolve});native.startOrUpdateLiveActivity.mockImplementationOnce(()=>gate);
  try{

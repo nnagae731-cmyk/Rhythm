@@ -151,6 +151,7 @@ export function completeTasksWithRepeats(current: Task[], ids: string[]) {
         || nextTasks.some((candidate) => repeatSeriesKey(candidate) === seriesKey && (candidate.repeatRule ?? 'none') === rule && candidate.scheduledDate === scheduledDate);
       if (!alreadyExists) nextTasks.push({
         ...task,
+        origin: undefined,
         id: `${Date.now()}-${task.id}-${Math.random().toString(16).slice(2)}`,
         createdAt: task.createdAt ?? task.id,
         done: false,

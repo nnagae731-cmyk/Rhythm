@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, InteractionManager, Modal, Pressable, ScrollView, Share, StyleSheet, Text, View } from 'react-native';
+import { Alert, InteractionManager, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, Share, StyleSheet, Text, TextInput, View } from 'react-native';
 import { BehaviorEvent } from '../behaviorEvents';
 import { FocusSession } from '../focusSession';
 import { ChicThemePalette, DesignMode, getThemeTokens } from '../theme';
@@ -35,13 +35,18 @@ export function AIShareSheet({ visible, onClose, initialWishId, tasks, departure
   const [kind, setKind] = useState<AIShareKind>(initialWishId ? 'wish' : 'today');
   const [wishId, setWishId] = useState<string | undefined>(initialWishId);
   const [sharing, setSharing] = useState(false);
+  const [shareDraft, setShareDraft] = useState<{ title: string; message: string }>();
+  const sharingRef = useRef(false);
   const pendingShareRef = useRef<{ title: string; message: string } | undefined>(undefined);
 
   useEffect(() => {
     if (!visible) return;
+    setShareDraft(undefined);
+    setSharing(false);
+    sharingRef.current = false;
     setKind(initialWishId ? 'wish' : 'today');
     setWishId(initialWishId ?? wishState.wishes.find((wish) => !wish.completed)?.id ?? wishState.wishes[0]?.id);
-  }, [visible, initialWishId, wishState.wishes]);
+  }, [visible, initialWishId]);
 
   const selectedWish = useMemo(() => wishState.wishes.find((wish) => wish.id === wishId), [wishId, wishState.wishes]);
   const accent = isChic && chicPalette ? chicPalette.accent : theme.colors.primaryAccent;
@@ -54,19 +59,20 @@ export function AIShareSheet({ visible, onClose, initialWishId, tasks, departure
 
   const presentPendingShare = () => {
     const pending = pendingShareRef.current;
+    setShareDraft(undefined);
     pendingShareRef.current = undefined;
     if (!pending) return;
     InteractionManager.runAfterInteractions(() => {
       requestAnimationFrame(() => {
         void Share.share(pending)
           .catch(() => Alert.alert('共有を開けませんでした', 'もう一度お試しください。'))
-          .finally(() => setSharing(false));
+          .finally(() => { sharingRef.current = false; setSharing(false); });
       });
     });
   };
 
-  const share = () => {
-    if (sharing) return;
+  const prepareShare = () => {
+    if (sharingRef.current) return;
     if (kind === 'wish' && !selectedWish) {
       Alert.alert('叶えたいことを選んでください', '共有する目標を1つ選択してください。');
       return;
@@ -77,30 +83,38 @@ export function AIShareSheet({ visible, onClose, initialWishId, tasks, departure
         ? buildBehaviorAnalysisShareText({ tasks, behaviorEvents, focusSessions })
         : buildWishProgressShareText({ wish: selectedWish!, state: wishState });
     const title = kind === 'today' ? 'RhythmPace 今日のTODO' : kind === 'analysis' ? 'RhythmPace 行動の記録' : 'RhythmPace 叶えたいこと';
+    setShareDraft({ title, message });
+  };
+  const share = () => {
+    if (sharingRef.current || !shareDraft?.message.trim()) return;
+    sharingRef.current = true;
     setSharing(true);
     // Present Share Sheet only after this sheet has dismissed; iOS does not
     // reliably present a second native sheet over an active Modal.
-    pendingShareRef.current = { title, message };
+    pendingShareRef.current = { ...shareDraft };
     onClose();
+    if (Platform.OS !== 'ios') InteractionManager.runAfterInteractions(presentPendingShare);
   };
 
   return <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose} onDismiss={presentPendingShare}>
-    <View style={styles.backdrop}>
+    <KeyboardAvoidingView style={styles.backdrop} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <Pressable style={StyleSheet.absoluteFill} onPress={onClose} accessibilityLabel="AIに共有を閉じる" />
       <View style={[styles.sheet, { backgroundColor: surface, borderColor: border }]}>
         <View style={[styles.handle, { backgroundColor: border }]} />
         <View style={styles.header}><View style={styles.headerCopy}><Text style={[styles.title, { color: textPrimary }]}>AIに共有</Text><Text style={[styles.subtitle, { color: textSecondary }]}>内容を作成してから、共有先を選びます</Text></View><Pressable accessibilityRole="button" onPress={onClose} hitSlop={10}><Text style={[styles.close, { color: accent }]}>閉じる</Text></Pressable></View>
-        <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+        <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" keyboardDismissMode="interactive" showsVerticalScrollIndicator={false}>
           <Text style={[styles.notice, { color: textSecondary, borderColor: border, backgroundColor: subtleSurface }]}>RhythmPaceがAIへ自動送信することはありません。共有先はこのあとiPhoneの共有画面で選択します。</Text>
+          {shareDraft ? <View style={{ gap: 10 }}><Text style={{ color: textPrimary, fontSize: 15, fontWeight: '800' }}>共有する文章を確認</Text><Text style={{ color: textSecondary, fontSize: 13, lineHeight: 19 }}>不要な内容は削除できます。ここではまだ送信されません。</Text><TextInput accessibilityLabel="共有する文章" multiline editable={!sharing} value={shareDraft.message} onChangeText={(message) => setShareDraft((current) => current ? { ...current, message } : current)} style={{ minHeight: 200, maxHeight: 300, padding: 12, borderWidth: 1, borderRadius: 12, borderColor: border, backgroundColor: subtleSurface, color: textPrimary, fontSize: 14, lineHeight: 21, textAlignVertical: 'top' }} /><Pressable accessibilityRole="button" disabled={sharing} style={{ minHeight: 44, justifyContent: 'center' }} onPress={() => setShareDraft(undefined)}><Text style={{ color: accent, fontSize: 13, fontWeight: '800' }}>内容を選び直す</Text></Pressable></View> : <>
           <View style={styles.choiceList}>{choices.map((choice) => {
             const selected = kind === choice.id;
             return <Pressable key={choice.id} accessibilityRole="radio" accessibilityState={{ selected }} onPress={() => setKind(choice.id)} style={[styles.choice, { borderColor: selected ? accent : border, backgroundColor: selected ? subtleSurface : surface }]}><View style={styles.choiceCopy}><Text style={[styles.choiceTitle, { color: selected ? accent : textPrimary }]}>{choice.title}</Text><Text style={[styles.choiceDescription, { color: textSecondary }]}>{choice.description}</Text></View><Text style={[styles.choiceMark, { color: selected ? accent : textSecondary }]}>{selected ? '✓' : '○'}</Text></Pressable>;
           })}</View>
           {kind === 'wish' && <View style={[styles.wishPicker, { borderColor: border }]}><Text style={[styles.wishPickerTitle, { color: textPrimary }]}>共有する叶えたいこと</Text>{wishState.wishes.length ? <View style={styles.wishList}>{wishState.wishes.map((wish) => <Pressable key={wish.id} accessibilityRole="radio" accessibilityState={{ selected: wish.id === wishId }} onPress={() => setWishId(wish.id)} style={[styles.wishOption, { borderColor: wish.id === wishId ? accent : border, backgroundColor: wish.id === wishId ? subtleSurface : surface }]}><Text numberOfLines={1} style={[styles.wishOptionText, { color: wish.id === wishId ? accent : textPrimary }]}>{wish.title}</Text><Text style={[styles.wishOptionMark, { color: wish.id === wishId ? accent : textSecondary }]}>{wish.id === wishId ? '✓' : '○'}</Text></Pressable>)}</View> : <Text style={[styles.emptyWish, { color: textSecondary }]}>共有できる「叶えたいこと」がまだありません。</Text>}</View>}
+          </>}
         </ScrollView>
-        <Pressable accessibilityRole="button" disabled={sharing || (kind === 'wish' && !selectedWish)} onPress={share} style={[styles.shareButton, { backgroundColor: sharing || (kind === 'wish' && !selectedWish) ? border : accent }]}><Text style={[styles.shareButtonText, { color: onAccent }]}>{sharing ? '共有を準備中…' : '共有内容を生成して開く'}</Text></Pressable>
+        <Pressable accessibilityRole="button" disabled={sharing || (shareDraft ? !shareDraft.message.trim() : kind === 'wish' && !selectedWish)} onPress={shareDraft ? share : prepareShare} style={[styles.shareButton, { backgroundColor: sharing || (shareDraft ? !shareDraft.message.trim() : kind === 'wish' && !selectedWish) ? border : accent }]}><Text style={[styles.shareButtonText, { color: onAccent }]}>{sharing ? '共有を準備中…' : shareDraft ? 'この内容で共有' : '共有内容を確認'}</Text></Pressable>
       </View>
-    </View>
+    </KeyboardAvoidingView>
   </Modal>;
 }
 
@@ -114,7 +128,7 @@ const styles = StyleSheet.create({
   subtitle: { fontSize: 12, fontWeight: '700', marginTop: 4 },
   close: { fontSize: 13, fontWeight: '900', paddingVertical: 4 },
   content: { gap: 13, paddingBottom: 2 },
-  notice: { borderWidth: 1, borderRadius: 12, padding: 10, fontSize: 11, lineHeight: 17, fontWeight: '700' },
+  notice: { borderWidth: 1, borderRadius: 12, padding: 10, fontSize: 13, lineHeight: 19, fontWeight: '700' },
   choiceList: { gap: 8 },
   choice: { minHeight: 65, borderWidth: 1, borderRadius: 14, padding: 12, flexDirection: 'row', alignItems: 'center', gap: 10 },
   choiceCopy: { flex: 1 },

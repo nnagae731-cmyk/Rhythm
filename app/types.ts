@@ -86,6 +86,8 @@ export type MonoPattern = 'plain' | 'looseLeaf' | 'chic';
 export type UrgencyStatus = '余裕あり' | 'そろそろ準備' | '今出れば間に合う' | '急いで出発' | '予定どおりは厳しい' | 'リカバリーが必要';
 
 export type Task = {
+  /** Explicit one-off WishAction link. Never inferred from matching titles. */
+  origin?: { monthKey: string; wishId: string; actionId: string };
   id: string;
   title: string;
   createdAt?: string;

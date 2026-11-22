@@ -17,7 +17,7 @@ type WishScreenProps = {
   wishMonths?: WishMonthMap;
   onSaveState: (updater: (current: MonthlyWishState) => MonthlyWishState) => void;
   onSaveEditor?: (updater: (current: MonthlyWishState) => MonthlyWishState) => Promise<void>;
-  onCreateTaskFromAction?: (action: WishAction) => void;
+  onCreateTaskFromAction?: (action: WishAction) => void | Promise<void>;
   canCreateWish?: boolean;
   wishRewardProgress?: { current: number; required: number };
   onRequestWishReward?: () => Promise<RewardedAccessResult> | RewardedAccessResult;
@@ -251,15 +251,24 @@ export function WishScreen({ designMode: rawDesignMode, chicPalette, monthLabel,
     }
   };
 
-  const createTaskFromActionEditor = () => {
-    if (!onCreateTaskFromAction) return;
+  const createTaskFromActionEditor = async () => {
+    if (!onCreateTaskFromAction || savingEditorRef.current) return;
     const title = editor.title.trim();
     const savedAction = editor.id ? actions.find((item) => item.id === editor.id) : undefined;
     if (!savedAction) {
       Alert.alert('先に行動を保存してね', '保存した行動からToDoを作成できます。');
       return;
     }
-    onCreateTaskFromAction({ ...savedAction, title: title || savedAction.title });
+    savingEditorRef.current = true;
+    setSavingEditor(true);
+    try {
+      await onCreateTaskFromAction({ ...savedAction, title: title || savedAction.title });
+    } catch {
+      Alert.alert('ToDoに追加できませんでした', '入力内容は残っています。もう一度お試しください。');
+    } finally {
+      savingEditorRef.current = false;
+      setSavingEditor(false);
+    }
   };
 
   const toggleWish = (id: string) => {

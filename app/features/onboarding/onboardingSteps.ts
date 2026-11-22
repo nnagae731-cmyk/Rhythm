@@ -87,28 +87,30 @@ export type IntroCard = {
 export const INTRO_CARDS: IntroCard[] = [
   {
     id: 'today',
-    title: '今日やることが、ひと目でわかる。',
-    description: 'タスクも予定も、今日必要なものをまとめて確認。',
+    title: '毎日のことを、ひとつに。',
+    description: 'TODOも予定も、習慣も目標も。毎日の管理をRhythmPaceにまとめよう。',
   },
   {
     id: 'voice',
-    title: '思いついたら、声で追加。',
-    description: '話すだけで、タスクや予定をすぐ追加できます。',
+    title: '思いついたら、すぐ残せる。',
+    description: '入力でも声でも。やることや予定を、思いついたときにサッと追加。',
   },
   {
-    id: 'focus',
-    title: '集中も、習慣も、続けやすく。',
-    description: '今やることに集中して、続けたいことも少しずつ。',
+    id: 'schedule',
+    title: '予定も、やることも、自分のペースで。',
+    description: '一日の流れを確認して、今やることに集中。準備や出発もサポート。',
   },
   {
-    id: 'widget',
-    title: 'アプリを開かなくても、次がわかる。',
-    description: 'ホーム画面やロック画面から、次にやることを確認できます。',
+    id: 'records',
+    title: '毎日の積み重ねが、未来につながる。',
+    description: '続けたい習慣、叶えたいこと、写真やひとこと。自分の歩みを振り返ろう。',
+    premiumNote: '写真・ひとこと記録と詳細履歴はPremium対象です（サンプル表示）。',
   },
   {
     id: 'customize',
-    title: '毎日見たくなる、自分の画面に。',
-    description: '背景や色を選んで、自分が使いやすい見た目に。',
+    title: '毎日開きたくなる、私のRhythm。',
+    description: 'シンプルにも、可愛くも。好きなデザインで自分らしく。',
+    premiumNote: '試着は無料。一部の正式利用は体験・広告・購入の対象です。',
   },
 ];
 

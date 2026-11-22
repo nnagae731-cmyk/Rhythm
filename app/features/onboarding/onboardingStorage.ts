@@ -191,6 +191,25 @@ export async function resetAllOnboarding(): Promise<void> {
   ));
 }
 
+/** The intro marker and Design handoff must survive interruption together. */
+export function finishInitialIntro(): Promise<OnboardingState> {
+  return serializeMutation(async () => {
+    const current = await readOnboardingState();
+    const next: OnboardingState = { ...current, completed: { ...current.completed, intro: current.completed.intro ?? new Date().toISOString() }, firstRunStage: 'design' };
+    await AsyncStorage.setItem(ONBOARDING_STORAGE_KEY, JSON.stringify(next));
+    return next;
+  });
+}
+
+export function finishInitialDesign(): Promise<OnboardingState> {
+  return serializeMutation(async () => {
+    const current = await readOnboardingState();
+    const next: OnboardingState = { ...current, completed: { ...current.completed, design: current.completed.design ?? new Date().toISOString() }, firstRunStage: 'done' };
+    await AsyncStorage.setItem(ONBOARDING_STORAGE_KEY, JSON.stringify(next));
+    return next;
+  });
+}
+
 export async function setOnboardingFirstRunStage(
   stage: OnboardingState['firstRunStage'],
 ): Promise<OnboardingState> {
