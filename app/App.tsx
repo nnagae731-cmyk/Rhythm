@@ -8,13 +8,13 @@ import { StatusBar } from 'expo-status-bar';
 import React, { useEffect, useMemo, useState } from 'react';
 import { ChicCheckColor, ChicPattern, ChicThemePalette, DesignMode, chicCheckColorChoices, getChicCheckColor, getDesignCheckColorLabel, getDesignCheckThemeTokens, getDesignPatternThemeTokens, getThemeTokens, normalizeChicCheckColor, normalizeChicPattern } from './theme';
 import { RecoveryRecord } from './recovery';
-import { createCompletedFocusSession, createFocusSessionId, FocusSession } from './focusSession';
+import { FocusSession } from './focusSession';
 import { createDepartureCheckIn, DepartureCheckIn } from './departureCheckIn';
 import { getChicPatternFeatureId, getEffectiveChicPattern, getEffectiveNudgeMode, hasPremiumAccess, PlanTier } from './premiumAccess';
 import { AnalysisScreen } from './AnalysisScreen';
 import { BThemeRibbonDecoration, BThemeRibbonPreload } from './components/BThemeRibbonDecoration';
 import { CThemeRibbonDecoration, CThemeRibbonPreload } from './components/CThemeRibbonDecoration';
-import { appendBehaviorEvent, appendBehaviorEvents, BehaviorEvent, createDeparturePreparationStartedEvent, createDepartureStartedEvent, createFocusCompletedBehaviorEvent, createFocusStartedEvent, createFocusStoppedEvent, createNotificationActionEvent, createNotificationScheduledEvent, createRoutineDeactivatedBehaviorEvent, createRoutineStateChangedBehaviorEvent, createTaskCompletedBehaviorEvent, createTaskCompletionRevertedBehaviorEvent, NotificationAction } from './behaviorEvents';
+import { appendBehaviorEvent, appendBehaviorEvents, BehaviorEvent, createDeparturePreparationStartedEvent, createDepartureStartedEvent, createNotificationActionEvent, createNotificationScheduledEvent, createRoutineDeactivatedBehaviorEvent, createRoutineStateChangedBehaviorEvent, createTaskCompletedBehaviorEvent, createTaskCompletionRevertedBehaviorEvent, NotificationAction } from './behaviorEvents';
 import { DEFAULT_PREMIUM_GUIDE_FEATURE, PremiumGuideFeatureId } from './premiumGuide';
 import { createPremiumTaskTemplate, hasSameTemplateSettings, PremiumTaskTemplate, summarizePremiumTaskTemplate } from './taskTemplates';
 import { Header } from './components/Header';
@@ -30,7 +30,7 @@ import { PremiumFeatureIcon, PremiumModal, type PremiumFeatureIconName } from '.
 import { PremiumTrialStarted, useRhythmStoreKit } from './features/purchases/useRhythmStoreKit';
 import { STORE_PRODUCT_IDS } from './features/purchases/storeProducts';
 import { RewardedAccessModal, RewardedAccessResult } from './components/RewardedAccessModal';
-import { BottomNav } from './components/BottomNav';
+import { BottomNav, getBottomNavTopOffset } from './components/BottomNav';
 import { NotificationManagerCard } from './components/NotificationManagerCard';
 import { OnboardingCarousel } from './features/onboarding/OnboardingCarousel';
 import { OnboardingCaptureStudio } from './features/onboarding/OnboardingCaptureStudio';
@@ -78,11 +78,12 @@ import { canUseNotifications, getNotificationPermissionAction, getNotificationPe
 import { addHours, canCreateWish, canCreateWishAction, canImportCalendar, canStartPremiumDesignTrial, isPremiumDesignTrialActive, isPremiumDesignUnlocked, isWidgetPhotoUnlockActive } from './features/ads/rewardedAccessLogic';
 import { getRequiredAds, REWARDED_AD_RULES, RewardedFeatureId } from './features/ads/rewardedAccess';
 import { DEFAULT_REWARDED_ACCESS_STATE, isRewardedAccessLoadFailure, loadRewardedAccessState, RewardedAccessState, saveRewardedAccessState } from './features/ads/rewardedAccessStorage';
-import { cancelFocusCompletionNotification, cancelPendingFocusCompletionNotifications, scheduleFocusCompletionNotification } from './features/focus/focusNotifications';
+import { applyEarnedReward, assertRewardStorageWritable, clearEarnedReward, EarnedRewardReceipt, recordEarnedReward, recoverEarnedReward } from './features/ads/earnedRewardStorage';
+import { cancelPendingFocusCompletionNotifications } from './features/focus/focusNotifications';
 import { cancelPremiumTrialReminder, schedulePremiumTrialReminder } from './features/notifications/premiumTrialReminder';
 import { buildAffirmationContent, buildCompletionFeedbackContent, buildDeadlineTitle, buildDepartureFollowUpContent, buildDepartureReminderContent, buildDepartureStageContent, buildScheduleSwitchContent, buildTaskActionContent, buildTaskReminderTitle, buildRoutineRemainingContent } from './features/notifications/notificationContent';
 import { cancelPendingAffirmationNotifications, cancelPendingAffirmationNotificationsUnsafe } from './features/notifications/affirmationNotifications';
-import { FOCUS_NAVIGATION_GUARD_COPY, getFocusNavigationDecision } from './features/focus/focusUsagePolicy';
+import { FocusControllerContext, FocusRuntimeProvider, useFocusController, type FocusController, type FocusModeProps } from './features/focus/useFocusController';
 import {
   Alert,
   ActivityIndicator,
@@ -819,7 +820,6 @@ export default function App() {
   const { width: screenWidth } = useWindowDimensions();
   const onboarding = useOnboarding();
   const [screen, setScreen] = useState<Screen>('home');
-  const [focusNavigationNotice, setFocusNavigationNotice] = useState(false);
   const [timelineInitialTab, setTimelineInitialTab] = useState<TimeTab>('departure');
   const [analysisInitialTab, setAnalysisInitialTab] = useState<'records' | 'insights' | 'routine'>('records');
   const [currentGuideFeature, setCurrentGuideFeature] = useState<Exclude<OnboardingFeatureId, 'intro'>>();
@@ -844,9 +844,12 @@ export default function App() {
   const rewardedAccessRef = React.useRef(rewardedAccess);
   rewardedAccessRef.current = rewardedAccess;
   // Preserve an earned reward across storage retries without showing another
-  // ad. Do not publish access until the real write succeeds. This receipt is
-  // in memory: if storage remains unavailable, do not quit before retrying.
-  const earnedRewardRef = React.useRef<{ featureId: RewardedFeatureId; earnedAt: Date; widgetType: WidgetType | null } | undefined>(undefined);
+  // ad. The journal recovers after restart; the ref also permits retrying when
+  // even the journal write failed. Publish access only after its real save.
+  const earnedRewardRef = React.useRef<EarnedRewardReceipt | undefined>(undefined);
+  const [earnedRewardPending, setEarnedRewardPending] = useState(false);
+  const [earnedRewardSaving, setEarnedRewardSaving] = useState(false);
+  const retryEarnedRewardRef = React.useRef<() => Promise<void>>(async () => undefined);
   const [rewardedAccessHydrated, setRewardedAccessHydrated] = useState(false);
   const [rewardedPrompt, setRewardedPrompt] = useState<{ featureId: RewardedFeatureId; title: string; description: string } | null>(null);
   const [rewardedPromptClosing, setRewardedPromptClosing] = useState(false);
@@ -871,14 +874,19 @@ export default function App() {
       try {
         const loaded = await loadRewardedAccessState();
         if (!active || isRewardedAccessLoadFailure(loaded)) return;
+        const recovered = await recoverEarnedReward(loaded);
+        if (!active) return;
         resolved = true;
-        setRewardedAccess(loaded);
+        rewardedAccessRef.current = recovered;
+        setRewardedAccess(recovered);
         setRewardedAccessHydrated(true);
+      } catch (error) {
+        console.warn('[Ads] Earned reward recovery could not finish. Retry on app activation.', error);
       } finally { loading = false; }
     };
     void load();
     const subscription = AppState.addEventListener('change', (nextState) => {
-      if (nextState === 'active') void load();
+      if (nextState === 'active') { void load(); if (earnedRewardRef.current) void retryEarnedRewardRef.current(); }
     });
     return () => { active = false; subscription.remove(); };
   }, []);
@@ -1063,6 +1071,10 @@ export default function App() {
   const [tomorrowPrepOpen, setTomorrowPrepOpen] = useState(false);
   const [tomorrowPrepStep, setTomorrowPrepStep] = useState<0 | 1 | 2 | 3>(0);
   const [focusTaskCompletionPrompt, setFocusTaskCompletionPrompt] = useState<FocusSession | undefined>();
+  const [focusCompletionPromptOpen, setFocusCompletionPromptOpen] = useState(false);
+  const [focusCompletionNotice, setFocusCompletionNotice] = useState(false);
+  const [statusNoticeHeight, setStatusNoticeHeight] = useState(0);
+  const focusCompletionCanPresentRef = React.useRef(false);
   const focusTaskCompletionPromptedRef = React.useRef(new Set<string>());
   const tomorrowPrepDeferredUntilRef = React.useRef(0);
   const [scheduleConflictPrompt, setScheduleConflictPrompt] = useState<ScheduleConflict | undefined>();
@@ -1405,8 +1417,12 @@ export default function App() {
     }
     if (rewardedGenericBusyRef.current) return { success: false, message: '広告を準備しています…' };
     rewardedGenericBusyRef.current = true;
+    setEarnedRewardSaving(true);
     try {
+      let journalWrite: Promise<boolean> | undefined;
       if (!earnedRewardRef.current) {
+      try { await assertRewardStorageWritable(); }
+      catch { return { success: false, message: '保存先を利用できないため、広告は開始していません。端末の空き容量などを確認し、もう一度お試しください。' }; }
       let showTestRewardedAd: typeof import('./services/rewardedAds').showTestRewardedAd;
       try {
         ({ showTestRewardedAd } = require('./services/rewardedAds') as typeof import('./services/rewardedAds'));
@@ -1414,63 +1430,68 @@ export default function App() {
         if (__DEV__) console.log('[Ads] show:error', error instanceof Error ? error.message : String(error));
         return { success: false, message: '広告の確認にはDevelopment Buildが必要です。' };
       }
-      const earned = await showTestRewardedAd().catch((error) => {
+      const widgetType = widgetPhotoUnlockTargetRef.current;
+      const earned = await showTestRewardedAd(() => {
+        earnedRewardRef.current ??= { id: `earned:${Date.now()}:${Math.random().toString(36).slice(2)}`, featureId, earnedAt: new Date().toISOString(), widgetType };
+        setEarnedRewardPending(true);
+        journalWrite ??= recordEarnedReward(earnedRewardRef.current).then(() => true, () => false);
+      }).catch((error) => {
         if (__DEV__) console.log('[Ads] show:error', error instanceof Error ? error.message : String(error));
         return false;
       });
-      if (!earned) return { success: false, message: '広告を読み込めませんでした。もう一度お試しください。' };
-        earnedRewardRef.current = { featureId, earnedAt: new Date(), widgetType: widgetPhotoUnlockTargetRef.current };
+      if (!earned && !earnedRewardRef.current) return { success: false, message: '広告を読み込めませんでした。もう一度お試しください。' };
+        earnedRewardRef.current ??= { id: `earned:${Date.now()}:${Math.random().toString(36).slice(2)}`, featureId, earnedAt: new Date().toISOString(), widgetType };
       }
       const receipt = earnedRewardRef.current;
       const required = getRequiredAds(featureId);
-      const base = rewardedAccessRef.current;
-      let next: RewardedAccessState = base;
-      let completed = true;
-      if (featureId === 'wishCreate') {
-        const progress = Math.min(required, base.wishCreateProgress + 1);
-        next = { ...base, wishCreateProgress: progress };
-        completed = progress >= required;
-      } else if (featureId === 'wishActionCreate') {
-        const progress = Math.min(required, base.wishActionCreateProgress + 1);
-        next = { ...base, wishActionCreateProgress: progress };
-        completed = progress >= required;
-      } else if (featureId === 'premiumDesign' || featureId === 'premiumDesignTrialExpired') {
-        next = { ...base, premiumDesign: { unlockedUntil: addHours(receipt.earnedAt, 12) } };
-      } else if (featureId === 'calendarImport') {
-        next = { ...base, calendarImportCredits: base.calendarImportCredits + 1 };
-      } else if (featureId === 'photoTop') {
-        next = { ...base, photoCustomization: { ...base.photoCustomization, topExtraSlotsUnlocked: Math.min(5, base.photoCustomization.topExtraSlotsUnlocked + 1) } };
-      } else if (featureId === 'photoBackground') {
-        next = { ...base, photoCustomization: { ...base.photoCustomization, backgroundUnlocked: true } };
-      } else if (featureId === 'photoFocus') {
-        next = { ...base, photoCustomization: { ...base.photoCustomization, focusUnlocked: true } };
-      } else if (featureId === 'widgetPhoto') {
-        const widgetType = receipt.widgetType;
-        if (!widgetType) return { success: false, message: '写真を使うWidgetを選択してください。' };
-        const unlockedAt = receipt.earnedAt;
-        next = { ...base, widgetPhotoCustomization: { widgetType, unlockedAt: unlockedAt.toISOString(), expiresAt: addHours(unlockedAt, 24 * REWARDED_AD_RULES.widgetPhoto.unlockDurationDays) } };
-      } else if (featureId === 'routineSkip') {
-        next = { ...base, routine: { ...base.routine, skipStock: base.routine.skipStock + 1 } };
-      } else if (featureId === 'routineSkipBonus') {
-        const progress = Math.min(required, base.routine.skipBonusProgress + 1);
-        const reached = progress >= required;
-        next = { ...base, routine: { ...base.routine, skipBonusProgress: reached ? 0 : progress, skipBonusAdded: reached ? Math.min(2, base.routine.skipBonusAdded + 1) : base.routine.skipBonusAdded, skipStock: reached ? base.routine.skipStock + (base.routine.skipBonusAdded < 2 ? 1 : 0) : base.routine.skipStock } };
-        completed = reached;
-      }
       try {
-        await saveRewardedAccessState(next);
+        // Journal first: restarting after the access write fails must not
+        // require another ad. The committed state contains the receipt ID.
+        if (journalWrite) { if (!await journalWrite) throw new Error('Earned receipt write failed.'); }
+        else await recordEarnedReward(receipt);
       } catch {
+        setEarnedRewardPending(true);
+        return { success: false, completed: false, retryWithoutAd: true, message: '広告は視聴済みですが、記録を保存できません。アプリを閉じずに保存を再試行してください。広告を見直す必要はありません。' };
+      }
+      let base = rewardedAccessRef.current;
+      let next = applyEarnedReward(base, receipt);
+      const completed = featureId === 'wishCreate' ? next.wishCreateProgress >= required
+        : featureId === 'wishActionCreate' ? next.wishActionCreateProgress >= required
+          : featureId === 'routineSkipBonus' ? next.routine.skipBonusAdded > base.routine.skipBonusAdded : true;
+      try {
+        // If another existing credit/setting changes while the write is in
+        // flight, rebase on that latest state, not the pre-ad snapshot.
+        let saved = false;
+        for (let attempt = 0; attempt < 3; attempt += 1) {
+          base = rewardedAccessRef.current;
+          next = applyEarnedReward(base, receipt);
+          await saveRewardedAccessState(next);
+          if (rewardedAccessRef.current === base) { saved = true; break; }
+        }
+        if (!saved) throw new Error('Reward state changed during save. Retry from the earned receipt.');
+      } catch {
+        setEarnedRewardPending(true);
         return { success: false, completed: false, retryWithoutAd: true, message: '広告は視聴済みです。アプリを閉じずに保存を再試行してください。広告を見直す必要はありません。' };
       }
       earnedRewardRef.current = undefined;
+      setEarnedRewardPending(false);
       rewardedAccessRef.current = next;
       setRewardedAccess(next);
+      await clearEarnedReward();
       const nextProgress = getRewardedPromptProgress(featureId).current + 1;
       return { success: true, completed, message: completed ? '取得しました' : `広告を1回確認しました。あと${Math.max(0, required - nextProgress)}回です。` };
     } finally {
       rewardedGenericBusyRef.current = false;
+      setEarnedRewardSaving(false);
     }
   }, [getRewardedPromptProgress, planTier, rewardedAccessHydrated]);
+
+  retryEarnedRewardRef.current = async () => {
+    const receipt = earnedRewardRef.current;
+    if (!receipt || rewardedGenericBusyRef.current) return;
+    try { await grantRewarded(receipt.featureId); }
+    catch (error) { setEarnedRewardPending(true); console.warn('[Ads] Earned reward retry failed.', error); }
+  };
 
   const openRewardedPrompt = React.useCallback((featureId: RewardedFeatureId, title: string, description: string, onCompleted?: () => void) => {
     if (planTier === 'premium') {
@@ -2862,16 +2883,47 @@ export default function App() {
     });
   }, [applySkipTaskById, openRewardedPrompt, planTier, rewardedAccess]);
 
-  const deleteTaskById = React.useCallback((taskId: string) => {
+  const [deletedTaskUndo, setDeletedTaskUndo] = useState<{ task: Task; index: number }>();
+  const deletedTaskUndoRef = React.useRef<typeof deletedTaskUndo>(undefined);
+  const deletedTaskUndoTimerRef = React.useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const clearDeletedTaskUndo = React.useCallback(() => {
+    if (deletedTaskUndoTimerRef.current) clearTimeout(deletedTaskUndoTimerRef.current);
+    deletedTaskUndoTimerRef.current = undefined;
+    deletedTaskUndoRef.current = undefined;
+    setDeletedTaskUndo(undefined);
+  }, []);
+  useEffect(() => () => { if (deletedTaskUndoTimerRef.current) clearTimeout(deletedTaskUndoTimerRef.current); }, []);
+  const undoTaskDeletion = () => {
+    const entry = deletedTaskUndoRef.current;
+    clearDeletedTaskUndo();
+    if (!entry || tasksRef.current.some(task => task.id === entry.task.id)) return;
+    const restored = { ...entry.task };
+    if (restored.origin && !linkedWishAction(wishMonthsRef.current, restored.origin)) delete restored.origin;
+    const next = [...tasksRef.current];
+    next.splice(Math.min(entry.index, next.length), 0, restored);
+    tasksRef.current = next;
+    setTasks(next);
+    void scheduleTaskNotificationsRef.current(restored).catch(error => console.warn('Restored task notifications failed.', error));
+    void syncScheduleSwitchNotificationsForTask(restored.id);
+  };
+  const deleteTaskById = React.useCallback((taskId: string, allowUndo = true) => {
     const target = tasksRef.current.find((task) => task.id === taskId);
     if (!target) return;
+    const index = tasksRef.current.findIndex(task => task.id === taskId);
+    clearDeletedTaskUndo();
+    if (allowUndo) {
+      const entry = { task: target, index };
+      deletedTaskUndoRef.current = entry;
+      setDeletedTaskUndo(entry);
+      deletedTaskUndoTimerRef.current = setTimeout(() => { if (deletedTaskUndoRef.current === entry) clearDeletedTaskUndo(); }, 6000);
+    }
     const next = tasksRef.current.filter((task) => task.id !== taskId);
     tasksRef.current = next;
     setTasks(next);
     setSelectedTaskIds((current) => current.filter((id) => id !== taskId));
     void cancelPendingTaskNotifications(taskId).catch((error) => console.warn('Task notification cancellation failed.', error));
     void cancelScheduleSwitchNotificationsForTask(taskId);
-  }, []);
+  }, [clearDeletedTaskUndo]);
 
   const deleteSelectedTasks = React.useCallback((ids: string[]) => {
     const selected = [...new Set(ids)].filter((id) => tasksRef.current.some((task) => task.id === id));
@@ -2879,7 +2931,7 @@ export default function App() {
     Alert.alert(`選択した${selected.length}件を削除しますか？`, '削除したタスクは元に戻せません。', [
       { text: 'キャンセル', style: 'cancel' },
       { text: `${selected.length}件を削除`, style: 'destructive', onPress: () => {
-        selected.forEach((id) => deleteTaskById(id));
+        selected.forEach((id) => deleteTaskById(id, false));
         setSelectionMode(false);
         setSelectedTaskIds([]);
       } },
@@ -4829,13 +4881,14 @@ export default function App() {
     focusTaskCompletionPromptedRef.current.add(session.id);
     setScheduleConflictPrompt(undefined);
     setFocusTaskCompletionPrompt(session);
+    setFocusCompletionPromptOpen(focusCompletionCanPresentRef.current);
     return true;
   }, []);
 
   useEffect(() => {
     if (!focusTaskCompletionPrompt) return;
     const target = tasksRef.current.find((task) => task.id === focusTaskCompletionPrompt.taskId);
-    if (!target || target.done || target.status === 'skipped') setFocusTaskCompletionPrompt(undefined);
+    if (!target || target.done || target.status === 'skipped') { setFocusTaskCompletionPrompt(undefined); setFocusCompletionPromptOpen(false); }
   }, [focusTaskCompletionPrompt, tasks]);
 
   useEffect(() => {
@@ -4846,22 +4899,14 @@ export default function App() {
   }, [departurePlans, scheduleConflictPrompt, tasks]);
 
   const navigateWithinApp = React.useCallback((nextScreen: Screen) => {
-    const decision = getFocusNavigationDecision(focusTimerActive && nextScreen !== 'timeline');
-    if (!decision.allowed) {
-      setFocusNavigationNotice(true);
-      return;
-    }
     if (nextScreen !== 'analysis') {
       setOpenTodayReview(false);
       setAnalysisInitialTab('records');
     }
-    // TimelineScreen mirrors initialTab into its local tab state. Keep the
-    // Focus tab selected while a session is running so a schedule/deep-link
-    // request cannot unmount FocusMode and trigger its cleanup.
-    if (focusTimerActive && nextScreen === 'timeline') setTimelineInitialTab('focus');
+    // The timer is owned by App. Timeline tabs may unmount their views safely.
     if (nextScreen === 'wish') openWish();
     else setScreen(nextScreen);
-  }, [focusTimerActive, openWish, screen]);
+  }, [openWish, screen]);
   navigateWithinAppRef.current = navigateWithinApp;
 
   // Premium previews reuse the production screens with fixed, read-only demo
@@ -5901,14 +5946,36 @@ export default function App() {
     const target = focusPromptTask;
     tomorrowPrepDeferredUntilRef.current = Date.now() + 10 * 60_000;
     setFocusTaskCompletionPrompt(undefined);
+    setFocusCompletionPromptOpen(false);
+    setFocusCompletionNotice(false);
     if (!target) return;
     if (action === 'complete') completeTaskIds([target.id], 'manual');
     if (action === 'continue') { setTimelineInitialTab('focus'); setScreen('timeline'); }
   };
 
+  const focusAvailableTasks = React.useMemo(() => getFocusAvailableTasks(tasks), [tasks, dateKey(now)]);
+  const focusScreenVisible = screen === 'timeline' && timelineInitialTab === 'focus';
+  const focusCompletionCanPresent = focusScreenVisible && !planEditorOpen && !editingTask && !addOpen && !bulkAddOpen && !voiceOpen && !premiumOpen && !designCustomizeOpen && !designPreviewPattern && !designTrialNoticeOpen && !openTodayReview && !sharedEventOpen && !recoveryTargetPlanId && !noticeCenterOpen && !tomorrowPrepOpen && !rewardedPrompt && !onboarding.introVisible && !firstRunDemoActive;
+  focusCompletionCanPresentRef.current = focusCompletionCanPresent;
+  const focusControllerOptions = {
+    tasks, availableTasks: focusAvailableTasks, designMode: uiDesignMode, planTier,
+    enabled: hydrated && !persistenceDisabledRef.current,
+    customDurationMinutes: focusCustomDurationMinutes, onCustomDurationChange: setFocusCustomDurationMinutes,
+    voiceStartRequest: voiceFocusRequest, focusPersistedState: focusState, onFocusStateChange: setFocusState,
+    onFocusCompleted: completeFocusSession, onFocusTaskFinished: handleFocusTaskFinished,
+    onFocusStarted: () => { setVoiceFocusRequest(undefined); setFocusCompletionNotice(false); setFocusTaskCompletionPrompt(undefined); setFocusCompletionPromptOpen(false); void onboarding.complete('focus'); },
+    onFocusNotificationPermission: ensureNotifications, onFocusRunningChange: setFocusTimerActive,
+    onFocusActivityChange: setFocusActivity, onBehaviorEvent: recordBehaviorEvent,
+    hapticsEnabled, onHaptic: triggerHaptic, onCompletionAlert: (taskTitle?: string) => {
+      if (focusCompletionCanPresentRef.current) showFocusCompletionAlert(taskTitle);
+      else setFocusCompletionNotice(true);
+    },
+  };
+
   if (persistenceIssue === 'read') return <SafeAreaView style={{ flex: 1, backgroundColor: theme.colors.screenBackground, justifyContent: 'center', padding: 24 }}><Text accessibilityRole="alert" style={{ color: theme.colors.primaryText, fontSize: 20, fontWeight: '800' }}>保存データを読み込めませんでした</Text><Text style={{ color: theme.colors.secondaryText, fontSize: 14, lineHeight: 22, marginTop: 12 }}>データは消去していません。誤った上書きを防ぐため、読込ができるまで編集を停止しています。</Text><Pressable accessibilityRole="button" disabled={persistenceRetrying} onPress={() => { if (persistenceRetrying) return; setPersistenceRetrying(true); setHydrationRetry((value) => value + 1); }} style={{ minHeight: 48, marginTop: 20, alignItems: 'center', justifyContent: 'center', borderRadius: 12, backgroundColor: theme.colors.primaryAccent }}><Text style={{ color: uiDesignMode === 'chic' ? chicPalette.onAccent : uiDesignMode === 'dark' ? theme.colors.screenBackground : '#FFFFFF', fontSize: 14, fontWeight: '800' }}>{persistenceRetrying ? '読み込み中…' : 'もう一度読み込む'}</Text></Pressable></SafeAreaView>;
 
   return (
+    <FocusRuntimeProvider options={focusControllerOptions}>
     <View style={{ flex: 1, backgroundColor: imageDesignBackground?.background ?? (uiDesignMode === 'chic' ? getChicPatternVisual(effectiveChicPattern, chicPalette).background : theme.colors.screenBackground) }}>
       {imageDesignBackground && imageDesignBackgroundSize && <View pointerEvents="none" style={[StyleSheet.absoluteFillObject, { overflow: 'hidden', backgroundColor: imageDesignBackground.background }]}><Image source={imageDesignBackground.source} style={[imageDesignBackgroundSize, { position: 'absolute', top: 0, alignSelf: 'center' }]} /></View>}
       <SafeAreaView style={[styles.safe, uiDesignMode === 'minimal' && styles.safeMinimal, uiDesignMode === 'dark' && styles.safeDark, designMode === 'photo' && styles.safePhoto, !hydrated && { opacity: 0 }, { backgroundColor: 'transparent' }]}>
@@ -5925,7 +5992,7 @@ export default function App() {
         {photoTopImageUri && screen !== 'wish' ? <><Header designMode={uiDesignMode} now={now} compact chicPalette={headerChicPalette} onVoice={handleHeaderVoice} onPremium={planTier === 'premium' ? undefined : () => openPremiumFeature('voice')} onNotifications={screen === 'settings' ? () => setNoticeCenterOpen(true) : undefined} hasUnreadNotifications={screen === 'settings' && unreadNoticeCount > 0} /><View style={styles.photoThemeTopImage}><Image source={{ uri: photoTopImageUri }} resizeMode="contain" style={styles.photoThemeTopImageContent} /></View></> : <Header designMode={uiDesignMode} now={now} chicPalette={headerChicPalette} onVoice={handleHeaderVoice} onPremium={planTier === 'premium' ? undefined : () => openPremiumFeature('voice')} onNotifications={screen === 'settings' ? () => setNoticeCenterOpen(true) : undefined} hasUnreadNotifications={screen === 'settings' && unreadNoticeCount > 0} />}
         {completionAffirmation && <Animated.View pointerEvents="none" style={{ position: 'absolute', top: 72, left: 20, right: 20, zIndex: 30, opacity: completionAffirmationOpacity, alignItems: 'center' }}><View style={{ maxWidth: 340, paddingHorizontal: 18, paddingVertical: 12, borderRadius: 18, backgroundColor: uiDesignMode === 'dark' ? '#20293A' : uiDesignMode === 'chic' ? chicPalette.cardSurface : '#FFFFFF', borderWidth: 1, borderColor: uiDesignMode === 'dark' ? '#40506A' : uiDesignMode === 'chic' ? chicPalette.border : '#E5E0E5', shadowColor: '#000', shadowOpacity: 0.12, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 4 }}><Text style={{ textAlign: 'center', color: uiDesignMode === 'dark' ? '#F4F7FC' : uiDesignMode === 'chic' ? chicPalette.textPrimary : '#282538', fontSize: 14, fontWeight: '600' }}>{completionAffirmation}</Text></View></Animated.View>}
 
-        <ScrollView contentContainerStyle={[styles.content, screen === 'timeline' && styles.contentTimeline]} keyboardShouldPersistTaps="handled">
+        <ScrollView testID="app-main-scroll" contentContainerStyle={[styles.content, screen === 'timeline' && styles.contentTimeline, statusNoticeHeight > 0 && { paddingBottom: Math.max(screen === 'timeline' ? styles.contentTimeline.paddingBottom : styles.content.paddingBottom, getBottomNavTopOffset(uiDesignMode) + 8 + statusNoticeHeight + 16) }]} keyboardShouldPersistTaps="handled">
           {screen === 'home' && (
             <HomeScreen
               tasks={firstRunDemoActive ? activeGuideDemoTasks : visibleTasks}
@@ -6133,6 +6200,16 @@ export default function App() {
               onSaveState={firstRunDemoActive ? () => undefined : saveCurrentWishState}
               onSaveEditor={firstRunDemoActive ? undefined : saveCurrentWishEditor}
               onCreateTaskFromAction={firstRunDemoActive ? () => undefined : createTaskFromWishAction}
+              linkedTaskIdsByAction={firstRunDemoActive ? {} : Object.fromEntries(currentWishState.actions.flatMap(action => {
+                const matches = tasks.filter(task => sameWishTaskOrigin(task.origin, { monthKey: currentWishMonthKey, wishId: action.wishId, actionId: action.id }));
+                return matches.length === 1 ? [[action.id, matches[0]!.id]] : [];
+              }))}
+              onOpenRelatedTask={firstRunDemoActive ? undefined : taskId => {
+                const target = tasksRef.current.find(task => task.id === taskId);
+                if (!target) return;
+                setScreen('home');
+                setEditingTask(target);
+              }}
               affirmations={firstRunDemoActive ? guideDemoAffirmations : affirmations}
               affirmationCustomTexts={affirmationCustomTexts}
               planTier={planTier}
@@ -6224,12 +6301,12 @@ export default function App() {
               onFocusRunningChange={setFocusTimerActive}
               onFocusActivityChange={setFocusActivity}
               focusPersistedState={firstRunDemoActive ? undefined : focusState}
+              focusRuntimeShared={!firstRunDemoActive}
               onFocusStateChange={firstRunDemoActive ? () => undefined : setFocusState}
               focusCustomDurationMinutes={focusCustomDurationMinutes}
               onFocusCustomDurationChange={firstRunDemoActive ? () => undefined : setFocusCustomDurationMinutes}
               focusVoiceRequest={voiceFocusRequest}
               focusTimerActive={focusTimerActive}
-              onFocusNavigationBlocked={() => setFocusNavigationNotice(true)}
               onBehaviorEvent={firstRunDemoActive ? () => undefined : recordBehaviorEvent}
               onDeparted={firstRunDemoActive ? () => undefined : markDeparturePlanAsDeparted}
               onPreparationStarted={firstRunDemoActive ? () => undefined : markDeparturePreparationStarted}
@@ -6536,6 +6613,12 @@ export default function App() {
 
         {productionGuideOverlay}
 
+      <View testID="app-status-notices" pointerEvents="box-none" onLayout={event => { const height = Math.ceil(event.nativeEvent.layout.height); setStatusNoticeHeight(current => current === height ? current : height); }} style={{ position: 'absolute', bottom: getBottomNavTopOffset(uiDesignMode) + 8, left: 16, right: 16, zIndex: 100, gap: 8 }}>
+        {earnedRewardPending && <View accessibilityRole="alert" style={{ paddingHorizontal: 14, paddingVertical: 8, borderRadius: 14, borderWidth: 1, borderColor: theme.colors.border, backgroundColor: theme.colors.surface }}><Text style={{ color: theme.colors.primaryText, fontSize: 13, lineHeight: 19 }}>{earnedRewardSaving ? '視聴済み広告の記録を保存しています。保存が終わるまでアプリを閉じないでください。' : '広告は視聴済みですが、記録を保存できていません。アプリを閉じずに再試行してください。'}</Text><Pressable accessibilityRole="button" accessibilityLabel="広告の保存を再試行" disabled={earnedRewardSaving} style={{ minHeight: 44, justifyContent: 'center' }} onPress={() => { void retryEarnedRewardRef.current(); }}><Text style={{ color: theme.colors.primaryAccent, fontSize: 14, fontWeight: '800' }}>{earnedRewardSaving ? '保存中…' : '広告を見直さずに保存する'}</Text></Pressable></View>}
+      {deletedTaskUndo && <View accessibilityLiveRegion="polite" style={{ paddingHorizontal: 14, borderRadius: 14, borderWidth: 1, borderColor: theme.colors.border, backgroundColor: theme.colors.surface, flexDirection: 'row', alignItems: 'center', gap: 12 }}><Text numberOfLines={1} style={{ flex: 1, color: theme.colors.primaryText, fontSize: 14 }}>ToDoを削除しました</Text><Pressable accessibilityRole="button" accessibilityLabel="ToDoの削除を元に戻す" onPress={undoTaskDeletion} style={{ minHeight: 44, justifyContent: 'center', paddingHorizontal: 8 }}><Text style={{ color: theme.colors.primaryAccent, fontSize: 14, fontWeight: '800' }}>元に戻す</Text></Pressable></View>}
+        <FocusRuntimeStatus visible={!focusScreenVisible} colors={theme.colors} onReturn={() => { setTimelineInitialTab('focus'); setScreen('timeline'); }} />
+        {(focusCompletionNotice || (focusTaskCompletionPrompt && !focusCompletionPromptOpen)) && <View accessibilityLiveRegion="polite" style={{ paddingHorizontal: 14, borderRadius: 14, borderWidth: 1, borderColor: theme.colors.border, backgroundColor: theme.colors.surface, flexDirection: 'row', alignItems: 'center', gap: 12 }}><Text style={{ flex: 1, color: theme.colors.primaryText, fontSize: 14 }}>集中タイムが終了しました</Text><Pressable accessibilityRole="button" accessibilityLabel="集中の結果を確認" onPress={() => { setTimelineInitialTab('focus'); setScreen('timeline'); setFocusCompletionNotice(false); if (focusTaskCompletionPrompt) setFocusCompletionPromptOpen(true); }} style={{ minHeight: 44, justifyContent: 'center', paddingHorizontal: 8 }}><Text style={{ color: theme.colors.primaryAccent, fontSize: 14, fontWeight: '800' }}>確認</Text></Pressable></View>}
+      </View>
         <BottomNav screen={screen} designMode={uiDesignMode} chicPalette={chicPalette} onChange={navigateWithinApp} />
       </View>
 
@@ -6615,16 +6698,6 @@ export default function App() {
         premiumLabel={rewardedPrompt.featureId === 'photoBackground' || rewardedPrompt.featureId === 'photoFocus' || rewardedPrompt.featureId === 'photoTop' || rewardedPrompt.featureId === 'premiumDesign' || rewardedPrompt.featureId === 'premiumDesignTrialExpired' || rewardedPrompt.featureId === 'widgetPhoto' ? 'デザインカスタマイズを購入' : undefined}
       />}
 
-      <Modal visible={focusNavigationNotice} transparent animationType="fade" onRequestClose={() => setFocusNavigationNotice(false)}>
-        <Pressable style={styles.modalBackdrop} onPress={() => setFocusNavigationNotice(false)}>
-          <Pressable style={[styles.modalSheet, { backgroundColor: theme.colors.screenBackground }]} onPress={(event) => event.stopPropagation()}>
-            <Text style={[styles.modalTitle, { color: theme.colors.primaryText }]}>{FOCUS_NAVIGATION_GUARD_COPY.title}</Text>
-            <Text style={[styles.emptyCopy, { color: theme.colors.secondaryText }]}>{FOCUS_NAVIGATION_GUARD_COPY.message}</Text>
-            <Pressable style={[styles.primaryButton, { backgroundColor: theme.colors.primaryAccent }]} onPress={() => setFocusNavigationNotice(false)}><Text style={[styles.primaryButtonText, { color: uiDesignMode === 'chic' && chicPalette ? chicPalette.onAccent : uiDesignMode === 'dark' ? theme.colors.screenBackground : '#FFFFFF' }]}>{FOCUS_NAVIGATION_GUARD_COPY.confirm}</Text></Pressable>
-          </Pressable>
-        </Pressable>
-      </Modal>
-
       <AppNoticeCenter
         visible={noticeCenterOpen}
         notices={visibleAppNotices}
@@ -6664,7 +6737,7 @@ export default function App() {
       </Modal>}
 
       <FocusTaskCompletionModal
-        session={focusTaskCompletionPrompt}
+        session={focusCompletionPromptOpen && focusCompletionCanPresent ? focusTaskCompletionPrompt : undefined}
         task={focusPromptTask}
         palette={modalPalette}
         onComplete={() => resolveFocusPrompt('complete')}
@@ -6906,6 +6979,7 @@ export default function App() {
 />
       </SafeAreaView>
     </View>
+    </FocusRuntimeProvider>
   );
 }
 
@@ -7318,8 +7392,13 @@ function TimeTabButton({ tab, active, designMode, chicPattern, chicPalette, them
      return <Pressable style={[styles.timeTab, styles.timeTabMinimal, isDark && styles.darkSurface, active && styles.timeTabActive, active && { backgroundColor: isDark ? '#26365F' : themeAccent, borderColor: isDark ? '#6F8DFF' : themeAccent }]} onPress={onPress}><Text numberOfLines={1} style={[styles.timeTabText, { color: isDark ? '#F4F7FC' : secondaryText }, active && styles.timeTabTextActive, active && styles.timeTabTextActiveMinimal]}>{label}</Text></Pressable>;
 }
 
-  function FocusMode({ tasks, designMode, chicPalette, backgroundImageUri, planTier, onPremium, customDurationMinutes, onCustomDurationChange, voiceStartRequest, focusPersistedState, onFocusStateChange, onFocusCompleted, onFocusTaskFinished, onFocusStarted, onFocusNotificationPermission, onFocusRunningChange, onFocusActivityChange, onBehaviorEvent, hapticsEnabled = true, previewCustomDurationOpen = false, previewMode = false }: { tasks: Task[]; designMode: DesignMode; chicPalette?: ChicThemePalette; backgroundImageUri?: string; planTier: PlanTier; onPremium?: (featureId?: PremiumGuideFeatureId) => void; customDurationMinutes?: number; onCustomDurationChange?: (minutes: number) => void; voiceStartRequest?: { durationMinutes: number; id: number }; focusPersistedState?: FocusPersistedState; onFocusStateChange?: (state?: FocusPersistedState) => void; onFocusCompleted: (session: FocusSession) => void; onFocusTaskFinished?: (session: FocusSession) => boolean | void; onFocusStarted?: () => void; onFocusNotificationPermission?: () => Promise<boolean>; onFocusRunningChange?: (running: boolean) => void; onFocusActivityChange?: (state?: { taskTitle?: string; endsAt?: string; elapsedStartAt?: string; elapsedSeconds?: number; remainingSeconds?: number; running?: boolean }) => void; onBehaviorEvent: (event: BehaviorEvent) => void; hapticsEnabled?: boolean; previewCustomDurationOpen?: boolean; previewMode?: boolean }) {
-  const availableTasks = React.useMemo(() => {
+function FocusRuntimeStatus({ visible, colors, onReturn }: { visible: boolean; colors: { surface: string; border: string; primaryText: string; primaryAccent: string }; onReturn: () => void }) {
+  const controller = React.useContext(FocusControllerContext);
+  if (!visible || !controller?.session) return null;
+  return <View accessibilityLiveRegion="none" style={{ paddingHorizontal: 14, borderRadius: 14, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface, flexDirection: 'row', alignItems: 'center', gap: 12 }}><Text numberOfLines={1} style={{ flex: 1, color: colors.primaryText, fontSize: 14 }}>{controller.running ? '集中中' : '一時停止中'} {String(controller.minutes).padStart(2, '0')}:{String(controller.seconds).padStart(2, '0')}</Text><Pressable accessibilityRole="button" accessibilityLabel="集中タイマーを開く" onPress={onReturn} style={{ minHeight: 44, justifyContent: 'center', paddingHorizontal: 8 }}><Text style={{ color: colors.primaryAccent, fontSize: 14, fontWeight: '800' }}>集中へ</Text></Pressable></View>;
+}
+
+function getFocusAvailableTasks(tasks: Task[]) {
     const today = dateKey();
     const seenTitles = new Set<string>();
     const bucketOrder: Record<TaskBucket, number> = { now: 0, later: 1, waiting: 2 };
@@ -7331,319 +7410,73 @@ function TimeTabButton({ tab, active, designMode, chicPattern, chicPalette, them
       seenTitles.add(titleKey);
       return true;
     }).sort((a, b) => (bucketOrder[a.bucket ?? 'now'] - bucketOrder[b.bucket ?? 'now']) || a.title.localeCompare(b.title));
-  }, [tasks]);
-  const [selectedTaskId, setSelectedTaskId] = useState(availableTasks[0]?.id ?? '');
-  const [duration, setDuration] = useState(previewCustomDurationOpen ? customDurationMinutes ?? 47 : 25);
-  const [secondsLeft, setSecondsLeft] = useState((previewCustomDurationOpen ? customDurationMinutes ?? 47 : 25) * 60);
-  const [running, setRunning] = useState(false);
-  const [customEditorOpen, setCustomEditorOpen] = useState(previewCustomDurationOpen);
-  const [customDraft, setCustomDraft] = useState(String(previewCustomDurationOpen ? customDurationMinutes ?? 47 : ''));
-  const pausedSecondsRef = React.useRef((previewCustomDurationOpen ? customDurationMinutes ?? 47 : 25) * 60);
-  const selectedTask = availableTasks.find((task) => task.id === selectedTaskId);
-  const sessionRef = React.useRef<{ id: string; startedAt: Date; taskId?: string; taskTitle?: string; plannedDurationMinutes: number } | undefined>(undefined);
-  const endAtRef = React.useRef<number | undefined>(undefined);
-  const focusElapsedStartAtRef = React.useRef<string | undefined>(undefined);
-  const focusStateRestoredRef = React.useRef(false);
-  const completionCallbackRef = React.useRef(onFocusCompleted);
-  completionCallbackRef.current = onFocusCompleted;
-  const behaviorCallbackRef = React.useRef(onBehaviorEvent);
-  behaviorCallbackRef.current = onBehaviorEvent;
-  const focusNotificationIdRef = React.useRef<string | null>(null);
-  const publishFocusState = React.useCallback((runningState: boolean, endAt?: number) => {
-    const session = sessionRef.current;
-    if (!session) {
-      onFocusStateChange?.(undefined);
-      return;
-    }
-    const elapsedSeconds = Math.max(0, session.plannedDurationMinutes * 60 - pausedSecondsRef.current);
-    if (runningState || !focusElapsedStartAtRef.current) {
-      focusElapsedStartAtRef.current = new Date(Date.now() - elapsedSeconds * 1000).toISOString();
-    }
-    onFocusStateChange?.({
-      sessionId: session.id,
-      taskId: session.taskId,
-      taskTitle: session.taskTitle,
-      plannedDurationMinutes: session.plannedDurationMinutes,
-      startedAt: session.startedAt.toISOString(),
-      running: runningState,
-      endAt: endAt ? new Date(endAt).toISOString() : undefined,
-      pausedSeconds: pausedSecondsRef.current,
-      elapsedStartAt: focusElapsedStartAtRef.current,
-    });
-    onFocusActivityChange?.({ taskTitle: session.taskTitle, endsAt: endAt ? new Date(endAt).toISOString() : undefined, elapsedStartAt: focusElapsedStartAtRef.current, elapsedSeconds, remainingSeconds: runningState ? undefined : pausedSecondsRef.current, running: runningState });
-  }, [onFocusActivityChange, onFocusStateChange]);
-  const cancelFocusNotification = React.useCallback((sessionIdOverride?: string) => {
-    const sessionId = sessionIdOverride ?? sessionRef.current?.id;
-    return enqueueNotificationOperation('focus', async () => {
-    const isCurrentSession = !sessionRef.current || sessionRef.current.id === sessionId;
-    const notificationId = isCurrentSession ? focusNotificationIdRef.current : null;
-    const cancel = async () => {
-      await cancelFocusCompletionNotification(notificationId);
-      if (sessionId) await cancelPendingFocusCompletionNotifications(sessionId);
-      if (isCurrentSession && focusNotificationIdRef.current === notificationId) focusNotificationIdRef.current = null;
-    };
-    if (sessionId) await reconcileNotificationOperation('focus', sessionId, cancel);
-    else await cancel();
-  });
-  }, []);
+}
 
-  useEffect(() => {
-    const selectedStillExists = availableTasks.some((task) => task.id === selectedTaskId);
-    if (!selectedStillExists) {
-      setSelectedTaskId(availableTasks[0]?.id ?? '');
-    }
-  }, [availableTasks, selectedTaskId]);
+function showFocusCompletionAlert(taskTitle?: string) {
+  const copy = getFocusCompletionAlertCopy(taskTitle);
+  Alert.alert(copy.title, copy.message);
+}
 
-  const finishSession = React.useCallback(() => {
-    const activeSession = sessionRef.current;
-    if (!activeSession) return;
-    const actualAt = new Date();
-    const session = createCompletedFocusSession({ id: activeSession.id, taskId: activeSession.taskId, taskTitle: activeSession.taskTitle, durationMinutes: activeSession.plannedDurationMinutes, startedAt: activeSession.startedAt, completedAt: actualAt });
-    sessionRef.current = undefined;
-    endAtRef.current = undefined;
-    focusElapsedStartAtRef.current = undefined;
-    onFocusStateChange?.(undefined);
-    onFocusActivityChange?.(undefined);
-    behaviorCallbackRef.current(createFocusCompletedBehaviorEvent({ sessionId: activeSession.id, taskId: activeSession.taskId, taskTitle: activeSession.taskTitle, plannedDurationMinutes: activeSession.plannedDurationMinutes, focusStartedAt: activeSession.startedAt, actualAt }));
-    setRunning(false);
-    onFocusRunningChange?.(false);
-    setSecondsLeft(0);
-    pausedSecondsRef.current = 0;
-    completionCallbackRef.current(session);
-    const prompted = onFocusTaskFinished?.(session) === true;
-    void cancelFocusNotification(activeSession.id).catch((error) => console.warn('Focus notification cancellation failed.', error));
-    triggerHaptic(hapticsEnabled, [0, 35, 70]);
-    if (!prompted) {
-      const copy = getFocusCompletionAlertCopy(activeSession.taskTitle);
-      Alert.alert(copy.title, copy.message);
-    }
-  }, [cancelFocusNotification, hapticsEnabled, onFocusRunningChange, onFocusStateChange, onFocusTaskFinished]);
+function FocusMode(props: FocusModeProps & { sharedRuntime?: boolean }) {
+  const controller = React.useContext(FocusControllerContext);
+  return props.sharedRuntime && controller ? <FocusModeView {...props} controller={controller} /> : <StandaloneFocusMode {...props} />;
+}
 
-  const stopActiveSession = React.useCallback(() => {
-    const activeSession = sessionRef.current;
-    if (!activeSession) return;
-    sessionRef.current = undefined;
-    endAtRef.current = undefined;
-    focusElapsedStartAtRef.current = undefined;
-    onFocusStateChange?.(undefined);
-    onFocusActivityChange?.(undefined);
-    behaviorCallbackRef.current(createFocusStoppedEvent({ sessionId: activeSession.id, taskId: activeSession.taskId, taskTitle: activeSession.taskTitle, plannedDurationMinutes: activeSession.plannedDurationMinutes, focusStartedAt: activeSession.startedAt, actualAt: new Date() }));
-  }, [onFocusActivityChange, onFocusStateChange]);
+function StandaloneFocusMode(props: FocusModeProps) {
+  const availableTasks = React.useMemo(() => getFocusAvailableTasks(props.tasks), [props.tasks]);
+  const controller = useFocusController({ ...props, availableTasks, onHaptic: triggerHaptic, onCompletionAlert: showFocusCompletionAlert });
+  return <FocusModeView {...props} controller={controller} />;
+}
 
-  useEffect(() => {
-    if (previewMode || focusStateRestoredRef.current || !focusPersistedState) return;
-    focusStateRestoredRef.current = true;
-    const startedAt = new Date(focusPersistedState.startedAt);
-    if (Number.isNaN(startedAt.getTime())) {
-      onFocusStateChange?.(undefined);
-      return;
-    }
-    sessionRef.current = {
-      id: focusPersistedState.sessionId,
-      startedAt,
-      taskId: focusPersistedState.taskId,
-      taskTitle: focusPersistedState.taskTitle,
-      plannedDurationMinutes: focusPersistedState.plannedDurationMinutes,
-    };
-    setDuration(Math.max(1, focusPersistedState.plannedDurationMinutes));
-    pausedSecondsRef.current = Math.max(0, Math.round(focusPersistedState.pausedSeconds));
-    const restoredElapsedSeconds = Math.max(0, focusPersistedState.plannedDurationMinutes * 60 - pausedSecondsRef.current);
-    focusElapsedStartAtRef.current = focusPersistedState.elapsedStartAt ?? new Date(Date.now() - restoredElapsedSeconds * 1000).toISOString();
-    if (!focusPersistedState.elapsedStartAt) onFocusStateChange?.({ ...focusPersistedState, elapsedStartAt: focusElapsedStartAtRef.current });
-    const savedEndAt = focusPersistedState.endAt ? Date.parse(focusPersistedState.endAt) : undefined;
-    if (focusPersistedState.running && savedEndAt && savedEndAt > Date.now()) {
-      endAtRef.current = savedEndAt;
-      const remaining = Math.max(0, Math.ceil((savedEndAt - Date.now()) / 1000));
-      pausedSecondsRef.current = remaining;
-      setSecondsLeft(remaining);
-      setRunning(true);
-      onFocusRunningChange?.(true);
-      onFocusActivityChange?.({ taskTitle: sessionRef.current.taskTitle, endsAt: new Date(savedEndAt).toISOString(), elapsedStartAt: focusElapsedStartAtRef.current, elapsedSeconds: restoredElapsedSeconds, running: true });
-      return;
-    }
-    if (focusPersistedState.running && savedEndAt && savedEndAt <= Date.now()) {
-      setSecondsLeft(0);
-      pausedSecondsRef.current = 0;
-      finishSession();
-      return;
-    }
-    endAtRef.current = undefined;
-    setSecondsLeft(pausedSecondsRef.current || focusPersistedState.plannedDurationMinutes * 60);
-    setRunning(false);
-    onFocusRunningChange?.(false);
-    onFocusActivityChange?.({ taskTitle: sessionRef.current.taskTitle, elapsedStartAt: focusElapsedStartAtRef.current, elapsedSeconds: restoredElapsedSeconds, remainingSeconds: pausedSecondsRef.current, running: false });
-  }, [finishSession, focusPersistedState, onFocusActivityChange, onFocusRunningChange, onFocusStateChange, previewMode]);
-
-  useEffect(() => {
-    if (!running) return;
-    const timer = setInterval(() => {
-      const endAt = endAtRef.current;
-      if (!endAt) return;
-      const remainingSeconds = Math.max(0, Math.ceil((endAt - Date.now()) / 1000));
-      pausedSecondsRef.current = remainingSeconds;
-      setSecondsLeft(remainingSeconds);
-      if (remainingSeconds === 0) finishSession();
-    }, 500);
-    return () => clearInterval(timer);
-  }, [finishSession, running]);
-
-  const chooseDuration = (minutes: number) => {
-    if (sessionRef.current) stopActiveSession();
-    setDuration(minutes);
-    setSecondsLeft(minutes * 60);
-    pausedSecondsRef.current = minutes * 60;
-    setRunning(false);
-    sessionRef.current = undefined;
-    endAtRef.current = undefined;
-    focusElapsedStartAtRef.current = undefined;
-    onFocusStateChange?.(undefined);
-  };
-  useEffect(() => {
-    // A saved custom value remains in storage for a future Premium upgrade,
-    // but a Free user must never start it. Keep the existing default fixed
-    // duration when access is lost while the timer is idle.
-    if (planTier !== 'premium' && !running && ![5, 15, 25, 45].includes(duration)) {
-      chooseDuration(25);
-      setCustomEditorOpen(false);
-    }
-  }, [duration, planTier, running]);
-  const openCustomDurationEditor = () => {
-    if (planTier !== 'premium') {
-      onPremium?.('focus_custom_duration');
-      return;
-    }
-    setCustomDraft(String(customDurationMinutes ?? duration));
-    setCustomEditorOpen(true);
-  };
-  useEffect(() => {
-    if (previewCustomDurationOpen) setCustomEditorOpen(true);
-  }, [previewCustomDurationOpen]);
-  const applyCustomDuration = () => {
-    const value = Number(customDraft.trim());
-    if (!Number.isSafeInteger(value) || value < 1) {
-      Alert.alert('集中時間を確認してください', '1分以上の整数で入力してください。');
-      return;
-    }
-    chooseDuration(value);
-    onCustomDurationChange?.(value);
-    setCustomEditorOpen(false);
-  };
-  const reset = () => {
-    if (sessionRef.current) stopActiveSession();
-    void cancelFocusNotification().catch((error) => console.warn('Focus notification cancellation failed.', error));
-    onFocusRunningChange?.(false);
-    setRunning(false);
-    setSecondsLeft(duration * 60);
-    pausedSecondsRef.current = duration * 60;
-    sessionRef.current = undefined;
-    endAtRef.current = undefined;
-    focusElapsedStartAtRef.current = undefined;
-    onFocusStateChange?.(undefined);
-  };
-  const toggleTimer = async (requestedDurationMinutes?: number) => {
-    // First-run GUIDE uses the real Focus screen as a read-only demo.  The
-    // CTA should advance the tour without starting a timer, writing a focus
-    // session, scheduling a notification, or activating the navigation guard.
-    if (previewMode) {
-      onFocusStarted?.();
-      return;
-    }
-    if (running) {
-      const endAt = endAtRef.current;
-      if (endAt) {
-        const remaining = Math.max(0, Math.ceil((endAt - Date.now()) / 1000));
-        pausedSecondsRef.current = remaining;
-        setSecondsLeft(remaining);
-      }
-      // Pause is not a session end: retain the same session id and startedAt
-      // so Resume continues the original focus session without emitting a
-      // second focus_started or a premature focus_stopped event.
-      endAtRef.current = undefined;
-      setRunning(false);
-      onFocusRunningChange?.(false);
-      publishFocusState(false);
-      void cancelFocusNotification().catch((error) => console.warn('Focus notification cancellation failed.', error));
-      return;
-    }
-    const notificationPermissionGranted = onFocusNotificationPermission
-      ? await onFocusNotificationPermission()
-      : true;
-    if (requestedDurationMinutes && requestedDurationMinutes !== duration) chooseDuration(requestedDurationMinutes);
-    const nextSeconds = requestedDurationMinutes ? requestedDurationMinutes * 60 : pausedSecondsRef.current > 0 ? pausedSecondsRef.current : secondsLeft === 0 ? duration * 60 : secondsLeft;
-    if (!sessionRef.current) {
-      const startedAt = new Date();
-      const id = createFocusSessionId(startedAt, Math.random().toString(36).slice(2, 10));
-      const plannedDurationMinutes = Math.max(1, Math.ceil(nextSeconds / 60));
-      sessionRef.current = { id, startedAt, taskId: selectedTask?.id, taskTitle: selectedTask?.title, plannedDurationMinutes };
-      onFocusStarted?.();
-      behaviorCallbackRef.current(createFocusStartedEvent({ sessionId: id, taskId: selectedTask?.id, taskTitle: selectedTask?.title, plannedDurationMinutes, occurredAt: startedAt }));
-      triggerHaptic(hapticsEnabled, 15);
-    }
-    setSecondsLeft(nextSeconds);
-    pausedSecondsRef.current = nextSeconds;
-    endAtRef.current = Date.now() + nextSeconds * 1000;
-    publishFocusState(true, endAtRef.current);
-    setRunning(true);
-    onFocusRunningChange?.(true);
-    if (sessionRef.current) {
-      void enqueueNotificationOperation('focus', async () => {
-        const sessionId = sessionRef.current?.id;
-        if (!sessionId) return;
-        await reconcileNotificationOperation('focus', sessionId, async () => {
-          const notificationId = focusNotificationIdRef.current;
-          await cancelFocusCompletionNotification(notificationId);
-          await cancelPendingFocusCompletionNotifications(sessionId);
-          focusNotificationIdRef.current = null;
-          if (sessionRef.current?.id !== sessionId || !endAtRef.current) return;
-          const scheduledId = await scheduleFocusCompletionNotification({ timerId: sessionId, endAt: new Date(endAtRef.current).toISOString(), taskTitle: sessionRef.current.taskTitle, permissionGranted: notificationPermissionGranted });
-          focusNotificationIdRef.current = scheduledId;
-        });
-      }).catch((error) => {
-        if (__DEV__) console.warn('[Notifications] focus completion scheduling failed', error);
-      });
-    }
-  };
-  useEffect(() => {
-    if (!voiceStartRequest || previewMode || planTier !== 'premium' || running) return;
-    void toggleTimer(voiceStartRequest.durationMinutes);
-  }, [voiceStartRequest?.id]);
-  const minutes = Math.floor(secondsLeft / 60);
-  const seconds = secondsLeft % 60;
-  const progress = 1 - secondsLeft / (duration * 60);
-
+function FocusModeView({ tasks, designMode, chicPalette, backgroundImageUri, planTier, onPremium, customDurationMinutes, onCustomDurationChange, voiceStartRequest, focusPersistedState, onFocusStateChange, onFocusCompleted, onFocusTaskFinished, onFocusStarted, onFocusNotificationPermission, onFocusRunningChange, onFocusActivityChange, onBehaviorEvent, hapticsEnabled = true, previewCustomDurationOpen = false, previewMode = false, controller }: FocusModeProps & { controller: FocusController }) {
+  const { availableTasks, selectedTaskId, setSelectedTaskId, selectedTask, session, duration, secondsLeft, running, minutes, seconds, progress, customEditorOpen, setCustomEditorOpen, customDraft, setCustomDraft, reset, toggleTimer, chooseDuration, openCustomDurationEditor, applyCustomDuration } = controller;
   const isMinimal = designMode === 'minimal';
   const isDark = designMode === 'dark';
   const isChic = designMode === 'chic';
   const categoryColors = isChic && chicPalette ? Object.fromEntries(categories.map((category) => [category, chicPalette.accent])) as Record<Category, string> : Object.fromEntries(categories.map((category) => [category, isDark ? '#8EA6FF' : getThemeTokens(designMode).colors.primaryAccent])) as Record<Category, string>;
+  const focusColors = getThemeTokens(designMode, chicPalette?.id ?? 'cool').colors;
+  const focusSurface = isChic && chicPalette ? chicPalette.cardSurface : focusColors.surface;
+  const focusBorder = isChic && chicPalette ? chicPalette.border : focusColors.border;
+  const focusSecondary = isChic && chicPalette ? chicPalette.textSecondary : focusColors.secondaryText;
+  const focusAccent = isChic && chicPalette ? chicPalette.accent : focusColors.primaryAccent;
+  const focusAccentSoft = isChic && chicPalette ? chicPalette.accentSoft : focusColors.softAccent;
+  const focusOnAccent = isChic && chicPalette ? chicPalette.onAccent : isDark ? focusColors.primaryAccent : '#FFFFFF';
+  const customDurationSelected = customDurationMinutes != null && duration === customDurationMinutes && ![5, 15, 25, 45].includes(duration);
   const taskGroups = (['now', 'later', 'waiting'] as TaskBucket[]).map((bucket) => ({
     bucket,
     label: bucket === 'now' ? '今やるタスク' : bucket === 'later' ? 'あとで' : '待ち',
     tasks: availableTasks.filter((task) => (task.bucket ?? 'now') === bucket),
   })).filter((group) => group.tasks.length > 0);
-  const modeCopy = isMinimal ? '今はこれだけ' : isChic ? '静かな時間を、ひとつだけ。' : '相棒も隣でいっしょに集中！';
+  const modeCopy = isMinimal ? '今はこれだけ' : isChic ? '静かな時間を、ひとつだけ。' : '自分のペースで、ひとつずつ。';
   return <>
     <View style={[styles.focusHero, isMinimal && styles.focusHeroMinimal, isDark && styles.focusHeroDark, isChic && styles.focusHeroChic, isChic && chicPalette && { backgroundColor: chicPalette.focusBackground, borderColor: chicPalette.border, shadowColor: chicPalette.accent }, backgroundImageUri && styles.focusHeroWithPhoto]}>
       {backgroundImageUri && <><Image source={{ uri: backgroundImageUri }} resizeMode="cover" style={styles.focusHeroPhoto} /><View pointerEvents="none" style={styles.focusHeroPhotoShade} /></>}
       {isChic && chicPalette && <><View style={styles.focusChicFlowerOne}><Text style={{ color: chicPalette.accent }}>✿</Text></View><View style={styles.focusChicFlowerTwo}><Text style={{ color: chicPalette.accentStrong }}>✦</Text></View></>}
       <Text style={[styles.focusEyebrow, isMinimal && styles.focusEyebrowMinimal, isDark && styles.focusEyebrowDark, isChic && styles.focusEyebrowLight, isChic && chicPalette && { color: chicPalette.textSecondary }]}>{running ? '集中中' : '集中タイマー'}</Text>
-      <Text style={[styles.focusTitle, isMinimal && styles.focusTitleMinimal, !isMinimal && styles.focusTitleLight, isChic && chicPalette && { color: chicPalette.textPrimary }]}>{sessionRef.current?.taskTitle ?? selectedTask?.title ?? '集中するタスクを選ぼう'}</Text>
+      <Text style={[styles.focusTitle, isMinimal && styles.focusTitleMinimal, !isMinimal && styles.focusTitleLight, isChic && chicPalette && { color: chicPalette.textPrimary }]}>{session?.taskTitle ?? selectedTask?.title ?? '自分の時間に集中'}</Text>
       <Text style={[styles.focusCopy, isMinimal && styles.focusCopyMinimal, isDark && styles.focusCopyDark, isChic && styles.focusCopyLight, isChic && chicPalette && { color: chicPalette.textSecondary }]}>{modeCopy}</Text>
       <View style={[styles.focusTimerRing, isMinimal && styles.focusTimerRingMinimal, isDark && styles.focusTimerRingDark, isChic && styles.focusTimerRingChic, isChic && chicPalette && { borderColor: chicPalette.accent, backgroundColor: chicPalette.focusSurface }]}>
         <Text style={[styles.focusTime, isMinimal && styles.focusTimeMinimal, !isMinimal && styles.focusTimeLight, isChic && chicPalette && { color: chicPalette.textPrimary }]}>{String(minutes).padStart(2, '0')}:{String(seconds).padStart(2, '0')}</Text>
-        <Text style={[styles.focusTimerState, isMinimal && styles.focusTimerStateMinimal, isDark && styles.focusTimerStateDark, isChic && styles.focusTimerStateChic, isChic && chicPalette && { color: chicPalette.accent }]}>{running ? '集中中' : secondsLeft === 0 ? 'できた！' : '準備OK'}</Text>
+        <Text testID="focus-timer-state" style={[styles.focusTimerState, isMinimal && styles.focusTimerStateMinimal, isDark && styles.focusTimerStateDark, isChic && styles.focusTimerStateChic, isChic && chicPalette && { color: chicPalette.accent }]}>{running ? '集中中' : secondsLeft === 0 ? 'できた！' : session ? '一時停止中' : '準備OK'}</Text>
       </View>
       <View style={[styles.focusProgressTrack, !isMinimal && styles.focusProgressTrackLight, isChic && chicPalette && { backgroundColor: chicPalette.accentSoft }]}><View style={[styles.focusProgressFill, isMinimal && styles.focusProgressFillMinimal, isDark && styles.focusProgressFillDark, isChic && styles.focusProgressFillChic, isChic && chicPalette && { backgroundColor: chicPalette.accent }, { width: `${Math.max(2, progress * 100)}%` }]} /></View>
       <View style={styles.focusActions}>
-        <Pressable style={[styles.focusResetButton, !isMinimal && styles.focusResetButtonLight, isChic && chicPalette && { borderColor: chicPalette.border, backgroundColor: chicPalette.cardSurface }]} onPress={reset}><Text style={[styles.focusResetText, isMinimal && styles.focusResetTextMinimal, !isMinimal && styles.focusResetTextLight, isChic && chicPalette && { color: chicPalette.textSecondary }]}>リセット</Text></Pressable>
-        <Pressable style={[styles.focusStartButton, isMinimal && styles.focusStartButtonMinimal, isDark && styles.focusStartButtonDark, isChic && styles.focusStartButtonChic, isChic && chicPalette && { backgroundColor: chicPalette.accent }]} onPress={() => void toggleTimer()}><Text style={[styles.focusStartText, { color: isChic && chicPalette ? chicPalette.onAccent : isDark ? getThemeTokens('dark').colors.screenBackground : '#FFFFFF' }]}>{running ? '一時停止' : secondsLeft === 0 ? 'もう一度' : sessionRef.current ? '再開' : 'スタート'}</Text></Pressable>
+        <Pressable accessibilityRole="button" accessibilityLabel="集中タイマーをリセット" style={[styles.focusResetButton, !isMinimal && styles.focusResetButtonLight, isDark && { backgroundColor: focusColors.secondarySurface, borderColor: focusBorder }, isChic && chicPalette && { borderColor: chicPalette.border, backgroundColor: chicPalette.cardSurface }]} onPress={reset}><Text style={[styles.focusResetText, isMinimal && styles.focusResetTextMinimal, !isMinimal && styles.focusResetTextLight, isDark && { color: focusColors.primaryText }, isChic && chicPalette && { color: chicPalette.textSecondary }]}>リセット</Text></Pressable>
+        <Pressable style={[styles.focusStartButton, isMinimal && styles.focusStartButtonMinimal, isDark && styles.focusStartButtonDark, isChic && styles.focusStartButtonChic, isChic && chicPalette && { backgroundColor: chicPalette.accent }]} onPress={() => void toggleTimer()}><Text style={[styles.focusStartText, { color: isChic && chicPalette ? chicPalette.onAccent : isDark ? getThemeTokens('dark').colors.screenBackground : '#FFFFFF' }]}>{running ? '一時停止' : secondsLeft === 0 ? 'もう一度' : session ? '再開' : 'スタート'}</Text></Pressable>
       </View>
     </View>
     <Text style={[styles.focusSectionTitle, isMinimal && styles.focusSectionTitleMinimal, isDark && styles.focusSectionTitleDark, isChic && chicPalette && { color: chicPalette.textPrimary }]}>集中時間</Text>
-    <View style={styles.focusDurationRow}>{[5, 15, 25, 45].map((minutesValue) => <Pressable key={minutesValue} style={[styles.focusDurationChip, duration === minutesValue && styles.focusDurationChipActive, duration === minutesValue && isMinimal && styles.focusDurationChipActiveMinimal, duration === minutesValue && isDark && styles.focusDurationChipActiveDark, designMode === 'chic' && chicPalette && { backgroundColor: duration === minutesValue ? chicPalette.accent : chicPalette.cardSurface, borderColor: duration === minutesValue ? chicPalette.accent : chicPalette.border }]} onPress={() => chooseDuration(minutesValue)}><Text style={[styles.focusDurationText, duration === minutesValue && styles.focusDurationTextActive, designMode === 'chic' && chicPalette && { color: duration === minutesValue ? chicPalette.onAccent : chicPalette.textSecondary }]}>{minutesValue}分</Text></Pressable>)}<Pressable style={[styles.focusDurationChip, customDurationMinutes != null && duration === customDurationMinutes && ![5, 15, 25, 45].includes(duration) && styles.focusDurationChipActive, designMode === 'chic' && chicPalette && { backgroundColor: customDurationMinutes != null && duration === customDurationMinutes && ![5, 15, 25, 45].includes(duration) ? chicPalette.accent : chicPalette.cardSurface, borderColor: customDurationMinutes != null && duration === customDurationMinutes && ![5, 15, 25, 45].includes(duration) ? chicPalette.accent : chicPalette.border }]} onPress={openCustomDurationEditor}><Text style={[styles.focusDurationText, customDurationMinutes != null && duration === customDurationMinutes && ![5, 15, 25, 45].includes(duration) && styles.focusDurationTextActive, designMode === 'chic' && chicPalette && { color: customDurationMinutes != null && duration === customDurationMinutes && ![5, 15, 25, 45].includes(duration) ? chicPalette.onAccent : chicPalette.textSecondary }]}>{customDurationMinutes != null ? `好きな時間（${customDurationMinutes}分）` : '好きな時間'}</Text></Pressable></View>
-    {customEditorOpen && <View style={[{ marginHorizontal: 2, marginBottom: 12, padding: 12, borderRadius: 12, borderWidth: 1 }, isDark ? { backgroundColor: '#20293A', borderColor: '#40506A' } : isChic && chicPalette ? { backgroundColor: chicPalette.cardSurface, borderColor: chicPalette.border } : { backgroundColor: '#FFFFFF', borderColor: '#DDD7E3' }]}><Text style={[{ fontSize: 12, fontWeight: '800', marginBottom: 8 }, isDark ? { color: '#F4F7FC' } : isChic && chicPalette ? { color: chicPalette.textPrimary } : { color: '#282538' }]}>好きな集中時間（分）</Text><TextInput value={customDraft} onChangeText={(value) => setCustomDraft(value.replace(/[^0-9]/g, ''))} keyboardType="number-pad" returnKeyType="done" placeholder="例：47" placeholderTextColor={isDark ? '#8F9BB0' : '#777285'} style={[{ minHeight: 44, borderWidth: 1, borderRadius: 10, paddingHorizontal: 12, fontSize: 16 }, isDark ? { backgroundColor: '#181F2E', borderColor: '#40506A', color: '#F4F7FC' } : isChic && chicPalette ? { backgroundColor: chicPalette.surface, borderColor: chicPalette.border, color: chicPalette.textPrimary } : { backgroundColor: '#FFFFFF', borderColor: '#DDD7E3', color: '#282538' }]} /><View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}><Pressable style={[{ flex: 1, minHeight: 42, borderRadius: 10, alignItems: 'center', justifyContent: 'center', borderWidth: 1 }, isDark ? { borderColor: '#40506A' } : isChic && chicPalette ? { borderColor: chicPalette.border } : { borderColor: '#DDD7E3' }]} onPress={() => setCustomEditorOpen(false)}><Text style={[{ fontWeight: '800' }, isDark ? { color: '#B4C0D4' } : isChic && chicPalette ? { color: chicPalette.textSecondary } : { color: '#777285' }]}>キャンセル</Text></Pressable><Pressable style={[{ flex: 1, minHeight: 42, borderRadius: 10, alignItems: 'center', justifyContent: 'center' }, isDark ? { backgroundColor: '#8EA6FF' } : isChic && chicPalette ? { backgroundColor: chicPalette.accent } : { backgroundColor: getThemeTokens(designMode).colors.primaryAccent }]} onPress={applyCustomDuration}><Text style={{ color: isDark ? getThemeTokens('dark').colors.screenBackground : isChic && chicPalette ? chicPalette.onAccent : '#FFFFFF', fontWeight: '800' }}>決定</Text></Pressable></View></View>}
-    {availableTasks.length === 0 ? <View style={styles.departureEmpty}><Text style={[styles.emptyCopy, isChic && chicPalette && { color: chicPalette.textSecondary }]}>未完了タスクはありません。今日はゆっくりしよう。</Text></View> : taskGroups.map((group) => <View key={group.bucket}>
+    <View style={styles.focusDurationRow}>
+      {[5, 15, 25, 45].map(minutesValue => {
+        const selected = duration === minutesValue;
+        return <Pressable key={minutesValue} accessibilityRole="button" accessibilityLabel={`集中時間を${minutesValue}分に設定`} accessibilityState={{ selected }} style={[styles.focusDurationChip, { backgroundColor: selected ? (isDark ? focusAccentSoft : focusAccent) : focusSurface, borderColor: selected ? focusAccent : focusBorder }]} onPress={() => chooseDuration(minutesValue)}><Text style={[styles.focusDurationText, { color: selected ? focusOnAccent : focusSecondary }]}>{minutesValue}分</Text></Pressable>;
+      })}
+      <Pressable accessibilityRole="button" accessibilityLabel="カスタム集中時間を設定" accessibilityValue={customDurationMinutes != null ? { text: `${customDurationMinutes}分` } : undefined} accessibilityState={{ selected: customDurationSelected }} style={[styles.focusDurationChip, { backgroundColor: customDurationSelected ? (isDark ? focusAccentSoft : focusAccent) : focusSurface, borderColor: customDurationSelected ? focusAccent : focusBorder }]} onPress={openCustomDurationEditor}><Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.85} style={[styles.focusDurationText, { color: customDurationSelected ? focusOnAccent : focusSecondary }]}>カスタム</Text>{customDurationMinutes != null && <Text style={[styles.focusDurationText, { color: customDurationSelected ? focusOnAccent : focusSecondary }]}>{customDurationMinutes}分</Text>}</Pressable>
+    </View>
+    {customEditorOpen && <View style={[{ marginHorizontal: 2, marginBottom: 12, padding: 12, borderRadius: 12, borderWidth: 1 }, isDark ? { backgroundColor: '#20293A', borderColor: '#40506A' } : isChic && chicPalette ? { backgroundColor: chicPalette.cardSurface, borderColor: chicPalette.border } : { backgroundColor: '#FFFFFF', borderColor: '#DDD7E3' }]}><Text style={[{ fontSize: 12, fontWeight: '800', marginBottom: 8 }, isDark ? { color: '#F4F7FC' } : isChic && chicPalette ? { color: chicPalette.textPrimary } : { color: '#282538' }]}>カスタム時間（分）</Text><TextInput value={customDraft} onChangeText={(value) => setCustomDraft(value.replace(/[^0-9]/g, ''))} keyboardType="number-pad" returnKeyType="done" placeholder="例：47" placeholderTextColor={isDark ? '#8F9BB0' : '#777285'} style={[{ minHeight: 44, borderWidth: 1, borderRadius: 10, paddingHorizontal: 12, fontSize: 16 }, isDark ? { backgroundColor: '#181F2E', borderColor: '#40506A', color: '#F4F7FC' } : isChic && chicPalette ? { backgroundColor: chicPalette.surface, borderColor: chicPalette.border, color: chicPalette.textPrimary } : { backgroundColor: '#FFFFFF', borderColor: '#DDD7E3', color: '#282538' }]} /><View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}><Pressable style={[{ flex: 1, minHeight: 42, borderRadius: 10, alignItems: 'center', justifyContent: 'center', borderWidth: 1 }, isDark ? { borderColor: '#40506A' } : isChic && chicPalette ? { borderColor: chicPalette.border } : { borderColor: '#DDD7E3' }]} onPress={() => setCustomEditorOpen(false)}><Text style={[{ fontWeight: '800' }, isDark ? { color: '#B4C0D4' } : isChic && chicPalette ? { color: chicPalette.textSecondary } : { color: '#777285' }]}>キャンセル</Text></Pressable><Pressable style={[{ flex: 1, minHeight: 42, borderRadius: 10, alignItems: 'center', justifyContent: 'center' }, isDark ? { backgroundColor: '#8EA6FF' } : isChic && chicPalette ? { backgroundColor: chicPalette.accent } : { backgroundColor: getThemeTokens(designMode).colors.primaryAccent }]} onPress={applyCustomDuration}><Text style={{ color: isDark ? getThemeTokens('dark').colors.screenBackground : isChic && chicPalette ? chicPalette.onAccent : '#FFFFFF', fontWeight: '800' }}>決定</Text></Pressable></View></View>}
+    {availableTasks.length === 0 ? <View testID="focus-empty-tasks" style={[styles.departureEmpty, { backgroundColor: focusSurface, borderColor: focusBorder }]}><Text style={[styles.emptyCopy, { color: focusSecondary, fontSize: 13, lineHeight: 20 }]}>未完了のToDoはありません。タスクなしでも集中タイマーを使えます。</Text></View> : taskGroups.map((group) => <View key={group.bucket}>
       <Text style={[styles.focusSectionTitle, isMinimal && styles.focusSectionTitleMinimal, isDark && styles.focusSectionTitleDark, isChic && chicPalette && { color: chicPalette.textPrimary }]}>{group.label}</Text>
-      {group.tasks.map((task) => { const nextSubtask = task.subtasks?.find((item) => !item.done); return <Pressable key={task.id} style={[styles.focusTaskRow, selectedTaskId === task.id && styles.focusTaskRowActive, designMode === 'chic' && chicPalette && { backgroundColor: selectedTaskId === task.id ? chicPalette.accentSoft : chicPalette.taskBackground, borderColor: selectedTaskId === task.id ? chicPalette.accent : chicPalette.border }]} onPress={() => { setSelectedTaskId(task.id); reset(); }}><View style={[styles.scheduleAgendaDot, { backgroundColor: categoryColors[task.category] }]} /><View style={{ flex: 1 }}><Text style={[styles.focusTaskTitle, designMode === 'chic' && chicPalette && { color: chicPalette.textPrimary }]}>{nextSubtask ? `${nextSubtask.title}（${task.title}）` : task.title}</Text><Text style={[styles.focusTaskMeta, designMode === 'chic' && chicPalette && { color: chicPalette.taskMeta }]}>{task.category} ・ 優先度 {task.priority}</Text></View><Text style={[styles.focusTaskCheck, designMode === 'chic' && chicPalette && { color: chicPalette.accent }]}>{selectedTaskId === task.id ? '●' : '○'}</Text></Pressable>; })}
+      {group.tasks.map((task) => { const nextSubtask = task.subtasks?.find((item) => !item.done); return <Pressable key={task.id} style={[styles.focusTaskRow, isMinimal && styles.focusTaskRowMinimal, isDark && styles.focusTaskRowDark, selectedTaskId === task.id && styles.focusTaskRowActive, selectedTaskId === task.id && isMinimal && styles.focusTaskRowActiveMinimal, selectedTaskId === task.id && isDark && styles.focusTaskRowActiveDark, designMode === 'chic' && chicPalette && { backgroundColor: selectedTaskId === task.id ? chicPalette.accentSoft : chicPalette.taskBackground, borderColor: selectedTaskId === task.id ? chicPalette.accent : chicPalette.border }]} onPress={() => { setSelectedTaskId(task.id); reset(); }}><View style={[styles.scheduleAgendaDot, { backgroundColor: categoryColors[task.category] }]} /><View style={{ flex: 1 }}><Text style={[styles.focusTaskTitle, isDark && { color: focusColors.primaryText }, designMode === 'chic' && chicPalette && { color: chicPalette.textPrimary }]}>{nextSubtask ? `${nextSubtask.title}（${task.title}）` : task.title}</Text><Text style={[styles.focusTaskMeta, isDark && { color: focusSecondary }, designMode === 'chic' && chicPalette && { color: chicPalette.taskMeta }]}>{task.category} ・ 優先度 {task.priority}</Text></View><Text style={[styles.focusTaskCheck, isDark && { color: focusAccent }, designMode === 'chic' && chicPalette && { color: chicPalette.accent }]}>{selectedTaskId === task.id ? '●' : '○'}</Text></Pressable>; })}
     </View>)}
   </>;
 }

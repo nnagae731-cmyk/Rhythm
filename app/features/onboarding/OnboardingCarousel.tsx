@@ -392,7 +392,7 @@ const styles = StyleSheet.create({
   productionPreviewViewport: {
     width: '100%',
     height: 320,
-    minHeight: 240,
+    minHeight: 220,
     borderRadius: 14,
     borderWidth: 1,
     borderColor: theme.colors.border,

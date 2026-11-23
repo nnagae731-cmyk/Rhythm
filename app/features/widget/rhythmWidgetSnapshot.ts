@@ -5,6 +5,7 @@ import { DepartureCheckIn } from '../../departureCheckIn';
 import { getDeparturePlanMode, getPlanScheduledTime, isDepartureReminderPlan } from '../departure/departurePlanMode';
 import { getDepartureMoments } from '../departure/departureUtils';
 import { dateForReminder, dateKey } from '../tasks/taskUtils';
+import { calculateWishProgress } from '../wish/wishUtils';
 import { selectCurrentTask, selectCurrentTasks, selectNextUpcomingPlan, taskActionableAt, taskDeadlineAt } from '../tasks/taskSelectors';
 
 export const RHYTHM_WIDGET_APP_GROUP = 'group.app.rhythm.daily';
@@ -316,7 +317,7 @@ export function buildRhythmWidgetSnapshot({
       ?? monthState?.wishes[0];
     const goalActions = selectedWish ? (monthState?.actions ?? []).filter((action) => action.wishId === selectedWish.id) : [];
     return selectedWish
-      ? { id: selectedWish.id, title: selectedWish.title, progress: selectedWish.completed ? 100 : goalActions.length ? Math.round((goalActions.filter((action) => action.completed).length / goalActions.length) * 100) : 0, completedActions: goalActions.filter((action) => action.completed).length, actionCount: goalActions.length }
+      ? { id: selectedWish.id, title: selectedWish.title, progress: calculateWishProgress({ ...monthState!, wishes: [selectedWish], actions: goalActions }).progress, completedActions: goalActions.filter((action) => action.completed).length, actionCount: goalActions.length }
       : monthState?.monthlyGoal?.trim()
         ? { id: `monthly-goal-${monthKey}`, title: monthState.monthlyGoal.trim(), progress: 0, completedActions: 0, actionCount: 0 }
         : undefined;

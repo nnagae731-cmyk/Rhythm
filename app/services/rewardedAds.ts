@@ -62,7 +62,7 @@ export function createTestRewardedAd() {
  * Shows one configured rewarded ad and resolves only when EARNED_REWARD fires.
  * Closing or failing the ad never grants access.
  */
-export function showTestRewardedAd(): Promise<boolean> {
+export function showTestRewardedAd(onEarned?: () => void): Promise<boolean> {
   if (isProductionAds && !productionRewardedUnitId) {
     if (__DEV__) console.log('[Ads] production rewarded unit is not configured');
     return Promise.resolve(false);
@@ -72,13 +72,14 @@ export function showTestRewardedAd(): Promise<boolean> {
   }
   rewardedRequestActive = true;
   return (async () => {
+    let initializationTimeout: ReturnType<typeof setTimeout> | undefined;
     try {
       // The native SDK can remain pending when a development build has no
       // network/ad callback. Bound initialization as well as the ad itself so
       // callers never leave their modal permanently locked.
       await Promise.race([
         initializeMobileAds(),
-        new Promise<never>((_, reject) => setTimeout(() => reject(new Error('Rewarded SDK initialization timed out')), REWARDED_OPERATION_TIMEOUT_MS)),
+        new Promise<never>((_, reject) => { initializationTimeout = setTimeout(() => reject(new Error('Rewarded SDK initialization timed out')), REWARDED_OPERATION_TIMEOUT_MS); }),
       ]);
     } catch (error) {
       if (__DEV__) {
@@ -87,6 +88,8 @@ export function showTestRewardedAd(): Promise<boolean> {
       }
       rewardedRequestActive = false;
       return false;
+    } finally {
+      if (initializationTimeout) clearTimeout(initializationTimeout);
     }
     return new Promise<boolean>((resolve) => {
       let rewardedAd: ReturnType<typeof createTestRewardedAd>;
@@ -143,7 +146,12 @@ export function showTestRewardedAd(): Promise<boolean> {
           }
         });
         unsubscribeReward = rewardedAd.addAdEventListener(RewardedAdEventType.EARNED_REWARD, () => {
+          if (settled || earned) return;
           earned = true;
+          // Record entitlement evidence immediately, not after CLOSED. The
+          // caller handles asynchronous persistence failures without losing
+          // the fact that this ad was already earned.
+          try { onEarned?.(); } catch (error) { console.warn('[Ads] Earned receipt could not be recorded.', error); }
           if (__DEV__) console.log('[Ads] earned');
         });
         unsubscribeClosed = rewardedAd.addAdEventListener(AdEventType.CLOSED, () => {

@@ -1,5 +1,5 @@
 export const FOCUS_USAGE_POLICY = {
-  blockInAppNavigationWhileActive: true,
+  blockInAppNavigationWhileActive: false,
   allowBackgroundWhileActive: true,
 } as const;
 
@@ -19,17 +19,15 @@ export type FocusNavigationDecision =
 export const FOCUS_NAVIGATION_GUARD_COPY = {
   title: '集中タイマー実行中',
   message:
-    '集中タイマー中はRhythm内の別画面へ移動できません。ほかのアプリを開いたり、Rhythmをバックグラウンドにすることはできます。',
-  confirm: '集中に戻る',
+    '集中タイマーは別画面へ移動しても継続します。「集中へ」からタイマーに戻れます。',
+  confirm: '閉じる',
 } as const;
 
 /**
  * 集中タイマー中にRhythm内の別画面へ
  * 遷移してよいかを判定する。
  *
- * allowed === false の場合は、
- * 案内を表示するだけではなく
- * 実際の画面遷移を中断すること。
+ * 実行処理はApp配下のProviderで保持するため、現在は画面移動を許可する。
  */
 export function getFocusNavigationDecision(
   isFocusTimerActive: boolean,

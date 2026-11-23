@@ -103,6 +103,6 @@ const localStyles = StyleSheet.create({
   slotActionButton: { minHeight: 44, flex: 1, minWidth: 54, paddingHorizontal: 3, paddingVertical: 7, borderRadius: 9, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
   slotActionButtonFull: { flex: 1 },
   slotRemoveButton: { minHeight: 44, minWidth: 44, width: '100%', marginTop: 2, paddingHorizontal: 8, paddingVertical: 7, borderRadius: 9, alignItems: 'center', justifyContent: 'center', backgroundColor: '#FFF0F2' },
-  slotActionText: { fontSize: 11, fontWeight: '900' },
-  slotRemoveText: { color: '#B85060', fontSize: 11, fontWeight: '900' },
+  slotActionText: { fontSize: 13, fontWeight: '900' },
+  slotRemoveText: { color: '#B85060', fontSize: 13, fontWeight: '900' },
 });

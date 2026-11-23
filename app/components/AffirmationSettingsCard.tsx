@@ -29,7 +29,9 @@ export const MAX_AFFIRMATIONS = 20;
 function clockToDate(time: string) {
   const [hour = '9', minute = '0'] = time.split(':');
   const value = new Date();
-  value.setHours(Math.max(0, Math.min(23, Number(hour) || 9)), Math.max(0, Math.min(59, Number(minute) || 0)), 0, 0);
+  const parsedHour = hour.trim() ? Number(hour) : NaN;
+  const parsedMinute = Number(minute);
+  value.setHours(Math.max(0, Math.min(23, Number.isFinite(parsedHour) ? parsedHour : 9)), Math.max(0, Math.min(59, Number.isFinite(parsedMinute) ? parsedMinute : 0)), 0, 0);
   return value;
 }
 

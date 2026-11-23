@@ -13,7 +13,7 @@ import { TravelAppsSettingsCard } from '../components/TravelAppsSettingsCard';
 import { TravelAppSettings } from '../features/travel/travelApps';
 import { STORAGE_KEY } from '../storage/rhythmState';
 import { ONBOARDING_STORAGE_KEY } from '../features/onboarding/onboardingStorage';
-import { REWARDED_ACCESS_STORAGE_KEY } from '../features/ads/rewardedAccessStorage';
+import { EARNED_REWARD_STORAGE_KEY, REWARDED_ACCESS_STORAGE_KEY, REWARD_STORAGE_PROBE_KEY } from '../features/ads/rewardedAccessStorage';
 import { WidgetSettingsCard } from '../components/WidgetSettingsCard';
 import { WIDGET_TYPE_OPTIONS } from '../features/widget/widgetSettings';
 import type { WidgetEntitlementOverride } from '../features/widget/widgetSettings';
@@ -54,8 +54,11 @@ function AboutAppSheet({ visible, onClose, colors }: { visible: boolean; onClose
           ['ホーム画面にウィジェットを追加するには？', 'ホーム画面の何もない場所を長押しし、「＋」からRhythmPaceを選びます。追加後に長押しして「ウィジェットを編集」すると内容や見た目を変えられます。'],
           ['Siriで追加できますか？', 'ショートカットに「RhythmPaceにタスクを追加」と「RhythmPaceに予定を追加」が表示されます。日時も一緒に伝えると、その時刻の通知として登録できます。'],
           ['見た目を変更するとすぐ課金されますか？', 'いいえ。見た目の確認や全画面試着は無料です。「このデザインを使う」を選んだ時だけ、利用状況に応じて無料体験・広告・購入の案内が表示されます。'],
+          ['叶えたいことから追加したToDoは連動しますか？', '行動から作成したToDoは、完了・完了取消が相互に反映されます。「ToDoを確認」で関連先を開けます。同じ名前だけの別ToDoには連動しません。'],
+          ['削除したToDoを戻せますか？', '1件ずつ削除した直後は、約6秒間表示される「元に戻す」で取り消せます。まとめて削除した場合や、アプリを終了した後は取り消せません。'],
+          ['購入を復元すると、ToDoや日記も戻りますか？', '購入の復元は利用権限の復元です。ToDo・日記・写真などのデータは端末内に保存されます。現在、アプリ内に全データの書き出し・復元機能はありません。OSのバックアップからの復元可否は環境によるため、データを残したい場合はアプリを削除しないでください。「AIに共有」はバックアップではありません。'],
         ];
-        return <View>{entries.map(([question, answer], index) => <View key={question} style={{ paddingVertical: index === 0 ? 0 : 13, borderTopWidth: index === 0 ? 0 : 1, borderTopColor: colors.border }}><Text style={{ color: colors.text, fontSize: 13, fontWeight: '800', lineHeight: 19 }}>Q. {question}</Text><Text style={{ color: colors.muted, fontSize: 12, lineHeight: 19, marginTop: 5 }}>A. {answer}</Text></View>)}<Pressable accessibilityRole="link" onPress={() => openExternal(SUPPORT_URL)} style={{ marginTop: 15, minHeight: 38, justifyContent: 'center' }}><Text style={{ color: colors.accent, fontSize: 12, fontWeight: '800' }}>解決しない場合はサポートページへ ↗</Text></Pressable></View>;
+        return <View>{entries.map(([question, answer], index) => <View key={question} style={{ paddingVertical: index === 0 ? 0 : 13, borderTopWidth: index === 0 ? 0 : 1, borderTopColor: colors.border }}><Text style={{ color: colors.text, fontSize: 14, fontWeight: '800', lineHeight: 21 }}>Q. {question}</Text><Text style={{ color: colors.muted, fontSize: 13, lineHeight: 20, marginTop: 5 }}>A. {answer}</Text></View>)}<Pressable accessibilityRole="link" onPress={() => openExternal(SUPPORT_URL)} style={{ marginTop: 15, minHeight: 44, justifyContent: 'center' }}><Text style={{ color: colors.accent, fontSize: 13, fontWeight: '800' }}>解決しない場合はサポートページへ ↗</Text></Pressable></View>;
       }
       case 'privacyPolicy': return <View><Text style={{ color: colors.muted, fontSize: 13, lineHeight: 20 }}>情報の取扱いを詳しく確認できます。</Text><Pressable accessibilityRole="link" onPress={() => openExternal(PRIVACY_POLICY_URL)} style={{ marginTop: 12 }}><Text style={{ color: colors.accent, fontSize: 13, fontWeight: '800' }}>プライバシーポリシーを開く ↗</Text></Pressable></View>;
       case 'contact': return <View><Text style={{ color: colors.muted, fontSize: 13, lineHeight: 20 }}>不具合のお問い合わせには、発生した画面、操作内容、発生日時、iPhone機種、iOSバージョン、RhythmPaceバージョンがあると確認しやすくなります。タスクの内容など、不要な個人情報は送らないでください。</Text><Pressable accessibilityRole="link" onPress={() => openExternal(SUPPORT_URL)} style={{ marginTop: 12 }}><Text style={{ color: colors.accent, fontSize: 13, fontWeight: '800' }}>サポートページを開く ↗</Text></Pressable><Pressable accessibilityRole="link" onPress={() => openExternal(`mailto:${SUPPORT_EMAIL}`)} style={{ marginTop: 10 }}><Text style={{ color: colors.accent, fontSize: 13, fontWeight: '800' }}>メールで問い合わせる</Text><Text style={{ color: colors.muted, fontSize: 13, lineHeight: 19, marginTop: 3 }}>{SUPPORT_EMAIL}</Text></Pressable></View>;
@@ -811,6 +814,8 @@ export function SettingsScreen({
               STORAGE_KEY,
               ONBOARDING_STORAGE_KEY,
               REWARDED_ACCESS_STORAGE_KEY,
+              EARNED_REWARD_STORAGE_KEY,
+              REWARD_STORAGE_PROBE_KEY,
             ]).then(() => DevSettings.reload());
           },
         },

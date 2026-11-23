@@ -3,9 +3,13 @@ import type { WidgetType } from '../../types';
 
 export const REWARDED_ACCESS_STORAGE_KEY =
   'rhythm-rewarded-access-v1';
+export const EARNED_REWARD_STORAGE_KEY = 'rhythm-earned-reward-v1';
+export const REWARD_STORAGE_PROBE_KEY = 'rhythm-reward-storage-probe-v1';
 
 export type RewardedAccessState = {
   version: 1;
+  /** Idempotency marker for a durably recorded earned-ad receipt. */
+  lastAppliedRewardId?: string;
 
   wishCreateProgress: number;
 
@@ -146,6 +150,7 @@ export function normalizeRewardedAccessState(
 
   return {
     version: 1,
+    ...(typeof raw.lastAppliedRewardId === 'string' ? { lastAppliedRewardId: raw.lastAppliedRewardId } : {}),
 
     wishCreateProgress: Math.min(
       normalizeNonNegativeInteger(
@@ -263,19 +268,19 @@ export async function loadRewardedAccessState(): Promise<RewardedAccessState> {
   }
 }
 
-export async function saveRewardedAccessState(
+let rewardSaveQueue: Promise<void> = Promise.resolve();
+
+export function saveRewardedAccessState(
   state: RewardedAccessState,
 ): Promise<void> {
-  await AsyncStorage.setItem(
-    REWARDED_ACCESS_STORAGE_KEY,
-    JSON.stringify(
-      normalizeRewardedAccessState(state),
-    ),
-  );
+  const serialized = JSON.stringify(normalizeRewardedAccessState(state));
+  const save = rewardSaveQueue.then(() => AsyncStorage.setItem(REWARDED_ACCESS_STORAGE_KEY, serialized));
+  rewardSaveQueue = save.catch(() => undefined);
+  return save;
 }
 
-export async function resetRewardedAccessState(): Promise<void> {
-  await AsyncStorage.removeItem(
-    REWARDED_ACCESS_STORAGE_KEY,
-  );
+export function resetRewardedAccessState(): Promise<void> {
+  const reset = rewardSaveQueue.then(() => AsyncStorage.multiRemove([REWARDED_ACCESS_STORAGE_KEY, EARNED_REWARD_STORAGE_KEY, REWARD_STORAGE_PROBE_KEY]));
+  rewardSaveQueue = reset.catch(() => undefined);
+  return reset;
 }

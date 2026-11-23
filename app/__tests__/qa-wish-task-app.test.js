@@ -43,6 +43,28 @@ async function openTaskEditor(view,title='歩く'){
  await waitFor(()=>expect(view.getByPlaceholderText('例：資料をバッグに入れる')).toBeTruthy());
 }
 async function taskCheck(view){fireEvent.press(view.getByText('一覧'));await waitFor(()=>expect(view.getAllByRole('checkbox').length).toBeGreaterThan(0));fireEvent.press(view.getAllByRole('checkbox')[0],{stopPropagation:()=>{}});}
+
+test('関連ToDoを確認から名前変更済みの正しいToDoへ直接移動し、編集・保存・再読込できる',async()=>{
+ await seed([{...linked(),title:'名前を変えた歩行'},ordinary(),ordinary('other','歩く')]);
+ let view=await boot();const w=await openWish(view);
+ fireEvent.press(w.getByLabelText('歩くの関連ToDoを確認'),{stopPropagation:()=>{}});
+ await waitFor(()=>expect(view.getByPlaceholderText('例：資料をバッグに入れる').props.value).toBe('名前を変えた歩行'));
+ fireEvent.changeText(view.getByPlaceholderText('例：資料をバッグに入れる'),'関連先から編集');fireEvent.press(view.getByText('変更を保存'));
+ await waitFor(async()=>expect((await loadRhythmState()).tasks.find(t=>t.id==='linked').title).toBe('関連先から編集'));
+ expect((await loadRhythmState()).tasks.find(t=>t.id==='other').title).toBe('歩く');
+ view.unmount();view=await boot();expect(view.getAllByText('関連先から編集').length).toBeGreaterThan(0);expect((await loadRhythmState()).tasks.find(t=>t.id==='linked').origin).toEqual(origin);
+},60000);
+
+test('単体ToDo削除を取り消し、関連ID・他のToDo・Wishの状態を保持して保存・再読込する',async()=>{
+ await seed([linked(),ordinary(),ordinary('other','残すToDo')]);let view=await boot();
+ fireEvent.press(view.getAllByText('歩く')[0],{stopPropagation:()=>{}});await waitFor(()=>expect(view.getByText('削除')).toBeTruthy());fireEvent.press(view.getByText('削除'));dismissTaskAction(view);
+ await waitFor(async()=>expect((await loadRhythmState()).tasks.some(t=>t.id==='linked')).toBe(false));
+ const undo=view.getByLabelText('ToDoの削除を元に戻す');act(()=>{fireEvent.press(undo);fireEvent.press(undo)});
+ await waitFor(async()=>expect((await loadRhythmState()).tasks.filter(t=>t.id==='linked')).toHaveLength(1));
+ expect((await loadRhythmState()).tasks.find(t=>t.id==='linked').origin).toEqual(origin);expect((await action()).completed).toBe(false);
+ expect((await loadRhythmState()).tasks.find(t=>t.id==='other').title).toBe('残すToDo');
+ view.unmount();view=await boot();expect(view.getAllByText('歩く').length).toBeGreaterThan(0);expect(view.queryByLabelText('ToDoの削除を元に戻す')).toBeNull();
+},60000);
 test('Wish UIで関連ID付きTODOを作成し連打・重複を防ぐ。同名TODOを関連付けず双方向完了と取消、進捗、編集、削除を再読込する',async()=>{
  await seed([ordinary(),ordinary('same','歩く')]);let view=await boot(),w=await openWish(view);
  fireEvent.press(w.getByText('歩く'));const add=w.getByText('ToDoに追加 ›');act(()=>{fireEvent.press(add);fireEvent.press(add)});

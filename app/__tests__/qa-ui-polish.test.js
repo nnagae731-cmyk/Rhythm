@@ -5,6 +5,7 @@ const { BottomNav } = require('../components/BottomNav');
 const { HomeScreen } = require('../screens/HomeScreen');
 const { PhotoThemeSettingsCard } = require('../components/PhotoThemeSettingsCard');
 const { AffirmationSettingsCard } = require('../components/AffirmationSettingsCard');
+const Svg = require('react-native-svg').default;
 
 afterEach(cleanup);
 
@@ -13,6 +14,7 @@ test('下部ナビは選択状態を伝え、各タブの操作領域を48確保
   const view = render(<BottomNav screen="home" designMode="dark" onChange={change} />);
   const tabs = view.getAllByRole('tab');
   expect(tabs).toHaveLength(5);
+  expect(view.UNSAFE_getAllByType(Svg)).toHaveLength(5);
   expect(view.getByRole('tab', { name: 'ToDo' }).props.accessibilityState.selected).toBe(true);
   for (const tab of tabs) expect(StyleSheet.flatten(tab.props.style).minHeight).toBeGreaterThanOrEqual(44);
   fireEvent.press(view.getByRole('tab', { name: '予定' }));
@@ -26,6 +28,7 @@ test('写真Sheet用表示は背景の二重選択入口だけを外し、トッ
   expect(view.queryByText('背景写真を変更')).toBeNull();
   fireEvent.press(view.getByLabelText('今日のトップを選ぶ'));
   expect(pick).toHaveBeenCalledWith('home');
+  for (const label of view.getAllByText('選ぶ')) expect(StyleSheet.flatten(label.props.style).fontSize).toBeGreaterThanOrEqual(13);
   fireEvent.press(view.getByText('集中背景を変更'));
   expect(pick).toHaveBeenCalledWith('focus');
   fireEvent.press(view.getAllByText('外す')[0]);

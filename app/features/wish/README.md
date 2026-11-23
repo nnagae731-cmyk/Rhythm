@@ -13,11 +13,13 @@ Taskにoptionalな `origin: { monthKey, wishId, actionId }` を保持する。Wi
 - Task → WishAction：Appの `completeTaskIds`、`restoreTaskById`、完了済みTaskのサブタスク取消から `wishMonthsAfterTaskCompletion` を呼ぶ。Focus・通知・Widget/App Intents保留完了も既存の共通入口を使う。
 - WishAction → Task：Appの `setWishMonths` mutation boundaryで、最新のrefに対して変更を適用し `taskChangesAfterWishEdit` で明示的な完了差分だけを抽出する。実際のTask変更は上記共通完了/取消入口を使い、通知・分析イベントも維持する。
 - 相互監視するuseEffectを使わない。Taskが既に要求状態なら再完了せず、WishActionが既に同じ状態なら同じオブジェクトを返す。
-- 目標そのものの `Wish.completed` は自動変更しない。画面の進捗率とWidgetの既存進捗計算式はそのまま使用する。
+- 目標そのものの `Wish.completed` は自動変更しない。画面の進捗率は既存式を維持し、Widgetも `calculateWishProgress` で同じ目標・行動を母数にする（目標未完了＋行動1件完了は両方50%）。
 
 ## 作成・編集・削除
 
 - 同じoriginのTaskがあれば、完了済みでも再作成しない。既存Taskがある旨を案内する。同名でもoriginのないTaskは別物。
+- 行動の横の「ToDoを確認」は、一意に関連するTaskだけを直接開く。行動Editor上に別のNative Modalを重ねず、元の画面から移動する。
+- 単体Task削除は約6秒間「元に戻す」で取り消せる。最新Task配列へ対象だけ戻し、別Taskの変更を巻き戻さない。アプリ終了後の取り消しや、確認済みの一括削除の取り消しは対象外。
 - 作成成功Alertは既存の `waitForSettingsSave` が実際の永続化成功を受け取った後だけ表示する。保存失敗時は行動Editorを閉じず、入力を保持し、再試行では同じTaskを保存する。
 - Taskのタイトル・日時・メモ等はoriginを維持する。編集保存では編集開始時の古いTaskではなく、最新Taskの完了状態とoriginを引き継ぐ。WishActionの文章は変更しない。
 - Task削除はWishActionを削除せず、行動の完了状態も変えない。

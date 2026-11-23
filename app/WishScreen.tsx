@@ -18,6 +18,8 @@ type WishScreenProps = {
   onSaveState: (updater: (current: MonthlyWishState) => MonthlyWishState) => void;
   onSaveEditor?: (updater: (current: MonthlyWishState) => MonthlyWishState) => Promise<void>;
   onCreateTaskFromAction?: (action: WishAction) => void | Promise<void>;
+  linkedTaskIdsByAction?: Record<string, string>;
+  onOpenRelatedTask?: (taskId: string) => void;
   canCreateWish?: boolean;
   wishRewardProgress?: { current: number; required: number };
   onRequestWishReward?: () => Promise<RewardedAccessResult> | RewardedAccessResult;
@@ -99,7 +101,7 @@ function formatHistoryDate(value?: string) {
   return Number.isNaN(date.getTime()) ? '' : `${date.getMonth() + 1}/${date.getDate()} 完了`;
 }
 
-export function WishScreen({ designMode: rawDesignMode, chicPalette, monthLabel, state, wishMonths = {}, onSaveState, onSaveEditor, onCreateTaskFromAction, canCreateWish = true, wishRewardProgress, onRequestWishReward, onWishCreated, wishActionRewardProgress, onRequestWishActionReward, onWishActionCreated, affirmations, affirmationCustomTexts, planTier, onSaveAffirmation, onDeleteAffirmation, onSaveAffirmationCustomText, onDeleteAffirmationCustomText, canCreateWishAction = true, topImageUri, onPickTopImage, initialEditor, onPremium, onAIShare }: WishScreenProps) {
+export function WishScreen({ designMode: rawDesignMode, chicPalette, monthLabel, state, wishMonths = {}, onSaveState, onSaveEditor, onCreateTaskFromAction, linkedTaskIdsByAction = {}, onOpenRelatedTask, canCreateWish = true, wishRewardProgress, onRequestWishReward, onWishCreated, wishActionRewardProgress, onRequestWishActionReward, onWishActionCreated, affirmations, affirmationCustomTexts, planTier, onSaveAffirmation, onDeleteAffirmation, onSaveAffirmationCustomText, onDeleteAffirmationCustomText, canCreateWishAction = true, topImageUri, onPickTopImage, initialEditor, onPremium, onAIShare }: WishScreenProps) {
   // Mono DarkはMono Lightと同じレイアウトを使い、色だけを反転する。
   const isDark = rawDesignMode === 'dark';
   const theme = getThemeTokens(rawDesignMode, chicPalette?.id ?? 'cool');
@@ -430,6 +432,7 @@ export function WishScreen({ designMode: rawDesignMode, chicPalette, monthLabel,
                           <Text style={{ color: onAccent, fontWeight: '900' }}>{action.completed ? '✓' : ''}</Text>
                         </Pressable>
                         <Text style={[styles.actionTitle, { color: textPrimary }, action.completed && styles.itemTitleDone]}>{action.title}</Text>
+                        {linkedTaskIdsByAction[action.id] && onOpenRelatedTask ? <Pressable accessibilityRole="button" accessibilityLabel={`${action.title}の関連ToDoを確認`} onPress={(event) => { event.stopPropagation(); const taskId = linkedTaskIdsByAction[action.id]; if (taskId) onOpenRelatedTask(taskId); }} style={{ minHeight: 44, paddingHorizontal: 8, justifyContent: 'center' }}><Text style={{ color: accent, fontSize: 13, fontWeight: '700' }}>ToDoを確認</Text></Pressable> : null}
                         <Text style={[styles.itemChevron, { color: textSecondary }]}>›</Text>
                       </Pressable>)}</View> : <Text style={[styles.visionEmptyText, { color: textSecondary }]}>今日できる一歩を決めてみよう。</Text>}
                       {canCreateWishAction ? <Pressable onPress={() => openActionEditor(undefined, wish.id)} style={styles.lightActionRow}><Text style={[styles.lightAction, { color: accent }]}>＋ 行動を追加</Text></Pressable> : <Pressable onPress={() => setRewardPrompt('wishAction')} style={styles.quietFeatureRow}><View style={styles.itemBody}><Text style={[styles.quietFeatureText, { color: textSecondary }]}>広告を2回見て、行動を1件追加できます。{wishActionRewardProgress?.current ? `（${wishActionRewardProgress.current} / ${wishActionRewardProgress.required} 回視聴済み）` : ''}</Text></View><Text style={[styles.lightAction, { color: accent }]}>広告を見て追加 ›</Text></Pressable>}
