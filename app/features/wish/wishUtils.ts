@@ -63,3 +63,13 @@ export function normalizeMonthlyReview(review?: MonthlyReview): MonthlyReview {
     satisfaction: review?.satisfaction ?? 0,
   };
 }
+
+export function reviewIdentity(review: MonthlyReview) {
+  return review.id ?? `${review.date ?? ''}|${review.shortNote ?? ''}|${review.memo ?? ''}|${review.satisfaction ?? 0}`;
+}
+
+export function reviewsForMonth(monthState: MonthlyWishState) {
+  if (monthState.reviews?.length) return monthState.reviews;
+  const review = monthState.review;
+  return review && (review.photo || review.date || review.shortNote || review.memo || review.satisfaction) ? [review] : [];
+}

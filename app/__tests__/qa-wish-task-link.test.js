@@ -1,11 +1,26 @@
 jest.mock('@react-native-async-storage/async-storage',()=>require('@react-native-async-storage/async-storage/jest/async-storage-mock'));
-const {readWishTaskOrigin,sameWishTaskOrigin,linkedWishAction,wishMonthsAfterTaskCompletion,taskChangesAfterWishEdit}=require('../features/wish/wishTaskLink');
+const {readWishTaskOrigin,sameWishTaskOrigin,linkedWishAction,wishMonthsAfterTaskCompletion,taskChangesAfterWishEdit,wishTaskForActionDeletion}=require('../features/wish/wishTaskLink');
 const {calculateWishProgress}=require('../features/wish/wishUtils');
 const {saveRhythmState,loadRhythmState}=require('../storage/rhythmStorage');
 const {completeTasksWithRepeats}=require('../features/tasks/taskUtils');
 const origin={monthKey:'2026-10',wishId:'w',actionId:'a'};
 const month=()=>({wishes:[{id:'w',title:'健康',completed:false,createdAt:'2026-10-01'}],actions:[{id:'a',wishId:'w',title:'歩く',completed:false},{id:'other',wishId:'w',title:'歩く',completed:false}],review:{},reviews:[{id:'diary',shortNote:'保持'}]});
 const task=(extra={})=>({id:'linked',title:'名前は変えてよい',category:'その他',priority:'中',done:false,status:'active',origin,...extra});
+
+test('行動の同時削除は、月・目標・行動・確認時のTODO IDが一致する1件だけを対象にする',()=>{
+ const target=task(),others=[task({id:'same-title',origin:undefined}),task({id:'other-month',origin:{...origin,monthKey:'2026-11'}})];
+ expect(wishTaskForActionDeletion({'2026-10':month()},[target,...others],origin,'linked')).toBe(target);
+ expect(wishTaskForActionDeletion({'2026-10':month()},others,origin,'linked')).toBeUndefined();
+ expect(()=>wishTaskForActionDeletion({'2026-10':month()},[target,...others],origin,'same-title')).toThrow();
+});
+test.each([{repeatRule:'daily'},{isRoutine:true},{origin:undefined}])('確認中にTODOの関連や繰返しが変わった場合は削除しない：%j',change=>{
+ expect(()=>wishTaskForActionDeletion({'2026-10':month()},[task(change)],origin,'linked')).toThrow('関連ToDoが変更');
+});
+test('重複リンク・消えた行動・破損関連を推測して削除しない',()=>{
+ expect(()=>wishTaskForActionDeletion({'2026-10':month()},[task(),task({id:'duplicate'})],origin,'linked')).toThrow();
+ expect(()=>wishTaskForActionDeletion({'2026-10':{...month(),actions:[]}},[task()],origin,'linked')).toThrow();
+ expect(()=>wishTaskForActionDeletion({},[task()],null,'linked')).toThrow();
+});
 test('Task完了と取消はIDが一致する行動のみ更新し、進捗と履歴を保持する',()=>{
  const months={'2026-10':month()},tasks=[task({done:true,status:'completed',completedAt:'2026-11-22T03:00:00Z'}),task({id:'same-title',origin:undefined})];
  const done=wishMonthsAfterTaskCompletion(months,tasks,['linked']);

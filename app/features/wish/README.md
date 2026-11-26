@@ -24,7 +24,9 @@ Taskにoptionalな `origin: { monthKey, wishId, actionId }` を保持する。Wi
 - 保存失敗時は行動Editorと入力を保持する。行動だけ保存済みの場合はそのIDをEditorに保持し、再試行で同じ行動・Taskを保存する。行動追加権利の消費も二重にしない。
 - Taskのタイトル・日時・メモ等はoriginを維持する。編集保存では編集開始時の古いTaskではなく、最新Taskの完了状態とoriginを引き継ぐ。WishActionの文章は変更しない。
 - Task削除はWishActionを削除せず、行動の完了状態も変えない。
-- WishAction/親Wishを削除した場合、Taskは残してoriginだけを外す。別のWishへ行動を移動して元の組合せが無効になった場合も同様。
+- 関連TODOがある行動の削除時は「行動だけ削除」「関連TODOも一緒に削除」を選ぶ。「行動だけ削除」はTaskを残しoriginだけを外す。同時削除は確認時のTask IDとmonthKey/wishId/actionIdを再検査し、一意に関連する単発Taskだけを削除する。同名・別月のTaskは対象にしない。
+- 同時削除は既存のTODO通知取消とApp全体snapshot保存キューを使用する。実際の保存完了までEditorを閉じず、保存失敗時は入力と削除意図を保持し「削除を再試行」できる。他のTaskの更新を古いsnapshotで巻き戻さない。
+- 親Wishの削除や、別のWishへ行動を移動して元の組合せが無効になった場合は、従来どおりTaskを残してoriginだけを外す。
 - 複製したTaskと繰り返し生成した次回Taskにoriginを継承しない。
 - 関連済みTaskを繰り返し/ルーティンへ変更する保存時は、解除の確認を出す。取消なら編集を続け、確認時だけoriginを解除する。元の行動・完了状態を保持し、通常の繰り返し機能は維持する。
 

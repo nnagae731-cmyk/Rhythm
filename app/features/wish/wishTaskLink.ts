@@ -29,6 +29,19 @@ export function isOneOffWishTask(task: Task): boolean {
   return Boolean(readWishTaskOrigin(task.origin)) && !task.isRoutine && (task.repeatRule ?? 'none') === 'none';
 }
 
+/** Revalidate the exact task offered in the deletion dialog; never match titles. */
+export function wishTaskForActionDeletion(months: WishMonthMap, tasks: Task[], value: unknown, expectedTaskId: string | undefined): Task | undefined {
+  const origin = readWishTaskOrigin(value);
+  if (!origin || !expectedTaskId) throw new Error('関連ToDoを確認できません。画面を開き直してください。');
+  const target = tasks.find(task => task.id === expectedTaskId);
+  if (!target) return undefined; // Already deleted, including a persistence retry.
+  const matches = tasks.filter(task => sameWishTaskOrigin(task.origin, origin));
+  if (!linkedWishAction(months, origin) || matches.length !== 1 || matches[0] !== target || !isOneOffWishTask(target)) {
+    throw new Error('関連ToDoが変更されています。行動だけ削除するか、画面を開き直してください。');
+  }
+  return target;
+}
+
 /** Only explicit, unique one-to-one links may propagate completion. */
 export function wishMonthsAfterTaskCompletion(months: WishMonthMap, allTasks: Task[], changedIds: string[]): WishMonthMap {
   let next = months;

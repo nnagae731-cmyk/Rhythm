@@ -17,6 +17,7 @@ type WishScreenProps = {
   wishMonths?: WishMonthMap;
   onSaveState: (updater: (current: MonthlyWishState) => MonthlyWishState) => void;
   onSaveEditor?: (updater: (current: MonthlyWishState) => MonthlyWishState) => Promise<void>;
+  onDeleteAction?: (action: WishAction, includeTask: boolean, expectedTaskId?: string) => Promise<void>;
   onCreateTaskFromAction?: (action: WishAction) => void | Promise<void>;
   linkedTaskIdsByAction?: Record<string, string>;
   onOpenRelatedTask?: (taskId: string) => void;
@@ -62,6 +63,8 @@ const emptyEditor: EditorState = {
   completed: false,
 };
 
+type ActionDeleteAttempt = { action: WishAction; includeTask: boolean; expectedTaskId?: string };
+
 
 function withWishDecorationAlpha(color: string, alpha: number) {
   const match = /^#([0-9a-f]{6})$/i.exec(color);
@@ -92,7 +95,7 @@ function formatHistoryMonth(monthKey: string) {
 }
 
 
-export function WishScreen({ designMode: rawDesignMode, chicPalette, monthLabel, state, wishMonths = {}, onSaveState, onSaveEditor, onCreateTaskFromAction, linkedTaskIdsByAction = {}, onOpenRelatedTask, canCreateWish = true, wishRewardProgress, onRequestWishReward, onWishCreated, wishActionRewardProgress, onRequestWishActionReward, onWishActionCreated, affirmations, affirmationCustomTexts, planTier, onSaveAffirmation, onDeleteAffirmation, onSaveAffirmationCustomText, onDeleteAffirmationCustomText, canCreateWishAction = true, topImageUri, onPickTopImage, initialEditor, onPremium, onAIShare }: WishScreenProps) {
+export function WishScreen({ designMode: rawDesignMode, chicPalette, monthLabel, state, wishMonths = {}, onSaveState, onSaveEditor, onDeleteAction, onCreateTaskFromAction, linkedTaskIdsByAction = {}, onOpenRelatedTask, canCreateWish = true, wishRewardProgress, onRequestWishReward, onWishCreated, wishActionRewardProgress, onRequestWishActionReward, onWishActionCreated, affirmations, affirmationCustomTexts, planTier, onSaveAffirmation, onDeleteAffirmation, onSaveAffirmationCustomText, onDeleteAffirmationCustomText, canCreateWishAction = true, topImageUri, onPickTopImage, initialEditor, onPremium, onAIShare }: WishScreenProps) {
   // Mono DarkはMono Lightと同じレイアウトを使い、色だけを反転する。
   const isDark = rawDesignMode === 'dark';
   const theme = getThemeTokens(rawDesignMode, chicPalette?.id ?? 'cool');
@@ -101,6 +104,9 @@ export function WishScreen({ designMode: rawDesignMode, chicPalette, monthLabel,
   const [saveNotice, setSaveNotice] = useState('');
   const [savingEditor, setSavingEditor] = useState(false);
   const savingEditorRef = React.useRef(false);
+  const deleteAttemptRef = React.useRef<ActionDeleteAttempt | undefined>(undefined);
+  const deleteDialogOpenRef = React.useRef(false);
+  const [deleteRetry, setDeleteRetry] = useState(false);
   const editorAttemptIdRef = React.useRef<string | undefined>(undefined);
   const pendingSaveNotice = React.useRef('');
   const saveNoticeTimer = React.useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -148,6 +154,8 @@ export function WishScreen({ designMode: rawDesignMode, chicPalette, monthLabel,
   };
 
   const openWishEditor = (wish?: Wish) => {
+    deleteAttemptRef.current = undefined;
+    setDeleteRetry(false);
     editorAttemptIdRef.current = undefined;
     if (!wish && !canCreateWish) {
       setRewardPrompt('wish');
@@ -164,6 +172,8 @@ export function WishScreen({ designMode: rawDesignMode, chicPalette, monthLabel,
   };
 
   const openActionEditor = (action?: WishAction, wishId = selectedWish?.id) => {
+    deleteAttemptRef.current = undefined;
+    setDeleteRetry(false);
     editorAttemptIdRef.current = undefined;
     if (!canCreateWishAction && !action) {
       setRewardPrompt('wishAction');
@@ -180,7 +190,7 @@ export function WishScreen({ designMode: rawDesignMode, chicPalette, monthLabel,
   };
 
   const saveEditor = async (addToTodo = false) => {
-    if (savingEditorRef.current) return;
+    if (savingEditorRef.current || deleteAttemptRef.current) return;
     const title = editor.title.trim();
     if (!title) return;
     const isEditing = Boolean(editor.id);
@@ -283,8 +293,50 @@ export function WishScreen({ designMode: rawDesignMode, chicPalette, monthLabel,
     });
   };
 
-  const deleteAction = (id: string) => {
-    commit((current) => ({ ...current, actions: current.actions.filter((action) => action.id !== id) }));
+  const performActionDeletion = async (attempt: ActionDeleteAttempt) => {
+    if (savingEditorRef.current) return;
+    deleteAttemptRef.current = attempt;
+    savingEditorRef.current = true;
+    setSavingEditor(true);
+    setDeleteRetry(false);
+    try {
+      if (onDeleteAction) await onDeleteAction(attempt.action, attempt.includeTask, attempt.expectedTaskId);
+      else {
+        const update = (current: MonthlyWishState) => ({ ...current, actions: current.actions.filter(action => action.id !== attempt.action.id) });
+        if (onSaveEditor) await onSaveEditor(update);
+        else onSaveState(update);
+      }
+      deleteAttemptRef.current = undefined;
+      editorAttemptIdRef.current = undefined;
+      pendingSaveNotice.current = '';
+      setEditor(emptyEditor);
+    } catch (error) {
+      setDeleteRetry(true);
+      Alert.alert('削除を完了できませんでした', `${error instanceof Error ? error.message : '削除内容を保存できません。'}\n編集画面の「削除を再試行」から、同じ削除をもう一度試せます。`);
+    } finally {
+      savingEditorRef.current = false;
+      setSavingEditor(false);
+    }
+  };
+
+  const requestEditorDeletion = () => {
+    if (!editor.id || savingEditorRef.current || deleteDialogOpenRef.current) return;
+    if (editor.mode === 'wish') { deleteWish(editor.id); setEditor(emptyEditor); return; }
+    if (deleteAttemptRef.current) { void performActionDeletion(deleteAttemptRef.current); return; }
+    const action = state.actions.find(item => item.id === editor.id);
+    if (!action) return;
+    const expectedTaskId = linkedTaskIdsByAction[action.id];
+    const run = (includeTask: boolean) => {
+      deleteDialogOpenRef.current = false;
+      void performActionDeletion({ action, includeTask, expectedTaskId });
+    };
+    if (!expectedTaskId || !onDeleteAction) { run(false); return; }
+    deleteDialogOpenRef.current = true;
+    Alert.alert('行動を削除しますか？', 'この行動には関連TODOがあります。削除する範囲を選んでください。', [
+      { text: 'キャンセル', style: 'cancel', onPress: () => { deleteDialogOpenRef.current = false; } },
+      { text: '行動だけ削除', onPress: () => run(false) },
+      { text: '関連TODOも一緒に削除', style: 'destructive', onPress: () => run(true) },
+    ], { cancelable: true, onDismiss: () => { deleteDialogOpenRef.current = false; } });
   };
 
   const wishes = state.wishes;
@@ -313,7 +365,7 @@ export function WishScreen({ designMode: rawDesignMode, chicPalette, monthLabel,
       </Pressable></Pressable>
     </Modal>
     <Modal visible={editor.visible} transparent animationType="fade" onDismiss={showPendingSaveNotice} onRequestClose={() => { if (!savingEditorRef.current) { editorAttemptIdRef.current = undefined; setEditor(emptyEditor); } }}>
-      <Pressable style={styles.modalBackdrop} onPress={() => { if (!savingEditorRef.current) { editorAttemptIdRef.current = undefined; setEditor(emptyEditor); } }}><Pressable pointerEvents={savingEditor ? "none" : "auto"} style={[styles.editorSheet, { backgroundColor: surface, borderColor: border }]} onPress={(event) => event.stopPropagation()}><Text style={[styles.editorTitle, { color: textPrimary }]}>{editor.mode === 'wish' ? (editor.id ? '叶えたいことを編集' : '叶えたいことを追加') : editor.id ? '行動を編集' : '行動を追加'}</Text><TextInput editable={!savingEditor} value={editor.title} onChangeText={(value) => setEditor((current) => ({ ...current, title: value }))} placeholder={editor.mode === 'wish' ? '叶えたいこと' : '叶えるための行動'} placeholderTextColor={textSecondary} multiline textAlignVertical="top" style={[styles.editorInput, { color: textPrimary, backgroundColor: subtleSurface, borderColor: border }]} />{editor.mode === 'action' ? <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.wishSelectRow}>{state.wishes.map((wish) => <Pressable key={wish.id} style={[styles.wishChip, { backgroundColor: editor.wishId === wish.id ? (rawDesignMode === 'chic' && palette ? palette.accentSoft : theme.colors.softAccent) : subtleSurface, borderColor: editor.wishId === wish.id ? accent : border }]} onPress={() => setEditor((current) => ({ ...current, wishId: wish.id }))}><Text style={[styles.wishChipText, { color: textSecondary }]}>{wish.title}</Text></Pressable>)}</ScrollView> : null}{editor.mode === 'action' && onCreateTaskFromAction ? <Pressable style={[styles.editorTaskLink, { borderColor: border }]} disabled={savingEditor} accessibilityState={{ busy: savingEditor }} onPress={createTaskFromActionEditor}><Text style={[styles.editorTaskLinkText, { color: accent }]}>{savingEditor ? '保存中…' : '保存してToDoに追加 ›'}</Text></Pressable> : null}<View style={styles.editorToggleRow}><Pressable style={[styles.toggleChip, { backgroundColor: editor.completed ? accent : subtleSurface, borderColor: border }]} onPress={() => setEditor((current) => ({ ...current, completed: !current.completed }))}><Text style={{ color: editor.completed ? (rawDesignMode === 'chic' && palette ? palette.onAccent : '#FFFFFF') : textSecondary, fontWeight: '900' }}>完了</Text></Pressable>{editor.id ? <Pressable onPress={() => { editor.mode === 'wish' ? deleteWish(editor.id!) : deleteAction(editor.id!); setEditor(emptyEditor); }}><Text style={styles.editorDeleteText}>削除</Text></Pressable> : null}<Pressable onPress={() => setEditor(emptyEditor)}><Text style={[styles.editorCancelText, { color: textSecondary }]}>閉じる</Text></Pressable><Pressable accessibilityRole="button" accessibilityLabel="保存" accessibilityState={{ busy: savingEditor, disabled: savingEditor }} style={[styles.primaryButton, { backgroundColor: accent, opacity: savingEditor ? 0.65 : 1 }]} disabled={savingEditor} onPress={() => void saveEditor()}><Text style={[styles.primaryButtonText, { color: rawDesignMode === 'chic' && palette ? palette.onAccent : isDark ? theme.colors.screenBackground : '#FFFFFF' }]}>{savingEditor ? '保存中…' : '保存'}</Text></Pressable></View></Pressable></Pressable>
+      <Pressable style={styles.modalBackdrop} onPress={() => { if (!savingEditorRef.current) { editorAttemptIdRef.current = undefined; setEditor(emptyEditor); } }}><Pressable pointerEvents={savingEditor ? "none" : "auto"} style={[styles.editorSheet, { backgroundColor: surface, borderColor: border }]} onPress={(event) => event.stopPropagation()}><Text style={[styles.editorTitle, { color: textPrimary }]}>{editor.mode === 'wish' ? (editor.id ? '叶えたいことを編集' : '叶えたいことを追加') : editor.id ? '行動を編集' : '行動を追加'}</Text><TextInput editable={!savingEditor && !deleteRetry} value={editor.title} onChangeText={(value) => setEditor((current) => ({ ...current, title: value }))} placeholder={editor.mode === 'wish' ? '叶えたいこと' : '叶えるための行動'} placeholderTextColor={textSecondary} multiline textAlignVertical="top" style={[styles.editorInput, { color: textPrimary, backgroundColor: subtleSurface, borderColor: border }]} />{editor.mode === 'action' ? <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.wishSelectRow}>{state.wishes.map((wish) => <Pressable key={wish.id} disabled={savingEditor || deleteRetry} style={[styles.wishChip, { backgroundColor: editor.wishId === wish.id ? (rawDesignMode === 'chic' && palette ? palette.accentSoft : theme.colors.softAccent) : subtleSurface, borderColor: editor.wishId === wish.id ? accent : border }]} onPress={() => setEditor((current) => ({ ...current, wishId: wish.id }))}><Text style={[styles.wishChipText, { color: textSecondary }]}>{wish.title}</Text></Pressable>)}</ScrollView> : null}{editor.mode === 'action' && onCreateTaskFromAction ? <Pressable style={[styles.editorTaskLink, { borderColor: border }]} disabled={savingEditor || deleteRetry} accessibilityState={{ busy: savingEditor }} onPress={createTaskFromActionEditor}><Text style={[styles.editorTaskLinkText, { color: accent }]}>{savingEditor ? '保存中…' : '保存してToDoに追加 ›'}</Text></Pressable> : null}<View style={styles.editorToggleRow}><Pressable disabled={savingEditor || deleteRetry} style={[styles.toggleChip, { backgroundColor: editor.completed ? accent : subtleSurface, borderColor: border }]} onPress={() => setEditor((current) => ({ ...current, completed: !current.completed }))}><Text style={{ color: editor.completed ? (rawDesignMode === 'chic' && palette ? palette.onAccent : '#FFFFFF') : textSecondary, fontWeight: '900' }}>完了</Text></Pressable>{editor.id ? <Pressable onPress={requestEditorDeletion}><Text style={styles.editorDeleteText}>{deleteRetry ? '削除を再試行' : '削除'}</Text></Pressable> : null}<Pressable onPress={() => setEditor(emptyEditor)}><Text style={[styles.editorCancelText, { color: textSecondary }]}>閉じる</Text></Pressable><Pressable accessibilityRole="button" accessibilityLabel="保存" accessibilityState={{ busy: savingEditor, disabled: savingEditor || deleteRetry }} style={[styles.primaryButton, { backgroundColor: accent, opacity: savingEditor ? 0.65 : 1 }]} disabled={savingEditor || deleteRetry} onPress={() => void saveEditor()}><Text style={[styles.primaryButtonText, { color: rawDesignMode === 'chic' && palette ? palette.onAccent : isDark ? theme.colors.screenBackground : '#FFFFFF' }]}>{savingEditor ? (deleteAttemptRef.current ? '削除中…' : '保存中…') : '保存'}</Text></Pressable></View></Pressable></Pressable>
     </Modal>
   </>;
 

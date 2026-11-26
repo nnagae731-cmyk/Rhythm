@@ -17,6 +17,54 @@ require('../App');
 afterEach(()=>{cleanup();jest.restoreAllMocks();Notifications.getAllScheduledNotificationsAsync.mockReset().mockResolvedValue([]);});
 function dismissTomorrowPrompt(view){const button=view.queryByText('今日はしない');if(button)fireEvent.press(button);}
 
+test.each(['minimal','dark','chic'])('本番Appでタイトル直下の関連メモを登録・表に表示し、編集・取消・削除と再読込が一致する：%s',async designMode=>{
+ const {within}=require('@testing-library/react-native'),{TaskModal}=require('../components/TaskModal'),App=require('../App').default;
+ await storage.clear();await saveRhythmState({designMode,monoAppearance:designMode==='dark'?'dark':'light',chicPattern:'plain',tasks:[{id:'memo-marker',title:'メモ読込の目印',done:false,category:'その他',priority:'中',bucket:'now'}]});
+ await storage.setItem(ONBOARDING_STORAGE_KEY,JSON.stringify({version:1,firstRunStage:'done',completed:Object.fromEntries(['intro','todo','todoComplete','taskDetails'].map(id=>[id,'2026-01-01']))}));
+ let view=render(<App/>);await waitFor(()=>expect(view.getAllByText('メモ読込の目印').length).toBeGreaterThan(0),{timeout:10000});dismissTomorrowPrompt(view);
+ const form=()=>within(view.UNSAFE_getByType(TaskModal)),section=()=>within(view.getByTestId('task-memos-section'));
+ const add=text=>{fireEvent.changeText(section().getByPlaceholderText('メモを追加'),text);fireEvent.press(section().getByRole('button',{name:'関連メモを追加する'}));};
+ fireEvent.press(view.getByLabelText('タスクを追加'));fireEvent.changeText(form().getByPlaceholderText('例：資料をバッグに入れる'),'買い物とメモQA');
+ expect(form().queryByText('サブタスク')).toBeNull();expect(form().queryByText('詳しい設定')).toBeNull();
+ const json=JSON.stringify(view.toJSON());expect(json.indexOf('task-memos-section')).toBeLessThan(json.indexOf('実行する日'));
+ fireEvent.press(section().getByRole('button',{name:'関連メモ'}));add('牛乳を買う');add('パンを買う');
+ fireEvent.press(form().getByText('登録する'));
+ const saved=async()=>(await loadRhythmState()).tasks.find(t=>t.title==='買い物とメモQA');
+ await waitFor(async()=>expect((await saved())?.listItems.map(i=>i.text)).toEqual(['牛乳を買う','パンを買う']));
+ expect(view.getByText('牛乳を買う')).toBeTruthy();expect(view.getByText('パンを買う')).toBeTruthy();expect((await saved()).subtasks).toEqual([]);
+ fireEvent.press(view.getByText('牛乳を買う'));fireEvent.press(view.getByText('パンを買う'));
+ await waitFor(async()=>expect((await saved()).listItems.every(i=>i.checked)).toBe(true));expect((await saved()).done).toBe(false);
+ view.unmount();view=render(<App/>);await waitFor(()=>expect(view.getAllByText('買い物とメモQA').length).toBeGreaterThan(0),{timeout:10000});dismissTomorrowPrompt(view);
+ fireEvent.press(view.getAllByText('買い物とメモQA')[0],{stopPropagation:()=>{}});fireEvent.press(view.getByText('編集'));dismissTaskAction(view);
+ expect(section().getByRole('button',{name:'関連メモ'}).props.accessibilityState.expanded).toBe(true);
+ fireEvent.changeText(section().getByDisplayValue('牛乳を買う'),'牛乳と卵を買う');add('財布を用意');
+ fireEvent.press(section().getByRole('button',{name:'財布を用意を上へ'}));expect(section().getAllByLabelText('関連メモの内容').map(i=>i.props.value)).toEqual(['牛乳と卵を買う','財布を用意','パンを買う']);
+ fireEvent.press(section().getByRole('button',{name:'パンを買うを削除'}));fireEvent.press(form().getByText('変更を保存'));
+ await waitFor(async()=>expect((await saved()).listItems.map(i=>i.text)).toEqual(['牛乳と卵を買う','財布を用意']));
+ const edited=(await saved()).listItems;expect(edited[0].checked).toBe(true);expect(edited[1].checked).toBe(false);
+ fireEvent.press(view.getAllByText('買い物とメモQA')[0],{stopPropagation:()=>{}});fireEvent.press(view.getByText('編集'));dismissTaskAction(view);
+ fireEvent.changeText(section().getByDisplayValue('牛乳と卵を買う'),'保存しない変更');fireEvent.press(form().getByText('キャンセル'));expect((await saved()).listItems).toEqual(edited);
+ view.unmount();view=render(<App/>);await waitFor(()=>expect(view.getAllByText('買い物とメモQA').length).toBeGreaterThan(0),{timeout:10000});dismissTomorrowPrompt(view);
+ expect(view.getByText('財布を用意')).toBeTruthy();fireEvent.press(view.getByText('完了した関連メモ 1件'));expect(view.getByText('牛乳と卵を買う')).toBeTruthy();expect((await saved()).listItems).toEqual(edited);
+},90000);
+
+test('本番Appで旧サブタスクを関連メモとして表に出し、保存失敗・再試行・再起動でも文章と状態を失わない',async()=>{
+ const App=require('../App').default,legacy={id:'legacy-steps',title:'旧手順を持つTODO',done:false,category:'その他',priority:'中',bucket:'now',subtasks:[{id:'old-a',title:'旧手順の文章',done:false,order:0},{id:'old-b',title:'以前にチェックした文章',done:true,order:1}],listItems:[{id:'existing-note',text:'元からあるメモ',checked:false,order:0}]};
+ await storage.clear();await saveRhythmState({tasks:[legacy]});await storage.setItem(ONBOARDING_STORAGE_KEY,JSON.stringify({version:1,firstRunStage:'done',completed:{intro:'2026-01-01',todo:'2026-01-01',todoComplete:'2026-01-01'}}));
+ const original=storage.setItem.getMockImplementation(),before=await storage.getItem(STORAGE_KEY);let fail=true;
+ jest.spyOn(console,'warn').mockImplementation(()=>{});jest.spyOn(Alert,'alert').mockImplementation(()=>{});
+ jest.spyOn(storage,'setItem').mockImplementation((key,value)=>key===STORAGE_KEY&&fail?Promise.reject(Error('disk full')):original(key,value));
+ let view=render(<App/>);await waitFor(()=>expect(view.getAllByText(legacy.title).length).toBeGreaterThan(0),{timeout:10000});dismissTomorrowPrompt(view);
+ expect(view.getByText('旧手順の文章')).toBeTruthy();expect(view.getByText('元からあるメモ')).toBeTruthy();
+ await waitFor(()=>expect(view.getByText('保存を再試行')).toBeTruthy());expect(await storage.getItem(STORAGE_KEY)).toBe(before);
+ fireEvent.press(view.getByText('旧手順の文章'));fireEvent.press(view.getByText('元からあるメモ'));
+ fail=false;fireEvent.press(view.getByText('保存を再試行'));
+ await waitFor(async()=>{const task=(await loadRhythmState()).tasks[0];expect(task.subtasks).toEqual([]);expect(task.listItems).toHaveLength(3);expect(task.listItems.every(i=>i.checked)).toBe(true);expect(task.done).toBe(false);});
+ const saved=(await loadRhythmState()).tasks[0];view.unmount();view=render(<App/>);
+ await waitFor(()=>expect(view.getAllByText(legacy.title).length).toBeGreaterThan(0),{timeout:10000});dismissTomorrowPrompt(view);
+ fireEvent.press(view.getByText('完了した関連メモ 3件'));expect(view.getByText('旧手順の文章')).toBeTruthy();expect(view.getByText('以前にチェックした文章')).toBeTruthy();expect(view.getByText('元からあるメモ')).toBeTruthy();expect((await loadRhythmState()).tasks[0].listItems).toEqual(saved.listItems);
+},90000);
+
 test('本番Appで長いTODOを折り返して入力・保存し、再読込後も全文を保持する',async()=>{
  await storage.clear();await saveRhythmState({tasks:[{id:'long-todo-marker',title:'長文TODOの読込目印',done:false,category:'その他',priority:'中',bucket:'now'}]});
  await storage.setItem(ONBOARDING_STORAGE_KEY,JSON.stringify({version:1,completed:{intro:'2026-01-01',todo:'2026-01-01',todoComplete:'2026-01-01',taskDetails:'2026-01-01'},firstRunStage:'done'}));

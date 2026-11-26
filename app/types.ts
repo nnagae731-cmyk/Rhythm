@@ -121,7 +121,7 @@ export type Task = {
   category: Category;
   priority: Priority;
   completedAt?: string;
-  /** One-level child tasks. Absent on legacy tasks. */
+  /** Legacy steps. The App carries valid entries into listItems without changing their check state. */
   subtasks?: Subtask[];
   /** Optional checklist attached to the task (separate from one-level subtasks). */
   listItems?: TaskListItem[];

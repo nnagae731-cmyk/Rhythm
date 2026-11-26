@@ -22,7 +22,7 @@ const native={saveSnapshot:jest.fn(async()=>true),getPendingWidgetActions:jest.f
 const ordinary=(id='sentinel',title='読込完了の目印')=>({id,title,done:false,category:'その他',priority:'中',bucket:'now',repeatRule:'none'});
 const makeMonth=()=>({wishes:[{id:'wish',title:'健康的な生活',completed:false,createdAt:new Date().toISOString()}],actions:[{id:'action',wishId:'wish',title:'歩く',completed:false}],review:{}});
 const linked=()=>({...ordinary('linked','歩く'),origin});
-beforeEach(async()=>{process.env.EXPO_PUBLIC_RHYTHM_PLAN='premium';pending=[];jest.clearAllMocks();expo.requireOptionalNativeModule.mockReturnValue(native);await storage.clear();jest.spyOn(Alert,'alert').mockImplementation(()=>{});});
+beforeEach(async()=>{process.env.EXPO_PUBLIC_RHYTHM_PLAN='premium';pending=[];jest.clearAllMocks();Notifications.getAllScheduledNotificationsAsync.mockReset().mockResolvedValue([]);Notifications.cancelScheduledNotificationAsync.mockReset().mockResolvedValue(undefined);expo.requireOptionalNativeModule.mockReturnValue(native);await storage.clear();jest.spyOn(Alert,'alert').mockImplementation(()=>{});});
 afterEach(()=>{cleanup();storage.setItem.mockImplementation(originalWrite);jest.restoreAllMocks();if(oldPlan===undefined)delete process.env.EXPO_PUBLIC_RHYTHM_PLAN;else process.env.EXPO_PUBLIC_RHYTHM_PLAN=oldPlan;});
 async function seed(tasks=[ordinary()],months={[key]:makeMonth()}){
  await saveRhythmState({tasks,wishMonths:months,designMode:'minimal'});
@@ -32,6 +32,10 @@ async function boot(){const view=render(<App/>);await waitFor(()=>expect(view.ge
 const action=async(k=key)=>(await loadRhythmState()).wishMonths[k].actions[0];
 async function openWish(view){fireEvent.press(view.getByText('叶えたいこと'));await waitFor(()=>expect(view.getAllByText('健康的な生活').length).toBeGreaterThan(0));return within(view.UNSAFE_getByType(WishScreen));}
 function closeWishEditor(w){fireEvent.press(w.getByText('閉じる'));}
+function chooseActionDeletion(label){
+ const call=[...Alert.alert.mock.calls].reverse().find(args=>args[0]==='行動を削除しますか？');
+ expect(call).toBeDefined();const button=call[2].find(b=>b.text===label);expect(button).toBeDefined();act(()=>button.onPress());
+}
 async function finishTodoSave(view,w){
  const editorModal=()=>view.UNSAFE_getByType(WishScreen).findAllByType(Modal).find(m=>m.props.animationType==='fade'&&m.props.onDismiss);
  await waitFor(()=>expect(editorModal().props.visible).toBe(false),{timeout:10000});
@@ -146,9 +150,61 @@ test('Wish UIで関連ID付きTODOを作成し連打・重複を防ぐ。同名T
 },90000);
 test('WishActionをUIで削除してもTODOは独立して残り、再読込して完了できる',async()=>{
  await seed([linked(),ordinary()]);let view=await boot(),w=await openWish(view);fireEvent.press(w.getByText('歩く'));fireEvent.press(w.getByText('削除'));
+ chooseActionDeletion('行動だけ削除');
  await waitFor(async()=>expect((await loadRhythmState()).wishMonths[key].actions).toHaveLength(0));expect((await loadRhythmState()).tasks.find(t=>t.id==='linked').origin).toBeUndefined();
  view.unmount();view=await boot();await taskCheck(view);await waitFor(async()=>expect((await loadRhythmState()).tasks.find(t=>t.id==='linked').done).toBe(true));expect((await loadRhythmState()).wishMonths[key].actions).toHaveLength(0);
 },60000);
+
+test('行動削除の確認をキャンセルすると、行動・TODO・関連IDを変更しない',async()=>{
+ await seed([linked(),ordinary()]);const view=await boot(),w=await openWish(view);
+ fireEvent.press(w.getByText('歩く'));fireEvent.press(w.getByText('削除'));chooseActionDeletion('キャンセル');
+ expect(w.getByPlaceholderText('叶えるための行動').props.value).toBe('歩く');
+ const saved=await loadRhythmState();expect(saved.wishMonths[key].actions).toHaveLength(1);expect(saved.tasks.find(t=>t.id==='linked').origin).toEqual(origin);
+});
+
+test('関連TODOも削除する本番経路は、同名・別月を保護し、通知取消失敗・保存保留中の別TODO完了でも一つのsnapshotを保存する',async()=>{
+ const previousMonth=key==='2026-01'?'2025-12':'2026-01',otherMonthTask={...linked(),id:'past-linked',origin:{...origin,monthKey:previousMonth}};
+ await seed([linked(),ordinary(),ordinary('same-name','歩く'),ordinary('other','別TODO'),otherMonthTask],{[key]:makeMonth(),[previousMonth]:makeMonth()});
+ let view=await boot(),w=await openWish(view),release,held=false;const attempts=[];
+ storage.setItem.mockImplementation((k,v,...args)=>{
+  if(k===STORAGE_KEY){const snapshot=JSON.parse(v);attempts.push(snapshot);
+   if(!held&&snapshot.wishMonths[key].actions.length===0&&!snapshot.tasks.some(t=>t.id==='linked')){held=true;return new Promise(resolve=>{release=()=>Promise.resolve(originalWrite(k,v,...args)).then(resolve);});}
+  }return originalWrite(k,v,...args);
+ });
+ jest.spyOn(console,'warn').mockImplementation(()=>{});
+ Notifications.getAllScheduledNotificationsAsync.mockResolvedValue([{identifier:'linked-notice',content:{data:{taskId:'linked'}}}]);
+ Notifications.cancelScheduledNotificationAsync.mockRejectedValue(Error('Native cancellation failed'));
+ try {
+  fireEvent.press(w.getByText('歩く'));fireEvent.press(w.getByText('削除'));chooseActionDeletion('関連TODOも一緒に削除');
+  await waitFor(()=>expect(held).toBe(true),{timeout:10000});expect(w.getByPlaceholderText('叶えるための行動').props.value).toBe('歩く');expect(w.getByText('削除中…')).toBeTruthy();
+  expect((await loadRhythmState()).tasks.some(t=>t.id==='linked')).toBe(true);expect((await loadRhythmState()).wishMonths[key].actions).toHaveLength(1);
+  const callback=Notifications.addNotificationResponseReceivedListener.mock.calls.at(-1)[0];
+  await act(async()=>callback({actionIdentifier:'DONE',notification:{request:{identifier:'other-note',content:{data:{taskId:'other'},body:'別TODO'}}}}));
+  await act(async()=>{const finish=release;release=undefined;await finish();});
+  await waitFor(async()=>{const saved=await loadRhythmState();expect(saved.wishMonths[key].actions).toHaveLength(0);expect(saved.tasks.some(t=>t.id==='linked')).toBe(false);expect(saved.tasks.find(t=>t.id==='other').done).toBe(true);},{timeout:10000});
+  expect(Notifications.cancelScheduledNotificationAsync).toHaveBeenCalledWith('linked-notice');
+  for(const snapshot of attempts)expect(snapshot.wishMonths[key].actions.length===0).toBe(!snapshot.tasks.some(t=>t.id==='linked'));
+  expect((await loadRhythmState()).tasks.find(t=>t.id==='same-name')).toBeTruthy();expect((await loadRhythmState()).tasks.find(t=>t.id==='past-linked').origin).toEqual(otherMonthTask.origin);
+  expect((await loadRhythmState()).wishMonths[previousMonth].actions).toHaveLength(1);
+  view.unmount();view=await boot();w=await openWish(view);expect(w.queryByText('歩く')).toBeNull();fireEvent.press(view.getByText('ToDo'));expect((await loadRhythmState()).tasks.some(t=>t.id==='linked')).toBe(false);
+ }finally{if(release)await act(async()=>release());}
+},90000);
+
+test('行動とTODOの同時削除が保存失敗した場合は編集画面を保持し、再試行・再起動後も両方の削除と他TODOの変更を保持する',async()=>{
+ await seed([linked(),ordinary(),ordinary('other','別TODO')]);let view=await boot(),w=await openWish(view),fail=true;
+ jest.spyOn(console,'warn').mockImplementation(()=>{});
+ storage.setItem.mockImplementation((k,v,...args)=>k===STORAGE_KEY&&JSON.parse(v).wishMonths[key].actions.length===0&&fail?Promise.reject(Error('disk full')):originalWrite(k,v,...args));
+ fireEvent.press(w.getByText('歩く'));fireEvent.press(w.getByText('削除'));chooseActionDeletion('関連TODOも一緒に削除');
+ await waitFor(()=>expect(w.getByText('削除を再試行')).toBeTruthy(),{timeout:10000});
+ expect(w.getByPlaceholderText('叶えるための行動').props.value).toBe('歩く');expect(w.getByPlaceholderText('叶えるための行動').props.editable).toBe(false);
+ expect((await loadRhythmState()).wishMonths[key].actions).toHaveLength(1);expect((await loadRhythmState()).tasks.find(t=>t.id==='linked')).toBeTruthy();
+ const callback=Notifications.addNotificationResponseReceivedListener.mock.calls.at(-1)[0];
+ await act(async()=>callback({actionIdentifier:'DONE',notification:{request:{identifier:'other-note',content:{data:{taskId:'other'},body:'別TODO'}}}}));
+ fail=false;fireEvent.press(w.getByText('削除を再試行'));
+ await waitFor(async()=>{const saved=await loadRhythmState();expect(saved.wishMonths[key].actions).toHaveLength(0);expect(saved.tasks.some(t=>t.id==='linked')).toBe(false);expect(saved.tasks.find(t=>t.id==='other').done).toBe(true);},{timeout:10000});
+ await waitFor(()=>expect(w.queryByPlaceholderText('叶えるための行動')).toBeNull());
+ view.unmount();view=await boot();expect((await loadRhythmState()).wishMonths[key].actions).toHaveLength(0);expect((await loadRhythmState()).tasks.some(t=>t.id==='linked')).toBe(false);
+},90000);
 test('関連TODO作成の保存保留・失敗で成功を表示せず、入力を保持して重複なしで再試行・再読込する',async()=>{
  await seed();let release,held=false;storage.setItem.mockImplementation((k,v,...args)=>{if(k===STORAGE_KEY&&JSON.parse(v).tasks.some(t=>t.origin)&&!held){held=true;return new Promise((resolve,reject)=>{release=()=>reject(new Error('disk full'))})}return originalWrite(k,v,...args)});
  let view=await boot(),w=await openWish(view);fireEvent.press(w.getByText('歩く'));fireEvent.press(w.getByText('保存してToDoに追加 ›'));
