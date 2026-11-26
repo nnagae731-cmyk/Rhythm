@@ -82,8 +82,11 @@ function withWishDecorationAlpha(color: string, alpha: number) {
 
 function WishDecoration({ designMode, accent, compact = false }: { designMode: DesignMode; accent: string; compact?: boolean }) {
   if (designMode === 'minimal' || designMode === 'dark') {
-    return <View pointerEvents="none" style={[styles.wishPinDecoration, compact && styles.wishPinDecorationCompact]}>
-      <View style={[styles.wishPinHead, { backgroundColor: accent, borderColor: withWishDecorationAlpha(accent, 0.55) }]} />
+    return <View testID="wish-pin" pointerEvents="none" accessible={false} style={[styles.wishPinDecoration, compact && styles.wishPinDecorationCompact]}>
+      <View style={[styles.wishPinShadow, { backgroundColor: withWishDecorationAlpha(accent, 0.16) }]} />
+      <View style={[styles.wishPinHead, { backgroundColor: accent, borderColor: withWishDecorationAlpha(accent, 0.85) }]}>
+        <View style={styles.wishPinHighlight} />
+      </View>
       <View style={[styles.wishPinStem, { backgroundColor: withWishDecorationAlpha(accent, 0.75) }]} />
     </View>;
   }
@@ -117,6 +120,7 @@ export function WishScreen({ designMode: rawDesignMode, chicPalette, monthLabel,
   const [historyOpen, setHistoryOpen] = useState(false);
   const [historyMonthKey, setHistoryMonthKey] = useState<string>();
   const [heroMenuOpen, setHeroMenuOpen] = useState(false);
+  const [imageSettingsOpen, setImageSettingsOpen] = useState(false);
   const [selectedWishIndex, setSelectedWishIndex] = useState(0);
   const { width: windowWidth } = useWindowDimensions();
   // The outer app content and this screen's own scroll inset together leave
@@ -187,7 +191,7 @@ export function WishScreen({ designMode: rawDesignMode, chicPalette, monthLabel,
     });
   };
 
-  const saveEditor = async () => {
+  const saveEditor = async (addToTodo = false) => {
     if (savingEditorRef.current) return;
     const title = editor.title.trim();
     if (!title) return;
@@ -236,17 +240,23 @@ export function WishScreen({ designMode: rawDesignMode, chicPalette, monthLabel,
         : [action, ...current.actions],
       }));
       if (!isEditing) onWishActionCreated?.();
+      if (addToTodo && onCreateTaskFromAction) {
+        // The action is durable now. Retain its identity if ToDo persistence
+        // fails, so a retry neither creates a second action nor spends again.
+        setEditor((current) => ({ ...current, id: action.id }));
+        await onCreateTaskFromAction(action);
+      }
     }
 
     // Saving either a new item or an edit finishes the current operation.
     // A new item can be added again from the compact add row when needed.
-    pendingSaveNotice.current = editor.mode === 'wish' ? '叶えたいことを保存しました' : '行動を保存しました';
+    pendingSaveNotice.current = addToTodo ? '行動を保存してToDoに追加しました' : editor.mode === 'wish' ? '叶えたいことを保存しました' : '行動を保存しました';
     setEditor(emptyEditor);
     editorAttemptIdRef.current = undefined;
     Keyboard.dismiss();
     if (Platform.OS !== 'ios') showPendingSaveNotice();
     } catch {
-      Alert.alert('保存できませんでした', '入力内容を保持しました。もう一度お試しください。');
+      Alert.alert(addToTodo ? 'ToDoに追加できませんでした' : '保存できませんでした', '入力内容を保持しました。もう一度お試しください。');
     } finally {
       savingEditorRef.current = false;
       setSavingEditor(false);
@@ -255,22 +265,7 @@ export function WishScreen({ designMode: rawDesignMode, chicPalette, monthLabel,
 
   const createTaskFromActionEditor = async () => {
     if (!onCreateTaskFromAction || savingEditorRef.current) return;
-    const title = editor.title.trim();
-    const savedAction = editor.id ? actions.find((item) => item.id === editor.id) : undefined;
-    if (!savedAction) {
-      Alert.alert('先に行動を保存してね', '保存した行動からToDoを作成できます。');
-      return;
-    }
-    savingEditorRef.current = true;
-    setSavingEditor(true);
-    try {
-      await onCreateTaskFromAction({ ...savedAction, title: title || savedAction.title });
-    } catch {
-      Alert.alert('ToDoに追加できませんでした', '入力内容は残っています。もう一度お試しください。');
-    } finally {
-      savingEditorRef.current = false;
-      setSavingEditor(false);
-    }
+    await saveEditor(true);
   };
 
   const toggleWish = (id: string) => {
@@ -327,11 +322,11 @@ export function WishScreen({ designMode: rawDesignMode, chicPalette, monthLabel,
     <Modal visible={historyOpen} transparent animationType="slide" onRequestClose={closeHistory}>
       <Pressable style={styles.modalBackdrop} onPress={closeHistory}><Pressable style={[styles.historySheet, { backgroundColor: surface, borderColor: border }]} onPress={(event) => event.stopPropagation()}>
         <View style={styles.historyHeaderRow}>{selectedHistory ? <Pressable onPress={() => setHistoryMonthKey(undefined)}><Text style={[styles.historyBack, { color: accent }]}>〈 これまで</Text></Pressable> : <Text style={[styles.historyTitle, { color: textPrimary }]}>これまで</Text>}<Pressable onPress={closeHistory}><Text style={[styles.editorCancelText, { color: textSecondary }]}>閉じる</Text></Pressable></View>
-        <ScrollView contentContainerStyle={styles.historyList}>{selectedHistory ? <><Text style={[styles.historyDetailMonth, { color: textPrimary }]}>{formatHistoryMonth(historyMonthKey!)}</Text><Text style={[styles.historySectionTitle, { color: textPrimary }]}>今月の目標</Text><Text style={[styles.historyGoalDetail, { color: textSecondary }]}>{selectedHistory.monthlyGoal || '未設定'}</Text><Text style={[styles.historySectionTitle, { color: textPrimary }]}>叶えたこと</Text>{selectedHistory.wishes.filter((wish) => wish.completed).map((wish) => <HistoryReadOnlyRow key={wish.id} title={wish.title} completed theme={theme} palette={palette} />)}<Text style={[styles.historySectionTitle, { color: textPrimary }]}>叶えるための行動</Text>{selectedHistory.actions.map((action) => <HistoryReadOnlyRow key={action.id} title={action.title} completed={action.completed} theme={theme} palette={palette} />)}</> : historyMonths.length === 0 ? <Text style={[styles.emptyText, { color: textSecondary }]}>まだ過去の記録はありません。</Text> : historyMonths.map(([key, monthState]) => <Pressable key={key} style={[styles.historyMonthRow, { borderBottomColor: border }]} onPress={() => setHistoryMonthKey(key)}><View style={styles.itemBody}><Text style={[styles.historyMonthTitle, { color: textPrimary }]}>{formatHistoryMonth(key)}</Text><Text style={[styles.historyCounts, { color: textSecondary }]}>叶えたこと {monthState.wishes.filter((wish) => wish.completed).length} / {monthState.wishes.length}　行動 {monthState.actions.filter((action) => action.completed).length} / {monthState.actions.length}</Text></View><Text style={[styles.itemChevron, { color: textSecondary }]}>›</Text></Pressable>)}</ScrollView>
+        <ScrollView contentContainerStyle={styles.historyList}>{selectedHistory ? <><Text style={[styles.historyDetailMonth, { color: textPrimary }]}>{formatHistoryMonth(historyMonthKey!)}</Text><Text style={[styles.historySectionTitle, { color: textPrimary }]}>今月の目標</Text><Text style={[styles.historyGoalDetail, { color: textSecondary }]}>{selectedHistory.monthlyGoal || '未設定'}</Text><Text style={[styles.historySectionTitle, { color: textPrimary }]}>叶えたこと</Text>{selectedHistory.wishes.filter((wish) => wish.completed).map((wish) => <HistoryReadOnlyRow key={wish.id} title={wish.title} completed theme={theme} palette={palette} />)}<Text style={[styles.historySectionTitle, { color: textPrimary }]}>叶えるための行動</Text>{selectedHistory.actions.map((action) => <HistoryReadOnlyRow key={action.id} title={action.title} completed={action.completed} theme={theme} palette={palette} />)}</> : historyMonths.length === 0 ? <Text style={[styles.emptyText, isDark && styles.darkReadableCopy, { color: textSecondary }]}>まだ過去の記録はありません。</Text> : historyMonths.map(([key, monthState]) => <Pressable key={key} style={[styles.historyMonthRow, { borderBottomColor: border }]} onPress={() => setHistoryMonthKey(key)}><View style={styles.itemBody}><Text style={[styles.historyMonthTitle, { color: textPrimary }]}>{formatHistoryMonth(key)}</Text><Text style={[styles.historyCounts, { color: textSecondary }]}>叶えたこと {monthState.wishes.filter((wish) => wish.completed).length} / {monthState.wishes.length}　行動 {monthState.actions.filter((action) => action.completed).length} / {monthState.actions.length}</Text></View><Text style={[styles.itemChevron, { color: textSecondary }]}>›</Text></Pressable>)}</ScrollView>
       </Pressable></Pressable>
     </Modal>
     <Modal visible={editor.visible} transparent animationType="fade" onDismiss={showPendingSaveNotice} onRequestClose={() => { if (!savingEditorRef.current) { editorAttemptIdRef.current = undefined; setEditor(emptyEditor); } }}>
-      <Pressable style={styles.modalBackdrop} onPress={() => { if (!savingEditorRef.current) { editorAttemptIdRef.current = undefined; setEditor(emptyEditor); } }}><Pressable pointerEvents={savingEditor ? "none" : "auto"} style={[styles.editorSheet, { backgroundColor: surface, borderColor: border }]} onPress={(event) => event.stopPropagation()}><Text style={[styles.editorTitle, { color: textPrimary }]}>{editor.mode === 'wish' ? (editor.id ? '叶えたいことを編集' : '叶えたいことを追加') : editor.id ? '行動を編集' : '行動を追加'}</Text><TextInput value={editor.title} onChangeText={(value) => setEditor((current) => ({ ...current, title: value }))} placeholder={editor.mode === 'wish' ? '叶えたいこと' : '叶えるための行動'} placeholderTextColor={textSecondary} style={[styles.editorInput, { color: textPrimary, backgroundColor: subtleSurface, borderColor: border }]} />{editor.mode === 'action' ? <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.wishSelectRow}>{state.wishes.map((wish) => <Pressable key={wish.id} style={[styles.wishChip, { backgroundColor: editor.wishId === wish.id ? (rawDesignMode === 'chic' && palette ? palette.accentSoft : theme.colors.softAccent) : subtleSurface, borderColor: editor.wishId === wish.id ? accent : border }]} onPress={() => setEditor((current) => ({ ...current, wishId: wish.id }))}><Text style={[styles.wishChipText, { color: textSecondary }]}>{wish.title}</Text></Pressable>)}</ScrollView> : null}{editor.mode === 'action' && onCreateTaskFromAction ? <Pressable style={[styles.editorTaskLink, { borderColor: border }]} onPress={createTaskFromActionEditor}><Text style={[styles.editorTaskLinkText, { color: accent }]}>ToDoに追加 ›</Text></Pressable> : null}<View style={styles.editorToggleRow}><Pressable style={[styles.toggleChip, { backgroundColor: editor.completed ? accent : subtleSurface, borderColor: border }]} onPress={() => setEditor((current) => ({ ...current, completed: !current.completed }))}><Text style={{ color: editor.completed ? (rawDesignMode === 'chic' && palette ? palette.onAccent : '#FFFFFF') : textSecondary, fontWeight: '900' }}>完了</Text></Pressable>{editor.id ? <Pressable onPress={() => { editor.mode === 'wish' ? deleteWish(editor.id!) : deleteAction(editor.id!); setEditor(emptyEditor); }}><Text style={styles.editorDeleteText}>削除</Text></Pressable> : null}<Pressable onPress={() => setEditor(emptyEditor)}><Text style={[styles.editorCancelText, { color: textSecondary }]}>閉じる</Text></Pressable><Pressable style={[styles.primaryButton, { backgroundColor: accent }]} onPress={saveEditor}><Text style={[styles.primaryButtonText, { color: rawDesignMode === 'chic' && palette ? palette.onAccent : isDark ? theme.colors.screenBackground : '#FFFFFF' }]}>保存</Text></Pressable></View></Pressable></Pressable>
+      <Pressable style={styles.modalBackdrop} onPress={() => { if (!savingEditorRef.current) { editorAttemptIdRef.current = undefined; setEditor(emptyEditor); } }}><Pressable pointerEvents={savingEditor ? "none" : "auto"} style={[styles.editorSheet, { backgroundColor: surface, borderColor: border }]} onPress={(event) => event.stopPropagation()}><Text style={[styles.editorTitle, { color: textPrimary }]}>{editor.mode === 'wish' ? (editor.id ? '叶えたいことを編集' : '叶えたいことを追加') : editor.id ? '行動を編集' : '行動を追加'}</Text><TextInput editable={!savingEditor} value={editor.title} onChangeText={(value) => setEditor((current) => ({ ...current, title: value }))} placeholder={editor.mode === 'wish' ? '叶えたいこと' : '叶えるための行動'} placeholderTextColor={textSecondary} multiline textAlignVertical="top" style={[styles.editorInput, { color: textPrimary, backgroundColor: subtleSurface, borderColor: border }]} />{editor.mode === 'action' ? <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.wishSelectRow}>{state.wishes.map((wish) => <Pressable key={wish.id} style={[styles.wishChip, { backgroundColor: editor.wishId === wish.id ? (rawDesignMode === 'chic' && palette ? palette.accentSoft : theme.colors.softAccent) : subtleSurface, borderColor: editor.wishId === wish.id ? accent : border }]} onPress={() => setEditor((current) => ({ ...current, wishId: wish.id }))}><Text style={[styles.wishChipText, { color: textSecondary }]}>{wish.title}</Text></Pressable>)}</ScrollView> : null}{editor.mode === 'action' && onCreateTaskFromAction ? <Pressable style={[styles.editorTaskLink, { borderColor: border }]} disabled={savingEditor} accessibilityState={{ busy: savingEditor }} onPress={createTaskFromActionEditor}><Text style={[styles.editorTaskLinkText, { color: accent }]}>{savingEditor ? '保存中…' : '保存してToDoに追加 ›'}</Text></Pressable> : null}<View style={styles.editorToggleRow}><Pressable style={[styles.toggleChip, { backgroundColor: editor.completed ? accent : subtleSurface, borderColor: border }]} onPress={() => setEditor((current) => ({ ...current, completed: !current.completed }))}><Text style={{ color: editor.completed ? (rawDesignMode === 'chic' && palette ? palette.onAccent : '#FFFFFF') : textSecondary, fontWeight: '900' }}>完了</Text></Pressable>{editor.id ? <Pressable onPress={() => { editor.mode === 'wish' ? deleteWish(editor.id!) : deleteAction(editor.id!); setEditor(emptyEditor); }}><Text style={styles.editorDeleteText}>削除</Text></Pressable> : null}<Pressable onPress={() => setEditor(emptyEditor)}><Text style={[styles.editorCancelText, { color: textSecondary }]}>閉じる</Text></Pressable><Pressable accessibilityRole="button" accessibilityLabel="保存" accessibilityState={{ busy: savingEditor, disabled: savingEditor }} style={[styles.primaryButton, { backgroundColor: accent, opacity: savingEditor ? 0.65 : 1 }]} disabled={savingEditor} onPress={() => void saveEditor()}><Text style={[styles.primaryButtonText, { color: rawDesignMode === 'chic' && palette ? palette.onAccent : isDark ? theme.colors.screenBackground : '#FFFFFF' }]}>{savingEditor ? '保存中…' : '保存'}</Text></Pressable></View></Pressable></Pressable>
     </Modal>
   </>;
 
@@ -339,25 +334,31 @@ export function WishScreen({ designMode: rawDesignMode, chicPalette, monthLabel,
   const renderWishBoardV2 = () => (
     <View style={[styles.screen, { backgroundColor: rawDesignMode === 'chic' ? 'transparent' : theme.colors.screenBackground }]}>
       <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        {!!saveNotice && <View pointerEvents="none" accessibilityLiveRegion="polite" style={{ alignSelf: 'center', maxWidth: '90%', marginTop: 8, paddingHorizontal: 16, paddingVertical: 10, borderRadius: 14, backgroundColor: surface, borderWidth: 1, borderColor: border, elevation: 4 }}><Text style={{ color: textPrimary, fontSize: 13, fontWeight: '700', textAlign: 'center' }}>{saveNotice}</Text></View>}
         <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
-          <View style={[styles.topVisual, { backgroundColor: surface, borderColor: border }]}>
+          <View testID="wish-cover" style={[styles.topVisual, !topImageUri && { minHeight: 96 }, { backgroundColor: surface, borderColor: border }]}>
             {topImageUri ? <Image source={{ uri: topImageUri }} resizeMode="cover" style={styles.topVisualImage} /> : null}
             <View pointerEvents="none" style={[styles.topVisualVeil, { backgroundColor: topImageUri ? '#101318' : surface, opacity: topImageUri ? 0.32 : 1 }]} />
             <WishDecoration designMode={rawDesignMode} accent={accent} />
             <View style={styles.topVisualContent}>
-              <Text style={[styles.topVisualMonth, { color: topImageUri ? '#FFFFFF' : textSecondary }, topImageUri && styles.topVisualTextOnImage]}>{monthLabel}</Text>
-              {topDisplayedWish ? <View style={[styles.topVisualTitleWrap, { justifyContent: topVisualJustifyContent }]}><Text numberOfLines={2} style={[styles.topVisualGoal, { color: topImageUri ? '#FFFFFF' : textPrimary }, topImageUri && styles.topVisualTextOnImage]}>{topDisplayedWish.title}</Text></View> : null}
+              <Text style={[styles.topVisualMonth, isDark && styles.darkReadableMeta, { color: topImageUri ? '#FFFFFF' : textSecondary }, topImageUri && styles.topVisualTextOnImage]}>{monthLabel}</Text>
+              {topDisplayedWish ? <View style={[styles.topVisualTitleWrap, { justifyContent: topVisualJustifyContent }]}><Text numberOfLines={2} style={[styles.topVisualGoal, { color: topImageUri ? '#FFFFFF' : textPrimary }, topImageUri && styles.topVisualTextOnImage]}>{topDisplayedWish.title}</Text></View> : !topImageUri ? <Text style={{ color: textPrimary, fontSize: 21, lineHeight: 29, fontWeight: '700', marginTop: 8 }}>ここから、一歩ずつ。</Text> : null}
             </View>
           </View>
+          <View testID="wish-management-card" style={[styles.managementCard, { backgroundColor: surface, borderColor: border }]}>
           <View style={styles.pageHeader}>
             <Text style={[styles.pageHeaderTitle, { color: textPrimary }]}>叶えたいこと</Text>
-            <View style={styles.pageHeaderActions}>
-              {onAIShare ? <Pressable onPress={() => onAIShare(selectedWish?.id)} hitSlop={8}><Text style={[styles.pageHeaderLink, { color: accent }]}>AIに共有</Text></Pressable> : null}
-              <Pressable onPress={() => openWishEditor()} hitSlop={8}><Text style={[styles.pageHeaderAdd, { color: accent }]}>＋追加</Text></Pressable>
-              <Pressable onPress={() => { setHistoryMonthKey(undefined); setHistoryOpen(true); }} hitSlop={8}><Text style={[styles.pageHeaderLink, { color: textSecondary }]}>過去を見る ›</Text></Pressable>
-            </View>
+            <Pressable accessibilityRole="button" onPress={() => openWishEditor()} style={[styles.headerAddButton, { backgroundColor: subtleSurface, borderColor: border }]}><Text style={[styles.pageHeaderAdd, { color: accent }]}>＋追加</Text></Pressable>
           </View>
-          {onPickTopImage ? <View style={styles.topImagePositionRow}>
+            <View style={styles.pageHeaderActions}>
+              {onAIShare ? <Pressable accessibilityRole="button" onPress={() => onAIShare(selectedWish?.id)} style={styles.headerLinkButton}><Text style={[styles.pageHeaderLink, { color: accent }]}>AIに共有</Text></Pressable> : null}
+              <Pressable accessibilityRole="button" onPress={() => { setHistoryMonthKey(undefined); setHistoryOpen(true); }} style={styles.headerLinkButton}><Text style={[styles.pageHeaderLink, { color: textSecondary }]}>過去を見る ›</Text></Pressable>
+            </View>
+          {onPickTopImage ? <View style={{ borderTopWidth: 1, borderColor: border, paddingTop: 4 }}>
+            <Pressable accessibilityRole="button" accessibilityLabel="画像と文字位置を設定" accessibilityState={{ expanded: imageSettingsOpen }} onPress={() => setImageSettingsOpen(current => !current)} style={{ minHeight: 44, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+              <Text style={{ color: textSecondary, fontSize: 13, fontWeight: '600' }}>画像と文字位置</Text><Text style={{ color: accent, fontSize: 16 }}>{imageSettingsOpen ? '⌃' : '⌄'}</Text>
+            </Pressable>
+            {imageSettingsOpen ? <View style={styles.topImagePositionRow}>
             <Pressable onPress={onPickTopImage} style={[styles.topImageSettingRow, { flex: 1, alignSelf: 'auto', minWidth: 0, borderColor: border, backgroundColor: subtleSurface }]}>
               <Text numberOfLines={1} ellipsizeMode="tail" style={[styles.topImageSettingText, { color: textSecondary }]}>{windowWidth < 360 ? (topImageUri ? '画像を変更' : '画像を設定') : (topImageUri ? '画像を変更' : 'トップ画像を設定')}</Text>
               <Text style={[styles.topImageSettingChevron, { color: accent }]}>›</Text>
@@ -377,7 +378,9 @@ export function WishScreen({ designMode: rawDesignMode, chicPalette, monthLabel,
                 </Pressable>;
               })}
             </View>
+            </View> : null}
           </View> : null}
+          </View>
           {wishes.length > 0 ? <>
             <ScrollView
               horizontal
@@ -387,6 +390,7 @@ export function WishScreen({ designMode: rawDesignMode, chicPalette, monthLabel,
               snapToAlignment="start"
               snapToInterval={wishSnapInterval}
               disableIntervalMomentum
+              contentContainerStyle={{ paddingTop: 12, paddingBottom: 2 }}
               style={[styles.wishPager, { width: wishPagerWidth }]}
               onMomentumScrollEnd={(event) => {
                 const width = Math.max(1, wishSnapInterval);
@@ -403,9 +407,9 @@ export function WishScreen({ designMode: rawDesignMode, chicPalette, monthLabel,
                     <WishDecoration designMode={rawDesignMode} accent={accent} compact />
                     <View style={styles.wishCardHeader}>
                       <View style={styles.itemBody}>
-                        <Text style={[styles.wishCardEyebrow, { color: textSecondary }]}>{monthLabel}</Text>
+                        <Text style={[styles.wishCardEyebrow, isDark && styles.darkReadableMeta, { color: textSecondary }]}>{monthLabel}</Text>
                         <Text style={[styles.wishCardTitle, { color: textPrimary }, wish.completed && styles.itemTitleDone]}>{wish.title}</Text>
-                        <Text style={[styles.wishCardHint, { color: textSecondary }]}>{wish.completed ? '叶いました' : 'ここから一歩ずつ'}</Text>
+                        <Text style={[styles.wishCardHint, isDark && styles.darkReadableCopy, { color: textSecondary }]}>{wish.completed ? '叶いました' : 'ここから一歩ずつ'}</Text>
                         <Pressable onPress={() => toggleWish(wish.id)} hitSlop={8} style={styles.wishCompletionToggle}><Text style={[styles.wishCompletionText, { color: accent }]}>{wish.completed ? '✓ 完了を戻す' : '○ 叶えたらチェック'}</Text></Pressable>
                         <Pressable
                           accessibilityRole="checkbox"
@@ -425,7 +429,7 @@ export function WishScreen({ designMode: rawDesignMode, chicPalette, monthLabel,
                       <Pressable onPress={() => { setHeroMenuOpen(false); openWishEditor(wish); }}><Text style={[styles.heroMenuItem, { color: textPrimary }]}>編集</Text></Pressable>
                       <Pressable onPress={() => { setHeroMenuOpen(false); Alert.alert('削除しますか？', undefined, [{ text: 'キャンセル', style: 'cancel' }, { text: '削除', style: 'destructive', onPress: () => deleteWish(wish.id) }]); }}><Text style={[styles.heroMenuItem, { color: theme.colors.danger }]}>削除</Text></Pressable>
                     </View> : null}
-                    {isSelected ? <View style={[styles.wishCardSection, { borderTopColor: border }]}>
+                    {isSelected ? <View testID={`wish-actions-${wish.id}`} style={[styles.wishCardSection, { borderTopColor: border }]}>
                       <Text style={[styles.wishCardSectionTitle, { color: textPrimary }]}>叶えるための一歩</Text>
                       {wishActions.length > 0 ? <View>{wishActions.map((action) => <Pressable key={action.id} style={[styles.actionRow, { borderBottomColor: border }]} onPress={() => openActionEditor(action, wish.id)}>
                         <Pressable accessibilityRole="checkbox" accessibilityState={{ checked: action.completed }} onPress={(event) => { event.stopPropagation(); toggleAction(action.id); }} style={[styles.actionCheck, { borderColor: accent, backgroundColor: action.completed ? accent : 'transparent' }]}>
@@ -435,8 +439,8 @@ export function WishScreen({ designMode: rawDesignMode, chicPalette, monthLabel,
                         {linkedTaskIdsByAction[action.id] && onOpenRelatedTask ? <Pressable accessibilityRole="button" accessibilityLabel={`${action.title}の関連ToDoを確認`} onPress={(event) => { event.stopPropagation(); const taskId = linkedTaskIdsByAction[action.id]; if (taskId) onOpenRelatedTask(taskId); }} style={{ minHeight: 44, paddingHorizontal: 8, justifyContent: 'center' }}><Text style={{ color: accent, fontSize: 13, fontWeight: '700' }}>ToDoを確認</Text></Pressable> : null}
                         <Text style={[styles.itemChevron, { color: textSecondary }]}>›</Text>
                       </Pressable>)}</View> : <Text style={[styles.visionEmptyText, { color: textSecondary }]}>今日できる一歩を決めてみよう。</Text>}
-                      {canCreateWishAction ? <Pressable onPress={() => openActionEditor(undefined, wish.id)} style={styles.lightActionRow}><Text style={[styles.lightAction, { color: accent }]}>＋ 行動を追加</Text></Pressable> : <Pressable onPress={() => setRewardPrompt('wishAction')} style={styles.quietFeatureRow}><View style={styles.itemBody}><Text style={[styles.quietFeatureText, { color: textSecondary }]}>広告を2回見て、行動を1件追加できます。{wishActionRewardProgress?.current ? `（${wishActionRewardProgress.current} / ${wishActionRewardProgress.required} 回視聴済み）` : ''}</Text></View><Text style={[styles.lightAction, { color: accent }]}>広告を見て追加 ›</Text></Pressable>}
-                    </View> : <View style={styles.wishCardCompactSummary}><Text style={[styles.wishCardHint, { color: textSecondary }]}>{wishActions.length > 0 ? `${wishActions.filter((action) => action.completed).length}/${wishActions.length}件の一歩` : '一歩を決めていこう'}</Text><Text style={[styles.heroProgressValue, { color: accent }]}>{wishProgress.progress}%</Text></View>}
+                      {canCreateWishAction ? <Pressable onPress={() => openActionEditor(undefined, wish.id)} style={styles.lightActionRow}><Text style={[styles.lightAction, { color: accent }]}>＋ 行動を追加</Text></Pressable> : <Pressable onPress={() => setRewardPrompt('wishAction')} style={styles.quietFeatureRow}><View style={styles.itemBody}><Text style={[styles.quietFeatureText, isDark && styles.darkReadableCopy, { color: textSecondary }]}>広告を2回見て、行動を1件追加できます。{wishActionRewardProgress?.current ? `（${wishActionRewardProgress.current} / ${wishActionRewardProgress.required} 回視聴済み）` : ''}</Text></View><Text style={[styles.lightAction, { color: accent }]}>広告を見て追加 ›</Text></Pressable>}
+                    </View> : <View style={styles.wishCardCompactSummary}><Text style={[styles.wishCardHint, isDark && styles.darkReadableCopy, { color: textSecondary }]}>{wishActions.length > 0 ? `${wishActions.filter((action) => action.completed).length}/${wishActions.length}件の一歩` : '一歩を決めていこう'}</Text><Text style={[styles.heroProgressValue, { color: accent }]}>{wishProgress.progress}%</Text></View>}
                     {isSelected && canCreateWishAction ? <View style={[styles.wishCardProgress, { borderTopColor: border }]}>
                       <View style={styles.heroProgressHeader}><Text style={[styles.heroProgressLabel, { color: textSecondary }]}>今月の進み具合</Text><Text style={[styles.heroProgressValue, { color: accent }]}>{wishProgress.progress}%</Text></View>
                       <View style={[styles.progressTrack, { backgroundColor: subtleSurface }]}><View style={[styles.progressFill, { width: `${wishProgress.progress}%`, backgroundColor: accent }]} /></View>
@@ -445,13 +449,13 @@ export function WishScreen({ designMode: rawDesignMode, chicPalette, monthLabel,
                 </View>;
               })}
             </ScrollView>
-            <View style={styles.pageIndicators}>{wishes.map((wish, index) => <View key={wish.id} style={[styles.pageIndicator, { backgroundColor: index === selectedWishIndex ? accent : border }]} />)}</View>
-          </> : <View style={[styles.emptyWish, { backgroundColor: surface, borderColor: border }]}><Text style={[styles.emptyWishText, { color: textSecondary }]}>叶えたいことを追加しよう</Text><Pressable onPress={() => openWishEditor()}><Text style={[styles.lightAction, { color: accent }]}>＋ 追加する</Text></Pressable></View>}
-          <View style={[styles.visionSection, { borderBottomColor: border }]}>
-            <View style={styles.sectionHeaderInline}><View><Text style={[styles.visionSectionTitle, { color: textPrimary }]}>今月の言葉</Text><Text style={[styles.sectionSubtitle, { color: textSecondary }]}>自分に届ける言葉</Text></View></View>
-            {planTier === 'premium' ? <AffirmationSettingsCard affirmations={affirmations} customTexts={affirmationCustomTexts} designMode={rawDesignMode} chicPalette={palette} planTier={planTier} onPremium={onPremium ?? (() => undefined)} onSave={onSaveAffirmation} onDelete={onDeleteAffirmation} onSaveCustomText={onSaveAffirmationCustomText} onDeleteCustomText={onDeleteAffirmationCustomText} styles={styles} compact /> : <Pressable style={styles.quietFeatureRow} onPress={() => onPremium?.('affirmation')}><View style={styles.itemBody}><Text style={[styles.quietFeatureText, { color: textSecondary }]}>好きな言葉を、選んだ時間に届けられます。</Text></View><Text style={[styles.lightAction, { color: accent }]}>Premiumで設定 ›</Text></Pressable>}
+            {wishes.length > 1 ? <View testID="wish-page-indicators" style={styles.pageIndicators}>{wishes.map((wish, index) => <View key={wish.id} style={[styles.pageIndicator, { backgroundColor: index === selectedWishIndex ? accent : border }]} />)}</View> : null}
+          </> : <View style={[styles.emptyWish, { backgroundColor: surface, borderColor: border }]}><Text style={[styles.emptyWishText, isDark && styles.darkReadableCopy, { color: textSecondary }]}>叶えたいことを追加しよう</Text><Pressable accessibilityRole="button" style={{ alignSelf: 'flex-start', minHeight: 44, paddingHorizontal: 16, borderRadius: 12, backgroundColor: subtleSurface, justifyContent: 'center', borderWidth: 1, borderColor: border }} onPress={() => openWishEditor()}><Text style={[styles.lightAction, { color: accent }]}>＋ 追加する</Text></Pressable></View>}
+          <View testID="wish-affirmation-card" style={[styles.visionSection, { borderColor: border, backgroundColor: surface }]}>
+            <View style={styles.sectionHeaderInline}><View><Text style={[styles.visionSectionTitle, { color: textPrimary }]}>今月の言葉</Text><Text style={[styles.sectionSubtitle, isDark && styles.darkReadableMeta, { color: textSecondary }]}>自分に届ける言葉</Text></View></View>
+            {planTier === 'premium' ? <AffirmationSettingsCard affirmations={affirmations} customTexts={affirmationCustomTexts} designMode={rawDesignMode} chicPalette={palette} planTier={planTier} onPremium={onPremium ?? (() => undefined)} onSave={onSaveAffirmation} onDelete={onDeleteAffirmation} onSaveCustomText={onSaveAffirmationCustomText} onDeleteCustomText={onDeleteAffirmationCustomText} styles={styles} compact /> : <Pressable style={[styles.quietFeatureRow, { minHeight: 32, paddingVertical: 0 }]} onPress={() => onPremium?.('affirmation')}><Text style={[styles.lightAction, { color: accent }]}>Premiumで設定 ›</Text></Pressable>}
           </View>
-          <Pressable style={[styles.historyLinkRow, { borderBottomColor: border }]} onPress={() => { setHistoryMonthKey(undefined); setHistoryOpen(true); }}><View><Text style={[styles.historyLinkTitle, { color: textPrimary }]}>過去を見る</Text><Text style={[styles.historyLinkHint, { color: textSecondary }]}>これまでの願いと一歩を振り返る</Text></View><Text style={[styles.itemChevron, { color: textSecondary }]}>›</Text></Pressable>
+          <Pressable testID="wish-history-card" accessibilityRole="button" style={[styles.historyLinkRow, { borderColor: border, backgroundColor: surface }]} onPress={() => { setHistoryMonthKey(undefined); setHistoryOpen(true); }}><View style={{ flex: 1, paddingRight: 12 }}><Text style={[styles.historyLinkTitle, { color: textPrimary }]}>過去を見る</Text><Text style={[styles.historyLinkHint, isDark && styles.darkReadableCopy, { color: textSecondary }]}>これまでの願いと一歩を振り返る</Text></View><Text style={[styles.itemChevron, { color: textSecondary }]}>›</Text></Pressable>
         </ScrollView>
         <RewardedAccessModal
           visible={rewardPrompt !== null}
@@ -476,7 +480,6 @@ export function WishScreen({ designMode: rawDesignMode, chicPalette, monthLabel,
           }}
         />
         {renderWishModals()}
-        {!!saveNotice && <View pointerEvents="none" accessibilityLiveRegion="polite" style={{ position: 'absolute', top: 12, alignSelf: 'center', maxWidth: '90%', paddingHorizontal: 16, paddingVertical: 10, borderRadius: 14, backgroundColor: surface, borderWidth: 1, borderColor: border, elevation: 4 }}><Text style={{ color: textPrimary, fontSize: 13, fontWeight: '700', textAlign: 'center' }}>{saveNotice}</Text></View>}
       </KeyboardAvoidingView>
     </View>
   );
@@ -493,15 +496,20 @@ function HistoryReadOnlyRow({ title, meta, completed, theme, palette }: { title:
 }
 
 const styles = StyleSheet.create({
+  darkReadableMeta: { fontSize: 12, lineHeight: 18 },
+  darkReadableCopy: { fontSize: 14, lineHeight: 22 },
   flex: { flex: 1 },
   screen: { flex: 1 },
   scroll: { paddingHorizontal: 16, paddingTop: 12, paddingBottom: 144, gap: 12 },
-  pageHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', minHeight: 34 },
-  pageHeaderActions: { flexDirection: 'row', alignItems: 'center', gap: 14 },
-  pageHeaderAdd: { fontSize: 14, fontWeight: '900' },
+  managementCard: { borderRadius: 22, borderWidth: 1, padding: 16, gap: 4 },
+  headerAddButton: { minHeight: 44, paddingHorizontal: 16, borderRadius: 12, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
+  headerLinkButton: { minHeight: 44, justifyContent: 'center', paddingHorizontal: 4 },
+  pageHeader: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, alignItems: 'center', justifyContent: 'space-between', minHeight: 44 },
+  pageHeaderActions: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: 14, minHeight: 44 },
+  pageHeaderAdd: { fontSize: 14, fontWeight: '700' },
   pageHeaderEyebrow: { fontSize: 11, fontWeight: '800', letterSpacing: 0.5, marginBottom: 2 },
-  pageHeaderTitle: { fontSize: 20, fontWeight: '900' },
-  pageHeaderLink: { fontSize: 12, fontWeight: '900' },
+  pageHeaderTitle: { fontSize: 20, fontWeight: '700' },
+  pageHeaderLink: { fontSize: 12, fontWeight: '600' },
   topVisual: { minHeight: 190, borderRadius: 24, borderWidth: 1, overflow: 'visible', position: 'relative' },
   topVisualImage: { ...StyleSheet.absoluteFillObject, borderRadius: 24 },
   topVisualVeil: { ...StyleSheet.absoluteFillObject, borderRadius: 24 },
@@ -511,14 +519,14 @@ const styles = StyleSheet.create({
   topVisualTitle: { fontSize: 20, fontWeight: '900' },
   // Keep the Wish title prominent without overwhelming the cover image.
   // Two-line truncation and the existing veil/shadow remain unchanged.
-  topVisualGoal: { fontSize: 22, lineHeight: 29, fontWeight: '900', marginTop: 8 },
+  topVisualGoal: { fontSize: 22, lineHeight: 29, fontWeight: '700', marginTop: 8 },
   topVisualTextOnImage: { textShadowColor: 'rgba(0,0,0,0.55)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 3 },
   topVisualHint: { fontSize: 13, lineHeight: 20, fontWeight: '800', marginTop: 2 },
   topVisualEdit: { position: 'absolute', right: 16, bottom: 14 },
   topVisualEditText: { fontSize: 11, fontWeight: '900' },
   heroBoard: { borderRadius: 24, borderWidth: 1, padding: 18, gap: 12 },
   heroBoardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  heroBoardEyebrow: { fontSize: 11, fontWeight: '900', letterSpacing: 0.4 },
+  heroBoardEyebrow: { fontSize: 11, fontWeight: '700', letterSpacing: 0.4 },
   heroBoardHint: { fontSize: 10, fontWeight: '700', marginTop: 3 },
   heroMenuButton: { minWidth: 36, minHeight: 32, alignItems: 'center', justifyContent: 'center' },
   heroMenuText: { fontSize: 17, letterSpacing: 2, fontWeight: '900' },
@@ -526,26 +534,28 @@ const styles = StyleSheet.create({
   heroMenuItem: { paddingHorizontal: 12, paddingVertical: 10, fontSize: 12, fontWeight: '800' },
   wishCardPage: { paddingBottom: 2 },
   wishCard: { borderWidth: 1, borderRadius: 22, padding: 16, gap: 14, position: 'relative' },
-  wishPinDecoration: { position: 'absolute', top: -7, right: 20, width: 20, height: 28, alignItems: 'center', zIndex: 2 },
-  wishPinDecorationCompact: { top: -7, right: 14, transform: [{ scale: 0.78 }] },
-  wishPinHead: { width: 15, height: 15, borderRadius: 8, borderWidth: 1, shadowColor: '#000000', shadowOpacity: 0.14, shadowRadius: 2, shadowOffset: { width: 0, height: 1 }, elevation: 1 },
-  wishPinStem: { width: 3, height: 12, marginTop: -1, borderRadius: 2, transform: [{ rotate: '14deg' }] },
+  wishPinDecoration: { position: 'absolute', top: -11, right: 22, width: 30, height: 38, alignItems: 'center', zIndex: 2, transform: [{ rotate: '12deg' }] },
+  wishPinDecorationCompact: { top: -9, right: 18, transform: [{ rotate: '12deg' }, { scale: 0.9 }] },
+  wishPinShadow: { position: 'absolute', left: 5, bottom: 1, width: 24, height: 8, borderRadius: 12, transform: [{ rotate: '-12deg' }] },
+  wishPinHead: { width: 22, height: 22, borderRadius: 11, borderWidth: 1, zIndex: 2, shadowColor: '#000000', shadowOpacity: 0.22, shadowRadius: 3, shadowOffset: { width: 1, height: 2 }, elevation: 2 },
+  wishPinHighlight: { position: 'absolute', left: 4, top: 3, width: 7, height: 5, borderRadius: 4, backgroundColor: 'rgba(255,255,255,0.52)', transform: [{ rotate: '-24deg' }] },
+  wishPinStem: { width: 3, height: 14, marginTop: -1, borderRadius: 2, zIndex: 1 },
   wishTapeDecoration: { position: 'absolute', top: -8, right: 18, width: 84, height: 22, borderWidth: 1, borderRadius: 3, transform: [{ rotate: '-6deg' }], shadowColor: '#000000', shadowOpacity: 0.08, shadowRadius: 2, shadowOffset: { width: 0, height: 1 }, elevation: 1, zIndex: 2 },
   wishTapeDecorationCompact: { top: -7, right: 14, width: 62, height: 17, transform: [{ rotate: '5deg' }] },
   wishCardCompact: { paddingVertical: 13, gap: 9 },
   wishCardCompactSummary: { minHeight: 30, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
   wishCardHeader: { flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
   wishCardEyebrow: { fontSize: 10, fontWeight: '800', letterSpacing: 0.4 },
-  wishCardTitle: { fontSize: 23, lineHeight: 31, fontWeight: '900', marginTop: 5 },
+  wishCardTitle: { fontSize: 23, lineHeight: 31, fontWeight: '700', marginTop: 5 },
   wishCardHint: { fontSize: 11, lineHeight: 17, fontWeight: '700', marginTop: 5 },
   wishCompletionToggle: { alignSelf: 'flex-start', marginTop: 8 },
   wishCompletionText: { fontSize: 11, fontWeight: '900' },
   topWishToggle: { alignSelf: 'flex-start', marginTop: 5, minHeight: 28, justifyContent: 'center' },
   topWishToggleText: { fontSize: 11, fontWeight: '900' },
-  wishCardSection: { borderTopWidth: 1, paddingTop: 12, gap: 8 },
-  wishCardSectionTitle: { fontSize: 13, fontWeight: '900' },
+  wishCardSection: { borderTopWidth: 1, paddingTop: 16, gap: 10 },
+  wishCardSectionTitle: { fontSize: 13, fontWeight: '700' },
   wishCardProgress: { borderTopWidth: 1, paddingTop: 12, gap: 7 },
-  topImagePositionRow: { width: '100%', flexDirection: 'row', alignItems: 'center', gap: 8 },
+  topImagePositionRow: { width: '100%', flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 8 },
   topImageSettingRow: { minHeight: 38, alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: 6, borderWidth: 1, borderRadius: 999, paddingHorizontal: 12, paddingVertical: 7 },
   topImageSettingText: { fontSize: 11, fontWeight: '800' },
   topImageSettingChevron: { fontSize: 17, lineHeight: 18, fontWeight: '400' },
@@ -556,12 +566,12 @@ const styles = StyleSheet.create({
   goalInline: { minHeight: 38, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
   goalInlineText: { flex: 1, fontSize: 12, lineHeight: 18, fontWeight: '700' },
   goalInlineAction: { fontSize: 11, fontWeight: '900' },
-  emptyWish: { paddingVertical: 20, gap: 10 },
-  emptyWishText: { fontSize: 12, lineHeight: 19, fontWeight: '700' },
+  emptyWish: { padding: 20, borderRadius: 20, borderWidth: 1, gap: 14 },
+  emptyWishText: { fontSize: 14, lineHeight: 22, fontWeight: '600' },
   quietFeatureRow: { minHeight: 58, flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 8 },
   quietFeatureTitle: { fontSize: 14, fontWeight: '900' },
   quietFeatureText: { fontSize: 11, lineHeight: 17, fontWeight: '700', marginTop: 3 },
-  historyLinkRow: { minHeight: 60, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderBottomWidth: 1, paddingVertical: 10 },
+  historyLinkRow: { minHeight: 76, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderWidth: 1, borderRadius: 20, padding: 18 },
   historyLinkTitle: { fontSize: 14, fontWeight: '900' },
   historyLinkHint: { fontSize: 11, fontWeight: '700', marginTop: 3 },
   goalSheet: { borderRadius: 20, borderWidth: 1, padding: 16, gap: 10 },
@@ -576,17 +586,17 @@ const styles = StyleSheet.create({
   heroWishBlock: { marginTop: 22, gap: 4 },
   heroWishPager: { width: '100%' },
   heroWishLabel: { fontSize: 11, fontWeight: '800' },
-  heroWishTitle: { fontSize: 25, lineHeight: 33, fontWeight: '900' },
+  heroWishTitle: { fontSize: 23, lineHeight: 31, fontWeight: '700' },
   heroWishMeta: { fontSize: 11, fontWeight: '700', marginTop: 3 },
   heroProgress: { marginTop: 18, gap: 7 },
   heroProgressHeader: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between' },
-  heroProgressLabel: { fontSize: 11, fontWeight: '800' },
+  heroProgressLabel: { fontSize: 11, fontWeight: '600' },
   heroProgressValue: { fontSize: 24, lineHeight: 28, fontWeight: '800' },
   visionEmptyText: { fontSize: 12, lineHeight: 19, fontWeight: '700' },
-  visionSection: { paddingVertical: 16, borderBottomWidth: 1, gap: 10 },
+  visionSection: { padding: 18, borderRadius: 20, borderWidth: 1, gap: 10 },
   sectionHeaderInline: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 },
   visionSectionTitle: { fontSize: 17, fontWeight: '900' },
-  lightAction: { fontSize: 12, fontWeight: '900' },
+  lightAction: { fontSize: 12, fontWeight: '700' },
   lightActionRow: { minHeight: 38, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderTopWidth: 1, paddingTop: 8 },
   wishPager: { width: '100%' },
   wishPage: { width: 320, minHeight: 92, justifyContent: 'center', paddingVertical: 8, paddingRight: 18 },
@@ -599,13 +609,13 @@ const styles = StyleSheet.create({
   actionList: { gap: 0 },
   actionRow: { minHeight: 48, flexDirection: 'row', alignItems: 'center', gap: 10, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#D8D8D3' },
   actionCheck: { width: 22, height: 22, borderRadius: 11, borderWidth: 1.5, alignItems: 'center', justifyContent: 'center' },
-  actionTitle: { flex: 1, fontSize: 14, lineHeight: 20, fontWeight: '800' },
+  actionTitle: { flex: 1, minWidth: 0, fontSize: 14, lineHeight: 21, fontWeight: '700' },
   lockedInlineRow: { minHeight: 52, flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 8, borderBottomWidth: StyleSheet.hairlineWidth },
   lockedInlineTitle: { fontSize: 14, fontWeight: '800' },
   lockedInlineText: { flex: 1, fontSize: 11, lineHeight: 17, fontWeight: '700' },
   sectionHeader: { marginBottom: 10, zIndex: 1 },
   sectionTitle: { fontSize: 16, fontWeight: '900' },
-  sectionSubtitle: { fontSize: 10, fontWeight: '800', marginTop: 2 },
+  sectionSubtitle: { fontSize: 10, fontWeight: '500', marginTop: 2 },
   themePanel: { borderWidth: 1, borderRadius: 16, padding: 12, gap: 10, backgroundColor: '#FFFFFF' },
   themePanelMinimal: { borderColor: '#111111', borderRadius: 16 },
   themePanelChic: { borderColor: '#E8D9E2' },
@@ -651,7 +661,7 @@ const styles = StyleSheet.create({
   completionCheckText: { color: '#D986A1', fontSize: 17, lineHeight: 20, fontWeight: '900' },
   completionCheckTextDark: { color: '#8EA6FF' },
   completionCheckTextActive: { color: '#FFFFFF' },
-  itemBody: { flex: 1 },
+  itemBody: { flex: 1, minWidth: 0 },
   itemTitle: { fontSize: 14, fontWeight: '900', color: '#282538' },
   itemTitleDark: { color: '#F4F7FC' },
   itemTitleDone: { textDecorationLine: 'line-through' },
@@ -705,7 +715,7 @@ const styles = StyleSheet.create({
   editorSheetChic: { backgroundColor: '#FFF3F5', borderWidth: 1, borderColor: '#F0DFE5' },
   editorSheetDark: { backgroundColor: '#181F2E', borderColor: '#303B50' },
   editorTitle: { fontSize: 16, fontWeight: '900' },
-  editorInput: { minHeight: 52, borderWidth: 1, borderRadius: 14, paddingHorizontal: 12, paddingVertical: 10, backgroundColor: '#FFFFFF', fontSize: 13, fontWeight: '800', color: '#282538' },
+  editorInput: { minHeight: 56, maxHeight: 132, borderWidth: 1, borderRadius: 14, paddingHorizontal: 12, paddingVertical: 12, backgroundColor: '#FFFFFF', fontSize: 14, lineHeight: 21, fontWeight: '600', color: '#282538' },
   editorInputMinimal: { borderColor: '#111111', borderRadius: 14 },
   editorInputChic: { borderColor: '#E7D9E3' },
   editorInputDark: { backgroundColor: '#20293A', borderColor: '#40506A', color: '#F4F7FC' },

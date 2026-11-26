@@ -84,11 +84,11 @@ export function RecoveryModal({ visible, plan, now, designMode, onClose, onApply
                   <View style={[styles.recoveryOptionIcon, { backgroundColor: theme.colors.secondarySurface }]}>
                     <Text style={[styles.recoveryOptionIconText, { color: theme.colors.primaryAccent }]}>{option.action === 'leave_now' ? '↗' : option.action === 'delay_arrival' ? '◷' : option.action === 'contact' ? '✉' : '↻'}</Text>
                   </View>
-                  <View style={{ flex: 1 }}>
+                  <View style={{ flex: 1, minWidth: 0, paddingVertical: 10 }}>
                     <Text style={[styles.recoveryOptionTitle, { color: theme.colors.primaryText }]}>{option.title}</Text>
                     <Text style={[styles.recoveryOptionCopy, { color: theme.colors.secondaryText }]}>{option.description}</Text>
                   </View>
-                  <Text style={[styles.recoveryOptionArrow, { color: theme.colors.primaryAccent }, locked && { fontSize: 9, fontWeight: '900' }]}>{locked ? 'Premium' : '›'}</Text>
+                  <Text style={[styles.recoveryOptionArrow, { color: theme.colors.primaryAccent }, locked && { fontSize: 12, lineHeight: 18, fontWeight: '700' }]}>{locked ? 'Premium' : '›'}</Text>
                 </Pressable>
               );
             })}

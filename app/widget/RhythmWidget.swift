@@ -2107,7 +2107,6 @@ private struct MonthlyCalendarWidgetView: View {
                     // specific hardcoded text color.
                     .foregroundStyle(day.isToday ? palette.background : palette.foreground)
                     .lineLimit(1)
-                    .minimumScaleFactor(0.7)
                 }
                 .frame(maxWidth: .infinity, minHeight: isLarge ? 20 : 16)
                 if day.hasSchedule {
@@ -2115,24 +2114,23 @@ private struct MonthlyCalendarWidgetView: View {
                     Circle().fill(palette.accent).frame(width: isLarge ? 4 : 3, height: isLarge ? 4 : 3)
                     if day.scheduleCount > 1 {
                       Text("\(day.scheduleCount)")
-                        .font(.system(size: isLarge ? 7 : 6, weight: .semibold))
+                        .font(.caption2.weight(.semibold))
                         .foregroundStyle(palette.accent)
                         .lineLimit(1)
                     }
                   }
                   .frame(maxWidth: .infinity, alignment: .center)
-                  if isLarge, let title = day.scheduleTitle {
-                    Text(title)
-                      .font(.system(size: 7, weight: .medium))
-                      .foregroundStyle(palette.foreground.opacity(0.82))
-                      .lineLimit(1)
-                      .minimumScaleFactor(0.65)
-                      .frame(maxWidth: .infinity, alignment: .leading)
-                  }
                 }
               }
               .frame(maxWidth: .infinity, minHeight: dayCellHeight, alignment: .topLeading)
             }
+          }
+          // Keep names out of the narrow day cells; show one readable summary.
+          if isLarge, let day = month.days.first(where: { $0.hasSchedule && $0.scheduleTitle != nil }), let title = day.scheduleTitle {
+            Text("\(day.day)日 · \(title)")
+              .font(.caption)
+              .foregroundStyle(palette.secondary)
+              .lineLimit(1)
           }
         }
       } else {
@@ -2157,11 +2155,11 @@ private struct WeeklyCalendarWidgetView: View {
             VStack(spacing: 6) {
               ForEach(Array(week.days.enumerated()), id: \.offset) { _, day in
                 HStack(alignment: .top, spacing: 10) {
-                  Text("\(day.weekday) \(day.day)").font(.subheadline.weight(day.isToday ? .bold : .regular)).foregroundStyle(day.isToday ? palette.accent : palette.secondary).lineLimit(1).minimumScaleFactor(0.7).frame(width: 52, alignment: .leading)
+                  Text("\(day.weekday) \(day.day)").font(.subheadline.weight(day.isToday ? .bold : .regular)).foregroundStyle(day.isToday ? palette.accent : palette.secondary).lineLimit(1).frame(width: 60, alignment: .leading)
                   if day.schedules.isEmpty { Text("—").font(.caption).foregroundStyle(palette.secondary) }
                   else {
                     VStack(alignment: .leading, spacing: 2) {
-                      Text(day.schedules.first?.title ?? "予定").font(.subheadline.weight(.medium)).foregroundStyle(palette.foreground).lineLimit(1).minimumScaleFactor(0.7)
+                      Text(day.schedules.first?.title ?? "予定").font(.subheadline.weight(.medium)).foregroundStyle(palette.foreground).lineLimit(1)
                       if day.schedules.count > 1 { Text("ほか\(day.schedules.count - 1)件").font(.caption).foregroundStyle(palette.secondary) }
                     }
                   }
@@ -2181,12 +2179,15 @@ private struct WeeklyCalendarWidgetView: View {
                       Circle().fill(palette.accent).frame(width: 4, height: 4)
                       if day.schedules.count > 1 { Text("\(day.schedules.count)").font(.caption2.weight(.semibold)).foregroundStyle(palette.accent) }
                     }
-                    if let title = day.schedules.first?.title {
-                      Text(title).font(.system(size: 7, weight: .medium)).foregroundStyle(palette.foreground.opacity(0.82)).lineLimit(1).minimumScaleFactor(0.65)
-                    }
                   }
                 }.frame(maxWidth: .infinity)
               }
+            }
+            if let day = week.days.first(where: { !$0.schedules.isEmpty }), let schedule = day.schedules.first {
+              Text("\(day.day)日 · \(schedule.title)")
+                .font(.caption)
+                .foregroundStyle(palette.foreground)
+                .lineLimit(2)
             }
           }
         }
@@ -2350,7 +2351,6 @@ private struct AffirmationWidgetView: View {
           .font(.title3.weight(.semibold))
           .foregroundStyle(palette.foreground)
           .lineLimit(5)
-          .minimumScaleFactor(0.78)
       }
       .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }

@@ -88,6 +88,13 @@ export function DeparturePlanForm({
   const [showOtherDuration, setShowOtherDuration] = useState(false);
   const [learningMessage, setLearningMessage] = useState<string>();
   const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  const [destinationExpanded, setDestinationExpanded] = useState(Boolean(plan.destination) || mode !== 'calendar_only');
+  // Switch records/modes without collapsing the section while the user types.
+  useEffect(() => {
+    setDestinationExpanded(Boolean(plan.destination) || mode !== 'calendar_only');
+    setSubmitError(null);
+  }, [plan.id, mode]);
   const submittingRef = useRef(false);
   const manuallyAdjustedPreparationRef = useRef(false);
   const autoAppliedRef = useRef(false);
@@ -199,6 +206,7 @@ export function DeparturePlanForm({
 
   const handleSubmit = async () => {
     if (submittingRef.current) return;
+    setSubmitError(null);
     if (!plan.title.trim()) {
       Alert.alert('予定名を入力してください');
       return;
@@ -213,7 +221,12 @@ export function DeparturePlanForm({
     }
     submittingRef.current = true;
     setSubmitting(true);
-    try { await onSubmit(); } finally { submittingRef.current = false; setSubmitting(false); }
+    try {
+      const saved = await onSubmit();
+      if (saved === false) setSubmitError('保存できませんでした。入力内容を残しています。もう一度お試しください。');
+    } catch {
+      setSubmitError('保存できませんでした。入力内容を残しています。もう一度お試しください。');
+    } finally { submittingRef.current = false; setSubmitting(false); }
   };
 
   const fieldText = { color: theme.colors.primaryText };
@@ -251,12 +264,15 @@ export function DeparturePlanForm({
       <Text style={[styles.cardTitle, fieldText]}>基本情報</Text>
       <View style={styles.labelRow}><Text style={[styles.fieldLabel, fieldText]}>予定名</Text><Text style={[styles.required, { color: theme.colors.primaryAccent }]}>必須</Text></View>
       <TextInput
-        style={[styles.titleInput, input]}
+        style={[styles.titleInput, input, { minHeight: 56, maxHeight: 132, paddingVertical: 12, textAlignVertical: 'top' }]}
+        multiline
+        editable={!submitting}
         value={plan.title}
         onChangeText={(title) => updatePlan({ title })}
         placeholder="例：友人と待ち合わせ"
         placeholderTextColor={theme.colors.secondaryText}
-        returnKeyType="next"
+        returnKeyType="done"
+        submitBehavior="blurAndSubmit"
       />
       <View style={styles.dateTimeRow}>
         <View style={styles.dateTimeField}>
@@ -330,13 +346,15 @@ export function DeparturePlanForm({
     </View>
 
     <View style={[styles.sectionCard, panel]}>
-      <Text style={[styles.cardTitle, fieldText]}>目的地</Text>
+      <Pressable accessibilityRole="button" accessibilityLabel="目的地の設定" accessibilityState={{ expanded: destinationExpanded }} onPress={() => setDestinationExpanded((value) => !value)} style={{ minHeight: 44, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}><Text style={[styles.cardTitle, fieldText, { marginBottom: 0 }]}>目的地（任意）</Text><Text style={{ color: theme.colors.primaryAccent, fontSize: 18 }}>{destinationExpanded ? '⌃' : '⌄'}</Text></Pressable>
+      {destinationExpanded ? <View>
       <View style={styles.labelRow}><Text style={[styles.fieldLabel, fieldText]}>目的地</Text><Text style={[styles.optional, secondaryText]}>任意</Text></View>
       <TextInput
         style={[styles.titleInput, input]}
+        editable={!submitting}
         value={plan.destination ?? ''}
         onChangeText={(destination) => updatePlan({ destination })}
-        placeholder="例：博多駅"
+        placeholder="例：東京"
         placeholderTextColor={theme.colors.secondaryText}
       />
       <Pressable
@@ -348,6 +366,7 @@ export function DeparturePlanForm({
       </Pressable>
       {plan.destination?.trim() ? <TravelAppLaunchActions settings={travelApps} category="transit" destination={resolvedDestination} planTier={planTier} designMode={designMode} chicPalette={chicPalette} onPremium={closeThenPremium} onOpenSettings={onOpenTravelAppSettings} /> : null}
       <Text style={[styles.destinationNote, secondaryText]}>地図アプリで目的地を確認できます</Text>
+      </View> : null}
     </View>
 
     {canUseReverse && <View style={[styles.sectionCard, panel]}>
@@ -393,6 +412,7 @@ export function DeparturePlanForm({
     </View>}
 
     <View style={[styles.submitArea, { borderColor: theme.colors.border }]}>
+      {submitError ? <Text accessibilityRole="alert" accessibilityLiveRegion="polite" style={{ color: theme.colors.danger, fontSize: 14, lineHeight: 22, marginBottom: 10 }}>{submitError}</Text> : null}
       {canUseReverse && <Text style={[styles.finalTimeline, secondaryText]}>{formatLiveTime(moments.prepare)} 準備開始 ・ {formatLiveTime(moments.leave)} 出発</Text>}
       <Pressable accessibilityRole="button" accessibilityState={{ busy: submitting, disabled: submitting }} disabled={submitting} style={[styles.submitButton, { backgroundColor: theme.colors.primaryAccent, opacity: submitting ? 0.65 : 1 }]} onPress={() => void handleSubmit()}>
         <Text style={[styles.submitButtonText, { color: onAccent }]}>{submitting ? '保存中…' : plan.id ? '変更を保存' : canUseReverse ? 'この予定を登録' : isDirectDeparture ? '出発時刻を登録' : '予定表に追加'}</Text>

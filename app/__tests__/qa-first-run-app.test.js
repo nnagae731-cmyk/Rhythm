@@ -36,11 +36,17 @@ async function enterDesign(view,skipAt){
 }
 test('初回は一元管理の5枚だけを表示し、本番プレビューが実データ・Modalを変更しない',async()=>{
  const view=await fresh();expect(INTRO_CARDS.map(c=>c.id)).toEqual(['today','voice','schedule','records','customize']);
- expect(INTRO_CARDS.map(c=>c.title)).toEqual(['毎日のことを、ひとつに。','思いついたら、すぐ残せる。','予定も、やることも、自分のペースで。','毎日の積み重ねが、未来につながる。','毎日開きたくなる、私のRhythm。']);
+ expect(INTRO_CARDS.map(c=>c.title.replace(/\n/g,''))).toEqual(['毎日のことを、ひとつに。','思いついたら、すぐ残せる。','予定も、やることも、自分のペースで。','毎日の積み重ねが、未来につながる。','毎日開きたくなる、私のRhythm。']);
  expect(sheet(view)).toBeUndefined();expect(view.UNSAFE_getAllByType(Modal).filter(m=>m.props.visible===true)).toHaveLength(1);
- expect(view.UNSAFE_getAllByType(TaskModal).some(m=>m.props.readOnlyPreview)).toBe(true);
+ const schedule=view.UNSAFE_root.findAll(n=>typeof n.type==='function'&&n.type.name==='DailyScheduleTimeline'&&n.props.visibleStartHour===9&&n.props.visibleEndHour===12);
+ expect(schedule).toHaveLength(1);
  expect(view.UNSAFE_getAllByType(VoiceInputModal).some(m=>m.props.inlinePreview)).toBe(true);
- expect(view.UNSAFE_getAllByType(DesignAppliedPreview).map(m=>m.props.tab)).toEqual(expect.arrayContaining(['mono','chic','photo']));
+ const designs=view.UNSAFE_getAllByType(DesignAppliedPreview);
+ expect(designs).toHaveLength(1);expect(designs[0].props.tab).toBe('chic');expect(designs[0].props.showcase).toBe(true);
+ const showcase=within(intro(view)).getByTestId('onboarding-design-preview');
+ expect(showcase.findAll(n=>n.props.testID==='onboarding-preview-canvas')).toHaveLength(0);
+ expect(within(showcase).getByTestId('design-showcase').props.style.height).toBe(300);
+ expect(designs[0].props.showcaseBackground).toBeTruthy();
  await waitFor(async()=>expect((await loadRhythmState())?.tasks).toEqual([]),{timeout:10000});
  expect((await loadRhythmState()).departurePlans).toEqual([]);expect((await savedIntro()).completed?.intro).toBeUndefined();
  expect((await loadRewardedAccessState()).premiumDesignTrial.used).toBe(false);

@@ -1,6 +1,19 @@
 const withWidget = require('../plugins/with-rhythm-widget');
 const configureApp = require('../app.config');
 
+test('Native source contract: text does not auto-shrink; fixed calendar cells show counts instead of tiny titles', () => {
+  const fs = require('fs'), path = require('path');
+  const widget = fs.readFileSync(path.join(__dirname, '../widget/RhythmWidget.swift'), 'utf8');
+  const live = fs.readFileSync(path.join(__dirname, '../widget/RhythmLiveActivity.swift'), 'utf8');
+  expect(widget).not.toContain('.minimumScaleFactor('); expect(live).not.toContain('.minimumScaleFactor(');
+  const calendar = widget.slice(widget.indexOf('private struct MonthlyCalendarWidgetView'), widget.indexOf('private struct OverviewWidgetView'));
+  expect(calendar).not.toMatch(/\.system\(size:\s*(6|7)\b/);
+  expect(calendar).toContain('day.scheduleCount'); expect(calendar).toContain('day.schedules.count');
+  expect(calendar).toContain('Keep names out of the narrow day cells');
+  expect(calendar).toContain('let schedule = day.schedules.first');
+  // Source checks only: Swift compilation and actual M/L layout need an iOS build.
+});
+
 async function applyPodProperties(properties) {
   const config = withWidget({ name: 'QA', slug: 'qa' });
   return (await config.mods.ios.podfileProperties({

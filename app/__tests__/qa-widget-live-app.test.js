@@ -19,6 +19,111 @@ const native={saveSnapshot:jest.fn(async()=>true),isLiveActivityAvailable:jest.f
 beforeEach(async()=>{jest.clearAllMocks();expo.requireOptionalNativeModule.mockReturnValue(native);await storage.clear();await storage.setItem(ONBOARDING_STORAGE_KEY,JSON.stringify({version:1,completed:{intro:'2026-01-01',todo:'2026-01-01',todoComplete:'2026-01-01'},firstRunStage:'done'}));});
 afterEach(()=>cleanup());
 
+test('本番AppのWidget設定は追加手順と全9種類を示し、個別の見た目を保存・復元する',async()=>{
+ const previous=process.env.EXPO_PUBLIC_RHYTHM_PLAN;process.env.EXPO_PUBLIC_RHYTHM_PLAN='premium';
+ try {
+ await saveRhythmState({designMode:'dark',tasks:[{id:'widget-ux-marker',title:'Widget設定の復元目印',done:false,category:'その他',priority:'中',bucket:'now'}]});
+ const App=require('../App').default;let view=render(<App/>);
+ await waitFor(()=>expect(view.getAllByText('Widget設定の復元目印').length).toBeGreaterThan(0),{timeout:10000});
+ fireEvent.press(view.getByRole('tab',{name:'設定'}));fireEvent.press(view.getByText('ホーム画面のウィジェット'));
+ await waitFor(()=>expect(view.getByText('種類を選ぶ')).toBeTruthy(),{timeout:10000});
+ expect(view.getByText('タップして写真・文字をカスタマイズ')).toBeTruthy();
+ for(const option of require('../features/widget/widgetSettings').WIDGET_TYPE_OPTIONS)expect(view.getByLabelText(new RegExp('^'+option.label+'。'))).toBeTruthy();
+ fireEvent.press(view.getByText('ホーム画面に追加する方法 ›'));
+ expect(view.getByText('ホーム画面の何もない場所を長押し')).toBeTruthy();
+ fireEvent.press(view.getByText('‹ ウィジェット設定に戻る'));
+ fireEvent.press(view.getByLabelText(/^今やるTODO。/));
+ expect(view.getByText('このウィジェットには写真が設定されていません。')).toBeTruthy();
+ fireEvent.press(view.getByText('右側'));
+ await waitFor(async()=>expect((await loadRhythmState()).widgetSettings.widgetCustomizations.current.photoLayout).toBe('right'));
+ // The detail is the production photo/layout editor, not an installation shortcut.
+ expect((await loadRhythmState()).tasks[0].title).toBe('Widget設定の復元目印');
+ fireEvent.press(view.getByLabelText('閉じる'));
+ view.unmount();view=render(<App/>);
+ await waitFor(()=>expect(view.getAllByText('Widget設定の復元目印').length).toBeGreaterThan(0),{timeout:10000});
+ fireEvent.press(view.getByRole('tab',{name:'設定'}));fireEvent.press(view.getByText('ホーム画面のウィジェット'));
+ await waitFor(()=>expect(view.getByText('種類を選ぶ')).toBeTruthy(),{timeout:10000});
+ expect((await loadRhythmState()).tasks[0].done).toBe(false);
+ fireEvent.press(view.getByLabelText(/^今やるTODO。/));
+ expect((await loadRhythmState()).widgetSettings.widgetCustomizations.current.photoLayout).toBe('right');
+ const {StyleSheet}=require('react-native');let row=view.getByText('右側').parent;
+ while(row && !row.props.onPress)row=row.parent;
+ expect(StyleSheet.flatten(row.props.style).borderWidth).toBe(2);
+ } finally { if(previous===undefined)delete process.env.EXPO_PUBLIC_RHYTHM_PLAN;else process.env.EXPO_PUBLIC_RHYTHM_PLAN=previous; }
+},90000);
+
+test('本番AppのLive Activity設定でON/OFF・詳細折りたたみ・設定保存・再読込が連動する',async()=>{
+ await saveRhythmState({liveActivityEnabled:false,tasks:[{id:'live-ux-marker',title:'Live設定の復元目印',done:false,category:'その他',priority:'中',bucket:'now'}]});
+ const App=require('../App').default;let view=render(<App/>);
+ await waitFor(()=>expect(view.getAllByText('Live設定の復元目印').length).toBeGreaterThan(0),{timeout:10000});
+ fireEvent.press(view.getByRole('tab',{name:'設定'}));fireEvent.press(view.getByText('ライブアクティビティ'));
+ expect(view.getByText('表示イメージ（サンプル）')).toBeTruthy();expect(view.queryByText('まる文字')).toBeNull();
+ fireEvent(view.getByLabelText('ライブアクティビティを使う'),'valueChange',true);
+ await waitFor(()=>expect(native.startOrUpdateLiveActivity).toHaveBeenCalled(),{timeout:10000});
+ await waitFor(async()=>expect((await loadRhythmState()).liveActivityEnabled).toBe(true));
+ fireEvent.press(view.getByText('文字・言葉の詳細設定'));expect(view.getByText('まる文字')).toBeTruthy();
+ fireEvent.press(view.getByText('文字・言葉の詳細設定'));expect(view.queryByText('まる文字')).toBeNull();
+ fireEvent.press(view.getByText('設定を保存'));
+ view.unmount();view=render(<App/>);
+ await waitFor(()=>expect(view.getAllByText('Live設定の復元目印').length).toBeGreaterThan(0),{timeout:10000});
+ fireEvent.press(view.getByRole('tab',{name:'設定'}));fireEvent.press(view.getByText('ライブアクティビティ'));
+ expect(view.getByLabelText('ライブアクティビティを使う').props.value).toBe(true);
+ fireEvent(view.getByLabelText('ライブアクティビティを使う'),'valueChange',false);
+ await waitFor(async()=>expect((await loadRhythmState()).liveActivityEnabled).toBe(false));
+},90000);
+
+test.each([
+ ['Mono Light',{designMode:'minimal',monoAppearance:'light'},'minimal'],
+ ['Mono Dark',{designMode:'dark',monoAppearance:'dark'},'dark'],
+ ['Design',{designMode:'chic',chicPattern:'dot',chicCheckColor:'cool'},'chic'],
+ ['Photo',{designMode:'photo',photoTheme:{imageUri:'file:///qa-photo.jpg',placement:'background'}},'chic'],
+])('%s: 完了メッセージは小画面でも本文・ナビと別の領域を使い長文を保持する',async(_name,settings,expectedMode)=>{
+ const previousPlan=process.env.EXPO_PUBLIC_RHYTHM_PLAN;
+ process.env.EXPO_PUBLIC_RHYTHM_PLAN='premium';
+ const dimensions=jest.spyOn(require('react-native'),'useWindowDimensions').mockReturnValue({width:320,height:568,scale:2,fontScale:1.3});
+ const message='今日も自分のペースで、一歩ずつ。'.repeat(25);
+ let random;
+ try{
+  await saveRhythmState({...settings,affirmationCustomTexts:[{id:'long-feedback',text:message}],tasks:[{id:'toast-task',title:'完了メッセージの位置確認',done:false,category:'その他',priority:'中',bucket:'now'}]});
+  const view=await openFocusApp('完了メッセージの位置確認');
+  await waitFor(()=>expect(view.UNSAFE_getByType(HomeScreen).props.designMode).toBe(expectedMode));
+  expect(view.queryByTestId('completion-affirmation')).toBeNull();
+  fireEvent.press(view.getByText('一覧'));
+  random=jest.spyOn(Math,'random').mockReturnValueOnce(0);
+  fireEvent.press(view.getAllByRole('checkbox')[0],{stopPropagation:()=>{}});
+  await waitFor(()=>expect(view.getByTestId('completion-affirmation')).toBeTruthy());
+  const toast=view.getByTestId('completion-affirmation');
+  expect(view.getByText(message)).toBeTruthy();
+  expect(StyleSheet.flatten(toast.props.style).position).toBeUndefined();
+  expect(view.getByTestId('app-main-scroll').findAll(n=>n.props.testID==='completion-affirmation')).toHaveLength(0);
+  expect(view.UNSAFE_getByType(BottomNav).parent.findAll(n=>n.props.testID==='completion-affirmation').length).toBeGreaterThan(0);
+  expect(StyleSheet.flatten(toast.props.style).marginBottom).toBe(getBottomNavTopOffset(expectedMode)+16);
+  expect(StyleSheet.flatten(view.getByTestId('completion-affirmation-scroll').props.style).maxHeight).toBeCloseTo(568*0.2);
+  fireEvent(view.getByTestId('app-status-notices'),'layout',{nativeEvent:{layout:{x:16,y:400,width:288,height:72}}});
+  expect(StyleSheet.flatten(view.getByTestId('completion-affirmation').props.style).marginBottom).toBe(getBottomNavTopOffset(expectedMode)+16+72);
+  await waitFor(async()=>expect((await loadRhythmState()).tasks[0].done).toBe(true));
+ }finally{cleanup();dimensions.mockRestore();random?.mockRestore();if(previousPlan===undefined)delete process.env.EXPO_PUBLIC_RHYTHM_PLAN;else process.env.EXPO_PUBLIC_RHYTHM_PLAN=previousPlan;}
+},90000);
+
+test.each([0,1,9])('達成グラフは完了%d件の実数を表示し、8本のバーだけを上限にする',async(count)=>{
+ const doneTasks=Array.from({length:count},(_,i)=>({id:`done-${i}`,title:`完了済み${i}`,done:true,completedAt:new Date().toISOString(),category:'その他',priority:'中',bucket:'now'}));
+ await saveRhythmState({designMode:'minimal',monoAppearance:'light',tasks:[...doneTasks,{id:'graph-sentinel',title:'グラフ復元確認',done:false,category:'その他',priority:'中',bucket:'now'}]});
+ const view=await openFocusApp('グラフ復元確認');
+ const {within}=require('@testing-library/react-native');
+ const graph=view.getByLabelText('今日できたことを確認');
+ expect(within(graph).getByText(String(count).padStart(2,'0'))).toBeTruthy();
+ expect(view.getByText(`完了 ${count} / 今やる残り 1`)).toBeTruthy();
+ // The production bar container has exactly eight children, irrespective of count.
+ const container=graph.findAll(n=>n.children.length===8&&n.children.every(c=>typeof c!=='string'))[0];
+ expect(container).toBeTruthy();
+ const colors=getThemeTokens('minimal').colors;
+ expect(container.children.filter(n=>StyleSheet.flatten(n.props.style).backgroundColor===colors.primaryAccent)).toHaveLength(Math.min(8,count));
+ fireEvent.press(graph);
+ expect(view.getByText('今日できたこと')).toBeTruthy();
+ if(count===0)expect(view.getByText('完了したタスクはまだありません。')).toBeTruthy();
+ else for(let i=0;i<count;i++)expect(view.getByText(`完了済み${i}`)).toBeTruthy();
+},90000);
+
 async function openFocusApp(title){
  const App=require('../App').default;const view=render(<App/>);
  await waitFor(()=>expect(view.getAllByText(title).length).toBeGreaterThan(0),{timeout:10000});
@@ -46,7 +151,9 @@ test('Darkのタスクなし集中は一時停止を正しく表示し、時間�
  expect(StyleSheet.flatten(view.getByTestId('focus-empty-tasks').props.style).backgroundColor).toBe(colors.surface);
  expect(StyleSheet.flatten(view.getByRole('button',{name:'集中時間を15分に設定'}).props.style).backgroundColor).toBe(colors.surface);
  expect(StyleSheet.flatten(view.getByRole('button',{name:'カスタム集中時間を設定'}).props.style).backgroundColor).toBe(colors.surface);
- expect(view.getByText('カスタム').props.numberOfLines).toBe(1);expect(view.queryByText('好きな時間')).toBeNull();
+ const customLabel=view.getByText('カスタム');
+ expect(customLabel.props.numberOfLines).toBeUndefined();expect(customLabel.props.adjustsFontSizeToFit).toBe(false);
+ expect(StyleSheet.flatten(customLabel.props.style).fontSize).toBeGreaterThanOrEqual(13);expect(view.queryByText('好きな時間')).toBeNull();
  expect(StyleSheet.flatten(view.getByRole('button',{name:'集中時間を15分に設定'}).props.style).minHeight).toBeGreaterThanOrEqual(44);
  expect(StyleSheet.flatten(view.getByText('リセット').props.style).color).toBe(colors.primaryText);
  fireEvent.press(view.getByRole('button',{name:'集中時間を5分に設定'}));fireEvent.press(view.getByText('スタート'));

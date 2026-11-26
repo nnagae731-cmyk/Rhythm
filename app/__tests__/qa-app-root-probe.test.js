@@ -16,6 +16,60 @@ const Notifications=require('expo-notifications');
 require('../App');
 afterEach(()=>{cleanup();jest.restoreAllMocks();Notifications.getAllScheduledNotificationsAsync.mockReset().mockResolvedValue([]);});
 function dismissTomorrowPrompt(view){const button=view.queryByText('今日はしない');if(button)fireEvent.press(button);}
+
+test('本番Appで長いTODOを折り返して入力・保存し、再読込後も全文を保持する',async()=>{
+ await storage.clear();await saveRhythmState({tasks:[{id:'long-todo-marker',title:'長文TODOの読込目印',done:false,category:'その他',priority:'中',bucket:'now'}]});
+ await storage.setItem(ONBOARDING_STORAGE_KEY,JSON.stringify({version:1,completed:{intro:'2026-01-01',todo:'2026-01-01',todoComplete:'2026-01-01',taskDetails:'2026-01-01'},firstRunStage:'done'}));
+ const title='長いTODOの内容を最後まで確認する'.repeat(6),App=require('../App').default;
+ let view=render(<App/>);await waitFor(()=>expect(view.getAllByText('長文TODOの読込目印').length).toBeGreaterThan(0),{timeout:10000});dismissTomorrowPrompt(view);
+ fireEvent.press(view.getByLabelText('タスクを追加'));const input=view.getByPlaceholderText('例：資料をバッグに入れる');
+ expect(input.props.multiline).toBe(true);expect(view.getByText('必要なら詳しく設定')).toBeTruthy();
+ fireEvent.changeText(input,title);fireEvent.press(view.getByText('登録する'));
+ await waitFor(async()=>expect((await loadRhythmState()).tasks.some(task=>task.title===title)).toBe(true));
+ view.unmount();view=render(<App/>);await waitFor(()=>expect(view.getAllByText(title).length).toBeGreaterThan(0),{timeout:10000});
+ expect((await loadRhythmState()).tasks.find(task=>task.title===title).title).toBe(title);
+},90000);
+
+test('本番Appの予定で任意の目的地と長文を保持し、保存保留・失敗表示・再試行・再読込が一致する',async()=>{
+ await storage.clear();await saveRhythmState({tasks:[{id:'form-plan-marker',title:'予定フォームの読込目印',done:false,category:'その他',priority:'中',bucket:'now'}],departurePlans:[]});
+ await storage.setItem(ONBOARDING_STORAGE_KEY,JSON.stringify({version:1,completed:{intro:'2026-01-01',todo:'2026-01-01',schedule:'2026-01-01',planRegistration:'2026-01-01'},firstRunStage:'done'}));
+ const title='重要な予定の内容を最後まで確認する'.repeat(6),original=storage.setItem.getMockImplementation();
+ let failing=true,started=false,settle;
+ jest.spyOn(Alert,'alert').mockImplementation(()=>{});
+ jest.spyOn(storage,'setItem').mockImplementation((key,value)=>{
+  if(key===STORAGE_KEY&&value.includes(title)&&failing){
+   if(!started){started=true;return new Promise((_resolve,reject)=>{settle=()=>reject(Error('disk full'));});}
+   return Promise.reject(Error('disk full'));
+  }
+  return original(key,value);
+ });
+ try {
+  const App=require('../App').default;let view=render(<App/>);
+  await waitFor(()=>expect(view.getAllByText('予定フォームの読込目印').length).toBeGreaterThan(0),{timeout:10000});dismissTomorrowPrompt(view);
+  fireEvent.press(view.getByText('予定'));fireEvent.press(view.getByText('＋ 予定を追加'));
+  expect(view.queryByPlaceholderText('例：東京')).toBeNull();
+  expect(view.getByLabelText('目的地の設定').props.accessibilityState.expanded).toBe(false);
+  fireEvent.press(view.getByLabelText('目的地の設定'));fireEvent.changeText(view.getByPlaceholderText('例：東京'),'東京');
+  fireEvent.press(view.getByLabelText('目的地の設定'));fireEvent.press(view.getByLabelText('目的地の設定'));
+  expect(view.getByPlaceholderText('例：東京').props.value).toBe('東京');
+  const input=view.getByPlaceholderText('例：友人と待ち合わせ');expect(input.props.multiline).toBe(true);fireEvent.changeText(input,title);
+  const submit=view.getByRole('button',{name:'予定表に追加'});fireEvent.press(submit);fireEvent.press(submit);
+  await waitFor(()=>expect(started).toBe(true));
+  expect(view.getByText('保存中…')).toBeTruthy();expect(view.getByPlaceholderText('例：友人と待ち合わせ').props.editable).toBe(false);
+  expect((await loadRhythmState()).departurePlans).toHaveLength(0);
+  const reject=settle;settle=null;await act(async()=>reject());
+  await waitFor(()=>expect(view.getByRole('alert')).toBeTruthy());
+  expect(view.getByPlaceholderText('例：友人と待ち合わせ').props.value).toBe(title);
+  expect(view.getByPlaceholderText('例：東京').props.value).toBe('東京');
+  failing=false;fireEvent.press(view.getByText('変更を保存'));
+  await waitFor(async()=>expect((await loadRhythmState()).departurePlans.filter(plan=>plan.title===title)).toHaveLength(1));
+  expect((await loadRhythmState()).departurePlans.find(plan=>plan.title===title).destination).toBe('東京');
+  view.unmount();view=render(<App/>);
+  await waitFor(()=>expect(view.getAllByText('予定フォームの読込目印').length).toBeGreaterThan(0),{timeout:10000});dismissTomorrowPrompt(view);
+  fireEvent.press(view.getByText('予定'));fireEvent.press(view.getByText('予定表'));
+  await waitFor(()=>expect(view.getAllByText(title).length).toBeGreaterThan(0));
+ } finally {if(settle)await act(async()=>settle());}
+},90000);
 function dismissTaskAction(view){if(Platform.OS==='ios'){const modal=view.UNSAFE_getAllByType(Modal).find(item=>item.props.testID==='task-action-modal'&&!item.props.visible);if(modal)act(()=>modal.props.onDismiss());}}
 test('あとで・待ちの未完了TODOを今日全体の完了と案内しない',async()=>{
  await storage.clear();await saveRhythmState({tasks:[{id:'later-review',title:'あとで必要',done:false,category:'その他',priority:'中',bucket:'later'},{id:'waiting-review',title:'返事待ち',done:false,category:'その他',priority:'中',bucket:'waiting'}],departurePlans:[],designMode:'minimal'});
@@ -326,6 +380,9 @@ test('本番AppでWish保存中は永続化完了前に成功を表示しない'
   fireEvent.press(view.getByText('叶えたいこと'));fireEvent.press(view.getByText('＋ 追加する'));fireEvent.changeText(view.getByPlaceholderText('叶えたいこと'),'保存保留QA');fireEvent.press(view.getByText('保存'));
   if(Platform.OS==='ios'){const modal=view.UNSAFE_getAllByType(Modal).find(m=>typeof m.props.onDismiss==='function');if(modal)act(()=>modal.props.onDismiss());}
   await waitFor(()=>expect(writing).toBe(true),{timeout:7000});expect(view.queryByText('叶えたいことを保存しました')).toBeNull();
+  expect(view.getByText('保存中…')).toBeTruthy();
+  expect(view.getByRole('button',{name:'保存'}).props.accessibilityState.busy).toBe(true);
+  expect(view.getByPlaceholderText('叶えたいこと').props.multiline).toBe(true);
  } finally {release();if(pendingWrite)await pendingWrite;if(previous===undefined)delete process.env.EXPO_PUBLIC_RHYTHM_PLAN;else process.env.EXPO_PUBLIC_RHYTHM_PLAN=previous;}
 },90000);
 test('本番AppでWish永続化が失敗しても編集内容を保持して再試行できる',async()=>{
@@ -362,7 +419,7 @@ test('Wish保存中の連打と通知からのTODO完了後も両方のデータ
   const original=storage.setItem.getMockImplementation();jest.spyOn(storage,'setItem').mockImplementation((key,value)=>{if(key===STORAGE_KEY&&value.includes('同時Wish')){writing=true;return gate.then(()=>original(key,value));}return original(key,value);});
   const App=require('../App').default;const view=render(<App/>);await waitFor(()=>expect(view.getAllByText('同時タスク').length).toBeGreaterThan(0),{timeout:7000});dismissTomorrowPrompt(view);
   fireEvent.press(view.getByText('叶えたいこと'));fireEvent.press(view.getByText('＋ 追加する'));fireEvent.changeText(view.getByPlaceholderText('叶えたいこと'),'同時Wish');fireEvent.press(view.getByText('保存'));
-  await waitFor(()=>expect(writing).toBe(true),{timeout:7000});expect(view.getByPlaceholderText('叶えたいこと').props.value).toBe('同時Wish');expect(view.queryByText('叶えたいことを保存しました')).toBeNull();fireEvent.press(view.getByText('保存'));
+  await waitFor(()=>expect(writing).toBe(true),{timeout:7000});expect(view.getByPlaceholderText('叶えたいこと').props.value).toBe('同時Wish');expect(view.queryByText('叶えたいことを保存しました')).toBeNull();fireEvent.press(view.getByRole('button',{name:'保存'}));
   const listener=Notifications.addNotificationResponseReceivedListener.mock.calls.at(-1)[0];
   await act(async()=>{listener({actionIdentifier:'DONE',notification:{request:{identifier:'n',content:{data:{taskId:'parallel-task'},body:'task'}}}});});
   release();await waitFor(async()=>{const saved=await loadRhythmState();expect(saved.tasks.find(t=>t.id==='parallel-task').done).toBe(true);expect(Object.values(saved.wishMonths).flatMap(m=>m.wishes).filter(w=>w.title==='同時Wish')).toHaveLength(1);},{timeout:7000});

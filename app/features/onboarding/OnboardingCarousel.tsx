@@ -4,6 +4,7 @@ import {
   Modal,
   Pressable,
   SafeAreaView,
+  ScrollView,
   StyleSheet,
   Text,
   useWindowDimensions,
@@ -67,7 +68,7 @@ function IntroPreview({
  * Fits a production screen preview into the intro card without changing the
  * production screen's layout or clipping its content before it is measured.
  */
-function OnboardingPreviewViewport({ children, colors, height = 320 }: { children: React.ReactNode; colors: { surface: string; border: string }; height?: number }) {
+export function OnboardingPreviewViewport({ children, colors, height = 320 }: { children: React.ReactNode; colors: { surface: string; border: string }; height?: number }) {
   const [viewport, setViewport] = useState({ width: 0, height: 0 });
   const [canvas, setCanvas] = useState({ width: 0, height: 0 });
   const availableWidth = Math.max(0, viewport.width - 16);
@@ -80,6 +81,7 @@ function OnboardingPreviewViewport({ children, colors, height = 320 }: { childre
 
   return (
       <View
+      testID="onboarding-preview-viewport"
       style={[styles.productionPreviewViewport, { height, backgroundColor: colors.surface, borderColor: colors.border }]}
       pointerEvents="none"
       onLayout={(event) => {
@@ -90,12 +92,13 @@ function OnboardingPreviewViewport({ children, colors, height = 320 }: { childre
       <View style={styles.productionPreviewViewportContent}>
         <View style={{ width: scaledWidth ?? '100%', height: scaledHeight ?? '100%', alignItems: 'center', justifyContent: 'center' }}>
           <View
+            testID="onboarding-preview-canvas"
             collapsable={false}
             onLayout={(event) => {
               const { width, height } = event.nativeEvent.layout;
               if (width !== canvas.width || height !== canvas.height) setCanvas({ width, height });
             }}
-            style={{ width: canvas.width || '100%', transform: [{ scale }] }}
+            style={{ width: 360, transform: [{ scale }] }}
           >
             {children}
           </View>
@@ -229,18 +232,20 @@ export function OnboardingCarousel({
             index: itemIndex,
           })}
           renderItem={({ item }) => (
-            <View
-              style={[
+            <ScrollView
+              style={{ width }}
+              showsVerticalScrollIndicator={false}
+              contentContainerStyle={[
                 styles.page,
                 { width, paddingTop: compact ? 8 : 18, paddingBottom: compact ? 6 : 12 },
               ]}
             >
               <View
-                style={[styles.card, { minHeight: compact ? 350 : 430, padding: compact ? 16 : 22, backgroundColor: appearance.surface, borderColor: appearance.border }]}
+                style={[styles.card, { padding: compact ? 16 : 18, backgroundColor: appearance.surface, borderColor: appearance.border }]}
               >
-                {renderStep ? <View style={styles.productionPreview}><OnboardingPreviewViewport height={compact ? 220 : 320} colors={{ surface: appearance.surface, border: appearance.border }}>{renderStep(item.id)}</OnboardingPreviewViewport></View> : <IntroPreview card={item} />}
+                {renderStep ? <View style={styles.productionPreview}>{item.id === 'customize' ? <View testID="onboarding-design-preview" pointerEvents="none" style={{ width: '100%' }}>{renderStep(item.id)}</View> : <OnboardingPreviewViewport height={compact ? 200 : 300} colors={{ surface: appearance.surface, border: appearance.border }}>{renderStep(item.id)}</OnboardingPreviewViewport>}</View> : <IntroPreview card={item} />}
 
-                <Text style={[styles.title, { color: appearance.primaryText }]}>
+                <Text style={[styles.title, { color: appearance.primaryText, fontSize: compact ? 20 : 22, lineHeight: compact ? 28 : 30 }]}>
                   {item.title}
                 </Text>
 
@@ -260,7 +265,7 @@ export function OnboardingCarousel({
                   </View>
                 ) : null}
               </View>
-            </View>
+            </ScrollView>
           )}
         />
 
@@ -355,7 +360,7 @@ const styles = StyleSheet.create({
   },
 
   page: {
-    flex: 1,
+    flexGrow: 1,
     paddingHorizontal: 22,
     paddingTop: 18,
     paddingBottom: 12,
@@ -363,7 +368,6 @@ const styles = StyleSheet.create({
   },
 
   card: {
-    minHeight: 430,
     backgroundColor:
       theme.colors.surface,
     borderWidth: 1,
@@ -392,7 +396,7 @@ const styles = StyleSheet.create({
   productionPreviewViewport: {
     width: '100%',
     height: 320,
-    minHeight: 220,
+    minHeight: 180,
     borderRadius: 14,
     borderWidth: 1,
     borderColor: theme.colors.border,

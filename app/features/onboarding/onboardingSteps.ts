@@ -87,28 +87,28 @@ export type IntroCard = {
 export const INTRO_CARDS: IntroCard[] = [
   {
     id: 'today',
-    title: '毎日のことを、ひとつに。',
+    title: '毎日のことを、\nひとつに。',
     description: 'TODOも予定も、習慣も目標も。毎日の管理をRhythmPaceにまとめよう。',
   },
   {
     id: 'voice',
-    title: '思いついたら、すぐ残せる。',
+    title: '思いついたら、\nすぐ残せる。',
     description: '入力でも声でも。やることや予定を、思いついたときにサッと追加。',
   },
   {
     id: 'schedule',
-    title: '予定も、やることも、自分のペースで。',
+    title: '予定も、やることも、\n自分のペースで。',
     description: '一日の流れを確認して、今やることに集中。準備や出発もサポート。',
   },
   {
     id: 'records',
-    title: '毎日の積み重ねが、未来につながる。',
+    title: '毎日の積み重ねが、\n未来につながる。',
     description: '続けたい習慣、叶えたいこと、写真やひとこと。自分の歩みを振り返ろう。',
     premiumNote: '写真・ひとこと記録と詳細履歴はPremium対象です（サンプル表示）。',
   },
   {
     id: 'customize',
-    title: '毎日開きたくなる、私のRhythm。',
+    title: '毎日開きたくなる、\n私のRhythm。',
     description: 'シンプルにも、可愛くも。好きなデザインで自分らしく。',
     premiumNote: '試着は無料。一部の正式利用は体験・広告・購入の対象です。',
   },

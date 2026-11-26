@@ -28,7 +28,6 @@ struct RhythmLiveActivityWidget: Widget {
               .font(.system(size: 17 * RhythmLiveActivityCopy.textScale(for: context.state), weight: .semibold))
               .fontDesign(RhythmLiveActivityCopy.fontDesign(for: context.state))
               .lineLimit(RhythmLiveActivityCopy.isAffirmationOnly(context.state) ? 2 : 1)
-              .minimumScaleFactor(0.7)
           }
         }
         DynamicIslandExpandedRegion(.bottom) {
@@ -179,7 +178,7 @@ private struct RhythmLiveActivityLockScreenView: View {
         Text(RhythmLiveActivityCopy.title(for: state))
           .font(.system(size: 17 * RhythmLiveActivityCopy.textScale(for: state), weight: .semibold))
           .fontDesign(RhythmLiveActivityCopy.fontDesign(for: state))
-          .lineLimit(2).minimumScaleFactor(0.75)
+          .lineLimit(2)
         RhythmLiveActivityDetail(state: state, suppressAffirmationOnly: false)
         RhythmLiveActivityAddLink(accentHex: state.accentHex)
       }
@@ -267,7 +266,7 @@ private struct RhythmLiveActivityAffirmation: View {
   let state: RhythmLiveActivityAttributes.ContentState
   var body: some View {
     if let text, !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-      Text(text).font(.system(size: 12 * RhythmLiveActivityCopy.textScale(for: state))).fontDesign(RhythmLiveActivityCopy.fontDesign(for: state)).foregroundStyle(.secondary).lineLimit(1).minimumScaleFactor(0.8)
+      Text(text).font(.system(size: 12 * RhythmLiveActivityCopy.textScale(for: state))).fontDesign(RhythmLiveActivityCopy.fontDesign(for: state)).foregroundStyle(.secondary).lineLimit(2)
     }
   }
 }

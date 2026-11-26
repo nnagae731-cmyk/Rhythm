@@ -90,16 +90,16 @@ function RoutineProgressPanel({ events, tasks, designMode, chicPalette, onRemove
     setArchiveOpen(false);
     InteractionManager.runAfterInteractions(() => requestAnimationFrame(() => requestAnimationFrame(() => setHistoryTarget({ title, summary }))));
   };
-  const archiveLink = <Pressable onPress={() => setArchiveOpen(true)} style={styles.routineHistoryLink}><Text style={[styles.routineHistoryLinkText, { color: designMode === 'chic' && chicPalette ? chicPalette.accent : theme.colors.primaryAccent }]}>解除歴 〉</Text></Pressable>;
+  const archiveLink = <Pressable onPress={() => setArchiveOpen(true)} style={styles.routineHistoryLink}><Text style={[styles.routineHistoryLinkText, isDark && styles.darkReadableMeta, { color: designMode === 'chic' && chicPalette ? chicPalette.accent : theme.colors.primaryAccent }]}>解除歴 〉</Text></Pressable>;
   if (activeRoutineTasks.length === 0) return <>
-    <View style={[styles.routineCard, isDark && styles.routineCardDark, designMode === 'chic' && chicPalette && { backgroundColor: chicPalette.cardSurface, borderColor: chicPalette.border }]}><View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}><Text style={[styles.sectionTitle, isDark && styles.darkMetricText, designMode === 'chic' && chicPalette && { color: chicPalette.textPrimary }]}>ルーティンの継続</Text>{archiveLink}</View><Text style={[styles.sectionCopy, isDark && styles.darkSecondaryText, designMode === 'chic' && chicPalette && { color: chicPalette.textSecondary }]}>タスク登録時に「ルーティンにする」を選ぶと、継続率を確認できます。</Text></View>
+    <View style={[styles.routineCard, isDark && styles.routineCardDark, designMode === 'chic' && chicPalette && { backgroundColor: chicPalette.cardSurface, borderColor: chicPalette.border }]}><View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}><Text style={[styles.sectionTitle, isDark && styles.darkMetricText, designMode === 'chic' && chicPalette && { color: chicPalette.textPrimary }]}>ルーティンの継続</Text>{archiveLink}</View><Text style={[styles.sectionCopy, isDark && styles.darkReadableCopy, isDark && styles.darkSecondaryText, designMode === 'chic' && chicPalette && { color: chicPalette.textSecondary }]}>タスク登録時に「ルーティンにする」を選ぶと、継続率を確認できます。</Text></View>
     <RoutineArchiveModal visible={archiveOpen} archives={routineArchives} events={events} tasks={tasks} designMode={designMode} chicPalette={chicPalette} onClose={() => setArchiveOpen(false)} onHistory={openArchiveHistory} onResume={onResumeRoutine} onDelete={onDeleteRoutineArchive} />
     <RoutineHistoryModal summary={historyTarget?.summary} title={historyTarget?.title} designMode={designMode} chicPalette={chicPalette} onClose={() => setHistoryTarget(undefined)} />
   </>;
   return <>
     <View style={[styles.routineCard, isDark && styles.routineCardDark, designMode === 'chic' && chicPalette && { backgroundColor: chicPalette.cardSurface, borderColor: chicPalette.border }]}>
       <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}><Text style={[styles.sectionTitle, isDark && styles.darkMetricText, designMode === 'chic' && chicPalette && { color: chicPalette.textPrimary }]}>ルーティンの継続</Text>{archiveLink}</View>
-      <Text style={[styles.sectionCopy, isDark && styles.darkSecondaryText, designMode === 'chic' && chicPalette && { color: chicPalette.textSecondary }]}>続けられた日が丸で増えていきます。連続日数と継続率を確認できます。</Text>
+      <Text style={[styles.sectionCopy, isDark && styles.darkReadableCopy, isDark && styles.darkSecondaryText, designMode === 'chic' && chicPalette && { color: chicPalette.textSecondary }]}>続けられた日が丸で増えていきます。連続日数と継続率を確認できます。</Text>
       <View style={styles.routineTaskGrid}>{activeRoutineTasks.map((routine, taskIndex) => {
         const summary = buildRoutineInterruptionSummary(events, tasks, routine);
         const representativeTask = tasks.find((task) => routine.memberIds.has(task.id) && task.isRoutine);
@@ -121,7 +121,7 @@ function RoutineProgressPanel({ events, tasks, designMode, chicPalette, onRemove
           <View style={[styles.routineStatusRow, isDark && styles.routineStatusRowDark, designMode === 'chic' && chicPalette && { borderTopColor: chicPalette.border }]}><Text style={[styles.routineStatusLabel, { color: statusColor }]}>{summary.statusLabel}</Text><Text style={[styles.routineStatusCopy, isDark && styles.darkSecondaryText, designMode === 'chic' && chicPalette && { color: chicPalette.textSecondary }]}>{summary.statusCopy}</Text></View>
           {summary.status !== 'before' && <Text style={[styles.routineLatest, isDark && styles.darkMutedMetricText, designMode === 'chic' && chicPalette && { color: chicPalette.textMuted }]}>{latestCopy}</Text>}
           <Text style={[styles.routineResumeCount, isDark && styles.darkSecondaryText, designMode === 'chic' && chicPalette && { color: chicPalette.textSecondary }]}>今月：中断 {summary.interruptionsThisMonth}回・再開 {summary.resumesThisMonth}回</Text>
-          {summary.history.length > 1 && <Pressable onPress={() => setHistoryTarget({ title: routine.title, summary })} style={styles.routineHistoryLink}><Text style={[styles.routineHistoryLinkText, { color }]}>中断・再開の履歴を見る 〉</Text></Pressable>}
+          {summary.history.length > 1 && <Pressable onPress={() => setHistoryTarget({ title: routine.title, summary })} style={styles.routineHistoryLink}><Text style={[styles.routineHistoryLinkText, isDark && styles.darkReadableMeta, { color }]}>中断・再開の履歴を見る 〉</Text></Pressable>}
         </View>;
       })}</View>
     </View>
@@ -396,6 +396,8 @@ export function AnalysisScreen({
 }
 
 const styles = StyleSheet.create({
+  darkReadableCopy: { fontSize: 14, lineHeight: 22 },
+  darkReadableMeta: { fontSize: 12, lineHeight: 18 },
   aiShareCard: { minHeight: 44, marginBottom: 8, paddingHorizontal: 4, paddingVertical: 8, flexDirection: 'row', alignItems: 'center', gap: 10 },
   aiShareCopy: { flex: 1, flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 8 },
   aiShareTitle: { fontSize: 13, fontWeight: '700' },
@@ -405,11 +407,11 @@ const styles = StyleSheet.create({
   tab: { flex: 1, paddingVertical: 11, backgroundColor: '#EEEAF0', borderRadius: 12, alignItems: 'center' },
   tabDark: { backgroundColor: '#181F2E', borderColor: '#303B50', borderWidth: 1 },
   tabDarkActive: { backgroundColor: '#26365F', borderColor: '#8EA6FF', borderWidth: 1 },
-  tabText: { color: '#625D68', fontWeight: '800' },
+  tabText: { color: '#625D68', fontWeight: '600' },
   tabTextDark: { color: '#B4C0D4' },
   tabTextActive: { color: '#FFF' },
   tabTextActiveDark: { color: '#FFFFFF' },
-  sectionTitle: { color: '#292530', fontSize: 21, fontWeight: '900' },
+  sectionTitle: { color: '#292530', fontSize: 20, fontWeight: '700' },
   sectionCopy: { color: '#797280', fontSize: 12, lineHeight: 18, marginTop: 5, marginBottom: 14 },
   routineCard: { padding: 18, borderRadius: 18, borderWidth: 1, borderColor: '#E5DFEC', backgroundColor: '#FFF', },
   routineCardDark: { backgroundColor: '#181F2E', borderColor: '#303B50' },
@@ -421,13 +423,13 @@ const styles = StyleSheet.create({
   routineDotFuture: { opacity: 0.35 },
   routineDotToday: { borderWidth: 2 },
   routineDayLabel: { color: '#817A88', fontSize: 7, fontWeight: '700' },
-  routineTaskRow: { width: '100%', borderWidth: 1, borderColor: '#ECE8F0', borderRadius: 14, padding: 11, backgroundColor: '#FFFFFF' },
-  routineTaskRowDark: { backgroundColor: '#20293A', borderColor: '#303B50' },
+  routineTaskRow: { width: '100%', borderBottomWidth: 1, borderColor: '#ECE8F0', paddingVertical: 12, backgroundColor: 'transparent' },
+  routineTaskRowDark: { backgroundColor: 'transparent', borderColor: '#303B50' },
   routineTaskHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   routineTaskActions: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  routineTaskTitle: { color: '#292530', fontSize: 12, fontWeight: '900', flex: 1, marginRight: 5 },
+  routineTaskTitle: { color: '#292530', fontSize: 12, fontWeight: '700', flex: 1, marginRight: 5 },
   routineTaskRate: { fontSize: 14, fontWeight: '900' },
-  routineRateCaption: { color: '#817A88', fontSize: 10, fontWeight: '800', marginTop: 3 },
+  routineRateCaption: { color: '#817A88', fontSize: 10, fontWeight: '500', marginTop: 3 },
   routineRemoveButton: { width: 20, height: 20, borderRadius: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: '#F1EDF4' },
   routineRemoveButtonDark: { backgroundColor: '#303B50' },
   routineRemoveText: { color: '#7D7386', fontSize: 16, fontWeight: '700', lineHeight: 18 },
@@ -463,29 +465,29 @@ const styles = StyleSheet.create({
   routineHistoryDate: { fontSize: 13, fontWeight: '900' },
   routineHistoryCopy: { fontSize: 12, lineHeight: 18, fontWeight: '700', marginTop: 5 },
   routineHistoryMeta: { fontSize: 11, fontWeight: '800', marginTop: 4 },
-  routineHistoryEmpty: { fontSize: 12, fontWeight: '700', textAlign: 'center', paddingVertical: 22 },
+  routineHistoryEmpty: { fontSize: 12, fontWeight: '700', textAlign: 'center', paddingVertical: 14 },
   activityCard: { padding: 16, marginBottom: 14, borderRadius: 18, borderWidth: 1, backgroundColor: '#FFF' },
   activityCardDark: { backgroundColor: '#181F2E' },
-  activityTitle: { color: '#292530', fontSize: 15, fontWeight: '900', marginBottom: 12 },
+  activityTitle: { color: '#292530', fontSize: 15, fontWeight: '700', marginBottom: 12 },
   activityRow: { flexDirection: 'row', alignItems: 'center', gap: 14 },
   activityMetric: { minWidth: 62 },
   activityValue: { fontSize: 25, fontWeight: '900' },
-  activityLabel: { color: '#756F7C', fontSize: 11, fontWeight: '800', marginTop: 2 },
+  activityLabel: { color: '#756F7C', fontSize: 11, fontWeight: '500', marginTop: 2 },
   activityLabelDark: { color: '#B4C0D4' },
   activityLatest: { flex: 1, borderLeftWidth: 1, borderLeftColor: '#E5E0E8', paddingLeft: 14 },
   activityLatestDark: { borderLeftColor: '#303B50' },
-  activityLatestLabel: { color: '#938C98', fontSize: 10, fontWeight: '800' },
+  activityLatestLabel: { color: '#938C98', fontSize: 10, fontWeight: '500' },
   activityLatestLabelDark: { color: '#B4C0D4' },
-  activityLatestValue: { color: '#3C3741', fontSize: 12, fontWeight: '800', marginTop: 4 },
+  activityLatestValue: { color: '#3C3741', fontSize: 12, fontWeight: '600', marginTop: 4 },
   darkMetricText: { color: '#F4F7FC' },
   darkSecondaryText: { color: '#B4C0D4' },
-  darkMutedMetricText: { color: '#8F9BB0' },
+  darkMutedMetricText: { color: getThemeTokens('dark').colors.secondaryText },
   dashboard: { gap: 12, paddingBottom: 18 },
   dashboardCard: { borderWidth: 1, borderRadius: 18, padding: 16, overflow: 'hidden' },
   dashboardCardDark: { backgroundColor: '#181F2E', borderColor: '#303B50' },
   rangeControl: { flexDirection: 'row', gap: 4, borderWidth: 1, borderRadius: 14, padding: 4 },
   rangeButton: { flex: 1, minHeight: 34, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
-  rangeButtonText: { fontSize: 12, fontWeight: '900' },
+  rangeButtonText: { fontSize: 12, fontWeight: '700' },
   dashboardRangeLabel: { fontSize: 11, fontWeight: '700', marginTop: -5 },
   cardTitleRow: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10 },
   dashboardKicker: { fontSize: 11, fontWeight: '900', letterSpacing: 0.8 },

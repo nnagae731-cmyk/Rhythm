@@ -32,6 +32,65 @@ async function boot(){const view=render(<App/>);await waitFor(()=>expect(view.ge
 const action=async(k=key)=>(await loadRhythmState()).wishMonths[k].actions[0];
 async function openWish(view){fireEvent.press(view.getByText('叶えたいこと'));await waitFor(()=>expect(view.getAllByText('健康的な生活').length).toBeGreaterThan(0));return within(view.UNSAFE_getByType(WishScreen));}
 function closeWishEditor(w){fireEvent.press(w.getByText('閉じる'));}
+async function finishTodoSave(view,w){
+ const editorModal=()=>view.UNSAFE_getByType(WishScreen).findAllByType(Modal).find(m=>m.props.animationType==='fade'&&m.props.onDismiss);
+ await waitFor(()=>expect(editorModal().props.visible).toBe(false),{timeout:10000});
+ if(Platform.OS==='ios'){
+  act(()=>editorModal().props.onDismiss());
+ }
+ expect(w.getByText('行動を保存してToDoに追加しました')).toBeTruthy();
+ expect(Alert.alert.mock.calls.some(a=>a[0]==='タスクに追加しました'||a[0]==='関連するToDoがあります')).toBe(false);
+}
+
+test('未保存の行動を一度の操作で保存してToDoに追加し、再読込と双方向連動を維持する',async()=>{
+ await seed();let view=await boot(),w=await openWish(view);
+ fireEvent.press(w.getByText('＋ 行動を追加'));
+ fireEvent.changeText(w.getByPlaceholderText('叶えるための行動'),'開き直さず追加');
+ fireEvent.press(w.getByText('保存してToDoに追加 ›'));await finishTodoSave(view,w);
+ const saved=await loadRhythmState(),created=saved.wishMonths[key].actions.find(a=>a.title==='開き直さず追加');
+ expect(created).toBeTruthy();expect(saved.tasks.filter(t=>t.origin?.actionId===created.id)).toHaveLength(1);
+ expect(saved.tasks.find(t=>t.origin?.actionId===created.id).title).toBe('開き直さず追加');
+ fireEvent.press(w.getByText('開き直さず追加'));
+ fireEvent.press(w.getByText('保存してToDoに追加 ›'));await finishTodoSave(view,w);
+ expect((await loadRhythmState()).tasks.filter(t=>t.origin?.actionId===created.id)).toHaveLength(1);
+ view.unmount();view=await boot();w=await openWish(view);expect(w.getByText('開き直さず追加')).toBeTruthy();
+ fireEvent.press(view.getByText('ToDo'));fireEvent.press(view.getByText('一覧'));
+ let row=view.getByText('開き直さず追加');
+ while(row&&within(row).queryAllByRole('checkbox').length!==1)row=row.parent;
+ expect(Boolean(row)).toBe(true);fireEvent.press(within(row).getByRole('checkbox'),{stopPropagation:()=>{}});
+ await waitFor(async()=>expect((await loadRhythmState()).wishMonths[key].actions.find(a=>a.id===created.id).completed).toBe(true),{timeout:10000});
+},90000);
+
+test.each(['行動','ToDo'])('未保存の行動から直接ToDoを追加し、%s保存保留・失敗後も入力保持・連打防止・再試行・再読込できる',async(stage)=>{
+ await seed();let release,held=false;
+ storage.setItem.mockImplementation((k,v,...args)=>{
+  if(k===STORAGE_KEY&&!held){
+   const state=JSON.parse(v);
+   const matches=stage==='行動'?state.wishMonths[key].actions.some(a=>a.title==='そのままToDoへ'):state.tasks.some(t=>t.title==='そのままToDoへ');
+   if(matches){held=true;return new Promise((resolve,reject)=>{release=()=>reject(new Error('disk full'));});}
+  }
+  return originalWrite(k,v,...args);
+ });
+ let view=await boot(),w=await openWish(view);
+ fireEvent.press(w.getByText('＋ 行動を追加'));
+ fireEvent.changeText(w.getByPlaceholderText('叶えるための行動'),'そのままToDoへ');
+ const add=w.getByText('保存してToDoに追加 ›');act(()=>{fireEvent.press(add);fireEvent.press(add);});
+ await waitFor(()=>expect(held).toBe(true),{timeout:10000});
+ expect(w.getByPlaceholderText('叶えるための行動').props.value).toBe('そのままToDoへ');
+ expect(w.getByPlaceholderText('叶えるための行動').props.editable).toBe(false);
+ expect(w.queryByText('行動を保存してToDoに追加しました')).toBeNull();
+ expect((await loadRhythmState()).tasks.some(t=>t.title==='そのままToDoへ')).toBe(false);
+ await act(async()=>release());
+ await waitFor(()=>expect(Alert.alert).toHaveBeenCalledWith('ToDoに追加できませんでした',expect.any(String)));
+ expect(w.getByPlaceholderText('叶えるための行動').props.value).toBe('そのままToDoへ');
+ fireEvent.press(w.getByText('保存してToDoに追加 ›'));await finishTodoSave(view,w);
+ const saved=await loadRhythmState();const actions=saved.wishMonths[key].actions.filter(a=>a.title==='そのままToDoへ');
+ expect(actions).toHaveLength(1);
+ const tasks=saved.tasks.filter(t=>t.title==='そのままToDoへ');expect(tasks).toHaveLength(1);
+ expect(tasks[0].origin).toEqual({monthKey:key,wishId:'wish',actionId:actions[0].id});
+ view.unmount();view=await boot();w=await openWish(view);expect(w.getByText('そのままToDoへ')).toBeTruthy();
+ expect((await loadRhythmState()).tasks.filter(t=>t.origin?.actionId===actions[0].id)).toHaveLength(1);
+},90000);
 function wishCheck(w){
  let row=w.getByText('歩く');
  while(row){const checks=within(row).queryAllByRole('checkbox');if(checks.length===1)return checks[0];row=row.parent;}
@@ -67,12 +126,12 @@ test('単体ToDo削除を取り消し、関連ID・他のToDo・Wishの状態を
 },60000);
 test('Wish UIで関連ID付きTODOを作成し連打・重複を防ぐ。同名TODOを関連付けず双方向完了と取消、進捗、編集、削除を再読込する',async()=>{
  await seed([ordinary(),ordinary('same','歩く')]);let view=await boot(),w=await openWish(view);
- fireEvent.press(w.getByText('歩く'));const add=w.getByText('ToDoに追加 ›');act(()=>{fireEvent.press(add);fireEvent.press(add)});
+ fireEvent.press(w.getByText('歩く'));const add=w.getByText('保存してToDoに追加 ›');act(()=>{fireEvent.press(add);fireEvent.press(add)});
  await waitFor(async()=>expect((await loadRhythmState()).tasks.filter(t=>t.origin)).toHaveLength(1),{timeout:10000});
- await waitFor(()=>expect(Alert.alert).toHaveBeenCalledWith('タスクに追加しました',expect.any(String)));
+ await finishTodoSave(view,w);
  const id=(await loadRhythmState()).tasks.find(t=>t.origin).id;expect((await loadRhythmState()).tasks.find(t=>t.id===id).origin).toEqual(origin);expect((await loadRhythmState()).tasks.find(t=>t.id==='same').origin).toBeUndefined();
- fireEvent.press(w.getByText('ToDoに追加 ›'));await waitFor(()=>expect(Alert.alert).toHaveBeenCalledWith('関連するToDoがあります',expect.any(String)));
- expect((await loadRhythmState()).tasks.filter(t=>t.origin)).toHaveLength(1);closeWishEditor(w);fireEvent.press(view.getByText('ToDo'));await taskCheck(view);
+ fireEvent.press(w.getByText('歩く'));fireEvent.press(w.getByText('保存してToDoに追加 ›'));await finishTodoSave(view,w);
+ expect((await loadRhythmState()).tasks.filter(t=>t.origin)).toHaveLength(1);fireEvent.press(view.getByText('ToDo'));await taskCheck(view);
  await waitFor(async()=>expect((await action()).completed).toBe(true));expect(calculateWishProgress((await loadRhythmState()).wishMonths[key]).progress).toBe(50);
  expect((await loadRhythmState()).tasks.find(t=>t.id==='same').done).toBe(false);
  fireEvent.press(view.getByText('今'));fireEvent.press(view.getByLabelText('今日できたことを確認'));await waitFor(()=>expect(view.getByText('元に戻す')).toBeTruthy());fireEvent.press(view.getByText('元に戻す'));await waitFor(async()=>expect((await action()).completed).toBe(false));
@@ -92,10 +151,10 @@ test('WishActionをUIで削除してもTODOは独立して残り、再読込し�
 },60000);
 test('関連TODO作成の保存保留・失敗で成功を表示せず、入力を保持して重複なしで再試行・再読込する',async()=>{
  await seed();let release,held=false;storage.setItem.mockImplementation((k,v,...args)=>{if(k===STORAGE_KEY&&JSON.parse(v).tasks.some(t=>t.origin)&&!held){held=true;return new Promise((resolve,reject)=>{release=()=>reject(new Error('disk full'))})}return originalWrite(k,v,...args)});
- let view=await boot(),w=await openWish(view);fireEvent.press(w.getByText('歩く'));fireEvent.press(w.getByText('ToDoに追加 ›'));
+ let view=await boot(),w=await openWish(view);fireEvent.press(w.getByText('歩く'));fireEvent.press(w.getByText('保存してToDoに追加 ›'));
  await waitFor(()=>expect(held).toBe(true),{timeout:10000});expect(Alert.alert.mock.calls.some(a=>a[0]==='タスクに追加しました')).toBe(false);expect(w.getByPlaceholderText('叶えるための行動').props.value).toBe('歩く');expect((await loadRhythmState()).tasks.some(t=>t.origin)).toBe(false);
  await act(async()=>release());await waitFor(()=>expect(Alert.alert).toHaveBeenCalledWith('ToDoに追加できませんでした',expect.any(String)));expect(w.getByPlaceholderText('叶えるための行動').props.value).toBe('歩く');
- fireEvent.press(w.getByText('ToDoに追加 ›'));await waitFor(()=>expect(Alert.alert).toHaveBeenCalledWith('関連するToDoがあります',expect.any(String)),{timeout:10000});expect((await loadRhythmState()).tasks.filter(t=>t.origin)).toHaveLength(1);
+ fireEvent.press(w.getByText('保存してToDoに追加 ›'));await finishTodoSave(view,w);expect((await loadRhythmState()).tasks.filter(t=>t.origin)).toHaveLength(1);
  view.unmount();view=await boot();expect((await loadRhythmState()).tasks.find(t=>t.origin).origin).toEqual(origin);
 },60000);
 test('過去月の関連だけを更新し、書込保留中の別TODO編集も同じ保存キューへ残す',async()=>{

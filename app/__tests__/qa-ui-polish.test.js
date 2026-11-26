@@ -6,8 +6,59 @@ const { HomeScreen } = require('../screens/HomeScreen');
 const { PhotoThemeSettingsCard } = require('../components/PhotoThemeSettingsCard');
 const { AffirmationSettingsCard } = require('../components/AffirmationSettingsCard');
 const Svg = require('react-native-svg').default;
+const { Header } = require('../components/Header');
+const { ICON_METRICS } = require('../components/iconMetrics');
+const { getChicThemePalette } = require('../theme');
 
-afterEach(cleanup);
+afterEach(()=>{cleanup();jest.restoreAllMocks();});
+
+test.each([
+ ['Mono Light','minimal',false,390,1],['Mono Dark','dark',false,390,1],
+ ['Design','chic',false,390,1],['Photo','chic',true,390,1],['小画面・拡大文字','dark',false,320,1.3],
+])('共通ヘッダーは主張を抑えても44ptの操作と各導線を維持する：%s',(_name,designMode,compact,width,fontScale)=>{
+ jest.spyOn(require('react-native'),'useWindowDimensions').mockReturnValue({width,height:700,scale:2,fontScale});
+ const voice=jest.fn(),premium=jest.fn(),notices=jest.fn();
+ const props={designMode,compact,now:new Date('2026-11-26T10:00:00+09:00'),chicPalette:designMode==='chic'?getChicThemePalette('cool'):undefined,onVoice:voice,onPremium:premium,onNotifications:notices,hasUnreadNotifications:true};
+ const view=render(<Header {...props}/>);
+ for(const button of view.getAllByRole('button')){
+  const s=StyleSheet.flatten(button.props.style);
+  expect(Math.max(s.width??0,s.minWidth??0)).toBeGreaterThanOrEqual(44);
+  expect(Math.max(s.height??0,s.minHeight??0)).toBeGreaterThanOrEqual(44);
+  expect(button.props.hitSlop).toBeUndefined();
+ }
+ const brand=StyleSheet.flatten(view.getByText('Rhythm').props.style);
+ expect(brand.fontSize).toBeLessThanOrEqual(26);expect(Number(brand.fontWeight)).toBeLessThanOrEqual(800);
+ expect(StyleSheet.flatten(view.getByLabelText('共通音声入力').props.style).shadowOpacity??0).toBe(0);
+ expect(view.UNSAFE_getAllByType(Svg)).toHaveLength(3);
+ for(const icon of view.UNSAFE_getAllByType(Svg))expect(icon.props.accessible).toBe(false);
+ const {Path,Rect}=require('react-native-svg');
+ for(const shape of [...view.UNSAFE_getAllByType(Path),...view.UNSAFE_getAllByType(Rect)])expect(shape.props.strokeWidth).toBe(ICON_METRICS.strokeWidth);
+ if(width<360||fontScale>1.2)expect(view.queryByText('Premium')).toBeNull();else expect(view.getByText('Premium')).toBeTruthy();
+ fireEvent.press(view.getByLabelText('共通音声入力'));fireEvent.press(view.getByLabelText('Rhythm Premium'));fireEvent.press(view.getByLabelText('お知らせ'));
+ expect(voice).toHaveBeenCalledTimes(1);expect(premium).toHaveBeenCalledTimes(1);expect(notices).toHaveBeenCalledTimes(1);
+ view.rerender(<Header {...props} onPremium={undefined}/>);expect(view.queryByLabelText('Rhythm Premium')).toBeNull();
+});
+
+test.each(['minimal','dark','chic'])('下部ナビは弱い影と選択表示を両立し、配置基準と5タブを維持する：%s',designMode=>{
+ const {View}=require('react-native'),{getBottomNavTopOffset}=require('../components/BottomNav'),change=jest.fn();
+ const view=render(<BottomNav screen="analysis" designMode={designMode} chicPalette={designMode==='chic'?getChicThemePalette('cool'):undefined} onChange={change}/>);
+ const container=view.UNSAFE_getAllByType(View).find(n=>StyleSheet.flatten(n.props.style)?.position==='absolute');
+ const s=StyleSheet.flatten(container.props.style);
+ expect(s.shadowOpacity).toBeLessThanOrEqual(0.12);expect(s.borderWidth).toBeLessThanOrEqual(1);
+ expect(s.height+s.bottom).toBe(getBottomNavTopOffset(designMode));
+ for(const label of ['ToDo','予定','分析','叶えたいこと','設定']){
+  const tab=view.getByRole('tab',{name:label});expect(tab.props.accessibilityState.selected).toBe(label==='分析');
+  expect(StyleSheet.flatten(view.getByText(label).props.style).fontWeight).toBe(label==='分析'?'700':'500');
+  const iconWrap=tab.findAll(n=>StyleSheet.flatten(n.props.style)?.width===32)[0];
+  expect(iconWrap).toBeTruthy();
+  if(label==='分析')expect(StyleSheet.flatten(iconWrap.props.style).backgroundColor).toBe(designMode==='chic'?getChicThemePalette('cool').accentSoft:require('../theme').getThemeTokens(designMode).colors.softAccent);
+  else expect(StyleSheet.flatten(iconWrap.props.style).backgroundColor).toBeUndefined();
+  expect(StyleSheet.flatten(tab.props.style).minHeight).toBeGreaterThanOrEqual(44);fireEvent.press(tab);
+ }
+ expect(change.mock.calls.map(([id])=>id)).toEqual(['home','timeline','analysis','wish','settings']);
+ const {Path,Line,Rect,Circle}=require('react-native-svg');
+ for(const type of [Path,Line,Rect,Circle])for(const shape of view.UNSAFE_queryAllByType(type))expect(shape.props.strokeWidth).toBe(ICON_METRICS.strokeWidth);
+});
 
 test('下部ナビは選択状態を伝え、各タブの操作領域を48確保する', () => {
   const change = jest.fn();

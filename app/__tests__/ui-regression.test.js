@@ -7,6 +7,27 @@ const { WishScreen } = require('../WishScreen');
 const { DEFAULT_LIVE_ACTIVITY_DISPLAY_OPTIONS, DEFAULT_LIVE_ACTIVITY_CUSTOMIZATION } = require('../features/widget/rhythmLiveActivity');
 
 afterEach(() => { cleanup(); jest.useRealTimers(); });
+
+test('Live Activityの無料設定はロックと選択中を混同せず、閉じる操作では保存しない',()=>{
+ const colors={background:'#101522',surface:'#181F2E',secondarySurface:'#20293A',border:'#40506A',text:'#F4F7FC',muted:'#B4C0D4',accent:'#8EA6FF',soft:'#26365F',onAccent:'#101522'};
+ const onSave=jest.fn(),onClose=jest.fn();
+ const view=render(<LiveActivitySettingsSheet visible options={DEFAULT_LIVE_ACTIVITY_DISPLAY_OPTIONS} customization={DEFAULT_LIVE_ACTIVITY_CUSTOMIZATION} colors={colors} onClose={onClose} onSave={onSave} canCustomize={false} canInteractive={false}/>);
+ expect(view.getAllByText('🔒')).toHaveLength(5);
+ expect(view.queryByText('表示する ✓')).toBeNull();
+ expect(view.getByLabelText('次の予定').props.accessibilityState).toEqual({disabled:true,selected:false});
+ fireEvent.press(view.getByLabelText('次の予定'));expect(onSave).not.toHaveBeenCalled();
+ expect(view.queryByText('まる文字')).toBeNull();
+ fireEvent.press(view.getByLabelText('閉じる'));expect(onClose).toHaveBeenCalledTimes(1);expect(onSave).not.toHaveBeenCalled();
+});
+
+test('Live Activityの詳細を折りたたんでも編集中の文字設定と表示内容を保持する',()=>{
+ const colors={background:'#fff',surface:'#fff',secondarySurface:'#eee',border:'#bbb',text:'#111',muted:'#555',accent:'#456',soft:'#eef',onAccent:'#fff'},onSave=jest.fn();
+ const view=render(<LiveActivitySettingsSheet visible options={DEFAULT_LIVE_ACTIVITY_DISPLAY_OPTIONS} customization={DEFAULT_LIVE_ACTIVITY_CUSTOMIZATION} colors={colors} onClose={()=>{}} onSave={onSave} canCustomize canInteractive/>);
+ fireEvent.press(view.getByText('文字・言葉の詳細設定'));fireEvent.press(view.getByText('大きめ'));
+ fireEvent.press(view.getByText('文字・言葉の詳細設定'));expect(view.queryByText('大きめ')).toBeNull();
+ fireEvent.press(view.getByLabelText('次の予定'));fireEvent.press(view.getByText('設定を保存'));
+ expect(onSave).toHaveBeenCalledWith(expect.objectContaining({nextSchedule:false}),expect.objectContaining({fontSize:'large'}));
+});
 test('トップ写真の選択・調整・削除が対象スロットへ届き、操作領域は分離される', () => {
  const onPick=jest.fn(), onAdjust=jest.fn(), onClear=jest.fn();
  const screen=render(<PhotoThemeSettingsCard photoTheme={{placement:'background',topImageUris:{home:'file:///home.jpg'}}} designMode="minimal" planTier="free" onPremium={()=>{}} onPick={onPick} onAdjust={onAdjust} onClear={onClear} styles={{}} />);

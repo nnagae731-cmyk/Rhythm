@@ -1,5 +1,5 @@
 import React from 'react';
-import { Image, InteractionManager, Pressable, ScrollView, Text, View, useWindowDimensions } from 'react-native';
+import { Image, InteractionManager, Pressable, ScrollView, Text, View } from 'react-native';
 import {
   WidgetDisplayOption,
   WidgetCustomization,
@@ -135,9 +135,8 @@ function WidgetTypePreview({ type, style, fontDesign = 'default', photoUri, phot
 const MemoizedWidgetTypePreview = React.memo(WidgetTypePreview);
 
 export function WidgetSettingsCard({ settings, onChange, onPickPhoto, onUnlockWidgetPhoto, widgetPhotoUnlock, onRemoveAffirmationPhoto, colors, styles, designPattern, designCheckColor, PatternDecor, planTier = 'free', designCustomizePurchased = false, entitlementsResolved = true, widgetEntitlementOverride = 'actual', onWidgetEntitlementOverrideChange, onLockedWidget, showSelectedPreview = false }: WidgetSettingsCardProps) {
-  const { width: windowWidth } = useWindowDimensions();
-  const galleryWidth = Math.min(windowWidth - 44, 560);
-  const cardWidth = Math.max(210, Math.round(galleryWidth * 0.8));
+  const [showDeveloperOptions, setShowDeveloperOptions] = React.useState(false);
+  const [showCurrentPreview, setShowCurrentPreview] = React.useState(false);
   const effectivePlanTier: PlanTier = __DEV__ && widgetEntitlementOverride === 'premium' ? 'premium' : __DEV__ && (widgetEntitlementOverride === 'free' || widgetEntitlementOverride === 'design') ? 'free' : planTier;
   const effectiveDesignCustomizePurchased = __DEV__ && (widgetEntitlementOverride === 'design' || widgetEntitlementOverride === 'premium') ? true : __DEV__ && widgetEntitlementOverride === 'free' ? false : designCustomizePurchased;
   const [showAffirmationDetails, setShowAffirmationDetails] = React.useState(false);
@@ -237,27 +236,29 @@ export function WidgetSettingsCard({ settings, onChange, onPickPhoto, onUnlockWi
   return (
     <View style={[styles.settingsCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
       <View style={selectedWidget ? { display: 'none' } : undefined}>
-      <Text style={[styles.settingsTitle, { color: colors.primaryText }]}>ウィジェットギャラリー</Text><Text style={{ color: colors.secondaryText, fontSize: 13, lineHeight: 19, marginTop: 4 }}>設定の変更は自動で保存されます。</Text>
+      <Text style={[styles.settingsTitle, { color: colors.primaryText }]}>種類を選ぶ</Text><Text style={{ color: colors.secondaryText, fontSize: 14, lineHeight: 22, marginTop: 4 }}>タップして写真・文字をカスタマイズ</Text>
+
       {!entitlementsResolved ? <Text style={{ color: colors.secondaryText, fontSize: 13, marginTop: 14 }}>利用状況を確認中…</Text> : <View style={{ marginTop: 14 }}>
-        {__DEV__ && <View style={{ marginBottom: 12, padding: 10, borderRadius: 11, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.screenBackground }}><Text style={{ color: colors.secondaryText, fontSize: 13, fontWeight: '800' }}>開発用・ウィジェット権限確認</Text><View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 7 }}>{([{ id: 'actual', label: '実際の購入状態' }, { id: 'free', label: '無料として確認' }, { id: 'design', label: 'デザインカスタマイズとして確認' }, { id: 'premium', label: 'プレミアムとして確認' }] as const).map((item) => <Pressable key={item.id} accessibilityRole="button" onPress={() => onWidgetEntitlementOverrideChange?.(item.id)} style={{ paddingHorizontal: 8, paddingVertical: 6, borderRadius: 999, borderWidth: 1, borderColor: widgetEntitlementOverride === item.id ? colors.primaryAccent : colors.border, backgroundColor: widgetEntitlementOverride === item.id ? colors.softAccent : colors.surface }}><Text style={{ color: widgetEntitlementOverride === item.id ? colors.primaryAccent : colors.secondaryText, fontSize: 13, fontWeight: '800' }}>{item.label}</Text></Pressable>)}</View></View>}
-        {showSelectedPreview && currentWidgetOption ? <View style={{ marginBottom: 14, padding: 10, borderRadius: 13, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.screenBackground }}><Text style={{ color: colors.secondaryText, fontSize: 13, fontWeight: '800' }}>選択中のプレビュー</Text><View style={{ marginTop: 8 }}><MemoizedWidgetTypePreview type={currentWidgetOption.id} style={currentPreviewStyle} fontDesign={settings.fontDesign} photoUri={currentPreviewPhotoUri} photoLayout={currentWidgetCustomization.photoLayout} colors={colors} designPattern={designPattern} designCheckColor={designCheckColor} PatternDecor={PatternDecor} previewSize={currentPreviewSize} /></View></View> : null}
-        <Text style={{ color: colors.secondaryText, fontSize: 13, fontWeight: '600', marginTop: 8 }}>{WIDGET_TYPE_GROUPS.length}カテゴリ・{WIDGET_ACCESSIBLE_COUNTS.premium}種類</Text>
-        {WIDGET_TYPE_GROUPS.map((group) => <View key={group.id} style={{ marginTop: 12 }}><Text style={{ color: colors.primaryText, fontSize: 13, fontWeight: '900' }}>{group.label}</Text><ScrollView horizontal nestedScrollEnabled directionalLockEnabled decelerationRate="fast" snapToInterval={cardWidth + 10} snapToAlignment="start" showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 10, paddingLeft: 2, paddingRight: 12 }} style={{ marginTop: 7 }}>
+
+        {WIDGET_TYPE_GROUPS.map((group) => <View key={group.id} style={{ marginTop: 18 }}><Text style={{ color: colors.secondaryText, fontSize: 14, fontWeight: '800', marginBottom: 8 }}>{group.label}</Text><View style={{ gap: 8 }}>
           {group.types.map((type) => {
             const option = visibleWidgetOptions.find((item) => item.id === type);
             if (!option) return null;
             const available = canUseWidget(option.access);
-            const customization = getWidgetCustomization(settings, option.id);
-            return <Pressable key={option.id} accessibilityRole="button" accessibilityLabel={`${option.label}。${option.description}。対応サイズ ${option.sizes}。${accessLabel(option.access)}${available ? '' : '。ロック中'}`} onPress={() => { if (!available) { onLockedWidget?.(option.access === 'premium' ? 'premium' : 'design'); return; } setPreviewWidgetType(option.id); setSelectedWidgetType(option.id); }} style={{ width: cardWidth, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface, borderRadius: 15, padding: 10 }}>
-              <MemoizedWidgetTypePreview type={option.id} style={settings.style} fontDesign={settings.fontDesign} photoUri={customization.photoUri} photoLayout={customization.photoLayout} colors={colors} designPattern={designPattern} designCheckColor={designCheckColor} PatternDecor={PatternDecor} previewSize="small" renderMode="thumbnail" />
-              <View style={{ paddingHorizontal: 2, paddingTop: 10 }}>
+            return <Pressable key={option.id} accessibilityRole="button" accessibilityLabel={`${option.label}。${option.description}。対応サイズ ${option.sizes}。${accessLabel(option.access)}${available ? '' : '。ロック中'}`} onPress={() => { if (!available) { onLockedWidget?.(option.access === 'premium' ? 'premium' : 'design'); return; } setPreviewWidgetType(option.id); setSelectedWidgetType(option.id); }} style={{ borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface, borderRadius: 15, padding: 14 }}>
+
+              <View style={{ paddingHorizontal: 2, paddingTop: 0 }}>
                 <Text style={{ color: colors.primaryText, fontSize: 15, lineHeight: 20, fontWeight: '900' }}>{option.label}</Text>
-                <Text style={{ color: colors.secondaryText, fontSize: 13, lineHeight: 19, marginTop: 3 }}>{option.description}</Text>
+
                 <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginTop: 8 }}><Text style={{ color: colors.primaryAccent, fontSize: 13, fontWeight: '800' }}>{option.sizes}</Text><View style={{ paddingHorizontal: 7, paddingVertical: 3, borderRadius: 999, backgroundColor: available ? colors.softAccent : colors.screenBackground, borderWidth: 1, borderColor: available ? colors.primaryAccent : colors.border }}><Text style={{ color: available ? colors.primaryAccent : colors.secondaryText, fontSize: 13, fontWeight: '800' }}>{available ? accessLabel(option.access) : `🔒 ${accessLabel(option.access)}`}</Text></View></View>
               </View>
             </Pressable>;
           })}
-        </ScrollView></View>)}
+        </View></View>)}
+        {__DEV__ ? <Pressable accessibilityRole="button" accessibilityState={{ expanded: showDeveloperOptions }} onPress={() => setShowDeveloperOptions((value) => !value)} style={{ minHeight: 44, justifyContent: 'center' }}><Text style={{ color: colors.secondaryText, fontSize: 13 }}>開発用の権限確認 {showDeveloperOptions ? '−' : '＋'}</Text></Pressable> : null}
+        {__DEV__ && showDeveloperOptions && <View style={{ marginBottom: 12, padding: 10, borderRadius: 11, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.screenBackground }}><Text style={{ color: colors.secondaryText, fontSize: 13, fontWeight: '800' }}>開発用・ウィジェット権限確認</Text><View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 7 }}>{([{ id: 'actual', label: '実際の購入状態' }, { id: 'free', label: '無料として確認' }, { id: 'design', label: 'デザインカスタマイズとして確認' }, { id: 'premium', label: 'プレミアムとして確認' }] as const).map((item) => <Pressable key={item.id} accessibilityRole="button" onPress={() => onWidgetEntitlementOverrideChange?.(item.id)} style={{ paddingHorizontal: 8, paddingVertical: 6, borderRadius: 999, borderWidth: 1, borderColor: widgetEntitlementOverride === item.id ? colors.primaryAccent : colors.border, backgroundColor: widgetEntitlementOverride === item.id ? colors.softAccent : colors.surface }}><Text style={{ color: widgetEntitlementOverride === item.id ? colors.primaryAccent : colors.secondaryText, fontSize: 13, fontWeight: '800' }}>{item.label}</Text></Pressable>)}</View></View>}
+        {showSelectedPreview ? <Pressable accessibilityRole="button" accessibilityState={{ expanded: showCurrentPreview }} onPress={() => setShowCurrentPreview((value) => !value)} style={{ minHeight: 44, justifyContent: 'center' }}><Text style={{ color: colors.primaryAccent, fontSize: 14, fontWeight: '700' }}>プレビュー {showCurrentPreview ? '−' : '＋'}</Text></Pressable> : null}
+        {showSelectedPreview && showCurrentPreview && currentWidgetOption ? <View style={{ marginBottom: 14, padding: 10, borderRadius: 13, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.screenBackground }}><Text style={{ color: colors.secondaryText, fontSize: 13, fontWeight: '800' }}>選択中のプレビュー</Text><View style={{ marginTop: 8 }}><MemoizedWidgetTypePreview type={currentWidgetOption.id} style={currentPreviewStyle} fontDesign={settings.fontDesign} photoUri={currentPreviewPhotoUri} photoLayout={currentWidgetCustomization.photoLayout} colors={colors} designPattern={designPattern} designCheckColor={designCheckColor} PatternDecor={PatternDecor} previewSize={currentPreviewSize} /></View></View> : null}
         {hasStoredWidgetPhotos && <View style={{ marginTop: 14, padding: 10, borderRadius: 11, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.screenBackground }}>
           <Text style={{ color: colors.secondaryText, fontSize: 13, lineHeight: 19 }}>ウィジェット別の写真を、ロック中の種類も含めて削除できます。アファメーション用の写真は対象外です。</Text>
           {confirmRemoveAllPhotos && <Text style={{ color: colors.primaryText, fontSize: 13, lineHeight: 19, marginTop: 7 }}>全ウィジェットの写真を削除します。写真レイアウトとアファメーション用の写真は残ります。</Text>}
@@ -270,7 +271,7 @@ export function WidgetSettingsCard({ settings, onChange, onPickPhoto, onUnlockWi
       </View>
 
       {selectedWidget && selectedWidgetType && selectedCustomization && <View style={{ marginTop: 14, borderRadius: 16, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface, padding: 14 }}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}><View style={{ flex: 1 }}><Text style={{ color: colors.primaryText, fontSize: 18, fontWeight: '900' }}>{selectedWidget.label}</Text><Text style={{ color: colors.secondaryText, fontSize: 13, marginTop: 3 }}>このウィジェットだけの写真とレイアウト</Text></View><Pressable accessibilityRole="button" accessibilityLabel="閉じる" onPress={() => closeDetailThen()} hitSlop={10}><Text style={{ color: colors.secondaryText, fontSize: 22 }}>×</Text></Pressable></View>
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}><View style={{ flex: 1 }}><Text style={{ color: colors.primaryText, fontSize: 18, fontWeight: '900' }}>{selectedWidget.label}</Text><Text style={{ color: colors.secondaryText, fontSize: 14, lineHeight: 22, marginTop: 3 }}>写真・レイアウトは種類ごと、文字の種類は共通で設定します</Text></View><Pressable accessibilityRole="button" accessibilityLabel="閉じる" onPress={() => closeDetailThen()} hitSlop={10}><Text style={{ color: colors.secondaryText, fontSize: 22 }}>×</Text></Pressable></View>
               <View style={{ paddingBottom: 12 }}>
               {!selectedAvailable ? <View style={{ marginTop: 16, padding: 14, borderRadius: 13, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.screenBackground }}><Text style={{ color: colors.primaryText, fontSize: 13, fontWeight: '800' }}>このウィジェットは現在ロックされています</Text><Text style={{ color: colors.secondaryText, fontSize: 13, lineHeight: 19, marginTop: 5 }}>{selectedWidget.access === 'premium' ? 'プレミアムで利用できます。' : 'デザインカスタマイズで利用できます。'}</Text></View> : <>
               {selectedPreviewSizes.length > 1 && <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7, marginTop: 12 }}><Text style={{ color: colors.secondaryText, fontSize: 13, fontWeight: '800' }}>見た目を確認</Text>{selectedPreviewSizes.map((size) => <Pressable key={size} onPress={() => setSelectedPreviewSize(size)} style={{ minWidth: 34, paddingVertical: 6, paddingHorizontal: 8, borderRadius: 999, borderWidth: 1, borderColor: selectedPreviewSize === size ? colors.primaryAccent : colors.border, backgroundColor: selectedPreviewSize === size ? colors.softAccent : colors.surface, alignItems: 'center' }}><Text style={{ color: selectedPreviewSize === size ? colors.primaryAccent : colors.secondaryText, fontSize: 13, fontWeight: '800' }}>{size === 'small' ? 'S' : size === 'medium' ? 'M' : 'L'}</Text></Pressable>)}</View>}
@@ -326,7 +327,7 @@ export function WidgetSettingsCard({ settings, onChange, onPickPhoto, onUnlockWi
           {!!settings.affirmationPhotoUris?.length && onRemoveAffirmationPhoto && <View style={{ marginTop: 8, gap: 6 }}><Text style={{ color: colors.secondaryText, fontSize: 13, fontWeight: '700' }}>選択済みの写真（タップで個別に削除）</Text>{settings.affirmationPhotoUris.map((uri, index) => <View key={`${uri}-${index}`} style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}><Image source={{ uri }} style={{ width: 42, height: 32, borderRadius: 6 }} /><Text style={{ flex: 1, color: colors.secondaryText, fontSize: 13 }} numberOfLines={1}>写真{index + 1}</Text><Pressable onPress={() => onRemoveAffirmationPhoto(index)} hitSlop={8}><Text style={{ color: colors.secondaryText, fontSize: 13, fontWeight: '700' }}>削除</Text></Pressable></View>)}</View>}
         </View>}
 
-      <Text style={{ color: colors.secondaryText, fontSize: 13, lineHeight: 19, marginTop: 10 }}>ギャラリーから種類を選ぶと、見た目・写真・レイアウトを設定できます。</Text>
+      <Text style={{ color: colors.secondaryText, fontSize: 13, lineHeight: 19, marginTop: 10 }}>変更は自動保存されます。</Text>
     </View>
   );
 }

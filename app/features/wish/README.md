@@ -20,7 +20,8 @@ Taskにoptionalな `origin: { monthKey, wishId, actionId }` を保持する。Wi
 - 同じoriginのTaskがあれば、完了済みでも再作成しない。既存Taskがある旨を案内する。同名でもoriginのないTaskは別物。
 - 行動の横の「ToDoを確認」は、一意に関連するTaskだけを直接開く。行動Editor上に別のNative Modalを重ねず、元の画面から移動する。
 - 単体Task削除は約6秒間「元に戻す」で取り消せる。最新Task配列へ対象だけ戻し、別Taskの変更を巻き戻さない。アプリ終了後の取り消しや、確認済みの一括削除の取り消しは対象外。
-- 作成成功Alertは既存の `waitForSettingsSave` が実際の永続化成功を受け取った後だけ表示する。保存失敗時は行動Editorを閉じず、入力を保持し、再試行では同じTaskを保存する。
+- 行動Editorの「保存してToDoに追加」は、新規行動でも保存・開き直しを挟まず利用できる。行動の永続化完了後に既存のToDo作成処理へ進み、`waitForSettingsSave` がToDoの実際の永続化成功を受け取ってからEditorを閉じる。成功AlertをModal上へ重ねず、閉じた後に既存の2.8秒メッセージを表示する。
+- 保存失敗時は行動Editorと入力を保持する。行動だけ保存済みの場合はそのIDをEditorに保持し、再試行で同じ行動・Taskを保存する。行動追加権利の消費も二重にしない。
 - Taskのタイトル・日時・メモ等はoriginを維持する。編集保存では編集開始時の古いTaskではなく、最新Taskの完了状態とoriginを引き継ぐ。WishActionの文章は変更しない。
 - Task削除はWishActionを削除せず、行動の完了状態も変えない。
 - WishAction/親Wishを削除した場合、Taskは残してoriginだけを外す。別のWishへ行動を移動して元の組合せが無効になった場合も同様。
