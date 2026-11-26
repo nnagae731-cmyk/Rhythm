@@ -3,7 +3,7 @@ import { Alert, Modal, Pressable, ScrollView, Switch, Text, TextInput, View } fr
 import { ChicThemePalette, DesignMode, getThemeTokens } from '../theme';
 import { PlanTier } from '../premiumAccess';
 import { PremiumGuideFeatureId } from '../premiumGuide';
-import { TravelAppCategory, TravelAppConfig, TravelAppSettings, getEnabledTravelApps, normalizeTravelAppSettings, openShortcutsSetup, openTravelApp, validateTravelAppUrl } from '../features/travel/travelApps';
+import { TravelAppCategory, TravelAppConfig, TravelAppSettings, normalizeTravelAppSettings, openShortcutsSetup, openTravelApp, validateTravelAppUrl } from '../features/travel/travelApps';
 
 type Props = {
   settings: TravelAppSettings;

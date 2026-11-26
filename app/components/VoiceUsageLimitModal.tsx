@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ActivityIndicator, InteractionManager, Modal, Pressable, Text, View } from 'react-native';
+import { ActivityIndicator, InteractionManager, Modal, Pressable, Text } from 'react-native';
 import { ChicThemePalette, DesignMode, getThemeTokens } from '../theme';
 
 type Props = {

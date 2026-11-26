@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Modal, Pressable, ScrollView, Switch, Text, View } from 'react-native';
-import { LiveActivityCustomizationSettings, LiveActivityDisplayOptions, RhythmFontDesign } from '../types';
+import { LiveActivityCustomizationSettings, LiveActivityDisplayOptions } from '../types';
 import { RHYTHM_FONT_DESIGN_OPTIONS, reactNativeFontFamily, reactNativeFontWeight } from '../features/fontDesign';
 import type { RhythmLiveActivityRuntimeStatus } from '../features/widget/rhythmLiveActivity';
 

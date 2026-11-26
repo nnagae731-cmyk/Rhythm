@@ -1,7 +1,6 @@
 import React from 'react';
 import { Image, InteractionManager, Pressable, ScrollView, Text, View } from 'react-native';
 import {
-  WidgetDisplayOption,
   WidgetCustomization,
   WidgetSettings,
   WidgetType,
@@ -13,7 +12,6 @@ import {
   WIDGET_TYPE_OPTIONS,
   PERSISTED_WIDGET_TYPE_IDS,
   WIDGET_TYPE_GROUPS,
-  WIDGET_ACCESSIBLE_COUNTS,
   WIDGET_FONT_DESIGN_OPTIONS,
   WIDGET_PHOTO_LAYOUT_OPTIONS,
 } from '../features/widget/widgetSettings';
@@ -43,30 +41,6 @@ type WidgetSettingsCardProps = {
   showSelectedPreview?: boolean;
 };
 
-const displayOptionsByType: Record<WidgetSettings['widgetType'], ReadonlyArray<{ key: WidgetDisplayOption; label: string }>> = {
-  current: [
-    { key: 'startTime', label: '開始時刻' },
-    { key: 'remainingTime', label: '残り時間' },
-    { key: 'status', label: '状態' },
-  ],
-  next: [
-    { key: 'scheduleTime', label: '予定時刻' },
-    { key: 'location', label: '場所' },
-    { key: 'remainingToLeave', label: '出発まで' },
-  ],
-  combined: [
-    { key: 'currentTask', label: '今日のTODO' },
-    { key: 'nextPlan', label: '次の予定' },
-    { key: 'combinedRemainingToLeave', label: '出発まで' },
-  ],
-  monthly: [],
-  weekly: [],
-  today: [],
-  checklist: [],
-  goal: [],
-  voice: [],
-  affirmation: [],
-};
 
 type WidgetPreviewSize = 'small' | 'medium' | 'large';
 

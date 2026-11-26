@@ -1,10 +1,10 @@
 import * as Calendar from 'expo-calendar';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Modal, Pressable, SafeAreaView, ScrollView, Text, View } from 'react-native';
-import Svg, { Circle, Line, Path, Rect } from 'react-native-svg';
+import Svg, { Circle, Line, Path } from 'react-native-svg';
 import { ICON_METRICS } from '../components/iconMetrics';
-import { ChicPattern, ChicThemePalette, DesignMode, getThemeTokens } from '../theme';
-import { CalendarMarks, DeparturePlan, DeparturePreparationStatus, FocusPersistedState, Task, TimeTab } from '../types';
+import { ChicThemePalette, DesignMode, getThemeTokens } from '../theme';
+import { DeparturePlan, DeparturePreparationStatus, Task, TimeTab } from '../types';
 import { DepartureCheckIn } from '../departureCheckIn';
 import { BehaviorEvent } from '../behaviorEvents';
 import { FocusSession } from '../focusSession';
@@ -12,7 +12,7 @@ import { RecoveryRecord } from '../recovery';
 import { PlanTier } from '../premiumAccess';
 import { PremiumGuideFeatureId } from '../premiumGuide';
 import { DeparturePlanForm } from '../components/DeparturePlanForm';
-import { getDeparturePlanMode, getPlanScheduledTime, isArrivalReversePlan, isDepartureReminderPlan } from '../features/departure/departurePlanMode';
+import { getDeparturePlanMode, isArrivalReversePlan, isDepartureReminderPlan } from '../features/departure/departurePlanMode';
 import { TravelAppLaunchActions } from '../components/TravelAppLaunchActions';
 import { TravelAppSettings } from '../features/travel/travelApps';
 

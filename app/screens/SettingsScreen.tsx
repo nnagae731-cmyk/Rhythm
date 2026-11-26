@@ -78,27 +78,6 @@ function AboutAppSheet({ visible, onClose, colors }: { visible: boolean; onClose
   </Modal>;
 }
 
-function LiveActivityDisplayOptionsCard({ options, onChange, colors, isDark }: { options: LiveActivityDisplayOptions; onChange: (next: LiveActivityDisplayOptions) => void; colors: { surface: string; border: string; text: string; muted: string; accent: string; soft: string; onAccent: string }; isDark: boolean }) {
-  const labels: Array<[keyof LiveActivityDisplayOptions, string]> = [
-    ['currentTask', '今日のTODO'],
-    ['nextSchedule', '次の予定'],
-    ['departureCountdown', '出発カウントダウン'],
-    ['focusRemaining', '集中の残り時間'],
-    ['affirmation', 'アファメーション'],
-  ];
-  const toggle = (key: keyof LiveActivityDisplayOptions) => {
-    if (options[key] && Object.values(options).filter(Boolean).length <= 1) {
-      Alert.alert('表示する内容', '1つ以上選択してください');
-      return;
-    }
-    onChange({ ...options, [key]: !options[key] });
-  };
-  return <View style={{ marginTop: 10, padding: 12, borderRadius: 14, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface }}>
-    <Text style={{ color: colors.text, fontSize: 13, fontWeight: '900' }}>表示する内容</Text>
-    <Text style={{ color: colors.muted, fontSize: 11, lineHeight: 16, marginTop: 3 }}>プレミアムのライブアクティビティで表示する情報を選べます。</Text>
-    {labels.map(([key, label]) => <View key={key} style={{ flexDirection: 'row', alignItems: 'center', minHeight: 40, borderTopWidth: 1, borderTopColor: colors.border, marginTop: 7, paddingTop: 7 }}><Text style={{ flex: 1, color: colors.text, fontSize: 12, fontWeight: '700' }}>{label}</Text><Switch value={options[key]} onValueChange={() => toggle(key)} trackColor={{ false: isDark ? '#40506A' : colors.border, true: colors.accent }} thumbColor={options[key] ? colors.onAccent : (isDark ? '#8F9BB0' : '#FFFFFF')} /></View>)}
-  </View>;
-}
 
 function DesignCustomizeCard({ designMode, chicPalette, planTier, purchased, localizedPrice, priceStatus, onOpen, onTry }: { designMode: DesignMode; chicPalette?: ChicThemePalette; planTier: PlanTier; purchased: boolean; localizedPrice?: string; priceStatus?: 'loading' | 'ready' | 'unavailable'; onOpen?: () => void; onTry: () => void }) {
   const theme = getThemeTokens(designMode, chicPalette?.id ?? 'cool');

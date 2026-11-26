@@ -10,7 +10,7 @@ import { ChicCheckColor, ChicPattern, ChicThemePalette, DesignMode, chicCheckCol
 import { RecoveryRecord } from './recovery';
 import { FocusSession } from './focusSession';
 import { createDepartureCheckIn, DepartureCheckIn } from './departureCheckIn';
-import { getChicPatternFeatureId, getEffectiveChicPattern, getEffectiveNudgeMode, hasPremiumAccess, PlanTier } from './premiumAccess';
+import { getEffectiveChicPattern, getEffectiveNudgeMode, hasPremiumAccess, PlanTier } from './premiumAccess';
 import { AnalysisScreen } from './AnalysisScreen';
 import { BThemeRibbonDecoration, BThemeRibbonPreload } from './components/BThemeRibbonDecoration';
 import { CThemeRibbonDecoration, CThemeRibbonPreload } from './components/CThemeRibbonDecoration';
@@ -42,7 +42,7 @@ import { RecoveryModal } from './components/RecoveryModal';
 import { DesignCustomizeModal } from './components/DesignCustomizeModal';
 import { TravelAppsSettingsCard } from './components/TravelAppsSettingsCard';
 import { styles } from './styles/appStyles';
-import { Affirmation, AffirmationCustomText, AppNotice, AppNoticeCategory, CalendarMarks, Category, DeparturePlan, DeparturePreparationStatus, FocusPersistedState, LiveActivityCustomizationSettings, LiveActivityDisplayOptions, MonthlyReflectionCard, MonthlyReview, MonthlyWishState, MonoPattern, NudgeMode, PersistedState, PhotoThemePhotoTarget, PhotoThemeSettings, Priority, RepeatRule, Screen, SharedEvent, SharedParticipantPrefs, Subtask, Task, TaskBucket, TaskListItem, ThemeMode, TimeTab, UrgencyStatus, WidgetSettings, WidgetSize, WidgetType, WishAction, WishMonthMap } from './types';
+import { Affirmation, AffirmationCustomText, AppNotice, AppNoticeCategory, CalendarMarks, Category, DeparturePlan, DeparturePreparationStatus, FocusPersistedState, LiveActivityCustomizationSettings, LiveActivityDisplayOptions, MonthlyReflectionCard, MonthlyReview, MonthlyWishState, MonoPattern, NudgeMode, PersistedState, PhotoThemePhotoTarget, PhotoThemeSettings, Priority, RepeatRule, Screen, SharedEvent, SharedParticipantPrefs, Subtask, Task, TaskBucket, TaskListItem, ThemeMode, TimeTab, WidgetSettings, WidgetSize, WidgetType, WishAction, WishMonthMap } from './types';
 import { isOneOffWishTask, linkedWishAction, readWishTaskOrigin, sameWishTaskOrigin, taskChangesAfterWishEdit, wishMonthsAfterTaskCompletion } from './features/wish/wishTaskLink';
 import { initialPlan } from './storage/rhythmState';
 import { DEFAULT_TRAVEL_APP_SETTINGS, normalizeTravelAppSettings, TravelAppSettings } from './features/travel/travelApps';
@@ -50,7 +50,7 @@ import { loadRhythmState, saveRhythmState } from './storage/rhythmStorage';
 import { acknowledgeRhythmWidgetPendingActions, buildRhythmWidgetSnapshot, getRhythmWidgetPendingActions, saveRhythmAffirmationPhoto, saveRhythmWidgetPhoto, saveRhythmWidgetPhotoForWidget, saveRhythmWidgetSnapshot } from './features/widget/rhythmWidgetSnapshot';
 import { DEFAULT_WIDGET_SETTINGS, getWidgetCustomization, normalizeWidgetSettings, WIDGET_TYPE_OPTIONS } from './features/widget/widgetSettings';
 import type { WidgetEntitlementOverride } from './features/widget/widgetSettings';
-import { categories, priorities, completionIcons, categoryColors as baseCategoryColors, designModes, getLateRiskMessage, getNextBestAction, getUrgencyStatus, normalizeEstimatedMinutes, urgencyLevel } from './features/tasks/taskUtils';
+import { categories, priorities, completionIcons, designModes, getLateRiskMessage, getNextBestAction, getUrgencyStatus, normalizeEstimatedMinutes, urgencyLevel } from './features/tasks/taskUtils';
 import { planScheduledAt, selectCurrentTask, selectCurrentTasks } from './features/tasks/taskSelectors';
 import { createSharedEventPacket, createSharedEventToken, encodeSharedEventLink, normalizeSharedEvent, parseSharedEventLink, upsertSharedEvent } from './features/shared/sharedUtils';
 import { getMonthlyWishState, normalizeWishMonthsForSave, wishMonthKey } from './features/wish/wishUtils';
@@ -76,7 +76,7 @@ import { cleanupUnreferencedManagedPhotos, collectReferencedManagedPhotoUris, de
 import { pruneBehaviorEvents, pruneFocusSessions, pruneRecoveryHistory, pruneRoutineArchives } from './features/storage/historyCleanup';
 import { canUseNotifications, getNotificationPermissionAction, getNotificationPermissionStatus, requestRhythmNotificationPermission } from './features/notifications/notificationPermission';
 import { addHours, canCreateWish, canCreateWishAction, canImportCalendar, canStartPremiumDesignTrial, isPremiumDesignTrialActive, isPremiumDesignUnlocked, isWidgetPhotoUnlockActive } from './features/ads/rewardedAccessLogic';
-import { getRequiredAds, REWARDED_AD_RULES, RewardedFeatureId } from './features/ads/rewardedAccess';
+import { getRequiredAds, RewardedFeatureId } from './features/ads/rewardedAccess';
 import { DEFAULT_REWARDED_ACCESS_STATE, isRewardedAccessLoadFailure, loadRewardedAccessState, RewardedAccessState, saveRewardedAccessState } from './features/ads/rewardedAccessStorage';
 import { applyEarnedReward, assertRewardStorageWritable, clearEarnedReward, EarnedRewardReceipt, recordEarnedReward, recoverEarnedReward } from './features/ads/earnedRewardStorage';
 import { cancelPendingFocusCompletionNotifications } from './features/focus/focusNotifications';
@@ -142,7 +142,6 @@ const colors = {
   mint: '#DFF5EA',
   line: '#ECE8F0',
 };
-const categoryColors = baseCategoryColors;
 
 // Stable local notices. Their IDs are intentionally independent from the
 // persisted read state so a future push/remote source can reuse the same UI.

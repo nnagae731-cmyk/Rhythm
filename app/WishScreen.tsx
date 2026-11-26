@@ -62,13 +62,6 @@ const emptyEditor: EditorState = {
   completed: false,
 };
 
-function patternSymbol(pattern: ChicPattern) {
-  if (pattern === 'dot') return '✦';
-  if (pattern === 'checkLavenderSatin') return '▦';
-  if (pattern === 'checkBeigeNoir') return '▩';
-  if (pattern === 'checkMauveFrame') return '❖';
-  return '✿';
-}
 
 function withWishDecorationAlpha(color: string, alpha: number) {
   const match = /^#([0-9a-f]{6})$/i.exec(color);
@@ -98,11 +91,6 @@ function formatHistoryMonth(monthKey: string) {
   return match ? `${match[1]}年${Number(match[2])}月` : monthKey;
 }
 
-function formatHistoryDate(value?: string) {
-  if (!value) return '';
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? '' : `${date.getMonth() + 1}/${date.getDate()} 完了`;
-}
 
 export function WishScreen({ designMode: rawDesignMode, chicPalette, monthLabel, state, wishMonths = {}, onSaveState, onSaveEditor, onCreateTaskFromAction, linkedTaskIdsByAction = {}, onOpenRelatedTask, canCreateWish = true, wishRewardProgress, onRequestWishReward, onWishCreated, wishActionRewardProgress, onRequestWishActionReward, onWishActionCreated, affirmations, affirmationCustomTexts, planTier, onSaveAffirmation, onDeleteAffirmation, onSaveAffirmationCustomText, onDeleteAffirmationCustomText, canCreateWishAction = true, topImageUri, onPickTopImage, initialEditor, onPremium, onAIShare }: WishScreenProps) {
   // Mono DarkはMono Lightと同じレイアウトを使い、色だけを反転する。
@@ -305,7 +293,6 @@ export function WishScreen({ designMode: rawDesignMode, chicPalette, monthLabel,
   const topDisplayedWish = (state.topWishId ? wishes.find((wish) => wish.id === state.topWishId) : undefined) ?? wishes[0];
   const topImageTitlePosition: WishTopImageTitlePosition = state.topImageTitlePosition ?? 'bottom';
   const topVisualJustifyContent = topImageTitlePosition === 'top' ? 'flex-start' : topImageTitlePosition === 'center' ? 'center' : 'flex-end';
-  const selectedActions = selectedWish ? actions.filter((action) => action.wishId === selectedWish.id) : [];
   const historyMonths = useMemo(() => Object.entries(wishMonths)
     .filter(([monthKey, monthState]) => monthKey !== wishMonthKey() && (Boolean(monthState.monthlyGoal?.trim()) || (monthState.wishes ?? []).length > 0 || (monthState.actions ?? []).length > 0))
     .sort(([left], [right]) => right.localeCompare(left)), [wishMonths]);

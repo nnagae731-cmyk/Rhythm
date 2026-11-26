@@ -1,7 +1,7 @@
 import * as ImagePicker from 'expo-image-picker';
 import React, { useEffect, useRef, useState } from 'react';
 import { Alert, Image, InteractionManager, Modal, Pressable, ScrollView, Share, StyleSheet, Text, TextInput, View } from 'react-native';
-import { ChicPattern, ChicThemePalette, getThemeTokens } from '../theme';
+import { ChicPattern, ChicThemePalette } from '../theme';
 import { hasPremiumAccess, isWithinFreeHistory, PlanTier } from '../premiumAccess';
 import { PremiumGuideFeatureId } from '../premiumGuide';
 import { BehaviorEvent } from '../behaviorEvents';
