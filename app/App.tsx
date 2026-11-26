@@ -1,3 +1,7 @@
+import { ensureNotifications, scheduleAffirmationNotification } from './features/notifications/notificationSetup';
+import { type DepartureNotificationAction, departureNotificationActions } from './features/departure/departureNotifications';
+import { getInitialNormalizedCrop } from './features/photo/topImageCrop';
+import { INITIAL_APP_NOTICES } from './components/NoticeModals';
 import { type ModalPalette, popupSheetStyle } from './components/modalPalette';
 import { FocusRuntimeStatus, getFocusAvailableTasks, showFocusCompletionAlert, FocusMode, FocusTaskCompletionModal } from './components/FocusModeView';
 import { DailyScheduleTimeline, TaskScheduleCalendar } from './components/ScheduleCalendar';
@@ -148,9 +152,6 @@ function logPremiumDiagnostic(event: string, details: Record<string, unknown> = 
 
 
 
-// Stable local notices. Their IDs are intentionally independent from the
-// persisted read state so a future push/remote source can reuse the same UI.
-const INITIAL_APP_NOTICES: AppNotice[] = [];
 
 
 
@@ -163,10 +164,6 @@ const INITIAL_APP_NOTICES: AppNotice[] = [];
 
 
 
-// PREPARED is retained only to safely receive actions from notifications that
-// were scheduled by earlier app versions.
-type DepartureNotificationAction = 'DEPARTED' | 'PREPARING' | 'PREPARED' | 'PREPARE_LATER' | 'DEPARTURE_SNOOZE' | 'PREPARATION_SNOOZE';
-const departureNotificationActions: readonly DepartureNotificationAction[] = ['DEPARTED', 'PREPARING', 'PREPARED', 'PREPARE_LATER', 'DEPARTURE_SNOOZE', 'PREPARATION_SNOOZE'];
 
 Notifications.setNotificationHandler({
   handleNotification: async (notification) => {
@@ -188,79 +185,8 @@ Notifications.setNotificationHandler({
 // Night Sky is a finished dark artwork, so its foreground must remain stable
 // regardless of the user's saved nine-color Design selection.
 
-function getInitialNormalizedCrop(sourceWidth: number, sourceHeight: number): NormalizedCropRect {
-  const bounds = getContainBounds(sourceWidth, sourceHeight, sourceWidth, sourceHeight);
-  const rect = getInitialCropRect(bounds);
-  return displayToNormalizedRect(rect, bounds);
-}
 
-async function ensureNotifications() {
-  const status = await getNotificationPermissionStatus();
-  if (!canUseNotifications(status)) {
-    const action = getNotificationPermissionAction(status);
-    const proceed = await new Promise<boolean>((resolve) => {
-      Alert.alert(
-        '通知を許可しますか？',
-        '設定した時間や集中タイムの終了をRhythmからお知らせします。',
-        action === 'openSettings'
-          ? [{ text: 'あとで', style: 'cancel', onPress: () => resolve(false) }, { text: 'iPhoneの設定を開く', onPress: () => { void Linking.openSettings(); resolve(false); } }]
-          : [{ text: 'あとで', style: 'cancel', onPress: () => resolve(false) }, { text: '通知を許可する', onPress: () => resolve(true) }],
-      );
-    });
-    if (!proceed) return false;
-    const requested = await requestRhythmNotificationPermission();
-    if (!canUseNotifications(requested)) return false;
-  }
 
-  if (Platform.OS === 'android') {
-    await Notifications.setNotificationChannelAsync('reminders', {
-      name: 'リマインダー',
-      importance: Notifications.AndroidImportance.HIGH,
-      vibrationPattern: [0, 250, 150, 250],
-      sound: 'default',
-    });
-  }
-
-  await Notifications.setNotificationCategoryAsync('TASK_ACTIONS', [
-    {
-      identifier: 'DONE',
-      buttonTitle: '終わった',
-      options: { opensAppToForeground: false },
-    },
-    {
-      identifier: 'SNOOZE',
-      buttonTitle: '10分後',
-      options: { opensAppToForeground: false },
-    },
-  ]);
-  await Notifications.setNotificationCategoryAsync('DEPARTURE_ACTIONS', [
-    { identifier: 'DEPARTED', buttonTitle: '出発した', options: { opensAppToForeground: false } },
-    { identifier: 'DEPARTURE_SNOOZE', buttonTitle: 'まだ', options: { opensAppToForeground: false } },
-  ]);
-  await Notifications.setNotificationCategoryAsync('PREPARATION_ACTIONS', [
-    { identifier: 'PREPARING', buttonTitle: '準備を始める', options: { opensAppToForeground: false } },
-    { identifier: 'PREPARE_LATER', buttonTitle: 'まだ', options: { opensAppToForeground: false } },
-    { identifier: 'PREPARATION_SNOOZE', buttonTitle: '5分後に再通知', options: { opensAppToForeground: false } },
-  ]);
-  return true;
-}
-
-async function scheduleAffirmationNotification(affirmation: Affirmation) {
-  const minutes = parseClock(affirmation.time);
-  return Notifications.scheduleNotificationAsync({
-    identifier: `affirmation:${affirmation.id}`,
-    content: {
-      ...buildAffirmationContent(affirmation.text),
-      data: { affirmationId: affirmation.id, kind: 'affirmation' },
-      sound: 'default',
-    },
-    trigger: {
-      type: Notifications.SchedulableTriggerInputTypes.DAILY,
-      hour: Math.floor(minutes / 60),
-      minute: minutes % 60,
-    },
-  });
-}
 
 export default function App() {
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();

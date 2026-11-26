@@ -13,3 +13,9 @@ export async function cancelPendingDepartureNotifications(planId: string) {
 }
 
 export { cancelPendingDepartureNotificationsUnsafe };
+
+// PREPARED is retained only to safely receive actions from notifications that
+// were scheduled by earlier app versions.
+export type DepartureNotificationAction = 'DEPARTED' | 'PREPARING' | 'PREPARED' | 'PREPARE_LATER' | 'DEPARTURE_SNOOZE' | 'PREPARATION_SNOOZE';
+
+export const departureNotificationActions: readonly DepartureNotificationAction[] = ['DEPARTED', 'PREPARING', 'PREPARED', 'PREPARE_LATER', 'DEPARTURE_SNOOZE', 'PREPARATION_SNOOZE'];

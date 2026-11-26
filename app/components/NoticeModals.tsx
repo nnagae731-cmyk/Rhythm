@@ -96,3 +96,7 @@ export function TomorrowPrepModal({ visible, step, todayTasks, tomorrowTasks, to
     </Pressable>
   </Modal>;
 }
+
+// Stable local notices. Their IDs are intentionally independent from the
+// persisted read state so a future push/remote source can reuse the same UI.
+export const INITIAL_APP_NOTICES: AppNotice[] = [];

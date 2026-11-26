@@ -49,3 +49,9 @@ export function cropRectToPixels(rect: NormalizedCropRect, sourceWidth: number, 
 }
 
 const clamp01 = (value: number) => Math.max(0, Math.min(1, value));
+
+export function getInitialNormalizedCrop(sourceWidth: number, sourceHeight: number): NormalizedCropRect {
+  const bounds = getContainBounds(sourceWidth, sourceHeight, sourceWidth, sourceHeight);
+  const rect = getInitialCropRect(bounds);
+  return displayToNormalizedRect(rect, bounds);
+}

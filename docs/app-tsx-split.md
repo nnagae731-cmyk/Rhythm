@@ -98,10 +98,21 @@ default App・DesignTryOnModal・FloralPatternDecorのexportを維持し、デ�
 - Reactレビュー：Hooks順序・初期化・依存配列・Context・イベント処理・アクセシビリティ属性を原文のまま維持。
 - iPhoneでのタイマー継続、カレンダー操作、Nativeモーダル表示は最終確認が必要。commit・push・EAS Buildは未実施。
 
-## 次の分割候補（Phase 4以降）
+## Phase 4-1：モジュールレベルの残り（2026-11-27）
+
+- 通知許可・カテゴリ設定・アファメーション通知 → `features/notifications/notificationSetup.ts`。
+- 出発通知アクションの型・一覧 → 既存の `features/departure/departureNotifications.ts` へ追加。
+- crop初期値 → 既存の `features/photo/topImageCrop.ts` へ追加。
+- お知らせ初期値 → 既存の `components/NoticeModals.tsx` へ追加。
+- `Notifications.setNotificationHandler` の登録はAppに残す。通知許可のタイミング・カテゴリID・旧PREPARED互換・crop計算は変更なし。
+- App.tsx：6,448行 → 6,374行。6宣言・Appに残った処理・移動先の既存宣言の一致を確認。
+- 全Jest：36 suites・324件PASS（追加・削除なし）。型チェック・iOS向けJS export・diffチェックPASS。Nativeの通知許可・配信・写真cropの実機確認とは別。
+- hook化はこの移動とは別段階。保存形式・保存キュー・失敗再試行を維持し、写真のstate・永続化・掃除との関連を調べてから着手する。
+
+## 次の分割候補（Phase 4-2以降）
 
 カレンダー等のUI部品、写真・音声・広告・Wishのドメインhook、保存・復元hook。
-Phase 4は今回の検証完了後に別作業として進める。commit・push・EAS Buildは未実施。
+Phase 4-2は写真テーマのhook化、次に保存・復元hook化を候補とする。Phase 4-1は未コミット・未push・EAS Build未実施（Phase 3Cまではmain `9ee77df` にpush済み）。
 
 ## メモ整理後の最終確認（2026-11-27）
 
