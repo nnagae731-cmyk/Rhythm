@@ -1,3 +1,4 @@
+import Svg, { Path, Rect } from 'react-native-svg';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, InteractionManager, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
@@ -278,7 +279,7 @@ export function DeparturePlanForm({
         <View style={styles.dateTimeField}>
           <View style={styles.labelRow}><Text style={[styles.fieldLabel, fieldText]}>日付</Text><Text style={[styles.required, { color: theme.colors.primaryAccent }]}>必須</Text></View>
           <Pressable style={[styles.dateTimeButton, input]} onPress={() => setShowDatePicker((current) => !current)}>
-            <Text style={[styles.dateTimeIcon, { color: theme.colors.primaryAccent }]}>□</Text>
+            <Svg testID="plan-date-calendar-icon" width={20} height={20} viewBox="0 0 24 24" accessible={false}><Rect x="3" y="5" width="18" height="16" rx="3" fill="none" stroke={theme.colors.primaryAccent} strokeWidth={1.8} /><Path d="M7 3v4M17 3v4M3 11h18M7 15h2M12 15h2M7 18h2" fill="none" stroke={theme.colors.primaryAccent} strokeWidth={1.8} strokeLinecap="round" /></Svg>
             <Text numberOfLines={1} style={[styles.dateTimeValue, fieldText]}>{formatLiveDate(dateForReminder(plan.date, pickerTime))}</Text>
           </Pressable>
         </View>

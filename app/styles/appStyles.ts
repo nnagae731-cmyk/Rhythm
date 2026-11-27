@@ -561,7 +561,7 @@ export const styles = StyleSheet.create({
   premiumComparisonLabelWrap: { flex: 1, paddingRight: 6 },
   premiumComparisonLabel: { flex: 1, fontSize: 10, lineHeight: 15, fontWeight: '800' },
   premiumComparisonNote: { fontSize: 8, lineHeight: 12, marginTop: 2 },
-  premiumComparisonCell: { width: 50, textAlign: 'center', fontSize: 11, fontWeight: '900' },
+  premiumComparisonCell: { width: 76, flexShrink: 0, textAlign: 'center', fontSize: 11, fontWeight: '900' },
   premiumComparisonLegend: { borderRadius: 8, paddingHorizontal: 8, paddingVertical: 7, marginTop: 10 },
   premiumComparisonLegendText: { fontSize: 8, lineHeight: 13, textAlign: 'center' },
   premiumFeatureDiff: { borderWidth: 1, borderRadius: 12, padding: 11, marginTop: 12 },

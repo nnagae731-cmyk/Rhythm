@@ -1,3 +1,6 @@
+import { PhotoReadableBand } from './components/SurfaceFade';
+import { usePhotoEntryHint } from './features/onboarding/usePhotoEntryHint';
+import { PhotoEntrySheet, PhotoTopEntry } from './components/PhotoEntry';
 import { useRhythmPersistence } from './storage/useRhythmPersistence';
 import { usePhotoTheme } from './features/photo/usePhotoTheme';
 import { ensureNotifications, scheduleAffirmationNotification } from './features/notifications/notificationSetup';
@@ -329,6 +332,7 @@ export default function App() {
   const preparationFeedbackKeysRef = React.useRef(new Set<string>());
   const completionAffirmationOpacity = React.useRef(new Animated.Value(0)).current;
   const [photoTheme, setPhotoTheme] = useState<PhotoThemeSettings>({ placement: 'background' });
+  const [photoEntryTarget, setPhotoEntryTarget] = useState<PhotoThemePhotoTarget>();
   const [travelApps, setTravelApps] = useState<TravelAppSettings>(DEFAULT_TRAVEL_APP_SETTINGS);
   const [recoveryHistory, setRecoveryHistory] = useState<RecoveryRecord[]>([]);
   const [focusSessions, setFocusSessions] = useState<FocusSession[]>([]);
@@ -5106,6 +5110,9 @@ export default function App() {
     },
   };
 
+  const photoEntryHint = usePhotoEntryHint(hydrated && onboarding.ready && !onboarding.introVisible && !introDismissing && onboarding.state.firstRunStage !== 'design' && !onboardingDesignSelectionPending && !firstRunDemoActive && screen === 'home', Boolean(photoTheme.imageUri || photoTheme.focusBackgroundUri || Object.values(photoTheme.topImageUris ?? {}).some(Boolean) || Object.values(photoTheme.topImageOriginalUris ?? {}).some(Boolean)));
+  const openScreenPhotoEntry = (target: PhotoThemePhotoTarget) => { if (target === 'home') photoEntryHint.dismiss(); setPhotoEntryTarget(target); };
+
   if (persistenceIssue === 'read') return <SafeAreaView style={{ flex: 1, backgroundColor: theme.colors.screenBackground, justifyContent: 'center', padding: 24 }}><Text accessibilityRole="alert" style={{ color: theme.colors.primaryText, fontSize: 20, fontWeight: '800' }}>保存データを読み込めませんでした</Text><Text style={{ color: theme.colors.secondaryText, fontSize: 14, lineHeight: 22, marginTop: 12 }}>データは消去していません。誤った上書きを防ぐため、読込ができるまで編集を停止しています。</Text><Pressable accessibilityRole="button" disabled={persistenceRetrying} onPress={() => { if (persistenceRetrying) return; setPersistenceRetrying(true); setHydrationRetry((value) => value + 1); }} style={{ minHeight: 48, marginTop: 20, alignItems: 'center', justifyContent: 'center', borderRadius: 12, backgroundColor: theme.colors.primaryAccent }}><Text style={{ color: uiDesignMode === 'chic' ? chicPalette.onAccent : uiDesignMode === 'dark' ? theme.colors.screenBackground : '#FFFFFF', fontSize: 14, fontWeight: '800' }}>{persistenceRetrying ? '読み込み中…' : 'もう一度読み込む'}</Text></Pressable></SafeAreaView>;
 
   return (
@@ -5123,11 +5130,13 @@ export default function App() {
         <CThemeRibbonPreload />
         {uiDesignMode === 'chic' && !photoThemeEnabled && !isImageDesignPattern(effectiveChicPattern) && <View pointerEvents="none" style={StyleSheet.absoluteFillObject}><ChicPatternDecor pattern={effectiveChicPattern} accent={chicPalette.accent} warm={chicPalette.accentSoft} checkColor={chicCheckColor} /></View>}
         {backgroundVeilVisible && <View pointerEvents="none" style={[StyleSheet.absoluteFillObject, { backgroundColor: backgroundVeilColor, opacity: backgroundVeilOpacity }]} />}
-        {photoTopImageUri && screen !== 'wish' ? <><Header designMode={uiDesignMode} now={now} compact chicPalette={headerChicPalette} onVoice={handleHeaderVoice} onPremium={planTier === 'premium' ? undefined : () => openPremiumFeature('voice')} onNotifications={screen === 'settings' ? () => setNoticeCenterOpen(true) : undefined} hasUnreadNotifications={screen === 'settings' && unreadNoticeCount > 0} /><View style={styles.photoThemeTopImage}><Image source={{ uri: photoTopImageUri }} resizeMode="contain" style={styles.photoThemeTopImageContent} /></View></> : <Header designMode={uiDesignMode} now={now} chicPalette={headerChicPalette} onVoice={handleHeaderVoice} onPremium={planTier === 'premium' ? undefined : () => openPremiumFeature('voice')} onNotifications={screen === 'settings' ? () => setNoticeCenterOpen(true) : undefined} hasUnreadNotifications={screen === 'settings' && unreadNoticeCount > 0} />}
+        {photoTopImageUri && screen !== 'wish' ? <><PhotoReadableBand enabled={Boolean(photoBackgroundUri)} testID="photo-header-band"><Header designMode={uiDesignMode} now={now} compact chicPalette={headerChicPalette} onVoice={handleHeaderVoice} onPremium={planTier === 'premium' ? undefined : () => openPremiumFeature('voice')} onNotifications={screen === 'settings' ? () => setNoticeCenterOpen(true) : undefined} hasUnreadNotifications={screen === 'settings' && unreadNoticeCount > 0} /></PhotoReadableBand>{screen === 'settings' || firstRunDemoActive ? <View style={styles.photoThemeTopImage}><Image source={{ uri: photoTopImageUri }} resizeMode="contain" style={styles.photoThemeTopImageContent} /></View> : <PhotoTopEntry uri={photoTopImageUri} label={screen === 'home' ? 'ホームのトップ画' : screen === 'timeline' ? '予定のトップ画' : '分析のトップ画'} hint={screen === 'home' && photoEntryHint.visible} onPress={() => openScreenPhotoEntry(screen)} designMode={uiDesignMode} chicPalette={chicPalette} style={styles.photoThemeTopImage} imageStyle={styles.photoThemeTopImageContent} />}</> : <PhotoReadableBand enabled={Boolean(photoBackgroundUri)} testID="photo-header-band"><Header designMode={uiDesignMode} now={now} chicPalette={headerChicPalette} onVoice={handleHeaderVoice} onPremium={planTier === 'premium' ? undefined : () => openPremiumFeature('voice')} onNotifications={screen === 'settings' ? () => setNoticeCenterOpen(true) : undefined} hasUnreadNotifications={screen === 'settings' && unreadNoticeCount > 0} /></PhotoReadableBand>}
 
-        <ScrollView testID="app-main-scroll" contentContainerStyle={[styles.content, screen === 'timeline' && styles.contentTimeline, statusNoticeHeight > 0 && { paddingBottom: Math.max(screen === 'timeline' ? styles.contentTimeline.paddingBottom : styles.content.paddingBottom, getBottomNavTopOffset(uiDesignMode) + 8 + statusNoticeHeight + 16) }]} keyboardShouldPersistTaps="handled">
+        {!firstRunDemoActive && !photoTopImageUri && (screen === 'home' || screen === 'timeline' || screen === 'analysis') && <PhotoTopEntry label={screen === 'home' ? 'ホームのトップ画' : screen === 'timeline' ? '予定のトップ画' : '分析のトップ画'} hint={screen === 'home' && photoEntryHint.visible} onPress={() => openScreenPhotoEntry(screen)} designMode={uiDesignMode} chicPalette={chicPalette} />}
+        <ScrollView testID="app-main-scroll" contentInsetAdjustmentBehavior={screen === 'settings' ? 'never' : undefined} automaticallyAdjustContentInsets={screen === 'settings' ? false : undefined} style={screen === 'settings' ? { overflow: 'hidden' } : undefined} contentContainerStyle={[styles.content, screen === 'settings' && { paddingTop: 24 }, screen === 'timeline' && styles.contentTimeline, statusNoticeHeight > 0 && { paddingBottom: Math.max(screen === 'timeline' ? styles.contentTimeline.paddingBottom : styles.content.paddingBottom, getBottomNavTopOffset(uiDesignMode) + 8 + statusNoticeHeight + 16) }]} keyboardShouldPersistTaps="handled">
           {screen === 'home' && (
             <HomeScreen
+              photoBackgroundVisible={Boolean(photoBackgroundUri)}
               tasks={firstRunDemoActive ? activeGuideDemoTasks : visibleTasks}
               allTasks={firstRunDemoActive ? activeGuideDemoTasks : tasks}
               now={now}
@@ -5363,6 +5372,7 @@ export default function App() {
               onRequestWishActionReward={firstRunDemoActive ? undefined : requestWishActionReward}
               onWishActionCreated={firstRunDemoActive ? undefined : consumeWishActionReward}
               topImageUri={firstRunDemoActive ? undefined : wishTopImageUri}
+              onOpenTopPhoto={firstRunDemoActive ? undefined : () => setPhotoEntryTarget('wish')}
               onPickTopImage={firstRunDemoActive ? undefined : () => { void pickPhotoTheme('wish'); }}
               initialEditor={firstRunDemoActive ? undefined : voiceWishDraft}
               onPremium={(featureId = 'wish') => { if (!firstRunDemoActive) openPremiumFeature(featureId); }}
@@ -5372,6 +5382,7 @@ export default function App() {
 
           {screen === 'timeline' && (
             <TimelineScreen
+              onPickFocusPhoto={firstRunDemoActive ? undefined : () => setPhotoEntryTarget('focus')}
               plan={firstRunDemoActive ? guideDemoPlan : plan}
               plans={firstRunDemoActive ? [guideDemoPlan] : departurePlans}
               departureCheckIns={firstRunDemoActive ? [] : departureCheckIns}
@@ -5661,6 +5672,8 @@ export default function App() {
 
           {screen === 'analysis' && (
             <AnalysisScreen
+              onStartRecords={firstRunDemoActive ? undefined : () => { setTimelineInitialTab('departure'); navigateWithinAppRef.current('timeline'); }}
+              onStartRoutine={firstRunDemoActive ? undefined : () => { setHomeInitialTab('routine'); navigateWithinAppRef.current('home'); }}
               events={firstRunDemoActive ? [] : behaviorEvents}
               tasks={firstRunDemoActive ? activeGuideDemoTasks : tasks}
               designMode={uiDesignMode}
@@ -6030,6 +6043,7 @@ export default function App() {
           pending?.();
         });
       }} />
+      <PhotoEntrySheet canChooseWithoutReward={(target) => target !== 'background' && target !== 'focus' ? canOpenTopImagePicker(target) : planTier === 'premium' || photoDesignTemporaryAccess || (target === 'background' ? rewardedAccess.photoCustomization.backgroundUnlocked : rewardedAccess.photoCustomization.focusUnlocked)} visible={Boolean(photoEntryTarget)} initialTarget={photoEntryTarget ?? 'home'} photoTheme={photoTheme} designMode={uiDesignMode} chicPalette={chicPalette} onClose={() => setPhotoEntryTarget(undefined)} onPick={(target) => { void pickPhotoTheme(target); }} onAdjust={adjustTopPhoto} />
       <TopImageCropModal
         visible={Boolean(pendingTopPhoto)}
         uri={pendingTopPhoto?.previewUri ?? pendingTopPhoto?.originalUri}

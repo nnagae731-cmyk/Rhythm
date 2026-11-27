@@ -6,6 +6,8 @@ export const ONBOARDING_STORAGE_KEY =
 
 export type OnboardingState = {
   version: 1;
+  /** Optional UI hint receipt; no change to Rhythm's persisted state. */
+  photoEntryHintShown?: boolean;
   completed: Partial<Record<OnboardingFeatureId, string>>;
   /** Explicit first-run progression. Optional for backwards compatibility. */
   firstRunStage?: 'demo' | 'design' | 'done';
@@ -99,6 +101,7 @@ export function normalizeOnboardingState(
     // `design`; completed legacy demos are treated as done. A blank/new
     // onboarding record must never be promoted to the design step.
     firstRunStage: normalizedFirstRunStage,
+    ...(raw.photoEntryHintShown === true ? { photoEntryHintShown: true } : {}),
   };
 }
 
@@ -182,6 +185,16 @@ export async function resetOnboardingFeature(
   );
 
   return next;
+  });
+}
+
+/** Claim once, using the same serialized queue as the other onboarding receipts. */
+export function claimPhotoEntryHint(hasPhoto: boolean): Promise<boolean> {
+  return serializeMutation(async () => {
+    const current = await readOnboardingState();
+    if (current.photoEntryHintShown) return false;
+    await AsyncStorage.setItem(ONBOARDING_STORAGE_KEY, JSON.stringify({ ...current, photoEntryHintShown: true }));
+    return !hasPhoto;
   });
 }
 

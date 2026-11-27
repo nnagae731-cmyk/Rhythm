@@ -95,6 +95,7 @@ export function TaskModal({ visible, task, templates, savedTemplates, designMode
   const [templatePickerOpen, setTemplatePickerOpen] = useState(false);
   const [detailsOpen, setDetailsOpen] = useState(Boolean(task));
   const titleInputRef = useRef<TextInput>(null);
+  const [titleFocused, setTitleFocused] = useState(false);
   const saveGuardRef = useRef(false);
 
   useEffect(() => {
@@ -284,7 +285,7 @@ export function TaskModal({ visible, task, templates, savedTemplates, designMode
           <Text style={{ color: theme.colors.secondaryText, fontSize: 14, lineHeight: 22, marginBottom: 12 }}>やることだけで登録できます。ほかの設定は必要なときだけ。</Text>
           <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 8 }}><Text style={[styles.fieldLabel, taskPrimaryText, designMode === 'dark' && styles.fieldLabelDark]}>やること・ToDoメモ</Text><Text style={{ color: taskAccent, fontSize: 12, fontWeight: '500' }}>必須</Text></View>
           <View style={styles.voiceAddInputRow}>
-            <TextInput ref={titleInputRef} multiline textAlignVertical="top" submitBehavior="submit" value={title} onChangeText={updateTitle} placeholder="例：資料をバッグに入れる" placeholderTextColor={theme.colors.secondaryText} style={[styles.modalInput, { flex: 1, minWidth: 0, height: undefined, minHeight: 64, maxHeight: 132, paddingVertical: 14, backgroundColor: usesDarkInputSurface ? theme.colors.secondarySurface : undefined, borderColor: usesDarkInputSurface ? theme.colors.border : undefined, color: theme.colors.primaryText }, usesDarkInputSurface && styles.darkInput]} selectionColor={isChic && chicPalette ? chicPalette.accent : theme.colors.primaryAccent} returnKeyType="done" onSubmitEditing={save} />
+            <TextInput ref={titleInputRef} onFocus={() => setTitleFocused(true)} onBlur={() => setTitleFocused(false)} multiline textAlignVertical="top" submitBehavior="submit" value={title} onChangeText={updateTitle} placeholder="例：資料をバッグに入れる" placeholderTextColor={theme.colors.secondaryText} style={[styles.modalInput, { flex: 1, minWidth: 0, height: undefined, minHeight: 64, maxHeight: 132, paddingVertical: 14, backgroundColor: usesDarkInputSurface ? theme.colors.secondarySurface : undefined, borderColor: usesDarkInputSurface ? theme.colors.border : undefined, color: theme.colors.primaryText }, usesDarkInputSurface && styles.darkInput, { borderColor: titleFocused ? (isChic && chicPalette ? chicPalette.accent : theme.colors.primaryAccent) : (isChic && chicPalette ? chicPalette.border : theme.colors.border) }]} selectionColor={isChic && chicPalette ? chicPalette.accent : theme.colors.primaryAccent} returnKeyType="done" onSubmitEditing={save} />
             <Pressable accessibilityRole="button" accessibilityLabel="音声入力" style={[styles.voiceAddMicButton, usesDarkInputSurface && styles.voiceAddMicButtonDark]} onPress={onOpenVoice ? () => closeThenPresent(onOpenVoice) : () => titleInputRef.current?.focus()}><Text style={styles.voiceAddMicText}>⌕</Text></Pressable>
           </View>
           <Pressable accessibilityRole="button" onPress={onOpenVoice ? () => closeThenPresent(onOpenVoice) : () => titleInputRef.current?.focus()}><Text style={[styles.voiceAddHint, taskSecondaryText, isDark && styles.darkMutedText]}>音声で入力する　日時・通知・繰り返しを解析します</Text></Pressable>

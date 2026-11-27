@@ -15,7 +15,7 @@ const {INTRO_CARDS}=require('../features/onboarding/onboardingSteps');
 const {WishScreen}=require('../WishScreen');
 afterEach(()=>{cleanup();jest.restoreAllMocks();jest.useRealTimers();});
 
-test.each(['minimal','dark','chic'])('小画面の本番Appで予定タブ・集中時間・デザイン状態を自動縮小しない：%s',async mode=>{
+test.each(['minimal','dark','chic'])('小画面で予定タブは1行に収め、集中時間・デザイン状態の文字は維持する：%s',async mode=>{
  const {waitFor,within}=require('@testing-library/react-native'),storage=require('@react-native-async-storage/async-storage');
  const {saveRhythmState,loadRhythmState}=require('../storage/rhythmStorage'),{ONBOARDING_STORAGE_KEY}=require('../features/onboarding/onboardingStorage');
  jest.spyOn(require('react-native'),'useWindowDimensions').mockReturnValue({width:320,height:568,scale:2,fontScale:1.3});
@@ -32,7 +32,7 @@ test.each(['minimal','dark','chic'])('小画面の本番Appで予定タブ・集
   expect(tabs).toHaveLength(4);
   for(const tab of tabs){
    const label=within(tab).getByText({departure:'出発',deadline:'スケジュール',calendar:'予定表',focus:'集中'}[tab.props.tab]);
-   expect(label.props.adjustsFontSizeToFit).toBe(false);expect(label.props.minimumFontScale).toBeUndefined();expect(label.props.numberOfLines).toBeUndefined();
+   expect(label.props.adjustsFontSizeToFit).toBe(true);expect(label.props.minimumFontScale).toBe(0.75);expect(label.props.numberOfLines).toBe(1);
    expect(StyleSheet.flatten(label.props.style).fontSize).toBeGreaterThanOrEqual(13);
    expect(label.props.allowFontScaling).not.toBe(false);
   }
@@ -206,7 +206,7 @@ test('Darkの本番Appで空予定・非選択フィルタ・目印・ルーテ�
   fireEvent.press(view.getByText('スケジュール'));
   expect(StyleSheet.flatten(view.getByText('予定がなくても時間の流れを確認できます').props.style).fontSize).toBe(12);
   fireEvent.press(view.getByRole('tab',{name:'分析'}));fireEvent.press(view.getByText('ルーティン'));
-  expect(StyleSheet.flatten(view.getByText('タスク登録時に「ルーティンにする」を選ぶと、継続率を確認できます。').props.style).fontSize).toBe(14);
+  expect(StyleSheet.flatten(view.getByText('チェックした日が増えると、継続率や連続日数をここで確認できます。まずは今日のルーティンをひとつチェックしてみましょう。').props.style).fontSize).toBe(14);
   fireEvent.press(view.getByRole('tab',{name:'叶えたいこと'}));
   const wish=within(view.UNSAFE_getByType(WishScreen));expect(StyleSheet.flatten(wish.getByText('叶えたいことを追加しよう').props.style).fontSize).toBe(14);
   expect(StyleSheet.flatten(wish.getByText('自分に届ける言葉').props.style).fontSize).toBe(12);

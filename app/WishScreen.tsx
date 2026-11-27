@@ -1,3 +1,4 @@
+import { PhotoEntryButton } from './components/PhotoEntry';
 import React, { useEffect, useMemo, useState } from 'react';
 import { Alert, Image, Keyboard, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
 import { ChicPattern, ChicThemePalette, DesignMode, getThemeTokens } from './theme';
@@ -38,6 +39,7 @@ type WishScreenProps = {
   canCreateWishAction?: boolean;
   topImageUri?: string;
   onPickTopImage?: () => void;
+  onOpenTopPhoto?: () => void;
   initialEditor?: { mode: EditorMode; title: string; wishId?: string };
   onPremium?: (featureId?: PremiumGuideFeatureId) => void;
   onAIShare?: (wishId?: string) => void;
@@ -95,7 +97,7 @@ function formatHistoryMonth(monthKey: string) {
 }
 
 
-export function WishScreen({ designMode: rawDesignMode, chicPalette, monthLabel, state, wishMonths = {}, onSaveState, onSaveEditor, onDeleteAction, onCreateTaskFromAction, linkedTaskIdsByAction = {}, onOpenRelatedTask, canCreateWish = true, wishRewardProgress, onRequestWishReward, onWishCreated, wishActionRewardProgress, onRequestWishActionReward, onWishActionCreated, affirmations, affirmationCustomTexts, planTier, onSaveAffirmation, onDeleteAffirmation, onSaveAffirmationCustomText, onDeleteAffirmationCustomText, canCreateWishAction = true, topImageUri, onPickTopImage, initialEditor, onPremium, onAIShare }: WishScreenProps) {
+export function WishScreen({ designMode: rawDesignMode, chicPalette, monthLabel, state, wishMonths = {}, onSaveState, onSaveEditor, onDeleteAction, onCreateTaskFromAction, linkedTaskIdsByAction = {}, onOpenRelatedTask, canCreateWish = true, wishRewardProgress, onRequestWishReward, onWishCreated, wishActionRewardProgress, onRequestWishActionReward, onWishActionCreated, affirmations, affirmationCustomTexts, planTier, onSaveAffirmation, onDeleteAffirmation, onSaveAffirmationCustomText, onDeleteAffirmationCustomText, canCreateWishAction = true, topImageUri, onPickTopImage, onOpenTopPhoto, initialEditor, onPremium, onAIShare }: WishScreenProps) {
   // Mono DarkはMono Lightと同じレイアウトを使い、色だけを反転する。
   const isDark = rawDesignMode === 'dark';
   const theme = getThemeTokens(rawDesignMode, chicPalette?.id ?? 'cool');
@@ -381,9 +383,11 @@ export function WishScreen({ designMode: rawDesignMode, chicPalette, monthLabel,
             <WishDecoration designMode={rawDesignMode} accent={accent} />
             <View style={styles.topVisualContent}>
               <Text style={[styles.topVisualMonth, isDark && styles.darkReadableMeta, { color: topImageUri ? '#FFFFFF' : textSecondary }, topImageUri && styles.topVisualTextOnImage]}>{monthLabel}</Text>
-              {topDisplayedWish ? <View style={[styles.topVisualTitleWrap, { justifyContent: topVisualJustifyContent }]}><Text numberOfLines={2} style={[styles.topVisualGoal, { color: topImageUri ? '#FFFFFF' : textPrimary }, topImageUri && styles.topVisualTextOnImage]}>{topDisplayedWish.title}</Text></View> : !topImageUri ? <Text style={{ color: textPrimary, fontSize: 21, lineHeight: 29, fontWeight: '700', marginTop: 8 }}>ここから、一歩ずつ。</Text> : null}
+              {topDisplayedWish ? <View style={[styles.topVisualTitleWrap, { justifyContent: topVisualJustifyContent }]}><Text numberOfLines={2} style={[styles.topVisualGoal, { color: topImageUri ? '#FFFFFF' : textPrimary }, topImageUri && styles.topVisualTextOnImage]}>{`叶えたいこと ${state.wishes.length}件　行動 ${state.actions.length}件`}</Text></View> : !topImageUri ? <Text style={{ color: textPrimary, fontSize: 21, lineHeight: 29, fontWeight: '700', marginTop: 8 }}>ここから、一歩ずつ。</Text> : null}
             </View>
+            {onOpenTopPhoto && topImageUri && <><Pressable accessible={false} onPress={onOpenTopPhoto} onLongPress={onOpenTopPhoto} style={StyleSheet.absoluteFillObject} /><PhotoEntryButton overlay iconOnly label="写真を変更" onPress={onOpenTopPhoto} designMode={rawDesignMode} chicPalette={palette} /></>}
           </View>
+          {onOpenTopPhoto && !topImageUri && <View style={{ alignItems: 'flex-end', marginBottom: 8 }}><PhotoEntryButton iconOnly label="トップ画を設定" onPress={onOpenTopPhoto} designMode={rawDesignMode} chicPalette={palette} /></View>}
           <View testID="wish-management-card" style={[styles.managementCard, { backgroundColor: surface, borderColor: border }]}>
           <View style={styles.pageHeader}>
             <Text style={[styles.pageHeaderTitle, { color: textPrimary }]}>叶えたいこと</Text>

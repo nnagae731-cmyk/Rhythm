@@ -1,4 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { GuidanceCard } from '../components/GuidanceCard';
+import { PhotoReadableBand } from '../components/SurfaceFade';
 import { Image, InteractionManager, Modal, Platform, Pressable, ScrollView, Text, View } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { ChicThemePalette, DesignMode } from '../theme';
@@ -26,6 +28,7 @@ export function HomeScreen({
   onAdd,
   onOpenFocus,
   initialTab = 'now',
+  photoBackgroundVisible = false,
   todayReviewExists = false,
 
   todayReviewSummary,
@@ -77,6 +80,7 @@ export function HomeScreen({
   onAdd: () => void;
   onOpenFocus: () => void;
   initialTab?: 'now' | 'list' | 'routine';
+  photoBackgroundVisible?: boolean;
   todayReviewExists?: boolean;
 
   todayReviewSummary?: string;
@@ -250,6 +254,7 @@ export function HomeScreen({
   const weekdayLabels = ['日', '月', '火', '水', '木', '金', '土'];
   return (
     <>
+      <PhotoReadableBand enabled={photoBackgroundVisible} testID="photo-home-date-band">
       <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
         <Text style={{ color: designMode === 'chic' ? chicPalette.textPrimary : theme?.colors?.primaryText ?? '#182235', fontSize: 18, fontWeight: '900' }}>{now.getMonth() + 1}月{now.getDate()}日（{weekdayLabels[now.getDay()]}）</Text>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
@@ -257,17 +262,18 @@ export function HomeScreen({
           {homeTab !== 'routine' && <Pressable accessibilityRole="button" accessibilityLabel={selectionMode ? '選択を終了' : 'タスクを選択'} onPress={onSelectionMode} style={{ minHeight: 40, paddingHorizontal: 13, borderRadius: 12, borderWidth: 1, borderColor: selectionMode ? focusShortcutAccent : focusShortcutBorder, backgroundColor: selectionMode ? focusShortcutAccent : focusShortcutBackground, justifyContent: 'center' }}><Text style={{ color: selectionMode ? (designMode === 'chic' ? chicPalette.onAccent : theme?.colors?.screenBackground ?? '#FFFFFF') : focusShortcutText, fontSize: 13, fontWeight: '900' }}>{selectionMode ? '取消' : '選択'}</Text></Pressable>}
         </View>
       </View>
-       <Pressable testID="home-journal-card" accessibilityRole="button" accessibilityLabel={todayReviewExists ? '今日の日記を見る' : '今日の日記を書く'} disabled={!onOpenTodayRecord} onPress={onOpenTodayRecord} style={{ minHeight: 88, marginBottom: 14, padding: 14, borderRadius: 16, borderWidth: 1, borderColor: focusShortcutBorder, backgroundColor: designMode === 'chic' ? chicPalette.cardSurface : theme?.colors?.surface ?? (isDark ? '#181F2E' : '#FFFFFF'), flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-        {todayReviewPhotoUri && <Image source={{ uri: todayReviewPhotoUri }} style={{ width: 56, height: 56, borderRadius: 10 }} accessibilityLabel="今日の日記の写真" />}
-        <View style={{ flex: 1, minWidth: 0 }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}><Text style={{ color: focusShortcutText, fontSize: 16, lineHeight: 24, fontWeight: '800' }}>ひと言日記</Text>{todayReviewExists && !todayReviewSaveStatus && <Text accessibilityLiveRegion="polite" style={{ color: focusShortcutAccent, fontSize: 13, fontWeight: '700' }}>保存済み</Text>}</View>
-          <Text style={{ color: focusShortcutMuted, fontSize: 14, lineHeight: 21, marginTop: 3 }} numberOfLines={2}>{todayReviewSummary || (todayReviewExists ? '内容を確認・編集できます' : 'ひとことや写真で、今日を残そう')}</Text>
-          <Text accessibilityLiveRegion="polite" style={{ color: focusShortcutAccent, fontSize: 13, lineHeight: 20, marginTop: 4 }}>{todayReviewSaveStatus === 'error' ? '変更は未保存です。保存を再試行してください' : todayReviewSaveStatus === 'saving' ? '日記を保存中…' : todayReviewExists ? '今日の日記を見る' : '今日の日記を書く'}</Text>
-        </View><Text style={{ color: focusShortcutAccent, fontSize: 20 }}>›</Text>
+      </PhotoReadableBand>
+       <Pressable testID="home-journal-card" accessibilityRole="button" accessibilityLabel={todayReviewExists ? '今日の日記を見る' : '今日の日記を書く'} accessibilityValue={{ text: todayReviewSaveStatus === 'error' ? '変更は未保存です。保存を再試行してください' : todayReviewSaveStatus === 'saving' ? '日記を保存中…' : todayReviewSummary || (todayReviewExists ? '保存済み' : 'ひと言日記') }} disabled={!onOpenTodayRecord} onPress={onOpenTodayRecord} style={{ minHeight: 48, marginBottom: 14, paddingHorizontal: 14, paddingVertical: 8, borderRadius: 16, borderWidth: 1, borderColor: focusShortcutBorder, backgroundColor: designMode === 'chic' ? chicPalette.cardSurface : theme?.colors?.surface ?? (isDark ? '#181F2E' : '#FFFFFF'), flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+        <Text numberOfLines={1} style={{ color: focusShortcutText, fontSize: 16, lineHeight: 22, fontWeight: '800' }}>ひと言日記</Text>
+        <Text numberOfLines={1} ellipsizeMode="tail" accessibilityLiveRegion="polite" style={{ flex: 1, minWidth: 0, color: todayReviewSaveStatus ? focusShortcutAccent : focusShortcutMuted, fontSize: 13, lineHeight: 20 }}>{todayReviewSaveStatus === 'error' ? '変更は未保存です。保存を再試行してください' : todayReviewSaveStatus === 'saving' ? '日記を保存中…' : todayReviewSummary || (todayReviewExists ? '今日の日記を見る' : '今日の日記を書く')}</Text>
+        {todayReviewExists && !todayReviewSaveStatus && <Text style={{ color: focusShortcutAccent, fontSize: 11, lineHeight: 18, fontWeight: '700' }}>保存済み</Text>}
+        <Text style={{ color: focusShortcutAccent, fontSize: 20 }}>›</Text>
       </Pressable>
+      <PhotoReadableBand enabled={photoBackgroundVisible} testID="photo-home-tabs-band">
       <View style={{ flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: focusShortcutBorder, marginBottom: 14 }}>
         {(['now', 'list', 'routine'] as const).map((tab) => <Pressable key={tab} onPress={() => { clearSelectionForViewChange(); setHomeTab(tab); if (tab === 'now') setBucketFilter('now'); else if (tab === 'list') setBucketFilter('all'); }} style={{ flex: 1, minHeight: 40, alignItems: 'center', justifyContent: 'center', borderBottomWidth: homeTab === tab ? 2 : 0, borderBottomColor: focusShortcutAccent }}><Text style={{ color: homeTab === tab ? focusShortcutAccent : focusShortcutMuted, fontSize: 13, fontWeight: homeTab === tab ? '900' : '700' }}>{tab === 'now' ? '今' : tab === 'list' ? '一覧' : 'ルーティン'}</Text></Pressable>)}
        </View>
+      </PhotoReadableBand>
        {homeTab !== 'routine' && selectionBar}
       {homeTab === 'now' && <>
       {renderTodayWinStrip(allTasks.filter((task) => task.isRoutine !== true), onOpenFocus, handleTaskCheck, (task) => selectionMode ? onToggleSelection(task.id) : setActionTask(task), selectionMode, selectedTaskIds)}
@@ -282,7 +288,7 @@ export function HomeScreen({
       </>}
       {homeTab === 'routine' && <>
         <View style={{ paddingHorizontal: 4, marginBottom: 8 }}><Text style={{ color: focusShortcutText, fontSize: 16, fontWeight: '900' }}>今日のルーティン</Text><Text style={{ color: focusShortcutMuted, fontSize: 12, marginTop: 3 }}>{routineCompletedCount} / {routineTasks.length} 完了</Text></View>
-        {routineTasks.length === 0 ? <Text style={[styles.emptyCopy, { color: focusShortcutMuted, paddingHorizontal: 4 }]}>今日のルーティンはありません。</Text> : routineTasks.map((task) => <RoutineTaskRow key={`routine-${task.routineId ?? task.id}`} task={task} styles={styles} designMode={designMode} chicPalette={chicPalette} isDark={isDark} completionIcon={completionIcon} textColor={focusShortcutText} accentColor={focusShortcutAccent} borderColor={focusShortcutBorder} onPress={() => setActionTask(task)} onCheck={() => { const current = allTasks.find((item) => item.id === task.id); if (!current || current.status === 'skipped') return; if (current.done) { onRestore?.(current.id); return; } if (current.subtasks?.some((item) => !item.done)) onCompleteParent(current.id); else onToggle(current.id); }} onSkip={() => onSkip(task.id)} />)}
+        {routineTasks.length === 0 ? <GuidanceCard testID="home-routine-guidance" title="毎日の小さな習慣を、ここに" description="登録したルーティンをここで確認・チェックできます。タスク登録で「ルーティンにする」と繰り返しの間隔を選んでみましょう。" actionLabel="ルーティンを追加する" onAction={onAdd} designMode={designMode} chicPalette={chicPalette} /> : routineTasks.map((task) => <RoutineTaskRow key={`routine-${task.routineId ?? task.id}`} task={task} styles={styles} designMode={designMode} chicPalette={chicPalette} isDark={isDark} completionIcon={completionIcon} textColor={focusShortcutText} accentColor={focusShortcutAccent} borderColor={focusShortcutBorder} onPress={() => setActionTask(task)} onCheck={() => { const current = allTasks.find((item) => item.id === task.id); if (!current || current.status === 'skipped') return; if (current.done) { onRestore?.(current.id); return; } if (current.subtasks?.some((item) => !item.done)) onCompleteParent(current.id); else onToggle(current.id); }} onSkip={() => onSkip(task.id)} />)}
       </>}
       {homeTab === 'list' && <>
       {showTodoOnboarding && (

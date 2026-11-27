@@ -78,7 +78,7 @@ test.each(['free','premium'])('完了済みの%sユーザーは通常起動で�
 },60000);
 test('設定から紹介を再表示してスキップ・最終CTAを押しても完了状態とデザインを変更しない',async()=>{
  await saveRhythmState({tasks:[{id:'replay',title:'再表示の読込目印',done:false,category:'その他',priority:'中',bucket:'now'}],designMode:'dark',monoAppearance:'dark'});
- await storage.setItem(ONBOARDING_STORAGE_KEY,JSON.stringify({version:1,completed:{intro:'2026-01-01',design:'2026-01-01',todo:'2026-01-01'},firstRunStage:'done'}));
+ await storage.setItem(ONBOARDING_STORAGE_KEY,JSON.stringify({version:1,completed:{intro:'2026-01-01',design:'2026-01-01',todo:'2026-01-01'},firstRunStage:'done',photoEntryHintShown:true}));
  const before=await savedIntro(),view=render(<App/>);await waitFor(()=>expect(view.getAllByText('再表示の読込目印').length).toBeGreaterThan(0),{timeout:10000});
  const prompt=view.queryByText('今日はしない');if(prompt)fireEvent.press(prompt);fireEvent.press(view.getByText('設定'));fireEvent.press(view.getByText('RhythmPaceの使い方'));
  await waitFor(()=>expect(intro(view).props.visible).toBe(true));fireEvent.press(within(intro(view)).getByLabelText('使い方をスキップ'));await waitFor(()=>expect(intro(view).props.visible).toBe(false));dismissIntro(view);
@@ -89,7 +89,7 @@ test('Freeの日記入口はPremium案内であり、無料登録を許可せず
  const day=require('../features/schedule/dateTimeUtils').dateKey();
  await saveRhythmState({tasks:[{id:'diary-free',title:'無料日記判定の目印',done:false,category:'その他',priority:'中',bucket:'now'}],wishMonths:{[day.slice(0,7)]:{wishes:[],actions:[],review:{},reviews:[{id:'protected-journal',date:day,shortNote:'有料の日記本文保護',photo:'file:///protected-journal.jpg',photos:['file:///protected-journal.jpg']}]}}});await storage.setItem(ONBOARDING_STORAGE_KEY,JSON.stringify({version:1,completed:{intro:'2026-01-01',todo:'2026-01-01'},firstRunStage:'done'}));
  const view=render(<App/>);await waitFor(()=>expect(view.getAllByText('無料日記判定の目印').length).toBeGreaterThan(0),{timeout:10000});const prompt=view.queryByText('今日はしない');if(prompt)fireEvent.press(prompt);
- expect(view.queryByText('有料の日記本文保護')).toBeNull();expect(view.queryByLabelText('今日の日記の写真')).toBeNull();fireEvent.press(view.getByText('今日の日記を見る'));
+ expect(view.queryByText('有料の日記本文保護')).toBeNull();expect(view.queryByLabelText('今日の日記の写真')).toBeNull();fireEvent.press(view.getByRole('button',{name:'今日の日記を見る'}));
  const {PremiumModal}=require('../components/PremiumModal');await waitFor(()=>expect(view.UNSAFE_getByType(PremiumModal).props.visible).toBe(true));
  // Inspect the actual dailyReviewOnly entry, not the read-only intro sample.
  const {HistoryScreen}=require('../screens/HistoryScreen');expect(view.UNSAFE_queryAllByType(HistoryScreen).filter(n=>n.props.dailyReviewOnly&&!n.props.previewJournal)).toHaveLength(0);

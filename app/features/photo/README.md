@@ -13,3 +13,11 @@
 
 `qa-photo-theme-hook.test.js` はReactのstate更新を実行し、Freeの既存枠・新規枠、写真許可拒否、キャンセル、購入後再開、背景置換時の他参照保持、crop二重実行防止、成功/処理失敗時の状態と一時画像の後片付けを検証する。
 画像picker・画像処理・管理ファイルIOはNative境界としてMockする。実際のファイル書込やiPhoneのpicker/cropモーダル動作を検証したことにはしない。
+
+## 設定外の写真入口（2026-11-27）
+
+各画面の写真入口はPhotoEntrySheetで適用先を選び、Nativeシートのdismiss後に既存pickPhotoTheme/adjustTopPhotoを呼ぶ。入口自身は権利を付与せずbypassも渡さない。設定→デザイン→写真タブ、hook本体、crop、保存形式は変更しない。仕様・検証・先行UIパッチとの適用順はdocs/photo-entry-home-compact.mdを参照する。
+
+## crop枠の位置ずれ修正
+
+TopImageCropModalの表示座標は、計算用のx/yをReact Nativeのleft/topに変換して描画する。以前は白枠が原点に残り、マスクと別の固定枠に見えていた。内側の重複Viewも削除し、移動する選択枠とハンドルだけを残す。crop計算・保存形式は変更しない。qa-crop-selection.test.jsで初期位置・移動・確定値・リセットを検証する。

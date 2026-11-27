@@ -109,7 +109,7 @@ export const INTRO_CARDS: IntroCard[] = [
   {
     id: 'customize',
     title: '毎日開きたくなる、\n私のRhythm。',
-    description: 'シンプルにも、可愛くも。好きなデザインで自分らしく。',
+    description: 'シンプルにも、可愛くも。好きなデザインで自分らしく。カメラのボタンから、いつでも好きな写真に変えられます',
     premiumNote: '試着は無料。一部の正式利用は体験・広告・購入の対象です。',
   },
 ];

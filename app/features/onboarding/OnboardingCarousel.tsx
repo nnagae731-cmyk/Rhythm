@@ -10,6 +10,7 @@ import {
   useWindowDimensions,
   View,
 } from 'react-native';
+import { CameraBadge } from '../../components/PhotoEntry';
 import { getThemeTokens } from '../../theme';
 import type { ChicThemePalette, DesignMode } from '../../theme';
 import {
@@ -243,7 +244,7 @@ export function OnboardingCarousel({
               <View
                 style={[styles.card, { padding: compact ? 16 : 18, backgroundColor: appearance.surface, borderColor: appearance.border }]}
               >
-                {renderStep ? <View style={styles.productionPreview}>{item.id === 'customize' ? <View testID="onboarding-design-preview" pointerEvents="none" style={{ width: '100%' }}>{renderStep(item.id)}</View> : <OnboardingPreviewViewport height={compact ? 200 : 300} colors={{ surface: appearance.surface, border: appearance.border }}>{renderStep(item.id)}</OnboardingPreviewViewport>}</View> : <IntroPreview card={item} />}
+                {renderStep ? <View style={styles.productionPreview}>{item.id === 'customize' ? <View testID="onboarding-design-preview" pointerEvents="none" style={{ width: '100%' }}>{renderStep(item.id)}<View testID="onboarding-photo-camera-badge" style={{ position: 'absolute', right: 12, bottom: 12, borderRadius: 10, padding: 6, backgroundColor: appearance.surface }}><CameraBadge color={appearance.primaryAccent} /></View></View> : <OnboardingPreviewViewport height={compact ? 200 : 300} colors={{ surface: appearance.surface, border: appearance.border }}>{renderStep(item.id)}</OnboardingPreviewViewport>}</View> : <IntroPreview card={item} />}
 
                 <Text style={[styles.title, { color: appearance.primaryText, fontSize: compact ? 20 : 22, lineHeight: compact ? 28 : 30 }]}>
                   {item.title}

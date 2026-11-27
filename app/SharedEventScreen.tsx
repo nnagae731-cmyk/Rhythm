@@ -1,3 +1,4 @@
+import { formatJapaneseDateKey } from './features/schedule/dateDisplay';
 import React, { useEffect, useState } from 'react';
 import { Alert, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { ChicThemePalette, DesignMode, getThemeTokens } from './theme';
@@ -203,7 +204,7 @@ export function SharedEventScreen({
               <View style={{ flex: 1 }}>
                 <Text style={[styles.badge, { color: theme.colors.primaryAccent }]}>共有予定</Text>
                 <Text style={[styles.title, { color: theme.colors.primaryText }]}>{event?.title ?? '共有予定'}</Text>
-                <Text style={[styles.subtitle, { color: theme.colors.secondaryText }]}>{event ? `${event.date.replaceAll('-', '.')} · ${event.arrival}到着` : 'リンクを確認しています'}</Text>
+                <Text style={[styles.subtitle, { color: theme.colors.secondaryText }]}>{event ? `${formatJapaneseDateKey(event.date)} · ${event.arrival}到着` : 'リンクを確認しています'}</Text>
               </View>
               <View style={styles.headerActions}>
                 {event && <Pressable style={[styles.shareButton, { borderColor: theme.colors.primaryAccent }]} onPress={() => onShareCurrentEvent(event.shareToken)}><Text style={[styles.shareButtonText, { color: theme.colors.primaryAccent }]}>共有</Text></Pressable>}
@@ -222,7 +223,7 @@ export function SharedEventScreen({
                   <View style={[styles.card, { borderColor: theme.colors.border, backgroundColor: theme.colors.surface }]}>
                     <Text style={[styles.sectionLabel, { color: theme.colors.primaryAccent }]}>予定の内容</Text>
                     <Text style={[styles.cardTitle, { color: theme.colors.primaryText }]}>{event.destination || '目的地未設定'}</Text>
-                    <Text style={[styles.cardCopy, { color: theme.colors.secondaryText }]}>{event.date.replaceAll('-', '.')} · 到着 {event.arrival} · 準備 {formatClock(event.preparationMinutes)}</Text>
+                    <Text style={[styles.cardCopy, { color: theme.colors.secondaryText }]}>{formatJapaneseDateKey(event.date)} · 到着 {event.arrival} · 準備 {formatClock(event.preparationMinutes)}</Text>
                     <Text style={[styles.cardCopy, { color: theme.colors.secondaryText, marginTop: 4 }]}>移動 {event.travelMinutes}分 · 余裕 {event.bufferMinutes}分</Text>
                     <Pressable style={[styles.mapButton, { borderColor: theme.colors.primaryAccent }]} onPress={() => onOpenMap(event.destination || event.title)}>
                       <Text style={[styles.mapButtonText, { color: theme.colors.primaryAccent }]}>地図アプリで目的地を開く</Text>

@@ -1,4 +1,5 @@
 import React, { ReactNode, useEffect, useMemo, useState } from 'react';
+import { GuidanceCard } from './components/GuidanceCard';
 import { InteractionManager, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import Svg, { Circle, Line, Path, Text as SvgText } from 'react-native-svg';
 import { BehaviorEvent } from './behaviorEvents';
@@ -77,7 +78,7 @@ function RoutineArchiveModal({ visible, archives, events, tasks, designMode, chi
   </Modal>;
 }
 
-function RoutineProgressPanel({ events, tasks, designMode, chicPalette, onRemoveRoutine, routineArchives, onResumeRoutine, onDeleteRoutineArchive }: { events: BehaviorEvent[]; tasks: Task[]; designMode: DesignMode; chicPalette?: ChicThemePalette; onRemoveRoutine: (taskId: string) => void; routineArchives: RoutineArchive[]; onResumeRoutine: (archive: RoutineArchive) => void; onDeleteRoutineArchive: (archive: RoutineArchive) => void }) {
+function RoutineProgressPanel({ onStartRoutine, events, tasks, designMode, chicPalette, onRemoveRoutine, routineArchives, onResumeRoutine, onDeleteRoutineArchive }: { events: BehaviorEvent[]; tasks: Task[]; designMode: DesignMode; chicPalette?: ChicThemePalette; onRemoveRoutine: (taskId: string) => void; routineArchives: RoutineArchive[]; onResumeRoutine: (archive: RoutineArchive) => void; onDeleteRoutineArchive: (archive: RoutineArchive) => void; onStartRoutine?: () => void }) {
   const routineTasks = useMemo(() => getRoutineHistoryList(events, tasks), [events, tasks]);
   const [historyTarget, setHistoryTarget] = useState<{ title: string; summary: RoutineInterruptionSummary }>();
   const [archiveOpen, setArchiveOpen] = useState(false);
@@ -91,8 +92,11 @@ function RoutineProgressPanel({ events, tasks, designMode, chicPalette, onRemove
     InteractionManager.runAfterInteractions(() => requestAnimationFrame(() => requestAnimationFrame(() => setHistoryTarget({ title, summary }))));
   };
   const archiveLink = <Pressable onPress={() => setArchiveOpen(true)} style={styles.routineHistoryLink}><Text style={[styles.routineHistoryLinkText, isDark && styles.darkReadableMeta, { color: designMode === 'chic' && chicPalette ? chicPalette.accent : theme.colors.primaryAccent }]}>解除歴 〉</Text></Pressable>;
-  if (activeRoutineTasks.length === 0) return <>
-    <View style={[styles.routineCard, isDark && styles.routineCardDark, designMode === 'chic' && chicPalette && { backgroundColor: chicPalette.cardSurface, borderColor: chicPalette.border }]}><View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}><Text style={[styles.sectionTitle, isDark && styles.darkMetricText, designMode === 'chic' && chicPalette && { color: chicPalette.textPrimary }]}>ルーティンの継続</Text>{archiveLink}</View><Text style={[styles.sectionCopy, isDark && styles.darkReadableCopy, isDark && styles.darkSecondaryText, designMode === 'chic' && chicPalette && { color: chicPalette.textSecondary }]}>タスク登録時に「ルーティンにする」を選ぶと、継続率を確認できます。</Text></View>
+  const hasRoutineRecord = activeRoutineTasks.some(routine => buildRoutineInterruptionSummary(events, tasks, routine).totalCompletedDays > 0);
+  if (!hasRoutineRecord) return <>
+    <View style={{ alignItems: 'flex-end' }}>{archiveLink}</View>
+    <GuidanceCard testID="analysis-routine-guidance" title="ルーティンの歩みを、少しずつ" description="チェックした日が増えると、継続率や連続日数をここで確認できます。まずは今日のルーティンをひとつチェックしてみましょう。" actionLabel="ルーティンを確認する" onAction={onStartRoutine} designMode={designMode} chicPalette={chicPalette} />
+    {activeRoutineTasks.map(routine => { const representative = tasks.find(task => routine.memberIds.has(task.id) && task.isRoutine); return <View key={routine.id} style={{ flexDirection: 'row', alignItems: 'center', padding: 12, borderBottomWidth: 1, borderBottomColor: theme.colors.border }}><Text style={{ flex: 1, color: designMode === 'chic' ? resolvedChicPalette.textPrimary : theme.colors.primaryText, fontSize: 14, fontWeight: '700' }}>{routine.title}</Text>{representative && <Pressable accessibilityLabel={`${routine.title}をルーティンから外す`} onPress={() => onRemoveRoutine(representative.id)} style={{ minWidth: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center' }}><Text style={{ color: theme.colors.secondaryText, fontSize: 12 }}>外す</Text></Pressable>}</View>; })}
     <RoutineArchiveModal visible={archiveOpen} archives={routineArchives} events={events} tasks={tasks} designMode={designMode} chicPalette={chicPalette} onClose={() => setArchiveOpen(false)} onHistory={openArchiveHistory} onResume={onResumeRoutine} onDelete={onDeleteRoutineArchive} />
     <RoutineHistoryModal summary={historyTarget?.summary} title={historyTarget?.title} designMode={designMode} chicPalette={chicPalette} onClose={() => setHistoryTarget(undefined)} />
   </>;
@@ -113,7 +117,7 @@ function RoutineProgressPanel({ events, tasks, designMode, chicPalette, onRemove
         return <View key={routine.id} style={[styles.routineTaskRow, isDark && styles.routineTaskRowDark, designMode === 'chic' && chicPalette && { backgroundColor: chicPalette.taskBackground, borderColor: chicPalette.border }]}>
           <View style={styles.routineTaskHeader}>
             <Text numberOfLines={1} style={[styles.routineTaskTitle, isDark && styles.darkMetricText, designMode === 'chic' && chicPalette && { color: chicPalette.textPrimary }]}>{routine.title}</Text>
-            <View style={styles.routineTaskActions}><Text style={[styles.routineTaskRate, { color }]}>{summary.completionRate}%</Text>{routine.active && representativeTask && <Pressable accessibilityLabel={`${routine.title}をルーティンから外す`} hitSlop={8} onPress={() => onRemoveRoutine(representativeTask.id)} style={[styles.routineRemoveButton, isDark && styles.routineRemoveButtonDark]}><Text style={[styles.routineRemoveText, isDark && styles.routineRemoveTextDark]}>×</Text></Pressable>}</View>
+            <View style={styles.routineTaskActions}><Text style={[styles.routineTaskRate, { color }]}>{summary.completionRate}%</Text>{routine.active && representativeTask && <Pressable accessibilityLabel={`${routine.title}をルーティンから外す`} hitSlop={8} onPress={() => onRemoveRoutine(representativeTask.id)} style={[styles.routineRemoveButton, isDark && styles.routineRemoveButtonDark]}><Text style={[styles.routineRemoveText, isDark && styles.routineRemoveTextDark]}>外す</Text></Pressable>}</View>
           </View>
           <Text style={[styles.routineRateCaption, isDark && styles.darkSecondaryText, designMode === 'chic' && chicPalette && { color: chicPalette.textSecondary }]}>継続率　{summary.completedCycleDays} / {summary.cycleDays}日</Text>
           <View style={styles.routineDots}>{summary.displayDays.map((day) => <View key={day.key} style={styles.routineDay}><View style={[styles.routineDot, isDark && styles.routineDotDark, day.completed && { backgroundColor: color, borderColor: color }, day.future && styles.routineDotFuture, day.today && styles.routineDotToday]} /><Text style={[styles.routineDayLabel, isDark && styles.darkMetricText, designMode === 'chic' && chicPalette && { color: chicPalette.textMuted }]}>{day.label}</Text></View>)}</View>
@@ -215,7 +219,7 @@ function ConditionChart({ data, designMode, chicPalette }: { data: InsightCondit
   })}</View>;
 }
 
-function InsightDashboardView({ events, tasks, plans, designMode, chicPalette, onApplySuggestion, behaviorOnly = false }: { events: BehaviorEvent[]; tasks: Task[]; plans: DeparturePlan[]; designMode: DesignMode; chicPalette?: ChicThemePalette; onApplySuggestion: (suggestion: InsightSuggestion) => void; behaviorOnly?: boolean }) {
+function InsightDashboardView({ onStartRecords, events, tasks, plans, designMode, chicPalette, onApplySuggestion, behaviorOnly = false }: { events: BehaviorEvent[]; tasks: Task[]; plans: DeparturePlan[]; designMode: DesignMode; chicPalette?: ChicThemePalette; onApplySuggestion: (suggestion: InsightSuggestion) => void; behaviorOnly?: boolean; onStartRecords?: () => void }) {
   const [range, setRange] = useState<InsightRange>('30d');
   const [metric, setMetric] = useState<InsightMetric>('preparation');
   const [conditionView, setConditionView] = useState<InsightConditionView>('weekday');
@@ -224,6 +228,7 @@ function InsightDashboardView({ events, tasks, plans, designMode, chicPalette, o
   const dashboard = useMemo(() => buildInsightDashboard(events, plans, range), [events, plans, range]);
   const theme = getThemeTokens(designMode, chicPalette?.id ?? 'cool');
   const activeMetric = dashboard.metrics[metric];
+  const hasDashboardData = Object.values(dashboard.metrics).some(item => item.sampleCount > 0) || dashboard.rates.some(item => item.denominator > 0) || dashboard.notificationResponses.total > 0 || dashboard.weekdayConditions.some(item => item.sampleCount > 0);
   const conditionData = conditionView === 'weekday' ? dashboard.weekdayConditions : dashboard.timeOfDayConditions;
   const isDark = designMode === 'dark';
   const onAccent = designMode === 'chic' && chicPalette ? chicPalette.onAccent : designMode === 'dark' ? theme.colors.screenBackground : '#FFFFFF';
@@ -234,6 +239,7 @@ function InsightDashboardView({ events, tasks, plans, designMode, chicPalette, o
     </View>
     <Text style={[styles.dashboardRangeLabel, { color: theme.colors.secondaryText }]}>{dashboard.rangeLabel}</Text>
 
+    {!hasDashboardData ? <GuidanceCard testID="analysis-dashboard-guidance" title="記録から、自分のペースを知る" description="準備・出発・通知への反応や集中の記録が、ここにまとまります。まずは予定を確認して、準備・出発や集中の記録を残してみましょう。" actionLabel="予定を確認する" onAction={onStartRecords} designMode={designMode} chicPalette={chicPalette} /> : <>
     <DashboardCard designMode={designMode} chicPalette={chicPalette}>
       <View style={styles.cardTitleRow}><Text style={[styles.dashboardKicker, { color: theme.colors.primaryAccent }]}>今の傾向</Text><TrendStatus status={dashboard.trend.status} designMode={designMode} chicPalette={chicPalette} /></View>
       <Text style={[styles.trendMessage, { color: theme.colors.primaryText }]}>{dashboard.trend.message}</Text>
@@ -279,6 +285,7 @@ function InsightDashboardView({ events, tasks, plans, designMode, chicPalette, o
       <Pressable onPress={() => setSuggestionOpen(true)} style={[styles.applySuggestionButton, { backgroundColor: theme.colors.primaryAccent }]}><Text style={[styles.applySuggestionText, { color: onAccent }]}>設定へ反映</Text></Pressable>
     </DashboardCard>}
 
+    </>}
     <Modal visible={suggestionOpen} transparent animationType="fade" onRequestClose={() => setSuggestionOpen(false)}>
       <View style={styles.suggestionModalBackdrop}><View style={[styles.suggestionModal, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
         <Text style={[styles.suggestionModalTitle, { color: theme.colors.primaryText }]}>変更内容を確認</Text>
@@ -307,6 +314,8 @@ export function AnalysisScreen({
   onApplySuggestion,
   onAnalysisUsed,
   onAIShare,
+  onStartRecords,
+  onStartRoutine,
   initialTab,
   previewKind,
 }: {
@@ -327,6 +336,8 @@ export function AnalysisScreen({
   onApplySuggestion: (suggestion: InsightSuggestion) => void;
   onAnalysisUsed?: (tab: AnalysisTab) => void;
   onAIShare?: () => void;
+  onStartRecords?: () => void;
+  onStartRoutine?: () => void;
   initialTab?: AnalysisTab;
   previewKind?: 'time' | 'behavior';
 }) {
@@ -363,7 +374,7 @@ export function AnalysisScreen({
 
       {tab === 'records' ? (
         <>
-          <View style={[styles.activityCard, designMode === 'dark' && styles.activityCardDark, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
+          {departureActivity.preparationCount === 0 && departureActivity.departureCount === 0 ? <GuidanceCard testID="analysis-records-guidance" title="今日の行動を、少しずつ記録" description="準備を始めた時刻や出発した記録が、ここにまとまります。予定を確認して、今日のひとつを始めてみましょう。" actionLabel="予定を確認する" onAction={onStartRecords} designMode={designMode} chicPalette={chicPalette} /> : <View style={[styles.activityCard, designMode === 'dark' && styles.activityCardDark, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
             <Text style={[styles.activityTitle, { color: theme.colors.primaryText }]}>出発・準備の実績</Text>
             {departureActivity.preparationCount === 0 && departureActivity.departureCount === 0 ? <Text style={{ color: theme.colors.secondaryText, fontSize: 13, lineHeight: 19, marginTop: 6 }}>準備・出発の記録がここにまとまります</Text> : <View style={styles.activityRow}>
               <View style={styles.activityMetric}>
@@ -381,15 +392,15 @@ export function AnalysisScreen({
                 </Text>
               </View>
             </View>}
-          </View>
+          </View>}
           {recordContent}
         </>
       ) : tab === 'insights' && !premium ? (
         <PremiumGate designMode={designMode} chicPalette={chicPalette} chicPattern={chicPattern} PatternDecor={PatternDecor} onPremium={() => onPremium('time')} />
       ) : tab === 'insights' ? (
-        <InsightDashboardView events={events} tasks={tasks} plans={departurePlans} designMode={designMode} chicPalette={chicPalette} onApplySuggestion={onApplySuggestion} behaviorOnly={previewKind === 'behavior'} />
+        <InsightDashboardView onStartRecords={onStartRecords} events={events} tasks={tasks} plans={departurePlans} designMode={designMode} chicPalette={chicPalette} onApplySuggestion={onApplySuggestion} behaviorOnly={previewKind === 'behavior'} />
       ) : tab === 'routine' ? (
-        <RoutineProgressPanel events={events} tasks={tasks} designMode={designMode} chicPalette={chicPalette} onRemoveRoutine={onRemoveRoutine} routineArchives={routineArchives} onResumeRoutine={onResumeRoutine} onDeleteRoutineArchive={onDeleteRoutineArchive} />
+        <RoutineProgressPanel onStartRoutine={onStartRoutine} events={events} tasks={tasks} designMode={designMode} chicPalette={chicPalette} onRemoveRoutine={onRemoveRoutine} routineArchives={routineArchives} onResumeRoutine={onResumeRoutine} onDeleteRoutineArchive={onDeleteRoutineArchive} />
       ) : null}
     </>
   );
@@ -430,9 +441,9 @@ const styles = StyleSheet.create({
   routineTaskTitle: { color: '#292530', fontSize: 12, fontWeight: '700', flex: 1, marginRight: 5 },
   routineTaskRate: { fontSize: 14, fontWeight: '900' },
   routineRateCaption: { color: '#817A88', fontSize: 10, fontWeight: '500', marginTop: 3 },
-  routineRemoveButton: { width: 20, height: 20, borderRadius: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: '#F1EDF4' },
+  routineRemoveButton: { minWidth: 44, minHeight: 44, paddingHorizontal: 8, borderRadius: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: '#F1EDF4' },
   routineRemoveButtonDark: { backgroundColor: '#303B50' },
-  routineRemoveText: { color: '#7D7386', fontSize: 16, fontWeight: '700', lineHeight: 18 },
+  routineRemoveText: { color: '#7D7386', fontSize: 12, fontWeight: '700', lineHeight: 18 },
   routineRemoveTextDark: { color: '#FF8F9C' },
   routineStreak: { color: '#817A88', fontSize: 9, fontWeight: '800', marginTop: 7 },
   routineStreakDark: { color: '#B4C0D4' },
