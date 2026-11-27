@@ -48,7 +48,8 @@ private final class FamilySharingPresenter: NSObject, UICloudSharingControllerDe
     let controller = FamilyCloudController(share: share, container: container)
     controller.onClose = { Self.active = nil }
     controller.delegate = presenter
-    controller.availablePermissions = [.allowPrivate, .allowReadWrite]
+    // These options edit CKShare participant permissions, not just app UI state.
+    controller.availablePermissions = [.allowPrivate, .allowReadOnly, .allowReadWrite]
     controller.popoverPresentationController?.sourceView = root.view
     controller.popoverPresentationController?.sourceRect = CGRect(x: root.view.bounds.midX, y: root.view.bounds.midY, width: 1, height: 1)
     active = presenter

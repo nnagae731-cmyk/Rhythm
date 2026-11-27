@@ -1,5 +1,9 @@
 # 家族共有（CloudKit基盤）
 
+最終QAと4段階公開の安全境界：`docs/family-sharing-final-qa.md`（repoルート）。閲覧専用/編集可能はCKShareの実権限としてApple標準UIで管理する。個人予定の4段階公開を既存FamilyGroupの子＋UI制限だけで実装してはいけない。
+
+開発フラグ時のみ `rhythmFamily.debug` に `setAutomaticSync` / `sendPending` / `diagnostics` / `probeReadOnlyWrite` を追加。Native側もDEBUG限定。明示呼び出しだけで実行し、通常画面/起動時には何も作らない。権限probeのCloudKit拒否は新しいNativeビルドで実機確認し、通信失敗を権限検証PASSにしない。
+
 個人用 `features/sync`（KVS）、`storage`、PersistedState、旧 `features/shared` の共有パケットとは別実装。UI統合は後続。
 
 - 窓口：`familySharing.ts`。Native module不在／Androidはunavailable、iCloud不在もunavailable。通常画面に共有ボタンを足さない。

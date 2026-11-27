@@ -1,5 +1,12 @@
 # Rhythm Full Handoff
 
+## 2026-11-28 家族共有の最新引き継ぎ（下の過去記録より優先）
+
+- `f1a29bf` のDevelopment Nativeビルドは成功。別Apple ID 2台で基本共有・双方向変更・オフラインqueue復元・共有停止を実機確認済み。個人タスク/日記は未登録、Widget未設置だったため保持への影響は未検証。
+- 現在は残件の最終QA段階。閲覧専用をCloudKit実権限として選択可能にする修正、permissionFailure後のreadOnly権限再検証、DEBUG限定の実サーバー拒否/競合検証手段を追加する。新ビルドでの実機結果が揃うまでは全体完了扱いにしない。
+- 最新の変更内容・検証状態・個人予定4段階公開の安全境界は `docs/family-sharing-final-qa.md` を参照。現在のFamilyGroup共有階層＋UI制限だけでは4段階公開は実現不可。個人原本を共有階層へ移さない。
+- CloudKit Development維持、Production schema deploy禁止。個人PersistedState/KVS/Widget識別子、既存証明書/APNsキーを維持。今回のEAS Buildは承認された1回のみ。
+
 更新基準: 2026-08-20
 
 この文書はRhythmの現在仕様、

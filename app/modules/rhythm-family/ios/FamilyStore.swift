@@ -16,6 +16,19 @@ public actor FamilyStore: CKSyncEngineDelegate {
   private var syncTaskID: UUID?
   private var syncRevision = 0
   private var generation = 0
+#if DEBUG
+  private var qaAutomaticSync = true
+  private var qaConflicts = 0
+  private var qaPermissionFailures = 0
+#endif
+
+  private func engineConfiguration(_ scope: String, checkpoint: CKSyncEngine.State.Serialization?) -> CKSyncEngine.Configuration {
+    var config = CKSyncEngine.Configuration(database: database(scope), stateSerialization: checkpoint, delegate: self)
+#if DEBUG
+    config.automaticallySync = qaAutomaticSync
+#endif
+    return config
+  }
 
   private func database(_ scope: String) -> CKDatabase { scope == "private" ? container.privateCloudDatabase : container.sharedCloudDatabase }
   private func commit(notify: Bool = true, _ body: (inout FamilyArchive) throws -> Void) throws {
@@ -47,7 +60,7 @@ public actor FamilyStore: CKSyncEngineDelegate {
     } else { existing = FamilyArchive() }
     user = identity; archive = existing; file = location; healthy = true
     for scope in ["private", "shared"] {
-      let config = CKSyncEngine.Configuration(database: database(scope), stateSerialization: archive.checkpoints[scope], delegate: self)
+      let config = engineConfiguration(scope, checkpoint: archive.checkpoints[scope])
       engines[scope] = CKSyncEngine(config)
     }
     // Reconcile durable outbox even if the process stopped before stateUpdate.
@@ -61,6 +74,9 @@ public actor FamilyStore: CKSyncEngineDelegate {
     syncTask?.cancel(); syncTask = nil; syncTaskID = nil
     let old = Array(engines.values)
     engines = [:]; user = nil; file = nil; archive = FamilyArchive(); healthy = true
+#if DEBUG
+    qaAutomaticSync = true; qaConflicts = 0; qaPermissionFailures = 0
+#endif
     // Never await cancellation inside the engine's own delegate callback.
     for engine in old { Task { await engine.cancelOperations() } }
     NotificationCenter.default.post(name: Self.changed, object: nil)
@@ -181,6 +197,32 @@ public actor FamilyStore: CKSyncEngineDelegate {
     if let raw = args["group"] { try await verifyAccess(FamilyAddress.parse(raw)) }
     guard requestGeneration == generation else { throw familyError("Account changed") }
     switch operation {
+#if DEBUG
+    case "debugSetAutomaticSync":
+      guard let enabled = args["enabled"] as? Bool else { throw familyError("Invalid QA setting") }
+      qaAutomaticSync = enabled
+      for engine in Array(engines.values) {
+        await engine.cancelOperations()
+        guard requestGeneration == generation else { throw familyError("Account changed") }
+      }
+      for scope in ["private", "shared"] {
+        engines[scope] = CKSyncEngine(engineConfiguration(scope, checkpoint: archive.checkpoints[scope]))
+      }
+      for p in archive.pending.values { enqueue(p) }
+      for a in archive.zoneDeletes.values { engines[a.scope]?.state.add(pendingDatabaseChanges: [.deleteZone(a.id.zoneID)]) }
+      return ["automaticallySync": enabled]
+    case "debugSendPending":
+      // No prefetch: lets real CloudKit recordChangeTag conflicts be observed.
+      for engine in Array(engines.values) {
+        try await engine.sendChanges()
+        guard requestGeneration == generation else { throw familyError("Account changed") }
+      }
+      return ["conflicts": qaConflicts, "permissionFailures": qaPermissionFailures]
+    case "debugDiagnostics":
+      return ["conflicts": qaConflicts, "permissionFailures": qaPermissionFailures, "automaticallySync": qaAutomaticSync]
+    case "debugProbeReadOnlyWrite":
+      return try await probeReadOnlyWrite(FamilyAddress.parse(args["group"]))
+#endif
     case "initialize": return ["available": true]
     case "snapshot": return try snapshot()
     case "sync": try await sync(); return true
@@ -431,13 +473,71 @@ public actor FamilyStore: CKSyncEngineDelegate {
   private func resetEngine(_ scope: String) async throws {
     let old = engines[scope]
     try commit(notify: false) { $0.checkpoints[scope] = nil }
-    engines[scope] = CKSyncEngine(CKSyncEngine.Configuration(database: database(scope), stateSerialization: nil, delegate: self))
+    engines[scope] = CKSyncEngine(engineConfiguration(scope, checkpoint: nil))
     for p in archive.pending.values where p.address.scope == scope { enqueue(p) }
     if let old { Task { await old.cancelOperations() } }
   }
   private func markFailed(_ address: FamilyAddress, code: Int) throws {
     try commit { $0.syncStates[address.key] = FamilySyncState(record: address, state: "failed", errorCode: code) }
   }
+
+  private func recoverPermissionFailure(_ address: FamilyAddress) async throws {
+    let gen = generation
+    var readOnly: FamilyAccess?
+    if address.scope == "shared" {
+      // A downgrade is not a revocation: query the actual CKShare before
+      // discarding unauthorized optimistic changes and refetching server data.
+      do {
+        let root = try await database("shared").record(for: address.id)
+        if let shareID = root.share?.recordID,
+           let share = try await database("shared").record(for: shareID) as? CKShare,
+           let participant = share.currentUserParticipant,
+           participant.acceptanceStatus == .accepted, participant.permission == .readOnly {
+          readOnly = FamilyAccess(group: address, role: "participant", permission: "readOnly", status: "accepted", checkedAt: Date().timeIntervalSince1970 * 1000)
+        }
+      } catch { log(error) }
+    }
+    guard gen == generation else { return }
+    try purge(address.id.zoneID, scope: address.scope)
+    if let readOnly { try commit { $0.access[address.key] = readOnly } }
+  }
+
+#if DEBUG
+  private func probeReadOnlyWrite(_ address: FamilyAddress) async throws -> [String: Any] {
+    guard address.scope == "shared", let user else { throw familyError("QA probe requires participant") }
+    try await verifyAccess(address)
+    guard archive.access[address.key]?.permission == "readOnly" else { throw familyError("QA probe requires server-verified readOnly access") }
+    let gen = generation
+    let probe = CKRecord(recordType: "SharedTodo", recordID: CKRecord.ID(recordName: "qa-permission-" + UUID().uuidString, zoneID: address.id.zoneID))
+    probe.parent = CKRecord.Reference(recordID: address.id, action: .none)
+    probe["title"] = "QA_PERMISSION_PROBE" as CKRecordValue
+    probe["creatorId"] = user as CKRecordValue; probe["done"] = NSNumber(value: 0)
+    stampFamilyRecord(probe)
+    // Intentionally bypass local write guards ONLY in DEBUG to test CloudKit's
+    // real authority. Never inserts the probe into the local cache/outbox.
+    let outcome: Result<CKRecord, Error>
+    do {
+      let result = try await database("shared").modifyRecords(saving: [probe], deleting: [], savePolicy: .ifServerRecordUnchanged, atomically: true)
+      guard let saved = result.saveResults[probe.recordID] else { throw familyError("Missing CloudKit probe result") }
+      outcome = saved
+    } catch { outcome = .failure(error) }
+    guard gen == generation else { throw familyError("Account changed") }
+    switch outcome {
+    case .success:
+      // Unexpected server acceptance is a FAILED test. Remove only this probe.
+      var removed = false
+      do {
+        let cleanup = try await database("shared").modifyRecords(saving: [], deleting: [probe.recordID], atomically: true)
+        if let result = cleanup.deleteResults[probe.recordID] { try result.get(); removed = true }
+      } catch { log(error) }
+      return ["serverRejected": false, "unexpectedWrite": true, "cleanupSucceeded": removed]
+    case .failure(let error):
+      let batchError = error as? CKError
+      let specific = (batchError?.partialErrorsByItemID?[probe.recordID] as? CKError) ?? batchError
+      return ["serverRejected": specific?.code == .permissionFailure, "cloudKitErrorCode": specific?.code.rawValue ?? -1, "unexpectedWrite": false]
+    }
+  }
+#endif
 }
 
 // MARK: - CKSyncEngine: both owner's private DB and participant's shared DB.
@@ -490,6 +590,7 @@ extension FamilyStore {
   public func handleEvent(_ event: CKSyncEngine.Event, syncEngine: CKSyncEngine) async {
     guard healthy, let scope = scope(of: syncEngine) else { return }
     var needsReset = false
+    var permissionFailures = Set<FamilyAddress>()
     do {
       switch event {
       case .stateUpdate(let e): try commit { $0.checkpoints[scope] = e.stateSerialization }
@@ -514,19 +615,24 @@ extension FamilyStore {
           let address = FamilyAddress(scope: scope, id: failure.record.recordID)
           try markFailed(address, code: failure.error.code.rawValue)
           if failure.error.code == .serverRecordChanged, let server = failure.error.serverRecord {
+#if DEBUG
+            qaConflicts += 1
+#endif
             try receive(server, scope: scope)
             if let p = archive.pending[FamilyAddress(scope: scope, id: server.recordID).key] { enqueue(p) }
           } else if failure.error.code == .unknownItem || failure.error.code == .zoneNotFound || failure.error.code == .permissionFailure {
             // Never resurrect a removed record/share or recreate a revoked zone.
             if failure.error.code == .unknownItem { try hardDelete(failure.record.recordID, scope: scope) }
-            else { try purge(failure.record.recordID.zoneID, scope: scope) }
-            if failure.error.code == .permissionFailure { needsReset = true }
+            else if failure.error.code == .permissionFailure {
+              permissionFailures.insert(FamilyAddress(scope: scope, id: CKRecord.ID(recordName: "group", zoneID: failure.record.recordID.zoneID)))
+            } else { try purge(failure.record.recordID.zoneID, scope: scope) }
           } else { log(failure.error) } // CKSyncEngine retries transient errors.
         }
         for (id, error) in e.failedRecordDeletes {
           try markFailed(FamilyAddress(scope: scope, id: id), code: error.code.rawValue)
           if error.code == .unknownItem { try hardDelete(id, scope: scope) }
-          else if error.code == .zoneNotFound || error.code == .permissionFailure { try purge(id.zoneID, scope: scope); needsReset = error.code == .permissionFailure || needsReset }
+          else if error.code == .permissionFailure { permissionFailures.insert(FamilyAddress(scope: scope, id: CKRecord.ID(recordName: "group", zoneID: id.zoneID))) }
+          else if error.code == .zoneNotFound { try purge(id.zoneID, scope: scope) }
           else { log(error) }
         }
       case .sentDatabaseChanges(let e):
@@ -538,7 +644,14 @@ extension FamilyStore {
         }
       default: break
       }
-      if needsReset { try await resetEngine(scope) }
+      for address in permissionFailures {
+#if DEBUG
+        qaPermissionFailures += 1
+#endif
+        try await recoverPermissionFailure(address)
+        needsReset = true
+      }
+      if needsReset, self.scope(of: syncEngine) != nil { try await resetEngine(scope) }
     } catch {
       // Do not checkpoint past unpersisted fetched data. Disk failure disables
       // this account's session; restart replays from the last durable archive.
