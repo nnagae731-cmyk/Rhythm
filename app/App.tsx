@@ -1,3 +1,4 @@
+import { useRhythmPersistence } from './storage/useRhythmPersistence';
 import { usePhotoTheme } from './features/photo/usePhotoTheme';
 import { ensureNotifications, scheduleAffirmationNotification } from './features/notifications/notificationSetup';
 import { type DepartureNotificationAction, departureNotificationActions } from './features/departure/departureNotifications';
@@ -61,7 +62,7 @@ import { Affirmation, AffirmationCustomText, AppNotice, AppNoticeCategory, Calen
 import { isOneOffWishTask, linkedWishAction, readWishTaskOrigin, sameWishTaskOrigin, taskChangesAfterWishEdit, wishMonthsAfterTaskCompletion, wishTaskForActionDeletion } from './features/wish/wishTaskLink';
 import { initialPlan } from './storage/rhythmState';
 import { DEFAULT_TRAVEL_APP_SETTINGS, normalizeTravelAppSettings, TravelAppSettings } from './features/travel/travelApps';
-import { loadRhythmState, saveRhythmState } from './storage/rhythmStorage';
+import { loadRhythmState } from './storage/rhythmStorage';
 import { acknowledgeRhythmWidgetPendingActions, buildRhythmWidgetSnapshot, getRhythmWidgetPendingActions, saveRhythmAffirmationPhoto, saveRhythmWidgetPhoto, saveRhythmWidgetPhotoForWidget, saveRhythmWidgetSnapshot } from './features/widget/rhythmWidgetSnapshot';
 import { DEFAULT_WIDGET_SETTINGS, getWidgetCustomization, normalizeWidgetSettings, WIDGET_TYPE_OPTIONS } from './features/widget/widgetSettings';
 import type { WidgetEntitlementOverride } from './features/widget/widgetSettings';
@@ -269,27 +270,7 @@ export default function App() {
     });
     return () => { active = false; subscription.remove(); };
   }, []);
-  const persistenceDisabledRef = React.useRef(false);
-  const saveFailureNotifiedRef = React.useRef(false);
-  const [persistenceIssue, setPersistenceIssue] = useState<'read' | 'write' | undefined>(undefined);
-  const [hydrationRetry, setHydrationRetry] = useState(0);
-  const [saveRetry, setSaveRetry] = useState(0);
-  const [persistenceRetrying, setPersistenceRetrying] = useState(false);
-  const persistenceTimerRef = React.useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-  const latestPersistedStateRef = React.useRef<PersistedState | undefined>(undefined);
-  const latestPersistedWishMonthsRef = React.useRef<WishMonthMap | undefined>(undefined);
-  const pendingWishSavesRef = React.useRef<Array<{ expected?: WishMonthMap; resolve: () => void; reject: (error: Error) => void }>>([]);
-  const pendingSettingsSavesRef = React.useRef<Array<{ matches: (state: PersistedState) => boolean; resolve: () => void; reject: (error: Error) => void }>>([]);
   const departureSavingRef = React.useRef(false);
-  const waitForSettingsSave = (matches: (state: PersistedState) => boolean) => new Promise<void>((resolve, reject) => {
-    if (!hydratedRef.current || persistenceDisabledRef.current) { reject(new Error('保存データを確認できません')); return; }
-    pendingSettingsSavesRef.current.push({ matches, resolve, reject });
-  });
-  const settleSettingsSave = (state: PersistedState, error?: unknown, snapshotPending = pendingSettingsSavesRef.current) => {
-    const pending = snapshotPending.filter((item) => pendingSettingsSavesRef.current.includes(item) && item.matches(state));
-    pendingSettingsSavesRef.current = pendingSettingsSavesRef.current.filter((item) => !pending.includes(item));
-    pending.forEach((item) => error ? item.reject(error instanceof Error ? error : new Error('保存に失敗しました')) : item.resolve());
-  };
   const startupPhotoReferencesRef = React.useRef<Set<string> | undefined>(undefined);
   const pendingNotificationCompletionIdsRef = React.useRef<string[]>([]);
   const pendingWidgetActionsProcessingRef = React.useRef(false);
@@ -476,6 +457,8 @@ export default function App() {
     pending();
   }, []);
   const [hydrated, setHydrated] = useState(false);
+  const createPersistedSnapshot = React.useCallback((): PersistedState => ({ tasks, plan, departurePlans, widgetSize, widgetSettings, showCompleted, completionIcon, designMode, monoAppearance, monoPattern, hapticsEnabled, premiumTrialReminderEnabled, liveActivityEnabled, liveActivityDisplayOptions, liveActivityCustomization, reviewPromptedAt, readNoticeIds: [...new Set(readNoticeIds)], tomorrowPrepPromptedDate, routineRemainingNotifiedDate, taskTemplates, savedTaskTemplates, chicPattern, chicCheckColor, recoveryHistory: pruneRecoveryHistory(recoveryHistory), focusSessions: pruneFocusSessions(focusSessions), focusState, focusCustomDurationMinutes, departureCheckIns, behaviorEvents: pruneBehaviorEvents(behaviorEvents), wishMonths: normalizeWishMonthsForSave(wishMonths), calendarMarks, calendarImportCalendarIds, calendarImportKnownCalendarIds, sharedEvents, sharedParticipantIdsByToken, sharedParticipantPrefsByToken, departurePreparationStatuses, affirmations, affirmationCustomTexts, photoTheme, travelApps, designCustomizePurchased, routineArchives: pruneRoutineArchives(routineArchives), voiceUsage: normalizeVoiceUsage(voiceUsage, dateKey()) }), [tasks, plan, departurePlans, widgetSize, widgetSettings, showCompleted, completionIcon, designMode, monoAppearance, monoPattern, hapticsEnabled, premiumTrialReminderEnabled, liveActivityEnabled, liveActivityDisplayOptions, liveActivityCustomization, reviewPromptedAt, readNoticeIds, tomorrowPrepPromptedDate, routineRemainingNotifiedDate, taskTemplates, savedTaskTemplates, chicPattern, chicCheckColor, recoveryHistory, focusSessions, focusState, focusCustomDurationMinutes, departureCheckIns, behaviorEvents, wishMonths, calendarMarks, calendarImportCalendarIds, calendarImportKnownCalendarIds, sharedEvents, sharedParticipantIdsByToken, sharedParticipantPrefsByToken, departurePreparationStatuses, affirmations, affirmationCustomTexts, photoTheme, travelApps, designCustomizePurchased, routineArchives, voiceUsage]);
+  const { persistenceDisabledRef, persistenceIssue, setPersistenceIssue, hydrationRetry, setHydrationRetry, setSaveRetry, persistenceRetrying, setPersistenceRetrying, pendingWishSavesRef, latestPersistedStateRef, waitForSettingsSave } = useRhythmPersistence({ hydrated, hydratedRef, createSnapshot: createPersistedSnapshot, wishMonths, setSavedJournalMonths });
   const configuredPlanTier: PlanTier = process.env.EXPO_PUBLIC_RHYTHM_PLAN === 'premium' ? 'premium' : 'free';
   // Development-only override for validating both purchase states before the
   // App Store product is configured. It is intentionally session-scoped and
@@ -2159,6 +2142,10 @@ export default function App() {
   useEffect(() => { sharedParticipantPrefsByTokenRef.current = sharedParticipantPrefsByToken; }, [sharedParticipantPrefsByToken]);
   useEffect(() => { planTierRef.current = planTier; }, [planTier]);
 
+  // Stable subscriptions read the current callbacks without restarting hydration.
+  const notificationCallbacksRef = React.useRef({ applyPremiumDepartureNotificationAction, recordNotificationBehaviorAction, recordBehaviorEvent, syncSharedEventPacket, openSharedEventToken });
+  notificationCallbacksRef.current = { applyPremiumDepartureNotificationAction, recordNotificationBehaviorAction, recordBehaviorEvent, syncSharedEventPacket, openSharedEventToken };
+
   useEffect(() => {
     let active = true;
     hydratedRef.current = false;
@@ -2323,10 +2310,10 @@ export default function App() {
         setHydrated(true);
         const pendingIds = [...new Set(pendingNotificationCompletionIdsRef.current)];
         pendingNotificationCompletionIdsRef.current = [];
-        if (pendingIds.length > 0) completeTaskIds(pendingIds, 'notification');
+        if (pendingIds.length > 0) completeTaskIdsRef.current(pendingIds, 'notification');
         const pendingDepartureActions = pendingDepartureNotificationActionsRef.current;
         pendingDepartureNotificationActionsRef.current = [];
-        pendingDepartureActions.forEach(({ planId, action, notificationInstanceId }) => applyPremiumDepartureNotificationAction(planId, action, notificationInstanceId));
+        pendingDepartureActions.forEach(({ planId, action, notificationInstanceId }) => notificationCallbacksRef.current.applyPremiumDepartureNotificationAction(planId, action, notificationInstanceId));
         const pendingNotificationActions = pendingNotificationBehaviorActionsRef.current;
         pendingNotificationBehaviorActionsRef.current = [];
         const pendingBehaviorEvents = pendingBehaviorEventsRef.current;
@@ -2336,20 +2323,20 @@ export default function App() {
           behaviorEventsRef.current = updated;
           setBehaviorEvents(updated);
         }
-        pendingNotificationActions.forEach(recordNotificationBehaviorAction);
+        pendingNotificationActions.forEach((action) => notificationCallbacksRef.current.recordNotificationBehaviorAction(action));
         const pendingSharedPackets = pendingSharedEventPacketsRef.current;
         pendingSharedEventPacketsRef.current = [];
         pendingSharedPackets.forEach((packet) => {
-          const normalized = syncSharedEventPacket(packet);
+          const normalized = notificationCallbacksRef.current.syncSharedEventPacket(packet);
           const ownerParticipantId = normalized.participants[0]?.participantId;
           if (ownerParticipantId && !sharedParticipantIdsByTokenRef.current[normalized.shareToken]) {
             setSharedParticipantIdsByToken((current) => ({ ...current, [normalized.shareToken]: ownerParticipantId }));
           }
-          openSharedEventToken(normalized.shareToken);
+          notificationCallbacksRef.current.openSharedEventToken(normalized.shareToken);
         });
         const pendingSharedTokens = [...new Set(pendingSharedEventTokensRef.current)];
         pendingSharedEventTokensRef.current = [];
-        pendingSharedTokens.forEach((shareToken) => openSharedEventToken(shareToken));
+        pendingSharedTokens.forEach((shareToken) => notificationCallbacksRef.current.openSharedEventToken(shareToken));
         const pendingNotificationNavigation = [...new Set(pendingNotificationNavigationRef.current)];
         pendingNotificationNavigationRef.current = [];
         pendingNotificationNavigation.forEach((route) => {
@@ -2363,6 +2350,10 @@ export default function App() {
         });
       });
 
+    return () => { active = false; };
+  }, [hydrationRetry]);
+
+  useEffect(() => {
     const responseSubscription = Notifications.addNotificationResponseReceivedListener((response) => {
       const notificationData = response.notification.request.content.data;
       if (notificationData?.kind === 'affirmation' && typeof notificationData.affirmationId === 'string') {
@@ -2397,7 +2388,7 @@ export default function App() {
           pendingDepartureNotificationActionsRef.current.push({ planId: departurePlanId, action: departureAction, notificationInstanceId });
           return;
         }
-        applyPremiumDepartureNotificationAction(departurePlanId, departureAction, notificationInstanceId);
+        notificationCallbacksRef.current.applyPremiumDepartureNotificationAction(departurePlanId, departureAction, notificationInstanceId);
         return;
       }
 
@@ -2417,7 +2408,7 @@ export default function App() {
 
       if (typeof taskId !== 'string') return;
       if (action === 'DONE' || action === 'SNOOZE') {
-        recordNotificationBehaviorAction({ notificationInstanceId, action: action === 'DONE' ? 'completed' : 'snoozed', taskId, actualAt: new Date() });
+        notificationCallbacksRef.current.recordNotificationBehaviorAction({ notificationInstanceId, action: action === 'DONE' ? 'completed' : 'snoozed', taskId, actualAt: new Date() });
       }
       if (action === 'DONE') {
         if (!hydratedRef.current) {
@@ -2449,7 +2440,7 @@ export default function App() {
             trigger: { type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL, seconds },
           });
           if (hasPremiumAccess(planTierRef.current, 'time_analysis')) {
-            recordBehaviorEvent(createNotificationScheduledEvent({ notificationInstanceId: nextNotificationInstanceId, taskId, taskTitle: task.title, scheduledAt, occurredAt: new Date() }));
+            notificationCallbacksRef.current.recordBehaviorEvent(createNotificationScheduledEvent({ notificationInstanceId: nextNotificationInstanceId, taskId, taskTitle: task.title, scheduledAt, occurredAt: new Date() }));
           }
         }).catch((error) => {
           if (__DEV__) console.warn('[Notifications] task action scheduling failed', error);
@@ -2457,89 +2448,15 @@ export default function App() {
       }
     });
 
-    return () => { active = false; responseSubscription.remove(); };
-  }, [handleDepartureStill, markDeparturePlanAsDeparted, markDeparturePreparationStarted, openPremiumFeature, recordBehaviorEvent, recordNotificationBehaviorAction, hydrationRetry]);
+    return () => responseSubscription.remove();
+  }, []);
 
   useEffect(() => {
     const timer = setInterval(() => setNow(new Date()), 30_000);
     return () => clearInterval(timer);
   }, []);
 
-  useEffect(() => {
-    if (!hydrated) return;
-    const state: PersistedState = { tasks, plan, departurePlans, widgetSize, widgetSettings, showCompleted, completionIcon, designMode, monoAppearance, monoPattern, hapticsEnabled, premiumTrialReminderEnabled, liveActivityEnabled, liveActivityDisplayOptions, liveActivityCustomization, reviewPromptedAt, readNoticeIds: [...new Set(readNoticeIds)], tomorrowPrepPromptedDate, routineRemainingNotifiedDate, taskTemplates, savedTaskTemplates, chicPattern, chicCheckColor, recoveryHistory: pruneRecoveryHistory(recoveryHistory), focusSessions: pruneFocusSessions(focusSessions), focusState, focusCustomDurationMinutes, departureCheckIns, behaviorEvents: pruneBehaviorEvents(behaviorEvents), wishMonths: normalizeWishMonthsForSave(wishMonths), calendarMarks, calendarImportCalendarIds, calendarImportKnownCalendarIds, sharedEvents, sharedParticipantIdsByToken, sharedParticipantPrefsByToken, departurePreparationStatuses, affirmations, affirmationCustomTexts, photoTheme, travelApps, designCustomizePurchased, routineArchives: pruneRoutineArchives(routineArchives), voiceUsage: normalizeVoiceUsage(voiceUsage, dateKey()) };
-    latestPersistedStateRef.current = state;
-    latestPersistedWishMonthsRef.current = wishMonths;
-    if (persistenceDisabledRef.current) return;
-    const supersededSettingsSaves = pendingSettingsSavesRef.current.filter((item) => !item.matches(state));
-    pendingSettingsSavesRef.current = pendingSettingsSavesRef.current.filter((item) => !supersededSettingsSaves.includes(item));
-    supersededSettingsSaves.forEach((item) => item.reject(new Error('保存中に設定が変更されました。もう一度お試しください。')));
-    const supersededWishSaves = pendingWishSavesRef.current.filter((item) => item.expected && item.expected !== wishMonths);
-    pendingWishSavesRef.current = pendingWishSavesRef.current.filter((item) => !supersededWishSaves.includes(item));
-    supersededWishSaves.forEach((item) => item.reject(new Error('保存中にデータが変更されました。もう一度お試しください。')));
-    if (persistenceTimerRef.current) clearTimeout(persistenceTimerRef.current);
-    persistenceTimerRef.current = setTimeout(() => {
-      persistenceTimerRef.current = undefined;
-      const pendingForSnapshot = pendingWishSavesRef.current.filter((item) => item.expected === wishMonths);
-      const pendingSettingsForSnapshot = pendingSettingsSavesRef.current.filter((item) => item.matches(state));
-      void saveRhythmState(state).then(() => {
 
-        setSavedJournalMonths(state.wishMonths ?? {});
-        if (!persistenceDisabledRef.current && latestPersistedStateRef.current === state) { setPersistenceIssue(undefined); setPersistenceRetrying(false); saveFailureNotifiedRef.current = false; }
-        settleSettingsSave(state, undefined, pendingSettingsForSnapshot);
-        const unsettled = pendingForSnapshot.filter((item) => pendingWishSavesRef.current.includes(item));
-        pendingWishSavesRef.current = pendingWishSavesRef.current.filter((item) => !unsettled.includes(item));
-        unsettled.forEach((item) => item.resolve());
-      }).catch((error) => {
-        if (!persistenceDisabledRef.current) { setPersistenceIssue('write'); setPersistenceRetrying(false); }
-        settleSettingsSave(state, error, pendingSettingsForSnapshot);
-        const unsettled = pendingForSnapshot.filter((item) => pendingWishSavesRef.current.includes(item));
-        pendingWishSavesRef.current = pendingWishSavesRef.current.filter((item) => !unsettled.includes(item));
-        unsettled.forEach((item) => item.reject(error instanceof Error ? error : new Error('保存に失敗しました')));
-        console.warn('Rhythm state save failed.', error);
-        if (!saveFailureNotifiedRef.current) {
-          saveFailureNotifiedRef.current = true;
-          Alert.alert('保存できませんでした', '空き容量や端末の設定を確認して、もう一度お試しください。');
-        }
-      });
-    }, 80);
-    return () => {
-      if (persistenceTimerRef.current) clearTimeout(persistenceTimerRef.current);
-    };
-  }, [tasks, plan, departurePlans, widgetSize, widgetSettings, showCompleted, completionIcon, designMode, monoAppearance, monoPattern, hapticsEnabled, premiumTrialReminderEnabled, liveActivityEnabled, liveActivityDisplayOptions, liveActivityCustomization, reviewPromptedAt, readNoticeIds, tomorrowPrepPromptedDate, routineRemainingNotifiedDate, taskTemplates, savedTaskTemplates, chicPattern, chicCheckColor, recoveryHistory, focusSessions, focusState, focusCustomDurationMinutes, departureCheckIns, behaviorEvents, wishMonths, calendarMarks, calendarImportCalendarIds, calendarImportKnownCalendarIds, sharedEvents, sharedParticipantIdsByToken, sharedParticipantPrefsByToken, departurePreparationStatuses, affirmations, affirmationCustomTexts, photoTheme, travelApps, designCustomizePurchased, routineArchives, voiceUsage, hydrated, saveRetry]);
-
-  useEffect(() => {
-    if (!hydrated) return;
-    const subscription = AppState.addEventListener('change', (nextState) => {
-      if (nextState !== 'inactive' && nextState !== 'background') return;
-      if (persistenceTimerRef.current) {
-        clearTimeout(persistenceTimerRef.current);
-        persistenceTimerRef.current = undefined;
-      }
-      const pending = latestPersistedStateRef.current;
-      if (pending && !persistenceDisabledRef.current) {
-        const pendingForSnapshot = pendingWishSavesRef.current.filter((item) => item.expected === latestPersistedWishMonthsRef.current);
-        const pendingSettingsForSnapshot = pendingSettingsSavesRef.current.filter((item) => item.matches(pending));
-        void saveRhythmState(pending).then(() => {
-
-          setSavedJournalMonths(pending.wishMonths ?? {});
-          if (!persistenceDisabledRef.current && latestPersistedStateRef.current === pending) { setPersistenceIssue(undefined); setPersistenceRetrying(false); saveFailureNotifiedRef.current = false; }
-          settleSettingsSave(pending, undefined, pendingSettingsForSnapshot);
-          const unsettled = pendingForSnapshot.filter((item) => pendingWishSavesRef.current.includes(item));
-          pendingWishSavesRef.current = pendingWishSavesRef.current.filter((item) => !unsettled.includes(item));
-          unsettled.forEach((item) => item.resolve());
-        }).catch((error) => {
-          if (!persistenceDisabledRef.current) { setPersistenceIssue('write'); setPersistenceRetrying(false); }
-          settleSettingsSave(pending, error, pendingSettingsForSnapshot);
-          const unsettled = pendingForSnapshot.filter((item) => pendingWishSavesRef.current.includes(item));
-          pendingWishSavesRef.current = pendingWishSavesRef.current.filter((item) => !unsettled.includes(item));
-          unsettled.forEach((item) => item.reject(error instanceof Error ? error : new Error('保存に失敗しました')));
-          console.warn('Rhythm background save failed.', error);
-        });
-      }
-    });
-    return () => subscription.remove();
-  }, [hydrated]);
 
   useEffect(() => {
     if (!hydrated) return;

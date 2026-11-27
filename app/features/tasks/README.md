@@ -42,3 +42,9 @@
 `qa-app-root-probe.test.js`：本番AppをUIから操作し、Mono Light/Dark/Designで登録→表の表示→チェック→編集→並替→削除→キャンセル→再読込、旧サブタスクと既存メモの併存→保存失敗→再試行→再起動を検証。保存コールバックはMockしない。
 
 iPhoneのキーボード・スクロール・実際のWidget／Live Activity描画は別途実機確認が必要。
+
+## 繰り返し・日付の重複整理（2026-11-27）
+
+統合前の等価性テストを先に実行し、共通の日付10関数はdateTimeUtilsへ、繰り返しヘルパー4関数は依存循環のないrepeatDateUtilsへ集約した。taskUtils/repeatUtilsの公開exportは維持する。完了処理2関数のID生成・リマインド日補完と、countdownToClockの不正値判定は相違があるため統合しない。旧実装fixtureと相違固定テストを残す。
+
+全17ペアの一覧と理由は `docs/notification-repeat-refactor.md`、検証は `qa-repeat-equivalence.test.js` を参照。

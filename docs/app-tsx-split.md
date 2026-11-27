@@ -121,7 +121,21 @@ default App・DesignTryOnModal・FloralPatternDecorのexportを維持し、デ�
 ## 次の分割候補（Phase 5以降）
 
 カレンダー等のUI部品、写真・音声・広告・Wishのドメインhook、保存・復元hook。
-次は保存・復元hook化を候補とするが、読込・保存キュー・失敗リトライは別段階で検証する。Phase 4-2は未コミット・未push・EAS Build未実施（Phase 4-1まではmain `9fc8e76` にpush済み）。
+次は保存・復元hook化を候補とするが、読込・保存キュー・失敗リトライは別段階で検証する。Phase 4-2とTask・日記UX改善まではmain `1dcdfa6` にpush済み。EAS Buildは未実施。
+
+## Phase 5-1：保存処理のhook化（2026-11-27）
+
+- `storage/useRhythmPersistence.ts`：保存用state/ref、設定・Wish保存待ち、80ms遅延保存、background/inactive時の保存を移動。読込と復元はAppに残す。
+- App.tsx：6,211行 → 6,120行。保存項目・依存値、移動13宣言、保存effectの本文、残ったApp処理の一致を確認。
+- 提案の`useMemo`値渡しはsnapshot生成関数へ調整。読込前の生成を避け、同内容の再試行でも新しいsnapshotを生成し、参照同一性による完了判定と時刻依存の正規化を維持する。
+- 保存キー・形式・直列書込キュー、保存成功時だけの日記receipt更新は変更なし。
+- hook回帰4件PASS：読込前/読込失敗時の書込保護、実書込完了までの待機、古い要求の失効、失敗後の同内容再試行。
+- 全体実行は40 suites・346件中345件PASS、関連メモdarkの保存待ち1件FAIL。その1件の単独再実行と、同suite全43件の再実行はPASS。全体一発PASSとは記録しない。再実行時にJestの未終了非同期処理警告あり。
+- 型チェック・iOS向けJS export・diffチェックPASS。Native background動作はiPhoneで最終確認する。今回分は未コミット・未push。
+
+## 通知リスナー分離・重複実装の整理（2026-11-27）
+
+通知レスポンスリスナーのhydrationからの分離と、繰り返し/日付重複の棚卸し・検証・統合は、別段階として `docs/notification-repeat-refactor.md` に記録する。Phase 5保存hookを前提に適用し、pushはしない。
 
 ## メモ整理後の最終確認（2026-11-27）
 

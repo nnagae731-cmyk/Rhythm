@@ -573,3 +573,9 @@ Focus READMEを参照する。
 
 既存基盤を再利用し、
 必要なfeatureへ最小差分で接続する。
+
+## 通知レスポンスの購読と復元（2026-11-27）
+
+Appのレスポンスリスナーはマウントごとに1回登録し、unmountで解除する。callbackのidentityやhydration retryで張り替えず、毎render更新するref経由で最新callbackを呼ぶ。hydrationは明示retryだけで再実行し、読込失敗時は既存データと保存停止を維持する。保留キューの再生順序は変更しない。
+
+検証・パッチの適用順は `docs/notification-repeat-refactor.md`、本番App回帰は `qa-notification-subscription.test.js` を参照。

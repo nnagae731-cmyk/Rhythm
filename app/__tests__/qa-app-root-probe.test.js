@@ -49,7 +49,8 @@ test.each(['minimal','dark','chic'])('本番Appでタイトル直下の関連メ
  fireEvent.press(section().getByRole('button',{name:'関連メモ'}));add('牛乳を買う');add('パンを買う');
  fireEvent.press(form().getByText('登録する'));
  const saved=async()=>(await loadRhythmState()).tasks.find(t=>t.title==='買い物とメモQA');
- await waitFor(async()=>expect((await saved())?.listItems.map(i=>i.text)).toEqual(['牛乳を買う','パンを買う']));
+ // Real storage receipt + full themed App render can exceed waitFor's 1s default.
+ await waitFor(async()=>expect((await saved())?.listItems.map(i=>i.text)).toEqual(['牛乳を買う','パンを買う']),{timeout:7000});
  expect(view.getByText('牛乳を買う')).toBeTruthy();expect(view.getByText('パンを買う')).toBeTruthy();expect((await saved()).subtasks).toEqual([]);
  fireEvent.press(view.getByText('牛乳を買う'));fireEvent.press(view.getByText('パンを買う'));
  await waitFor(async()=>expect((await saved()).listItems.every(i=>i.checked)).toBe(true));expect((await saved()).done).toBe(false);

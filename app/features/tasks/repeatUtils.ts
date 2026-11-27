@@ -2,6 +2,8 @@ import { normalizeTaskDateKey } from '../schedule/scheduleConflict';
 import { RepeatRule, Task } from '../../types';
 import * as Calendar from 'expo-calendar';
 import { advanceDateValue, dateForReminder, dateKey, shiftDateKey } from '../schedule/dateTimeUtils';
+import { advanceDateBySteps, nextFutureOccurrence, repeatSeriesKey } from './repeatDateUtils';
+export { isOccurrenceAfterToday, advanceDateBySteps, nextFutureOccurrence, repeatSeriesKey } from './repeatDateUtils';
 
 export function getTaskStatus(task: Task): 'active' | 'completed' | 'skipped' {
   return task.status ?? (task.done ? 'completed' : 'active');
@@ -22,35 +24,6 @@ export function getTodayRemainingRoutines(items: Task[], day: string) {
     if (!current || (task.createdAt ?? '') > (current.createdAt ?? '')) latestByRoutine.set(key, task);
   });
   return [...latestByRoutine.values()];
-}
-
-export function isOccurrenceAfterToday(scheduledDate: string, now: Date) {
-  return scheduledDate > dateKey(now);
-}
-
-export function advanceDateBySteps(value: string | undefined, rule: RepeatRule, steps: number) {
-  let current = value;
-  for (let index = 0; index < steps; index += 1) current = advanceDateValue(current, rule);
-  return current;
-}
-
-export function nextFutureOccurrence(startDate: string | undefined, rule: RepeatRule, _scheduledTime: string | undefined, now: Date) {
-  let candidate = advanceDateValue(startDate ?? dateKey(now), rule);
-  let steps = 1;
-  for (let index = 0; index < 5000 && !isOccurrenceAfterToday(candidate, now); index += 1) {
-    const next = advanceDateValue(candidate, rule);
-    if (next === candidate) break;
-    candidate = next;
-    steps += 1;
-  }
-  return { scheduledDate: candidate, steps };
-}
-
-export function repeatSeriesKey(task: Task) {
-  if (task.routineId) return `routine:${task.routineId}`;
-  // Generated ordinary repeat instances preserve createdAt. This gives the
-  // series a stable identity without merging unrelated same-title tasks.
-  return `repeat:${task.createdAt ?? task.id}`;
 }
 
 export function normalizeRoutineResumeDate(value: string | undefined, templateScheduledDate: string | undefined, resumedScheduledDate: string) {
@@ -115,6 +88,8 @@ export function normalizeCalendarTitle(value: string | undefined) {
 
 export type TaskCompletionResult = { tasks: Task[]; newlyCompleted: Task[] };
 
+// Keep the App contract: IDs, reminder-date fallback and per-occurrence clock
+// differ from taskUtils; these completion paths must not be merged.
 export function completeTasksWithRepeats(current: Task[], ids: string[]) {
   const completedAt = new Date().toISOString();
   const nextTasks: Task[] = [];
