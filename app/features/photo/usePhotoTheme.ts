@@ -3,27 +3,30 @@ import * as ImagePicker from 'expo-image-picker';
 import React, { useEffect, useState } from 'react';
 import { Alert, Image, InteractionManager } from 'react-native';
 import type { RewardedFeatureId } from '../ads/rewardedAccess';
-import { isPremiumDesignTrialActive, isPremiumDesignUnlocked } from '../ads/rewardedAccessLogic';
+import { canUsePhotoKind, type PhotoKind } from './photoAccess';
+import { editableSamplePhotoUri, samplePhotoUri } from './photoSamples';
 import type { RewardedAccessState } from '../ads/rewardedAccessStorage';
+import type { DesignMode } from '../../theme';
 import type { PlanTier } from '../../premiumAccess';
-import type { PhotoThemePhotoTarget, PhotoThemeSettings } from '../../types';
+import type { PhotoSampleId, PhotoThemePhotoTarget, PhotoThemeSettings } from '../../types';
 import { deleteManagedPhotoUri, deleteTemporaryPhotoUri, isPersistedPhotoAvailable, persistPhotoUri } from './persistentPhoto';
 import { cropRectToPixels, getInitialNormalizedCrop, type NormalizedCropRect } from './topImageCrop';
 
 export type PhotoThemeDeps = {
+  setDesignMode?: React.Dispatch<React.SetStateAction<DesignMode>>;
   photoTheme: PhotoThemeSettings;
   setPhotoTheme: React.Dispatch<React.SetStateAction<PhotoThemeSettings>>;
   planTier: PlanTier;
   hasDesignCustomizeAccess: boolean;
   rewardedAccess: RewardedAccessState;
   now: Date;
-  openRewardedPrompt: (featureId: RewardedFeatureId, title: string, description: string, onCompleted?: () => void) => void;
+  openRewardedPrompt: (featureId: RewardedFeatureId, title: string, description: string, onCompleted?: () => void, photoKind?: PhotoKind, photoTarget?: PhotoThemePhotoTarget) => void;
 };
 
 export function usePhotoTheme(deps: PhotoThemeDeps) {
-  const { photoTheme, setPhotoTheme, planTier, hasDesignCustomizeAccess, rewardedAccess, now, openRewardedPrompt } = deps;
+  const { photoTheme, setPhotoTheme, setDesignMode, planTier, hasDesignCustomizeAccess, rewardedAccess, now, openRewardedPrompt } = deps;
 
-  const [pendingTopPhoto, setPendingTopPhoto] = useState<{ target: Exclude<PhotoThemePhotoTarget, 'background' | 'focus'>; originalUri: string; previewUri?: string; sourceWidth: number; sourceHeight: number; cropRect?: NormalizedCropRect }>();
+  const [pendingTopPhoto, setPendingTopPhoto] = useState<{ target: Exclude<PhotoThemePhotoTarget, 'background' | 'focus'>; originalUri: string; previewUri?: string; sourceWidth: number; sourceHeight: number; cropRect?: NormalizedCropRect; sampleId?: PhotoSampleId }>();
 
   const [topImageCropResumeToken, setTopImageCropResumeToken] = useState(0);
 
@@ -51,52 +54,36 @@ export function usePhotoTheme(deps: PhotoThemeDeps) {
     previousTopImageVisibleRef.current = visible;
   }, [pendingTopPhoto]);
 
-  const canOpenTopImagePicker = React.useCallback((target: Exclude<PhotoThemePhotoTarget, 'background' | 'focus'>) => {
-    const hasWholePhotoAccess = planTier === 'premium'
-      || hasDesignCustomizeAccess
-      || isPremiumDesignTrialActive(rewardedAccess, now)
-      || isPremiumDesignUnlocked(rewardedAccess, now);
-    if (hasWholePhotoAccess) return true;
-    if (photoTheme.topImageUris?.[target] || photoTheme.topImageOriginalUris?.[target]) return true;
-    const usedSlots = new Set([
-      ...Object.keys(photoTheme.topImageUris ?? {}),
-      ...Object.keys(photoTheme.topImageOriginalUris ?? {}),
-    ]).size;
-    // Top-image slots are a separate rewarded feature. No slot is available
-    // before the first photoTop reward; existing images remain editable.
-    const allowedSlots = Math.min(5, rewardedAccess.photoCustomization.topExtraSlotsUnlocked);
-    return usedSlots < allowedSlots;
-  }, [hasDesignCustomizeAccess, isPremiumDesignUnlocked, now, photoTheme, planTier, rewardedAccess]);
+  const canPickPhotoKind = React.useCallback((kind: PhotoKind, target: PhotoThemePhotoTarget) => planTier === 'premium' || hasDesignCustomizeAccess || canUsePhotoKind(rewardedAccess, kind, target, now), [planTier, hasDesignCustomizeAccess, rewardedAccess, now]);
+  const accessRef = React.useRef(canPickPhotoKind);
+  accessRef.current = canPickPhotoKind;
+  const canOpenTopImagePicker = React.useCallback((target: Exclude<PhotoThemePhotoTarget, 'background' | 'focus'>) => canPickPhotoKind('personal', target), [canPickPhotoKind]);
+  const adjustRef = React.useRef<(target: Exclude<PhotoThemePhotoTarget, 'background' | 'focus'>) => void>(() => {});
+  const pickRef = React.useRef<(target: PhotoThemePhotoTarget, options?: { sampleId?: PhotoSampleId; restoreExisting?: boolean; bypassRewarded?: boolean }) => Promise<void>>(async () => {});
 
-  const pickPhotoTheme = React.useCallback(async (target: PhotoThemePhotoTarget, options?: { bypassRewarded?: boolean }) => {
+  const pickPhotoTheme = React.useCallback(async (target: PhotoThemePhotoTarget, options?: { bypassRewarded?: boolean; sampleId?: PhotoSampleId; restoreExisting?: boolean }) => {
     if (__DEV__) console.log('[TopImage] pick-start', { target });
-    const hasWholePhotoAccess = planTier === 'premium'
-      || hasDesignCustomizeAccess
-      || isPremiumDesignTrialActive(rewardedAccess, now)
-      || isPremiumDesignUnlocked(rewardedAccess, now);
-    if (planTier !== 'premium' && !hasDesignCustomizeAccess) {
-      if (target === 'background' && !rewardedAccess.photoCustomization.backgroundUnlocked && !hasWholePhotoAccess) {
-        openRewardedPrompt('photoBackground', '背景に写真を使う', '広告を見ると、好きな写真をRhythmの背景に設定できます。', () => { void pickPhotoTheme(target); });
-        return;
-      }
-      if (target === 'focus' && !rewardedAccess.photoCustomization.focusUnlocked && !hasWholePhotoAccess) {
-        openRewardedPrompt('photoFocus', '集中画面に写真を使う', '広告を見ると、集中タイムの背景に好きな写真を設定できます。', () => { void pickPhotoTheme(target); });
-        return;
-      }
-      if (target !== 'background' && target !== 'focus') {
-        const currentUri = photoTheme.topImageUris?.[target] ?? photoTheme.topImageOriginalUris?.[target];
-        // Every new top-image slot uses the existing photoTop Rewarded route;
-        // existing images can still be changed without another unlock.
-        const usedSlots = new Set([
-          ...Object.keys(photoTheme.topImageUris ?? {}),
-          ...Object.keys(photoTheme.topImageOriginalUris ?? {}),
-        ]).size;
-        const allowedSlots = Math.min(5, rewardedAccess.photoCustomization.topExtraSlotsUnlocked);
-        if (!options?.bypassRewarded && !currentUri && usedSlots >= allowedSlots) {
-          openRewardedPrompt('photoTop', '写真枠を追加', '広告を見ると、画面ごとのトップ写真枠を1つ追加できます。', () => { void pickPhotoTheme(target, { bypassRewarded: true }); });
-          return;
-        }
-      }
+    const kind: PhotoKind = options?.sampleId ? 'sample' : 'personal';
+    if (!canPickPhotoKind(kind, target)) {
+      openRewardedPrompt(target === 'background' ? 'photoBackground' : target === 'focus' ? 'photoFocus' : 'photoTop', kind === 'sample' ? 'サンプル写真を使う' : '自分の写真を使う', 'この枠は、広告1回でサンプルを期限なし、2回で自分の画像を3日間使えます。', () => { void pickRef.current(target, options); }, kind, target);
+      return;
+    }
+    if (options?.restoreExisting) return; // Re-unlock restores the saved URI/crop through the display gate.
+    if (options?.sampleId) {
+      try {
+        const sampleId = options.sampleId;
+        const uri = samplePhotoUri(sampleId);
+        setPhotoTheme(current => {
+          const next = { ...current, samplePhotoIds: { ...current.samplePhotoIds, [target]: sampleId } };
+          if (target === 'background') return { ...next, placement: 'background', imageUri: uri };
+          if (target === 'focus') return { ...next, focusBackgroundUri: uri };
+          const topImageCropRects = { ...current.topImageCropRects }; delete topImageCropRects[target];
+          const topImageAdjustments = { ...current.topImageAdjustments }; delete topImageAdjustments[target];
+          return { ...next, topImageUris: { ...current.topImageUris, [target]: uri }, topImageOriginalUris: { ...current.topImageOriginalUris, [target]: uri }, topImageCropRects, topImageAdjustments };
+        });
+        if (target === 'background') setDesignMode?.('photo');
+      } catch { Alert.alert('写真を設定できませんでした', 'もう一度お試しください。'); }
+      return;
     }
     const isTopImage = target !== 'background' && target !== 'focus';
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -117,6 +104,7 @@ export function usePhotoTheme(deps: PhotoThemeDeps) {
       if (isTopImage) setTopImageCropResumeToken((current) => current + 1);
       return;
     }
+    if (!accessRef.current('personal', target)) { Alert.alert('写真の利用期限が終了しました', '再解放してから選び直してください。写真は保持しています。'); return; }
     if (isTopImage) {
       // 調整を確定するまでは選択元をそのまま使い、不要な端末内コピーを作らない。
       const sourceWidth = selectedAsset.width || 1000;
@@ -146,6 +134,7 @@ export function usePhotoTheme(deps: PhotoThemeDeps) {
     let persistentUri: string;
     try {
       persistentUri = persistPhotoUri(selectedAsset.uri, target);
+      if (!isPersistedPhotoAvailable(persistentUri)) throw new Error('photo persistence unavailable');
     } catch (error) {
       console.warn('Could not persist selected Rhythm photo.', error);
       Alert.alert('写真を保存できませんでした', 'もう一度選び直してください。');
@@ -154,24 +143,36 @@ export function usePhotoTheme(deps: PhotoThemeDeps) {
     if (target === 'background') {
       setPhotoTheme((current) => {
         deleteManagedPhotoUri(current.imageUri, [persistentUri, current.focusBackgroundUri, ...Object.values(current.topImageUris ?? {}), ...Object.values(current.topImageOriginalUris ?? {})]);
-        return { ...current, placement: 'background', imageUri: persistentUri };
+        const samplePhotoIds = { ...current.samplePhotoIds }; delete samplePhotoIds.background;
+        return { ...current, samplePhotoIds, placement: 'background', imageUri: persistentUri };
       });
+      setDesignMode?.('photo');
     } else if (target === 'focus') {
       setPhotoTheme((current) => {
         deleteManagedPhotoUri(current.focusBackgroundUri, [persistentUri, current.imageUri, ...Object.values(current.topImageUris ?? {}), ...Object.values(current.topImageOriginalUris ?? {})]);
-        return { ...current, focusBackgroundUri: persistentUri };
+        const samplePhotoIds = { ...current.samplePhotoIds }; delete samplePhotoIds.focus;
+        return { ...current, samplePhotoIds, focusBackgroundUri: persistentUri };
       });
     }
-  }, [hasDesignCustomizeAccess, isPremiumDesignUnlocked, now, openRewardedPrompt, pendingTopPhoto, photoTheme, planTier, rewardedAccess]);
+  }, [canPickPhotoKind, openRewardedPrompt, pendingTopPhoto, setPhotoTheme, setDesignMode]);
+  pickRef.current = pickPhotoTheme;
 
-  const adjustTopPhoto = React.useCallback((target: Exclude<PhotoThemePhotoTarget, 'background' | 'focus'>) => {
-    const originalUri = photoTheme.topImageOriginalUris?.[target] ?? photoTheme.topImageUris?.[target];
+  const adjustTopPhoto = React.useCallback(async (target: Exclude<PhotoThemePhotoTarget, 'background' | 'focus'>) => {
+    const sampleId = photoTheme.samplePhotoIds?.[target];
+    if (!canPickPhotoKind(sampleId ? 'sample' : 'personal', target)) {
+      openRewardedPrompt('photoTop', '写真を再調整する', '写真を解放すると、保存済みの写真を再調整できます。', () => adjustRef.current(target), sampleId ? 'sample' : 'personal', target); return;
+    }
+    let originalUri: string | undefined;
+    try { originalUri = sampleId ? await editableSamplePhotoUri(sampleId) : photoTheme.topImageOriginalUris?.[target] ?? photoTheme.topImageUris?.[target]; }
+    catch { Alert.alert('同梱写真を読み込めませんでした', 'もう一度お試しください。'); return; }
     if (!originalUri) return;
-    Image.getSize(originalUri, (sourceWidth, sourceHeight) => setPendingTopPhoto({ target, originalUri, sourceWidth, sourceHeight, cropRect: photoTheme.topImageCropRects?.[target] }), () => setPendingTopPhoto({ target, originalUri, sourceWidth: 1000, sourceHeight: 1000, cropRect: photoTheme.topImageCropRects?.[target] }));
-  }, [photoTheme]);
+    Image.getSize(originalUri, (sourceWidth, sourceHeight) => setPendingTopPhoto({ target, originalUri, sourceWidth, sourceHeight, sampleId, cropRect: photoTheme.topImageCropRects?.[target] }), () => setPendingTopPhoto({ target, originalUri, sourceWidth: 1000, sourceHeight: 1000, sampleId, cropRect: photoTheme.topImageCropRects?.[target] }));
+  }, [photoTheme, canPickPhotoKind, openRewardedPrompt]);
+  adjustRef.current = adjustTopPhoto;
 
   const applyPendingTopPhoto = React.useCallback(async (cropOverride?: NormalizedCropRect) => {
     if (!pendingTopPhoto || topImageProcessingRef.current) return;
+    if (!canPickPhotoKind(pendingTopPhoto.sampleId ? 'sample' : 'personal', pendingTopPhoto.target)) { Alert.alert('写真の利用期限が終了しました', '再解放してから調整してください。写真は保持しています。'); return; }
     const pending = pendingTopPhoto;
     let processingErrorMessage: string | undefined;
     topImageProcessingRef.current = true;
@@ -182,10 +183,11 @@ export function usePhotoTheme(deps: PhotoThemeDeps) {
       const crop = cropRectToPixels(normalized, pending.sourceWidth, pending.sourceHeight);
       if (__DEV__) console.log('[TopImage] manipulate-start', { target: pending.target, crop });
       const result = await ImageManipulator.manipulateAsync(pending.originalUri, [{ crop }, { resize: { width: 1000, height: 400 } }], { compress: 0.9, format: ImageManipulator.SaveFormat.JPEG });
+      if (!accessRef.current(pending.sampleId ? 'sample' : 'personal', pending.target)) throw new Error('photo access expired during crop');
       if (__DEV__) console.log('[TopImage] manipulate-complete', { target: pending.target, resultUri: Boolean(result.uri) });
       if (__DEV__) console.log('[TopImage] persist-original-start', { target: pending.target });
-      const originalUri = persistPhotoUri(pending.originalUri, `top-original-${pending.target}`);
-      const originalAvailable = isPersistedPhotoAvailable(originalUri);
+      const originalUri = pending.sampleId ? pending.originalUri : persistPhotoUri(pending.originalUri, `top-original-${pending.target}`);
+      const originalAvailable = Boolean(pending.sampleId) || isPersistedPhotoAvailable(originalUri);
       if (__DEV__) console.log('[TopImage] persist-original-complete', { target: pending.target, exists: originalAvailable });
       if (!originalAvailable) throw new Error('top image original persistence unavailable');
       if (__DEV__) console.log('[TopImage] persist-display-start', { target: pending.target });
@@ -203,7 +205,8 @@ export function usePhotoTheme(deps: PhotoThemeDeps) {
         deleteManagedPhotoUri(previousDisplayUri, retainedUris);
         deleteManagedPhotoUri(previousOriginalUri, retainedUris);
         if (__DEV__) console.log('[TopImage] state-after', { target: pending.target, displayUri: Boolean(topImageUris[pending.target]), originalUri: Boolean(topImageOriginalUris[pending.target]), cropRect: true });
-        return { ...current, topImageUris, topImageOriginalUris, topImageCropRects: { ...current.topImageCropRects, [pending.target]: normalized } };
+        const samplePhotoIds = { ...current.samplePhotoIds }; if (pending.sampleId) samplePhotoIds[pending.target] = pending.sampleId; else delete samplePhotoIds[pending.target];
+        return { ...current, samplePhotoIds, topImageUris, topImageOriginalUris, topImageCropRects: { ...current.topImageCropRects, [pending.target]: normalized } };
       });
     } catch (error) {
       processingErrorMessage = error instanceof Error ? error.message : String(error);
@@ -224,7 +227,7 @@ export function usePhotoTheme(deps: PhotoThemeDeps) {
         });
       }
     }
-  }, [pendingTopPhoto]);
+  }, [pendingTopPhoto, canPickPhotoKind]);
 
-  return { pendingTopPhoto, setPendingTopPhoto, topImageCropResumeToken, setTopImageCropResumeToken, topImageProcessing, topImageAccessPurchaseResumeRef, topImageCropDismissActionRef, resumeTopImageAfterAccessFlow, canOpenTopImagePicker, pickPhotoTheme, adjustTopPhoto, applyPendingTopPhoto };
+  return { pendingTopPhoto, setPendingTopPhoto, topImageCropResumeToken, setTopImageCropResumeToken, topImageProcessing, topImageAccessPurchaseResumeRef, topImageCropDismissActionRef, resumeTopImageAfterAccessFlow, canPickPhotoKind, canOpenTopImagePicker, pickPhotoTheme, adjustTopPhoto, applyPendingTopPhoto };
 }

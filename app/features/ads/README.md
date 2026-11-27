@@ -264,9 +264,9 @@ Rewarded Feature：
 
 解放：
 
-**12時間**
+**3日間**
 
-12時間経過後は
+3日間経過後は
 再度広告が必要。
 
 Premiumユーザーは広告不要。
@@ -301,65 +301,27 @@ Premiumユーザーは広告不要。
 Freeユーザーが初めて選んだPremium Designは、`premiumDesignTrial` に
 `used`・`designId`・`expiresAt` を保存し、24時間だけ本体へ適用できます。
 
-試着終了後に12時間だけ使う場合は、既存の `premiumDesign`（広告1回・12時間）を
+試着終了後に3日間だけ使う場合は、既存の `premiumDesign`（広告1回・3日間）を
 利用します。広告を閉じただけでは解放せず、報酬受領時だけ `unlockedUntil` を更新します。
 
 Premiumユーザーは試着・広告ともに不要です。
 
 ---
 
-# 13. Photo Top
+# 13–15. Photo Top / Background / Focus（最終統合仕様）
 
-Rewarded Feature：
+`photoTop` / `photoBackground` / `photoFocus` は対象枠ごとに独立した視聴進捗・期限を使う。他枠には引き継がない。
 
-`photoTop`
+- 1回目：7種類の同梱サンプルを期限なしで解放。
+- 2回目：自分の画像を3日間（72時間）解放。期限は2回目のEARNED日時を起点にする。
+- 自分の画像の期限が切れたら進捗0から再度2回。サンプル解放は残る。
+- 旧`photoCustomization`の永久解放/枠数は互換読込のため保持するだけで、利用判定には使わない（リリース前のため旧方式を廃止するオーナー決定）。
+- `photoAccessByTarget`はRewarded保存内の任意フィールド。誤った旧共通`photoAccess`は権利として使わない。receiptには対象枠を保持し、対象不明の旧photoTop receiptは付与せず保持する。保存キー・version・receiptの重複防止・保存キューは維持。
+- Premium / Design Customize購入者は広告不要・期限なし。Designの広告解放や24時間無料試着だけでは個人写真を解放しない。
+- Widget写真も広告1回で3日間。Widgetの選択対象の扱いは変えない。
+- 写真の期限切れは表示用コピーからURIを隠すだけ。保存済みの写真とcropは保持し、再解放すれば再選択なしで復帰する。
 
-必要広告：
-
-**1回**
-
-1広告につき
-トップ画像枠を1枠追加。
-
-広告による追加上限：
-
-**5枠**
-
-Premiumユーザーは広告不要。
-
----
-
-# 14. Photo Background
-
-Rewarded Feature：
-
-`photoBackground`
-
-必要広告：
-
-**1回**
-
-Reward取得後、
-背景カスタマイズを利用可能。
-
-Premiumユーザーは広告不要。
-
----
-
-# 15. Photo Focus
-
-Rewarded Feature：
-
-`photoFocus`
-
-必要広告：
-
-**1回**
-
-Reward取得後、
-Photo用集中タイマーカスタマイズを利用可能。
-
-Premiumユーザーは広告不要。
+Nativeシートを閉じてからpicker/再調整へ復帰する方式を、背景・集中にも適用。継続callbackは最新権限を読むrefを通す。詳細は `docs/photo-final-package.md`。
 
 ---
 

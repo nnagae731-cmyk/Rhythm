@@ -1,8 +1,11 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Image, InteractionManager, Modal, Platform, Pressable, ScrollView, Text, View, type StyleProp, type ViewStyle, type ImageStyle } from 'react-native';
+import { Alert, Image, InteractionManager, Modal, Platform, Pressable, ScrollView, Text, View, type StyleProp, type ViewStyle, type ImageStyle } from 'react-native';
 import Svg, { Circle, Path } from 'react-native-svg';
 import { ChicThemePalette, DesignMode, getThemeTokens } from '../theme';
-import type { PhotoThemePhotoTarget, PhotoThemeSettings } from '../types';
+import type { PhotoSampleId, PhotoThemePhotoTarget, PhotoThemeSettings } from '../types';
+
+import { PHOTO_SAMPLES } from '../features/photo/photoSamples';
+import { isDisplayPhotoAvailable } from '../features/photo/persistentPhoto';
 
 const targets = [
   { id: 'home', label: 'ホームのトップ画' }, { id: 'timeline', label: '予定のトップ画' },
@@ -32,7 +35,7 @@ export function PhotoTopEntry({ uri, onPress, label, designMode, chicPalette, st
 
 // This is only an entry/target chooser. The caller owns the unchanged access,
 // Rewarded, native picker and crop flows. Never pass a bypass flag from here.
-export function PhotoEntrySheet({ visible, initialTarget, photoTheme, designMode, chicPalette, onClose, onPick, onAdjust, canChooseWithoutReward }: { visible: boolean; initialTarget: PhotoThemePhotoTarget; photoTheme: PhotoThemeSettings; designMode: DesignMode; chicPalette?: ChicThemePalette; onClose: () => void; onPick: (target: PhotoThemePhotoTarget) => void; canChooseWithoutReward: (target: PhotoThemePhotoTarget) => boolean; onAdjust: (target: Exclude<PhotoThemePhotoTarget, 'background' | 'focus'>) => void }) {
+export function PhotoEntrySheet({ visible, initialTarget, photoTheme, designMode, chicPalette, onClose, onPick, onAdjust, canChooseWithoutReward, canChooseSampleWithoutReward, canShowPhoto, onPickSample, onRemove, onRenew, accessLabel }: { onRenew?: (target: PhotoThemePhotoTarget) => void; accessLabel?: string | ((target: PhotoThemePhotoTarget) => string); canChooseSampleWithoutReward?: (target: PhotoThemePhotoTarget) => boolean; canShowPhoto?: (target: PhotoThemePhotoTarget) => boolean; onPickSample?: (target: PhotoThemePhotoTarget, sample: PhotoSampleId) => void; onRemove?: (target: PhotoThemePhotoTarget) => void; visible: boolean; initialTarget: PhotoThemePhotoTarget; photoTheme: PhotoThemeSettings; designMode: DesignMode; chicPalette?: ChicThemePalette; onClose: () => void; onPick: (target: PhotoThemePhotoTarget) => void; canChooseWithoutReward: (target: PhotoThemePhotoTarget) => boolean; onAdjust: (target: Exclude<PhotoThemePhotoTarget, 'background' | 'focus'>) => void }) {
   const [target, setTarget] = useState(initialTarget);
   const afterDismiss = useRef<(() => void) | undefined>(undefined);
   const presenting = useRef(false);
@@ -48,18 +51,24 @@ export function PhotoEntrySheet({ visible, initialTarget, photoTheme, designMode
     onClose();
     if (Platform.OS !== 'ios') InteractionManager.runAfterInteractions(finishDismiss);
   };
-  const uri = target === 'background' ? photoTheme.imageUri : target === 'focus' ? photoTheme.focusBackgroundUri : photoTheme.topImageUris?.[target] ?? photoTheme.topImageOriginalUris?.[target];
+  const configuredUri = target === 'background' ? photoTheme.imageUri : target === 'focus' ? photoTheme.focusBackgroundUri : [photoTheme.topImageUris?.[target], photoTheme.topImageOriginalUris?.[target]].find(isDisplayPhotoAvailable);
+  const uri = isDisplayPhotoAvailable(configuredUri) ? configuredUri : undefined;
+  const targetAccessLabel = typeof accessLabel === 'function' ? accessLabel(target) : accessLabel;
   const needsAccess = !canChooseWithoutReward(target);
   const topTarget = target !== 'background' && target !== 'focus' ? target : undefined;
+  const remove = () => present(() => Alert.alert('このトップ画像を外しますか？', '写真はこの画面からのみ外します。', [{ text: 'キャンセル', style: 'cancel' }, { text: '外す', style: 'destructive', onPress: () => onRemove?.(target) }]));
   return <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose} onDismiss={finishDismiss}>
     <Pressable style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(15,20,28,0.3)' }} onPress={onClose}>
       <Pressable testID="photo-entry-sheet" onPress={event => event.stopPropagation()} style={{ padding: 18, paddingBottom: 26, maxHeight: '76%', borderTopLeftRadius: 24, borderTopRightRadius: 24, borderWidth: 1, borderColor: palette?.border ?? colors.border, backgroundColor: palette?.cardSurface ?? colors.surface }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}><Text accessibilityRole="header" style={{ color: palette?.textPrimary ?? colors.primaryText, fontSize: 18, fontWeight: '800' }}>写真を添える</Text><Pressable accessibilityRole="button" accessibilityLabel="写真の適用先を閉じる" onPress={onClose} style={{ minWidth: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center' }}><Text style={{ color: accent, fontSize: 24 }}>×</Text></Pressable></View>
-        <ScrollView keyboardShouldPersistTaps="handled"><Text style={{ color: palette?.textSecondary ?? colors.secondaryText, fontSize: 13, lineHeight: 20, marginBottom: 10 }}>{needsAccess ? 'この写真枠は、広告視聴または購入後に利用できます。写真を選ぶ前に、従来の解放案内へ進みます。' : '適用先を選んで、好きな一枚を。解放済みの枠を利用できます。'}</Text>
+        <ScrollView keyboardShouldPersistTaps="handled">{targetAccessLabel && <Text testID="photo-access-remaining" style={{ color: palette?.textSecondary ?? colors.secondaryText, fontSize: 12, lineHeight: 18, marginBottom: 8 }}>{targetAccessLabel}</Text>}<Text style={{ color: palette?.textSecondary ?? colors.secondaryText, fontSize: 13, lineHeight: 20, marginBottom: 10 }}>{needsAccess ? 'この枠の自分の画像は広告2回で3日間。選ぶ前に広告・購入の案内へ進みます。' : '適用先を選んで、好きな一枚を。解放済みの枠を利用できます。'}</Text>
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>{targets.map(item => <Pressable key={item.id} accessibilityRole="radio" accessibilityLabel={item.label} accessibilityState={{ checked: target === item.id }} onPress={() => setTarget(item.id)} style={{ minHeight: 44, paddingHorizontal: 12, justifyContent: 'center', borderRadius: 11, borderWidth: target === item.id ? 2 : 1, borderColor: target === item.id ? accent : palette?.border ?? colors.border, backgroundColor: target === item.id ? palette?.accentSoft ?? colors.softAccent : palette?.cardSurface ?? colors.surface }}><Text style={{ color: target === item.id ? accent : palette?.textSecondary ?? colors.secondaryText, fontSize: 13, lineHeight: 20, fontWeight: '700' }}>{item.label}</Text></Pressable>)}</View>
-          {uri && <Image accessibilityLabel="選択中の適用先の写真" source={{ uri }} resizeMode="contain" style={{ width: '100%', height: 100, borderRadius: 12, marginTop: 14 }} />}
-          <Pressable accessibilityRole="button" accessibilityLabel="この適用先の写真を選ぶ" onPress={() => present(() => onPick(target))} style={{ minHeight: 46, borderRadius: 12, marginTop: 16, paddingHorizontal: 14, alignItems: 'center', justifyContent: 'center', backgroundColor: accent }}><Text style={{ color: palette?.onAccent ?? (designMode === 'dark' ? colors.screenBackground : colors.surface), fontSize: 14, fontWeight: '800' }}>{needsAccess ? '広告・購入の案内へ' : uri ? '写真を変更する' : '写真を選ぶ'}</Text></Pressable>
+          {uri && (canShowPhoto?.(target) ?? true) && <Image accessibilityLabel="選択中の適用先の写真" source={{ uri }} resizeMode="contain" style={{ width: '100%', height: 100, borderRadius: 12, marginTop: 14 }} />}
+          {onPickSample && <View style={{ marginTop: 14 }}><Text style={{ color: palette?.textPrimary ?? colors.primaryText, fontSize: 13, fontWeight: '700', marginBottom: 8 }}>サンプル写真 {canChooseSampleWithoutReward?.(target) ? '・期限なし' : '・広告1回で解放'}</Text><View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>{PHOTO_SAMPLES.map(sample => <Pressable key={sample.id} accessibilityRole="button" accessibilityLabel={`サンプル：${sample.label}`} onPress={() => present(() => onPickSample(target, sample.id))} style={{ width: '30%', minHeight: 60 }}><Image source={sample.source} style={{ width: '100%', height: 46, borderRadius: 8 }} /><Text style={{ color: palette?.textSecondary ?? colors.secondaryText, fontSize: 11, lineHeight: 18, textAlign: 'center' }}>{sample.label}</Text></Pressable>)}</View></View>}
+          <Text style={{ color: palette?.textPrimary ?? colors.primaryText, fontSize: 13, fontWeight: '700', marginTop: 14 }}>自分の画像</Text>
+          <Pressable accessibilityRole="button" accessibilityLabel="この適用先の写真を選ぶ" onPress={() => present(() => { if (uri && canShowPhoto && !canShowPhoto(target) && onRenew) onRenew(target); else onPick(target); })} style={{ minHeight: 46, borderRadius: 12, marginTop: 16, paddingHorizontal: 14, alignItems: 'center', justifyContent: 'center', backgroundColor: accent }}><Text style={{ color: palette?.onAccent ?? (designMode === 'dark' ? colors.screenBackground : colors.surface), fontSize: 14, fontWeight: '800' }}>{needsAccess ? uri && onRenew && canShowPhoto && !canShowPhoto(target) ? '写真を再解放する（広告・購入）' : '広告・購入の案内へ' : uri ? '写真を変更する' : '写真を選ぶ'}</Text></Pressable>
           {uri && topTarget && <Pressable accessibilityRole="button" onPress={() => present(() => onAdjust(topTarget))} style={{ minHeight: 44, justifyContent: 'center', alignItems: 'center', marginTop: 4 }}><Text style={{ color: accent, fontSize: 13, fontWeight: '700' }}>今の写真を再調整する</Text></Pressable>}
+          {uri && topTarget && topTarget !== 'settings' && onRemove && <Pressable accessibilityRole="button" accessibilityLabel="トップ画像を外す" onPress={remove} style={{ minHeight: 44, alignItems: 'center', justifyContent: 'center', marginTop: 8, borderTopWidth: 1, borderTopColor: palette?.border ?? colors.border }}><Text style={{ color: palette?.danger ?? colors.danger, fontSize: 13 }}>トップ画像を外す</Text></Pressable>}
         </ScrollView>
       </Pressable>
     </Pressable>

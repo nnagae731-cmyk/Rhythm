@@ -11,7 +11,7 @@ import { FocusSession } from '../focusSession';
 import { RecoveryRecord } from '../recovery';
 import { CalendarMarks, DeparturePlan, MonthlyReflectionCard, MonthlyReview, ReflectionCardPalette, ReflectionCardTemplate, Task, ThemeMode, WishMonthMap } from '../types';
 import { normalizeMonthlyReview } from '../features/wish/wishUtils';
-import { persistPhotoUri } from '../features/photo/persistentPhoto';
+import { isDisplayPhotoAvailable, persistPhotoUri } from '../features/photo/persistentPhoto';
 
 export type ReflectionCardModel = {
   monthKey: string;
@@ -112,7 +112,8 @@ const reflectionStyles = StyleSheet.create({
   savedCardButtonText: { color: '#6E6675', fontSize: 10, fontWeight: '800' },
 });
 
-export function MonthlyReflectionCardView({ model, cardRef, onReady }: { model: ReflectionCardModel; cardRef: React.RefObject<View | null>; onReady: () => void }) {
+export function MonthlyReflectionCardView({ model: savedModel, cardRef, onReady }: { model: ReflectionCardModel; cardRef: React.RefObject<View | null>; onReady: () => void }) {
+  const model = { ...savedModel, photos: savedModel.photos.filter(isDisplayPhotoAvailable) };
   const palette = reflectionCardPalettes[model.palette];
   const isMagazine = model.template === 'gallery';
   const isCollage = model.template === 'film';
@@ -347,8 +348,8 @@ export function HistoryScreen({ tasks, wishMonths, calendarMarks, onSetCalendarM
       return result;
     }, {})).slice(0, 8);
   const selectedDayReview = reviewsByDay[selectedKey]?.[0];
-  const selectedJournalPhotos = [...new Set([...(journalDraft.photos ?? []), journalDraft.photo ?? ''].filter(Boolean))];
-  const monthlyPhotoIds = [...new Set(reviewEntries.filter((entry) => entry.monthKey === monthPrefix).flatMap((entry) => [...new Set([...(entry.review.photos ?? []), entry.review.photo ?? ''].filter(Boolean))]))];
+  const selectedJournalPhotos = [...new Set([...(journalDraft.photos ?? []), journalDraft.photo ?? ''].filter(Boolean))].filter(isDisplayPhotoAvailable);
+  const monthlyPhotoIds = [...new Set(reviewEntries.filter((entry) => entry.monthKey === monthPrefix).flatMap((entry) => [...new Set([...(entry.review.photos ?? []), entry.review.photo ?? ''].filter(Boolean))]))].filter(isDisplayPhotoAvailable);
   // Photo logs remain available to every plan. The recap card, rather than the
   // underlying journal, is limited by plan to keep exports lightweight.
   const maxJournalPhotos = planTier === 'premium' ? 5 : 2;
@@ -504,7 +505,7 @@ export function HistoryScreen({ tasks, wishMonths, calendarMarks, onSetCalendarM
 
   const journalEditorContent = !selectedDayReviewEntry || journalEditing ? <View style={[styles.journalEditor, isDark && styles.darkJournalEditor, { backgroundColor: journalTheme.surface, borderColor: journalTheme.border }]}>
     <View style={styles.journalEditorHeader}><View><Text style={[styles.journalEditorTitle, { color: journalTheme.text }]}>ひと言日記</Text><Text style={[styles.journalEditorDate, { color: journalTheme.accent }]}>{formatJapaneseDateKey(selectedKey)}</Text></View><Text style={[styles.journalEditorCount, { color: journalTheme.accent }]}>写真 {selectedJournalPhotos.length} / {maxJournalPhotos}</Text></View>
-    <View pointerEvents={journalSaving ? 'none' : 'auto'} style={styles.journalPhotoRow}>{selectedJournalPhotos.map((uri, index) => <View key={`${uri}-${index}`} style={styles.journalPhotoWrap}><Pressable onPress={() => { setSelectedReview({ ...journalDraft, photo: uri, photos: selectedJournalPhotos }); setSelectedReviewPhotoIndex(index); }}><Image source={{ uri }} style={styles.journalPhotoThumb} /></Pressable><Pressable disabled={journalSaving} style={styles.journalPhotoRemove} onPress={() => setJournalDraft((current) => { const photos = [...new Set([...(current.photos ?? []), current.photo ?? ''].filter(Boolean))].filter((_, photoIndex) => photoIndex !== index); return { ...current, photo: photos[0] ?? '', photos }; })}><Text style={styles.journalPhotoRemoveText}>×</Text></Pressable></View>)}{selectedJournalPhotos.length < maxJournalPhotos && <Pressable disabled={journalSaving} style={[styles.journalPhotoAdd, { borderColor: journalTheme.border, backgroundColor: journalTheme.secondarySurface }]} onPress={() => void chooseJournalPhoto()}><Text style={[styles.journalPhotoAddIcon, { color: journalTheme.accent }]}>＋</Text><Text style={[styles.journalPhotoAddText, { color: journalTheme.accent }]}>写真を追加</Text></Pressable>}</View>
+    <View pointerEvents={journalSaving ? 'none' : 'auto'} style={styles.journalPhotoRow}>{selectedJournalPhotos.map((uri, index) => <View key={`${uri}-${index}`} style={styles.journalPhotoWrap}><Pressable onPress={() => { setSelectedReview({ ...journalDraft, photo: uri, photos: selectedJournalPhotos }); setSelectedReviewPhotoIndex(index); }}><Image source={{ uri }} style={styles.journalPhotoThumb} /></Pressable><Pressable disabled={journalSaving} style={styles.journalPhotoRemove} onPress={() => setJournalDraft((current) => { const photos = [...new Set([...(current.photos ?? []), current.photo ?? ''].filter(Boolean))].filter(photoUri => photoUri !== uri); return { ...current, photo: photos[0] ?? '', photos }; })}><Text style={styles.journalPhotoRemoveText}>×</Text></Pressable></View>)}{selectedJournalPhotos.length < maxJournalPhotos && <Pressable disabled={journalSaving} style={[styles.journalPhotoAdd, { borderColor: journalTheme.border, backgroundColor: journalTheme.secondarySurface }]} onPress={() => void chooseJournalPhoto()}><Text style={[styles.journalPhotoAddIcon, { color: journalTheme.accent }]}>＋</Text><Text style={[styles.journalPhotoAddText, { color: journalTheme.accent }]}>写真を追加</Text></Pressable>}</View>
     <Pressable accessibilityRole="button" accessibilityLabel="入力を終える" onPress={Keyboard.dismiss} style={{ minHeight: 44, alignSelf: 'flex-end', justifyContent: 'center', paddingHorizontal: 8 }}><Text style={{ color: journalTheme.accent, fontSize: 14, fontWeight: '700' }}>入力を終える⌄</Text></Pressable>
     <TextInput accessibilityLabel="日記のひとこと" returnKeyType="done" onSubmitEditing={Keyboard.dismiss} editable={!journalSaving} value={journalDraft.shortNote ?? ''} onChangeText={(shortNote) => setJournalDraft((current) => ({ ...current, shortNote }))} placeholder="今日のひとこと" placeholderTextColor={journalTheme.muted} style={[styles.journalInput, { backgroundColor: journalTheme.surface, borderColor: journalTheme.border, color: journalTheme.text }]} />
     <TextInput accessibilityLabel="日記の本文" textAlignVertical="top" editable={!journalSaving} value={journalDraft.memo ?? ''} onChangeText={(memo) => setJournalDraft((current) => ({ ...current, memo }))} placeholder="今日のことを少し残す" placeholderTextColor={journalTheme.muted} multiline style={[styles.journalInput, styles.journalMemo, { backgroundColor: journalTheme.surface, borderColor: journalTheme.border, color: journalTheme.text }]} />
@@ -637,7 +638,7 @@ export function HistoryScreen({ tasks, wishMonths, calendarMarks, onSetCalendarM
         <Pressable style={styles.modalBackdrop} onPress={() => setSelectedReview(null)}>
           <Pressable style={[styles.reviewPhotoModal, isDark && styles.darkReviewModal, designMode === 'chic' && chicPalette && { backgroundColor: historySurface, borderColor: historyBorder }]} onPress={(event) => event.stopPropagation()}>
             {(() => {
-              const photos = [...new Set([...(selectedReview?.photos ?? []), selectedReview?.photo ?? ''].filter(Boolean))];
+              const photos = [...new Set([...(selectedReview?.photos ?? []), selectedReview?.photo ?? ''].filter(Boolean))].filter(isDisplayPhotoAvailable);
               const photo = photos[selectedReviewPhotoIndex] ?? photos[0];
               return photo ? <><Image source={{ uri: photo }} style={[styles.reviewPhotoLarge, isDark && styles.darkReviewImage]} />{photos.length > 1 && <View style={styles.reviewPhotoPager}>{photos.map((uri, index) => <Pressable key={uri} style={[styles.reviewPhotoPagerDot, isDark && styles.darkReviewPagerDot, index === selectedReviewPhotoIndex && styles.reviewPhotoPagerDotActive]} onPress={() => setSelectedReviewPhotoIndex(index)}><Text style={[styles.reviewPhotoPagerText, isDark && styles.darkBodyText, designMode === 'chic' && chicPalette && { color: historyText }]}>{index + 1}</Text></Pressable>)}</View>}</> : <View style={[styles.reviewPhotoLargeEmpty, isDark && styles.darkReviewImage]}><Text style={[styles.reviewPhotoLargeEmptyText, isDark && styles.darkMutedText, designMode === 'chic' && chicPalette && { color: historyMuted }]}>写真なし</Text></View>;
             })()}

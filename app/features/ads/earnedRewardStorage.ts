@@ -1,11 +1,12 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import type { WidgetType } from '../../types';
+import type { PhotoThemePhotoTarget, WidgetType } from '../../types';
 import { REWARDED_AD_RULES, type RewardedFeatureId } from './rewardedAccess';
+import { rewardPhotoTarget } from '../photo/photoAccess';
 import { addHours } from './rewardedAccessLogic';
 import { EARNED_REWARD_STORAGE_KEY, REWARD_STORAGE_PROBE_KEY, isRewardedAccessLoadFailure, saveRewardedAccessState, type RewardedAccessState } from './rewardedAccessStorage';
 
 export { EARNED_REWARD_STORAGE_KEY } from './rewardedAccessStorage';
-export type EarnedRewardReceipt = { id: string; featureId: RewardedFeatureId; earnedAt: string; widgetType: WidgetType | null };
+export type EarnedRewardReceipt = { id: string; featureId: RewardedFeatureId; earnedAt: string; widgetType: WidgetType | null; photoTarget?: PhotoThemePhotoTarget };
 
 /** Do not ask someone to watch an ad when storage is already unavailable. */
 export async function assertRewardStorageWritable() {
@@ -28,11 +29,18 @@ export function applyEarnedReward(base: RewardedAccessState, receipt: EarnedRewa
     case 'wishCreate': next = { ...base, wishCreateProgress: Math.min(required, base.wishCreateProgress + 1) }; break;
     case 'wishActionCreate': next = { ...base, wishActionCreateProgress: Math.min(required, base.wishActionCreateProgress + 1) }; break;
     case 'premiumDesign':
-    case 'premiumDesignTrialExpired': next = { ...base, premiumDesign: { unlockedUntil: addHours(earnedAt, 12) } }; break;
+    case 'premiumDesignTrialExpired': next = { ...base, premiumDesign: { unlockedUntil: addHours(earnedAt, REWARDED_AD_RULES.premiumDesign.unlockDurationHours) } }; break;
     case 'calendarImport': next = { ...base, calendarImportCredits: base.calendarImportCredits + 1 }; break;
-    case 'photoTop': next = { ...base, photoCustomization: { ...base.photoCustomization, topExtraSlotsUnlocked: Math.min(5, base.photoCustomization.topExtraSlotsUnlocked + 1) } }; break;
-    case 'photoBackground': next = { ...base, photoCustomization: { ...base.photoCustomization, backgroundUnlocked: true } }; break;
-    case 'photoFocus': next = { ...base, photoCustomization: { ...base.photoCustomization, focusUnlocked: true } }; break;
+    case 'photoTop':
+    case 'photoBackground':
+    case 'photoFocus': {
+      const target = rewardPhotoTarget(receipt);
+      if (!target) throw new Error('視聴済み写真広告の対象枠を確認できません。記録は保持しています。');
+      const previous = base.photoAccessByTarget?.[target];
+      const reached = (previous?.personalProgress ?? 0) + 1 >= 2;
+      next = { ...base, photoAccessByTarget: { ...base.photoAccessByTarget, [target]: { sampleUnlocked: true, personalProgress: reached ? 0 : 1, personalUnlockedUntil: reached ? addHours(earnedAt, REWARDED_AD_RULES.photoTop.unlockDurationHours) : previous?.personalUnlockedUntil ?? null } } };
+      break;
+    }
     case 'widgetPhoto':
       if (!receipt.widgetType) throw new Error('写真を使うWidgetを確認できません。');
       next = { ...base, widgetPhotoCustomization: { widgetType: receipt.widgetType, unlockedAt: receipt.earnedAt, expiresAt: addHours(earnedAt, 24 * REWARDED_AD_RULES.widgetPhoto.unlockDurationDays) } };

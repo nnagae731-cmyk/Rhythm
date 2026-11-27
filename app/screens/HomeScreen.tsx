@@ -26,6 +26,7 @@ export function HomeScreen({
   selectionMode,
   selectedTaskIds,
   onAdd,
+  onSyncEditingChange,
   onOpenFocus,
   initialTab = 'now',
   photoBackgroundVisible = false,
@@ -78,6 +79,7 @@ export function HomeScreen({
   selectionMode: boolean;
   selectedTaskIds: string[];
   onAdd: () => void;
+  onSyncEditingChange?: (editing: boolean) => void;
   onOpenFocus: () => void;
   initialTab?: 'now' | 'list' | 'routine';
   photoBackgroundVisible?: boolean;
@@ -152,6 +154,9 @@ export function HomeScreen({
   const [sortOrder, setSortOrder] = useState<TaskSortOrder>('recommended');
   const [postponeTask, setPostponeTask] = useState<Task | null>(null);
   const [postponeDateTask, setPostponeDateTask] = useState<Task | null>(null);
+  const syncEditing = Boolean(bucketTask || actionTask || tomorrowOpen || listTask || categoryPickerOpen || sortPickerOpen || postponeTask || postponeDateTask);
+  useEffect(() => { onSyncEditingChange?.(syncEditing); }, [onSyncEditingChange, syncEditing]);
+  useEffect(() => () => onSyncEditingChange?.(false), [onSyncEditingChange]);
   useEffect(() => {
     setHomeTab(initialTab);
     onClearSelection?.();

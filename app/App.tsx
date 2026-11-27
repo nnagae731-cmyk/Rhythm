@@ -1,4 +1,6 @@
 import { PhotoReadableBand } from './components/SurfaceFade';
+import { canUsePhotoKind, rewardPhotoTarget, isPhotoRewardFeature, photoAccessLabel, photoRewardProgress, type PhotoKind } from './features/photo/photoAccess';
+import { photoKind, restoreSamplePhotoUris, visiblePhotoSettings, withoutTopPhoto } from './features/photo/photoSamples';
 import { usePhotoEntryHint } from './features/onboarding/usePhotoEntryHint';
 import { PhotoEntrySheet, PhotoTopEntry } from './components/PhotoEntry';
 import { useRhythmPersistence } from './storage/useRhythmPersistence';
@@ -65,7 +67,8 @@ import { Affirmation, AffirmationCustomText, AppNotice, AppNoticeCategory, Calen
 import { isOneOffWishTask, linkedWishAction, readWishTaskOrigin, sameWishTaskOrigin, taskChangesAfterWishEdit, wishMonthsAfterTaskCompletion, wishTaskForActionDeletion } from './features/wish/wishTaskLink';
 import { initialPlan } from './storage/rhythmState';
 import { DEFAULT_TRAVEL_APP_SETTINGS, normalizeTravelAppSettings, TravelAppSettings } from './features/travel/travelApps';
-import { loadRhythmState } from './storage/rhythmStorage';
+import { loadRhythmState, loadPreSyncBackupState } from './storage/rhythmStorage';
+import { useICloudStateSync } from './features/sync/useICloudStateSync';
 import { acknowledgeRhythmWidgetPendingActions, buildRhythmWidgetSnapshot, getRhythmWidgetPendingActions, saveRhythmAffirmationPhoto, saveRhythmWidgetPhoto, saveRhythmWidgetPhotoForWidget, saveRhythmWidgetSnapshot } from './features/widget/rhythmWidgetSnapshot';
 import { DEFAULT_WIDGET_SETTINGS, getWidgetCustomization, normalizeWidgetSettings, WIDGET_TYPE_OPTIONS } from './features/widget/widgetSettings';
 import type { WidgetEntitlementOverride } from './features/widget/widgetSettings';
@@ -91,7 +94,7 @@ import { SharedEventScreen } from './SharedEventScreen';
 import { TopImageCropModal } from './components/TopImageCropModal';
 import { AIShareSheet } from './components/AIShareSheet';
 import { cropRectToPixels, displayToNormalizedRect, getContainBounds, getInitialCropRect, NormalizedCropRect } from './features/photo/topImageCrop';
-import { cleanupUnreferencedManagedPhotos, collectReferencedManagedPhotoUris, deleteManagedPhotoUri, deleteTemporaryPhotoUri, isPersistedPhotoAvailable, persistPhotoUri } from './features/photo/persistentPhoto';
+import { cleanupUnreferencedManagedPhotos, collectReferencedManagedPhotoUris, deleteManagedPhotoUri, deleteTemporaryPhotoUri, isPersistedPhotoAvailable, persistPhotoUri, rebaseManagedPhotoUris, isDisplayPhotoAvailable } from './features/photo/persistentPhoto';
 import { pruneBehaviorEvents, pruneFocusSessions, pruneRecoveryHistory, pruneRoutineArchives } from './features/storage/historyCleanup';
 import { canUseNotifications, getNotificationPermissionAction, getNotificationPermissionStatus, requestRhythmNotificationPermission } from './features/notifications/notificationPermission';
 import { addHours, canCreateWish, canCreateWishAction, canImportCalendar, canStartPremiumDesignTrial, isPremiumDesignTrialActive, isPremiumDesignUnlocked, isWidgetPhotoUnlockActive } from './features/ads/rewardedAccessLogic';
@@ -200,6 +203,7 @@ export default function App() {
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
   const onboarding = useOnboarding();
   const [screen, setScreen] = useState<Screen>('home');
+  const [syncHomeEditing, setSyncHomeEditing] = useState(false);
   const [timelineInitialTab, setTimelineInitialTab] = useState<TimeTab>('departure');
   const [analysisInitialTab, setAnalysisInitialTab] = useState<'records' | 'insights' | 'routine'>('records');
   const [currentGuideFeature, setCurrentGuideFeature] = useState<Exclude<OnboardingFeatureId, 'intro'>>();
@@ -239,6 +243,9 @@ export default function App() {
   const rewardedPromptCompletionRef = React.useRef<(() => void) | undefined>(undefined);
   const topImageRewardCompletedRef = React.useRef(false);
   const topImageRewardDismissActionRef = React.useRef<(() => void) | undefined>(undefined);
+  const photoRewardTargetRef = React.useRef<PhotoThemePhotoTarget | undefined>(undefined);
+  const photoRewardKindRef = React.useRef<PhotoKind>('personal');
+  const applyPhotoDesignRef = React.useRef<(uri?: string, color?: ChicCheckColor) => void>(() => {});
   const widgetPhotoUnlockTargetRef = React.useRef<WidgetType | null>(null);
   const rewardedGenericBusyRef = React.useRef(false);
   const rewardedWishBusyRef = React.useRef(false);
@@ -247,6 +254,9 @@ export default function App() {
   const scheduleTaskNotificationsRef = React.useRef<(task: Task) => Promise<void>>(async () => undefined);
   const navigateWithinAppRef = React.useRef<(nextScreen: Screen) => void>(() => undefined);
   const hydratedRef = React.useRef(false);
+  const syncHydrationCompletedRef = React.useRef(-1);
+  const syncHydrationHadActionsRef = React.useRef(false);
+  const syncHydrationLoadedMissingRef = React.useRef<boolean | undefined>(undefined);
   useEffect(() => {
     let active = true;
     let resolved = false;
@@ -604,7 +614,7 @@ export default function App() {
       : isPremiumDesignTrialActive(rewardedAccess, now)
         ? '24時間無料体験中'
         : isPremiumDesignUnlocked(rewardedAccess, now)
-          ? '広告で12時間利用中'
+          ? '広告で3日間利用中'
           : storeKitEntitlementsResolved ? '未購入 ›' : '購入状態を確認中';
   const designRewardAvailable = rewardedAccessHydrated
     && planTier !== 'premium'
@@ -614,7 +624,7 @@ export default function App() {
     && (canStartPremiumDesignTrial(rewardedAccess) || rewardedAccess.premiumDesignTrial.used);
   const designRewardLabel = canStartPremiumDesignTrial(rewardedAccess)
     ? '24時間無料で使う'
-    : '広告を見て12時間使う';
+    : '広告を見て3日間使う';
   useEffect(() => {
     if (!__DEV__) return;
     console.log('[DesignEntitlement]', {
@@ -677,7 +687,7 @@ export default function App() {
       ],
     );
   }, []);
-  // The trial remembers the design that started it. A later 12-hour rewarded
+  // The trial remembers the design that started it. A later 3-day rewarded
   // unlock is global Design access, so it must not resurrect that old design.
   const activeDesignTrialId = planTier !== 'premium' && isPremiumDesignTrialActive(rewardedAccess, now)
     ? rewardedAccess.premiumDesignTrial.designId
@@ -690,22 +700,15 @@ export default function App() {
   const effectiveMonoPattern: MonoPattern = hasMonoPatternAccess(monoPattern) ? monoPattern : 'plain';
   const activeDesignTrial = activeDesignTrialId && activeDesignTrialId !== 'photo' && designMode === 'chic' ? activeDesignTrialId as ChicPattern : null;
   const photoDesignTemporaryAccess = hasDesignCustomizeAccess || isPremiumDesignTrialActive(rewardedAccess, now) || isPremiumDesignUnlocked(rewardedAccess, now);
-  const photoThemeEnabled = designMode === 'photo' && (hasDesignCustomizeAccess || photoDesignTemporaryAccess || rewardedAccess.photoCustomization.backgroundUnlocked || rewardedAccess.photoCustomization.focusUnlocked || rewardedAccess.photoCustomization.topExtraSlotsUnlocked > 0);
-  const photoTopImageAccess = hasDesignCustomizeAccess || photoDesignTemporaryAccess || rewardedAccess.photoCustomization.topExtraSlotsUnlocked > 0;
-  const uiDesignMode: Exclude<DesignMode, 'photo'> = designMode === 'photo'
-    ? 'chic'
-    : isMonoDesign ? resolvedMonoMode : designMode;
-  const photoBackgroundUri = photoThemeEnabled && (hasDesignCustomizeAccess || photoDesignTemporaryAccess || rewardedAccess.photoCustomization.backgroundUnlocked) && photoTheme.placement !== 'top' ? photoTheme.imageUri : undefined;
-  const photoTopImageUri = photoTopImageAccess || Boolean(photoTheme.topImageUris?.[screen] ?? photoTheme.topImageOriginalUris?.[screen])
-    ? photoTheme.topImageUris?.[screen] ?? photoTheme.topImageOriginalUris?.[screen]
-    : undefined;
-  // Per-screen top visuals are independent from the Photo background theme.
-  // Keep this display path available in Mono, Design, and Photo while retaining
-  // the existing top-slot entitlement gate.
-  const wishTopImageUri = photoTopImageAccess || Boolean(photoTheme.topImageUris?.wish ?? photoTheme.topImageOriginalUris?.wish)
-    ? photoTheme.topImageUris?.wish ?? photoTheme.topImageOriginalUris?.wish
-    : undefined;
-  const focusBackgroundUri = photoThemeEnabled && (hasDesignCustomizeAccess || photoDesignTemporaryAccess || rewardedAccess.photoCustomization.focusUnlocked) ? photoTheme.focusBackgroundUri : undefined;
+  const canUsePhoto = (kind: PhotoKind, target: PhotoThemePhotoTarget) => planTier === 'premium' || hasDesignCustomizeAccess || (rewardedAccessHydrated && canUsePhotoKind(rewardedAccess, kind, target, now));
+  const displayPhotoTheme = visiblePhotoSettings(photoTheme, canUsePhoto);
+  const previewSavedBackgroundUri = isDisplayPhotoAvailable(photoTheme.imageUri) ? photoTheme.imageUri : undefined;
+  const photoThemeEnabled = designMode === 'photo';
+  const uiDesignMode: Exclude<DesignMode, 'photo'> = designMode === 'photo' ? 'chic' : isMonoDesign ? resolvedMonoMode : designMode;
+  const photoBackgroundUri = photoThemeEnabled && photoTheme.placement !== 'top' ? displayPhotoTheme.imageUri : undefined;
+  const photoTopImageUri = displayPhotoTheme.topImageUris?.[screen] ?? displayPhotoTheme.topImageOriginalUris?.[screen];
+  const wishTopImageUri = displayPhotoTheme.topImageUris?.wish ?? displayPhotoTheme.topImageOriginalUris?.wish;
+  const focusBackgroundUri = displayPhotoTheme.focusBackgroundUri;
   // A temporary trial is an explicit, time-bounded override. Persisted free
   // users still fall back to plain when no trial is active.
   const effectiveChicPattern = (activeDesignTrial ?? getEffectiveChicPattern(planTier, chicPattern, hasDesignCustomizeAccess || isPremiumDesignUnlocked(rewardedAccess, now))) as ChicPattern;
@@ -746,6 +749,7 @@ export default function App() {
   const currentWishMonthKey = wishMonthKey(now);
   const getRewardedPromptProgress = React.useCallback((featureId: RewardedFeatureId) => {
     const required = getRequiredAds(featureId);
+    if (isPhotoRewardFeature(featureId)) return photoRewardProgress(rewardedAccess, photoRewardKindRef.current, photoRewardTargetRef.current, new Date());
     if (featureId === 'wishCreate') return { current: rewardedAccess.wishCreateProgress, required };
     if (featureId === 'wishActionCreate') return { current: rewardedAccess.wishActionCreateProgress, required };
     if (featureId === 'routineSkipBonus') return { current: rewardedAccess.routine.skipBonusProgress, required };
@@ -758,8 +762,9 @@ export default function App() {
     if (earnedRewardRef.current && earnedRewardRef.current.featureId !== featureId) return { success: false, message: '視聴済み広告の保存が未完了です。元の画面から保存を再試行してください。' };
     if (!earnedRewardRef.current) {
       if (planTier === 'premium') return { success: true, completed: true };
+      if (isPhotoRewardFeature(featureId) && !rewardPhotoTarget({ featureId, photoTarget: photoRewardTargetRef.current })) return { success: false, message: '写真の対象枠を選んでください。' };
+      if (isPhotoRewardFeature(featureId) && (hasDesignCustomizeAccess || canUsePhotoKind(rewardedAccessRef.current, photoRewardKindRef.current, photoRewardTargetRef.current, new Date()))) return { success: true, completed: true };
       if (featureId === 'routineSkipBonus' && rewardedAccessRef.current.routine.skipBonusAdded >= 2) return { success: true, completed: true, message: 'Skip Bonusは最大まで取得済みです。' };
-      if (featureId === 'photoTop' && rewardedAccessRef.current.photoCustomization.topExtraSlotsUnlocked >= 5) return { success: true, completed: true, message: '写真枠は最大まで解放済みです。' };
       if (featureId === 'widgetPhoto' && !widgetPhotoUnlockTargetRef.current) return { success: false, message: '写真を使うWidgetを選択してください。' };
     }
     if (rewardedGenericBusyRef.current) return { success: false, message: '広告を準備しています…' };
@@ -778,8 +783,9 @@ export default function App() {
         return { success: false, message: '広告の確認にはDevelopment Buildが必要です。' };
       }
       const widgetType = widgetPhotoUnlockTargetRef.current;
+      const photoTarget = isPhotoRewardFeature(featureId) ? photoRewardTargetRef.current : undefined;
       const earned = await showTestRewardedAd(() => {
-        earnedRewardRef.current ??= { id: `earned:${Date.now()}:${Math.random().toString(36).slice(2)}`, featureId, earnedAt: new Date().toISOString(), widgetType };
+        earnedRewardRef.current ??= { id: `earned:${Date.now()}:${Math.random().toString(36).slice(2)}`, featureId, earnedAt: new Date().toISOString(), widgetType, photoTarget };
         setEarnedRewardPending(true);
         journalWrite ??= recordEarnedReward(earnedRewardRef.current).then(() => true, () => false);
       }).catch((error) => {
@@ -787,7 +793,7 @@ export default function App() {
         return false;
       });
       if (!earned && !earnedRewardRef.current) return { success: false, message: '広告を読み込めませんでした。もう一度お試しください。' };
-        earnedRewardRef.current ??= { id: `earned:${Date.now()}:${Math.random().toString(36).slice(2)}`, featureId, earnedAt: new Date().toISOString(), widgetType };
+        earnedRewardRef.current ??= { id: `earned:${Date.now()}:${Math.random().toString(36).slice(2)}`, featureId, earnedAt: new Date().toISOString(), widgetType, photoTarget };
       }
       const receipt = earnedRewardRef.current;
       const required = getRequiredAds(featureId);
@@ -804,7 +810,7 @@ export default function App() {
       let next = applyEarnedReward(base, receipt);
       const completed = featureId === 'wishCreate' ? next.wishCreateProgress >= required
         : featureId === 'wishActionCreate' ? next.wishActionCreateProgress >= required
-          : featureId === 'routineSkipBonus' ? next.routine.skipBonusAdded > base.routine.skipBonusAdded : true;
+          : featureId === 'routineSkipBonus' ? next.routine.skipBonusAdded > base.routine.skipBonusAdded : isPhotoRewardFeature(featureId) ? canUsePhotoKind(next, photoRewardKindRef.current, rewardPhotoTarget(receipt), new Date()) : true;
       try {
         // If another existing credit/setting changes while the write is in
         // flight, rebase on that latest state, not the pre-ad snapshot.
@@ -831,7 +837,7 @@ export default function App() {
       rewardedGenericBusyRef.current = false;
       setEarnedRewardSaving(false);
     }
-  }, [getRewardedPromptProgress, planTier, rewardedAccessHydrated]);
+  }, [getRewardedPromptProgress, planTier, hasDesignCustomizeAccess, rewardedAccessHydrated]);
 
   retryEarnedRewardRef.current = async () => {
     const receipt = earnedRewardRef.current;
@@ -840,12 +846,18 @@ export default function App() {
     catch (error) { setEarnedRewardPending(true); console.warn('[Ads] Earned reward retry failed.', error); }
   };
 
-  const openRewardedPrompt = React.useCallback((featureId: RewardedFeatureId, title: string, description: string, onCompleted?: () => void) => {
+  const openRewardedPrompt = React.useCallback((featureId: RewardedFeatureId, title: string, description: string, onCompleted?: () => void, kind: PhotoKind = 'personal', photoTarget?: PhotoThemePhotoTarget) => {
+    if (isPhotoRewardFeature(featureId)) {
+      const target = rewardPhotoTarget({ featureId, photoTarget });
+      if (!target) { Alert.alert('写真の対象枠を選んでください'); return; }
+      photoRewardTargetRef.current = target;
+      photoRewardKindRef.current = kind;
+    }
     if (planTier === 'premium') {
       onCompleted?.();
       return;
     }
-    if (featureId === 'photoTop') topImageRewardCompletedRef.current = false;
+    if (isPhotoRewardFeature(featureId)) topImageRewardCompletedRef.current = false;
     setRewardedPromptClosing(false);
     rewardedPromptCompletionRef.current = onCompleted;
     setRewardedPrompt({ featureId, title, description });
@@ -864,7 +876,7 @@ export default function App() {
     if (!rewardedPrompt) return { success: false, message: '広告を利用できません。' };
     const result = await grantRewarded(rewardedPrompt.featureId);
     if (result.completed) {
-      if (rewardedPrompt.featureId === 'photoTop') {
+      if (isPhotoRewardFeature(rewardedPrompt.featureId)) {
         // The picker is another native presentation. Open it only after the
         // rewarded sheet has dismissed, not while that sheet is still visible.
         topImageRewardCompletedRef.current = true;
@@ -886,7 +898,7 @@ export default function App() {
     const current = rewardedAccess.widgetPhotoCustomization;
     if (current.widgetType && current.expiresAt && new Date(current.expiresAt).getTime() > Date.now()) return;
     widgetPhotoUnlockTargetRef.current = widgetType;
-    openRewardedPrompt('widgetPhoto', 'ウィジェットの写真を7日間使う', '広告を1回見ると、選んだウィジェットで写真を7日間使えます。', () => undefined);
+    openRewardedPrompt('widgetPhoto', 'ウィジェットの写真を3日間使う', '広告を1回見ると、選んだウィジェットで写真を3日間使えます。', () => undefined);
   }, [hasDesignCustomizeAccess, openRewardedPrompt, planTier, rewardedAccess]);
   const showCompletionAffirmation = React.useCallback((kind: CompletionFeedbackKind = 'task', withHaptic = false) => {
     const configured = [...affirmations.map((item) => item.text.trim()), ...affirmationCustomTexts.map((item) => item.text.trim())].filter(Boolean);
@@ -1384,7 +1396,7 @@ export default function App() {
     if (affirmationOperationGenerationRef.current[affirmation.id] !== generation) return;
     setAffirmations((current) => current.filter((item) => item.id !== affirmation.id));
   }, []);
-  const { pendingTopPhoto, setPendingTopPhoto, topImageCropResumeToken, setTopImageCropResumeToken, topImageProcessing, topImageAccessPurchaseResumeRef, topImageCropDismissActionRef, resumeTopImageAfterAccessFlow, canOpenTopImagePicker, pickPhotoTheme, adjustTopPhoto, applyPendingTopPhoto } = usePhotoTheme({ photoTheme, setPhotoTheme, planTier, hasDesignCustomizeAccess, rewardedAccess, now, openRewardedPrompt });
+  const { pendingTopPhoto, setPendingTopPhoto, topImageCropResumeToken, setTopImageCropResumeToken, topImageProcessing, topImageAccessPurchaseResumeRef, topImageCropDismissActionRef, resumeTopImageAfterAccessFlow, canPickPhotoKind, canOpenTopImagePicker, pickPhotoTheme, adjustTopPhoto, applyPendingTopPhoto } = usePhotoTheme({ photoTheme, setPhotoTheme, setDesignMode, planTier, hasDesignCustomizeAccess, rewardedAccess, now, openRewardedPrompt });
 
   const pickPhotoForDesignPreview = React.useCallback(async (openPreviewAfterPick = false): Promise<boolean> => {
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -1451,11 +1463,19 @@ export default function App() {
       Alert.alert('写真を選択してください', '写真で試すから画像を選んでください。');
       return;
     }
+    const sampleId = selectedPhotoUri === photoTheme.imageUri ? photoTheme.samplePhotoIds?.background : undefined;
+    const kind = sampleId ? 'sample' : 'personal';
+    if (planTier !== 'premium' && !hasDesignCustomizeAccess && !canUsePhotoKind(rewardedAccessRef.current, kind, 'background', new Date())) {
+      openRewardedPrompt('photoBackground', '写真を使う', 'この枠は、広告1回でサンプルを期限なし、2回で自分の画像を3日間使えます。', () => applyPhotoDesignRef.current(selectedPhotoUri, colorOverride), kind, 'background');
+      return;
+    }
     try {
-      const persistentUri = persistPhotoUri(selectedPhotoUri, 'design-background');
+      const persistentUri = sampleId ? selectedPhotoUri : persistPhotoUri(selectedPhotoUri, 'design-background');
+      if (!sampleId && !isPersistedPhotoAvailable(persistentUri)) throw new Error('photo persistence unavailable');
       setPhotoTheme((current) => {
         deleteManagedPhotoUri(current.imageUri, [persistentUri, current.focusBackgroundUri, ...Object.values(current.topImageUris ?? {}), ...Object.values(current.topImageOriginalUris ?? {})]);
-        return { ...current, placement: 'background', imageUri: persistentUri };
+        const samplePhotoIds = { ...current.samplePhotoIds }; if (!sampleId) delete samplePhotoIds.background;
+        return { ...current, samplePhotoIds, placement: 'background', imageUri: persistentUri };
       });
       if (colorOverride) setChicCheckColor(colorOverride);
       setDesignMode('photo');
@@ -1467,7 +1487,8 @@ export default function App() {
     } catch {
       Alert.alert('写真を保存できませんでした', 'もう一度選び直してください。');
     }
-  }, [completeInitialDesignSelection, designPreviewPhotoUri, onboarding, onboardingDesignSelectionPending]);
+  }, [completeInitialDesignSelection, designPreviewPhotoUri, onboarding, onboardingDesignSelectionPending, photoTheme, planTier, hasDesignCustomizeAccess, openRewardedPrompt]);
+  applyPhotoDesignRef.current = applyPhotoDesign;
   const startPhotoDesignTrial = React.useCallback((photoUriOverride?: string, colorOverride?: ChicCheckColor) => {
     const selectedPhotoUri = photoUriOverride ?? designPreviewPhotoUri;
     if (!selectedPhotoUri) return;
@@ -2159,10 +2180,12 @@ export default function App() {
     loadRhythmState()
       .then((saved) => {
         if (!active) return;
+        syncHydrationLoadedMissingRef.current = !saved;
         if (!saved) return;
-        // Scan the original saved object, including unknown/legacy fields,
+        saved = rebaseManagedPhotoUris(saved);
+        // Scan the rebased saved object, including unknown/legacy fields,
         // before normalizing anything. On error hydration fails closed.
-        startupPhotoReferencesRef.current = collectReferencedManagedPhotoUris(saved);
+        startupPhotoReferencesRef.current = new Set([...(startupPhotoReferencesRef.current ?? []), ...collectReferencedManagedPhotoUris(saved)]);
         const loadedTasks = saved.tasks ? saved.tasks.map((task) => taskWithUnifiedMemos({
           ...task,
           category: (task.category ?? 'その他') as Category,
@@ -2216,7 +2239,8 @@ export default function App() {
         setAffirmations(saved.affirmations ?? []);
         setVoiceUsage(normalizeVoiceUsage(saved.voiceUsage, dateKey()));
         setAffirmationCustomTexts(saved.affirmationCustomTexts ?? []);
-        setPhotoTheme({
+        setPhotoTheme(restoreSamplePhotoUris({
+          samplePhotoIds: saved.photoTheme?.samplePhotoIds,
           placement: saved.photoTheme?.placement === 'top' ? 'top' : 'background',
           imageUri: saved.photoTheme?.imageUri,
           topImageUris: saved.photoTheme?.topImageUris ?? {},
@@ -2224,7 +2248,7 @@ export default function App() {
           topImageAdjustments: saved.photoTheme?.topImageAdjustments ?? {},
           topImageCropRects: saved.photoTheme?.topImageCropRects ?? {},
           focusBackgroundUri: saved.photoTheme?.focusBackgroundUri,
-        });
+        }));
         setTravelApps(normalizeTravelAppSettings(saved.travelApps));
         setDesignCustomizePurchased(saved.designCustomizePurchased === true);
         setRecoveryHistory(pruneRecoveryHistory(saved.recoveryHistory ?? []));
@@ -2310,6 +2334,8 @@ export default function App() {
         if (!active) return;
         setPersistenceRetrying(false);
         if (persistenceDisabledRef.current) return;
+        syncHydrationCompletedRef.current = hydrationRetry;
+        syncHydrationHadActionsRef.current = Boolean(pendingNotificationCompletionIdsRef.current.length || pendingDepartureNotificationActionsRef.current.length || pendingNotificationBehaviorActionsRef.current.length || pendingBehaviorEventsRef.current.length || pendingSharedEventPacketsRef.current.length || pendingSharedEventTokensRef.current.length);
         hydratedRef.current = true;
         setHydrated(true);
         const pendingIds = [...new Set(pendingNotificationCompletionIdsRef.current)];
@@ -2492,17 +2518,21 @@ export default function App() {
     if (!hydrated || persistenceDisabledRef.current || !startupPhotoReferencesRef.current) return;
     // Only scan the successfully read snapshot once. Files used by an editor
     // or copied during this launch are separately protected for this session.
-    const timer = setTimeout(() => {
+    let active = true;
+    const timer = setTimeout(() => { void (async () => {
       const startupReferences = startupPhotoReferencesRef.current;
       if (!startupReferences || persistenceDisabledRef.current) return;
       try {
         const currentReferences = latestPersistedStateRef.current ? collectReferencedManagedPhotoUris(latestPersistedStateRef.current) : startupReferences;
-        cleanupUnreferencedManagedPhotos([...startupReferences, ...currentReferences]);
+        const backup = await loadPreSyncBackupState();
+        if (!active || persistenceDisabledRef.current) return;
+        const backupReferences = backup ? collectReferencedManagedPhotoUris(backup) : [];
+        cleanupUnreferencedManagedPhotos([...startupReferences, ...currentReferences, ...backupReferences]);
       } catch (error) {
         console.warn('Photo cleanup skipped because references could not be inspected.', error);
       }
-    }, 1_000);
-    return () => clearTimeout(timer);
+    })(); }, 1_000);
+    return () => { active = false; clearTimeout(timer); };
   }, [hydrated]);
 
   const requestAppReview = React.useCallback(async () => {
@@ -4098,7 +4128,7 @@ export default function App() {
         <View style={tileStyle}><Image source={designFloralAssets.floral.thumbnailSource ?? designFloralAssets.floral.source} resizeMode="cover" style={{ width: '100%', height: 62 }} /><Text style={tileLabel}>花柄</Text></View>
         <View style={tileStyle}><View style={{ height: 62, overflow: 'hidden', backgroundColor: chicPalette.background }}><ChicPatternDecor pattern="dot" accent={chicPalette.accent} warm={chicPalette.accentSoft} checkColor={chicCheckColor} preview /></View><Text style={tileLabel}>ドット</Text></View>
         <View style={tileStyle}><View style={{ height: 62, overflow: 'hidden', backgroundColor: chicPalette.patternBase }}><ChicPatternDecor pattern="checkLavenderSatin" accent={chicPalette.accent} warm={chicPalette.patternStripe} checkColor={chicCheckColor} preview /></View><Text style={tileLabel}>チェック</Text></View>
-        <View style={tileStyle}>{photoTheme.imageUri ? <Image source={{ uri: photoTheme.imageUri }} resizeMode="cover" style={{ width: '100%', height: 62 }} /> : <View style={{ height: 62, alignItems: 'center', justifyContent: 'center', backgroundColor: chicPalette.surfaceSubtle }}><Text style={{ color: chicPalette.textSecondary, fontSize: 18 }}>▧</Text></View>}<Text style={tileLabel}>写真</Text></View>
+        <View style={tileStyle}>{previewSavedBackgroundUri ? <Image source={{ uri: previewSavedBackgroundUri }} resizeMode="cover" style={{ width: '100%', height: 62 }} /> : <View style={{ height: 62, alignItems: 'center', justifyContent: 'center', backgroundColor: chicPalette.surfaceSubtle }}><Text style={{ color: chicPalette.textSecondary, fontSize: 18 }}>▧</Text></View>}<Text style={tileLabel}>写真</Text></View>
       </View>
     </View>;
   };
@@ -4495,7 +4525,7 @@ export default function App() {
       chicCheckColor={chicCheckColor}
       affirmations={[{ id: 'capture-affirmation', text: '私は、自分のペースで進める', time: '08:30', enabled: true, createdAt: '2026-01-01T00:00:00.000Z' }]}
       affirmationCustomTexts={[]}
-      photoTheme={photoTheme}
+      photoTheme={displayPhotoTheme}
       travelApps={travelApps}
       widgetSettings={DEFAULT_WIDGET_SETTINGS}
       onSize={() => undefined}
@@ -5111,13 +5141,22 @@ export default function App() {
   };
 
   const photoEntryHint = usePhotoEntryHint(hydrated && onboarding.ready && !onboarding.introVisible && !introDismissing && onboarding.state.firstRunStage !== 'design' && !onboardingDesignSelectionPending && !firstRunDemoActive && screen === 'home', Boolean(photoTheme.imageUri || photoTheme.focusBackgroundUri || Object.values(photoTheme.topImageUris ?? {}).some(Boolean) || Object.values(photoTheme.topImageOriginalUris ?? {}).some(Boolean)));
+  const noteSyncInteraction = useICloudStateSync({
+    hydrated: hydrated && !persistenceDisabledRef.current,
+    blocked: screen !== 'home' || syncHomeEditing || selectionMode || Boolean(persistenceIssue) || focusTimerActive || Boolean(focusTaskCompletionPrompt) || Boolean(scheduleConflictPrompt) || addOpen || bulkAddOpen || voiceOpen || Boolean(editingTask) || planEditorOpen || premiumOpen || designCustomizeOpen || Boolean(designPreviewPattern) || designTrialNoticeOpen || openTodayReview || sharedEventOpen || Boolean(recoveryTargetPlanId) || noticeCenterOpen || tomorrowPrepOpen || Boolean(photoEntryTarget) || Boolean(pendingTopPhoto) || topImageProcessing || firstRunDemoActive || onboardingDesignSelectionPending || captureStudioOpen,
+    epoch: syncHydrationCompletedRef.current,
+    loadedMissing: syncHydrationLoadedMissingRef.current,
+    hadPendingActions: syncHydrationHadActionsRef.current,
+    snapshot: createPersistedSnapshot,
+    onRehydrate: () => setHydrationRetry(value => value + 1),
+  });
   const openScreenPhotoEntry = (target: PhotoThemePhotoTarget) => { if (target === 'home') photoEntryHint.dismiss(); setPhotoEntryTarget(target); };
 
   if (persistenceIssue === 'read') return <SafeAreaView style={{ flex: 1, backgroundColor: theme.colors.screenBackground, justifyContent: 'center', padding: 24 }}><Text accessibilityRole="alert" style={{ color: theme.colors.primaryText, fontSize: 20, fontWeight: '800' }}>保存データを読み込めませんでした</Text><Text style={{ color: theme.colors.secondaryText, fontSize: 14, lineHeight: 22, marginTop: 12 }}>データは消去していません。誤った上書きを防ぐため、読込ができるまで編集を停止しています。</Text><Pressable accessibilityRole="button" disabled={persistenceRetrying} onPress={() => { if (persistenceRetrying) return; setPersistenceRetrying(true); setHydrationRetry((value) => value + 1); }} style={{ minHeight: 48, marginTop: 20, alignItems: 'center', justifyContent: 'center', borderRadius: 12, backgroundColor: theme.colors.primaryAccent }}><Text style={{ color: uiDesignMode === 'chic' ? chicPalette.onAccent : uiDesignMode === 'dark' ? theme.colors.screenBackground : '#FFFFFF', fontSize: 14, fontWeight: '800' }}>{persistenceRetrying ? '読み込み中…' : 'もう一度読み込む'}</Text></Pressable></SafeAreaView>;
 
   return (
     <FocusRuntimeProvider options={focusControllerOptions}>
-    <View style={{ flex: 1, backgroundColor: imageDesignBackground?.background ?? (uiDesignMode === 'chic' ? getChicPatternVisual(effectiveChicPattern, chicPalette).background : theme.colors.screenBackground) }}>
+    <View onTouchStart={noteSyncInteraction} style={{ flex: 1, backgroundColor: imageDesignBackground?.background ?? (uiDesignMode === 'chic' ? getChicPatternVisual(effectiveChicPattern, chicPalette).background : theme.colors.screenBackground) }}>
       {imageDesignBackground && imageDesignBackgroundSize && <View pointerEvents="none" style={[StyleSheet.absoluteFillObject, { overflow: 'hidden', backgroundColor: imageDesignBackground.background }]}><Image source={imageDesignBackground.source} style={[imageDesignBackgroundSize, { position: 'absolute', top: 0, alignSelf: 'center' }]} /></View>}
       <SafeAreaView style={[styles.safe, uiDesignMode === 'minimal' && styles.safeMinimal, uiDesignMode === 'dark' && styles.safeDark, designMode === 'photo' && styles.safePhoto, !hydrated && { opacity: 0 }, { backgroundColor: 'transparent' }]}>
       <StatusBar style={uiDesignMode === 'dark' || (designMode === 'chic' && effectiveChicPattern === 'nightSky') ? 'light' : 'dark'} />
@@ -5145,6 +5184,7 @@ export default function App() {
               completionIcon={completionIcon}
               selectionMode={selectionMode}
               selectedTaskIds={selectedTaskIds}
+              onSyncEditingChange={setSyncHomeEditing}
               onAdd={() => {
                 if (firstRunDemoActive && productionGuideFeature === 'todo') {
                   void advanceGuide('todo');
@@ -5509,7 +5549,7 @@ export default function App() {
                chicPalette={chicPalette}
                affirmations={affirmations}
                affirmationCustomTexts={affirmationCustomTexts}
-              photoTheme={photoTheme}
+              photoTheme={displayPhotoTheme}
               travelApps={travelApps}
               widgetSettings={widgetSettings}
               onPickWidgetPhoto={pickWidgetPhoto}
@@ -5591,7 +5631,7 @@ export default function App() {
                   initialColor={chicCheckColor}
                   initialMonoAppearance={monoAppearance}
                   initialMonoPattern={designPreviewMonoPattern ?? effectiveMonoPattern}
-                  photoUri={designPreviewPhotoUri ?? photoTheme.imageUri}
+                  photoUri={designPreviewPhotoUri ?? previewSavedBackgroundUri}
                   topImageUris={{
                     home: photoTheme.topImageUris?.home ?? photoTheme.topImageOriginalUris?.home,
                     timeline: photoTheme.topImageUris?.timeline ?? photoTheme.topImageOriginalUris?.timeline,
@@ -5619,13 +5659,14 @@ export default function App() {
                onPickPhotoPreview={() => pickPhotoForDesignPreview(true)}
                onAdjustPhotoTheme={(target) => adjustTopPhoto(target)}
                onClearPhotoTheme={(target) => setPhotoTheme((current) => {
+                 const samplePhotoIds = { ...current.samplePhotoIds }; delete samplePhotoIds[target];
                  if (target === 'background') {
                    deleteManagedPhotoUri(current.imageUri, [current.focusBackgroundUri, ...Object.values(current.topImageUris ?? {}), ...Object.values(current.topImageOriginalUris ?? {})]);
-                   return { ...current, imageUri: undefined };
+                   return { ...current, samplePhotoIds, imageUri: undefined };
                  }
                  if (target === 'focus') {
                    deleteManagedPhotoUri(current.focusBackgroundUri, [current.imageUri, ...Object.values(current.topImageUris ?? {}), ...Object.values(current.topImageOriginalUris ?? {})]);
-                   return { ...current, focusBackgroundUri: undefined };
+                   return { ...current, samplePhotoIds, focusBackgroundUri: undefined };
                  }
                  const topImageUris = { ...current.topImageUris };
                  const topImageOriginalUris = { ...current.topImageOriginalUris };
@@ -5640,7 +5681,7 @@ export default function App() {
                  const retainedUris = [current.imageUri, current.focusBackgroundUri, ...Object.values(topImageUris), ...Object.values(topImageOriginalUris)];
                  deleteManagedPhotoUri(removedDisplayUri, retainedUris);
                  deleteManagedPhotoUri(removedOriginalUri, retainedUris);
-                 return { ...current, topImageUris, topImageOriginalUris, topImageAdjustments, topImageCropRects };
+                 return { ...current, samplePhotoIds, topImageUris, topImageOriginalUris, topImageAdjustments, topImageCropRects };
                })}
                onTravelAppsChange={setTravelApps}
               templates={taskTemplates}
@@ -5816,9 +5857,9 @@ export default function App() {
         designMode={uiDesignMode}
         chicPalette={chicPalette}
         onReward={handleRewardedPromptReward}
-        rewardButtonLabel={rewardedPrompt.featureId === 'widgetPhoto' ? '広告を見て7日間使う' : rewardedPrompt.featureId === 'premiumDesign' || rewardedPrompt.featureId === 'premiumDesignTrialExpired' ? '広告を見て12時間使う' : rewardedPrompt.featureId === 'photoTop' ? '広告を見て写真枠を追加' : rewardedPrompt.featureId === 'photoBackground' ? '広告を見て背景写真を使う' : rewardedPrompt.featureId === 'photoFocus' ? '広告を見て集中背景を使う' : undefined}
+        rewardButtonLabel={rewardedPrompt.featureId === 'widgetPhoto' ? '広告を見て3日間使う' : rewardedPrompt.featureId === 'premiumDesign' || rewardedPrompt.featureId === 'premiumDesignTrialExpired' ? '広告を見て3日間使う' : isPhotoRewardFeature(rewardedPrompt.featureId) ? '広告を見て写真を使う' : undefined}
         onClose={() => {
-          if (rewardedPrompt.featureId === 'photoTop') {
+          if (isPhotoRewardFeature(rewardedPrompt.featureId)) {
             if (rewardedPromptClosing) return;
             const continuation = rewardedPromptCompletionRef.current;
             const completed = topImageRewardCompletedRef.current;
@@ -5835,11 +5876,11 @@ export default function App() {
           setRewardedPrompt(null);
         }}
         onDismiss={() => {
-          if (rewardedPrompt.featureId === 'photoTop' && rewardedPromptClosing) finishTopImageRewardPrompt();
+          if (isPhotoRewardFeature(rewardedPrompt.featureId) && rewardedPromptClosing) finishTopImageRewardPrompt();
         }}
         onPremium={() => {
           const designFeature = rewardedPrompt.featureId === 'photoBackground' || rewardedPrompt.featureId === 'photoFocus' || rewardedPrompt.featureId === 'photoTop' || rewardedPrompt.featureId === 'premiumDesign' || rewardedPrompt.featureId === 'premiumDesignTrialExpired' || rewardedPrompt.featureId === 'widgetPhoto';
-          if (rewardedPrompt.featureId === 'photoTop') {
+          if (isPhotoRewardFeature(rewardedPrompt.featureId)) {
             topImageAccessPurchaseResumeRef.current = true;
             topImageRewardCompletedRef.current = false;
             rewardedPromptCompletionRef.current = undefined;
@@ -6028,8 +6069,9 @@ export default function App() {
         const startTrial = pendingDesignTrialRef.current;
         pendingDesignTrialRef.current = undefined;
         pendingDesignApplyRef.current = undefined;
+        designTrialAfterDismissRef.current = () => startTrial?.();
         setDesignTrialNoticeOpen(false);
-        startTrial?.();
+        if (Platform.OS !== 'ios') InteractionManager.runAfterInteractions(() => { const pending = designTrialAfterDismissRef.current; designTrialAfterDismissRef.current = undefined; pending?.(); });
       }} onReward={() => {
         designTrialAfterDismissRef.current = () => {
           void requestDesignReward().then((success) => {
@@ -6043,7 +6085,7 @@ export default function App() {
           pending?.();
         });
       }} />
-      <PhotoEntrySheet canChooseWithoutReward={(target) => target !== 'background' && target !== 'focus' ? canOpenTopImagePicker(target) : planTier === 'premium' || photoDesignTemporaryAccess || (target === 'background' ? rewardedAccess.photoCustomization.backgroundUnlocked : rewardedAccess.photoCustomization.focusUnlocked)} visible={Boolean(photoEntryTarget)} initialTarget={photoEntryTarget ?? 'home'} photoTheme={photoTheme} designMode={uiDesignMode} chicPalette={chicPalette} onClose={() => setPhotoEntryTarget(undefined)} onPick={(target) => { void pickPhotoTheme(target); }} onAdjust={adjustTopPhoto} />
+      <PhotoEntrySheet onRenew={target => { void pickPhotoTheme(target, { restoreExisting: true, sampleId: photoKind(photoTheme, target) === 'sample' ? photoTheme.samplePhotoIds?.[target] : undefined }); }} accessLabel={target => photoAccessLabel(rewardedAccess, planTier === 'premium' || hasDesignCustomizeAccess, target, now)} canChooseSampleWithoutReward={target => canPickPhotoKind('sample', target)} onPickSample={(target, sampleId) => { void pickPhotoTheme(target, { sampleId }); }} onRemove={(target) => setPhotoTheme(current => withoutTopPhoto(current, target))} canChooseWithoutReward={target => canPickPhotoKind('personal', target)} visible={Boolean(photoEntryTarget)} initialTarget={photoEntryTarget ?? 'home'} canShowPhoto={target => canUsePhoto(photoKind(photoTheme, target), target)} photoTheme={photoTheme} designMode={uiDesignMode} chicPalette={chicPalette} onClose={() => setPhotoEntryTarget(undefined)} onPick={(target) => { void pickPhotoTheme(target); }} onAdjust={adjustTopPhoto} />
       <TopImageCropModal
         visible={Boolean(pendingTopPhoto)}
         uri={pendingTopPhoto?.previewUri ?? pendingTopPhoto?.originalUri}

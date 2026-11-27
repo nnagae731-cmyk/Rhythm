@@ -1,13 +1,16 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import type { WidgetType } from '../../types';
+import type { PhotoThemePhotoTarget, WidgetType } from '../../types';
 
 export const REWARDED_ACCESS_STORAGE_KEY =
   'rhythm-rewarded-access-v1';
 export const EARNED_REWARD_STORAGE_KEY = 'rhythm-earned-reward-v1';
 export const REWARD_STORAGE_PROBE_KEY = 'rhythm-reward-storage-probe-v1';
 
+export type PhotoSlotAccess = { sampleUnlocked: boolean; personalProgress: number; personalUnlockedUntil: string | null };
 export type RewardedAccessState = {
   version: 1;
+  photoAccess?: { sampleUnlocked: boolean; personalProgress: number; personalUnlockedUntil: string | null };
+  photoAccessByTarget?: Partial<Record<PhotoThemePhotoTarget, PhotoSlotAccess>>;
   /** Idempotency marker for a durably recorded earned-ad receipt. */
   lastAppliedRewardId?: string;
 
@@ -135,6 +138,18 @@ function normalizeTrialCredits(
   return result;
 }
 
+function normalizePhotoSlots(value: unknown): Partial<Record<PhotoThemePhotoTarget, PhotoSlotAccess>> {
+  const result: Partial<Record<PhotoThemePhotoTarget, PhotoSlotAccess>> = {};
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return result;
+  for (const target of ['home', 'timeline', 'analysis', 'wish', 'background', 'focus', 'settings'] as const) {
+    const grant = (value as Record<string, unknown>)[target];
+    if (!grant || typeof grant !== 'object' || Array.isArray(grant)) continue;
+    const raw = grant as Partial<PhotoSlotAccess>;
+    result[target] = { sampleUnlocked: raw.sampleUnlocked === true, personalProgress: Math.min(1, normalizeNonNegativeInteger(raw.personalProgress)), personalUnlockedUntil: normalizeNullableString(raw.personalUnlockedUntil) };
+  }
+  return result;
+}
+
 export function normalizeRewardedAccessState(
   value: unknown,
 ): RewardedAccessState {
@@ -150,6 +165,8 @@ export function normalizeRewardedAccessState(
 
   return {
     version: 1,
+    ...(raw.photoAccessByTarget ? { photoAccessByTarget: normalizePhotoSlots(raw.photoAccessByTarget) } : {}),
+    ...(raw.photoAccess && typeof raw.photoAccess === 'object' ? { photoAccess: { sampleUnlocked: raw.photoAccess.sampleUnlocked === true, personalProgress: Math.min(1, normalizeNonNegativeInteger(raw.photoAccess.personalProgress)), personalUnlockedUntil: normalizeNullableString(raw.photoAccess.personalUnlockedUntil) } } : {}),
     ...(typeof raw.lastAppliedRewardId === 'string' ? { lastAppliedRewardId: raw.lastAppliedRewardId } : {}),
 
     wishCreateProgress: Math.min(

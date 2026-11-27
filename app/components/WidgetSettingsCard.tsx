@@ -1,3 +1,4 @@
+import { isDisplayPhotoAvailable } from '../features/photo/persistentPhoto';
 import { OverflowHintScroll } from './SurfaceFade';
 import React from 'react';
 import { Image, InteractionManager, Pressable, ScrollView, Text, View } from 'react-native';
@@ -79,7 +80,7 @@ function WidgetTypePreview({ type, style, fontDesign = 'default', photoUri, phot
   const photoCardWidth = compact ? 54 : previewSize === 'large' ? 92 : 68;
   const photoCardHeight = compact ? 70 : previewSize === 'large' ? 116 : 88;
   const photoCircleSize = compact ? 50 : previewSize === 'large' ? 86 : 64;
-  const photoSourceUri = photoUri;
+  const photoSourceUri = isDisplayPhotoAvailable(photoUri) ? photoUri : undefined;
   const floralPattern = designPattern === 'floral' ? 'vintageBloom' : designPattern === 'floralSoft' ? 'botanicalLine' : designPattern === 'floralSeasonal' || designPattern === 'floralDark' ? 'sheerFloral' : undefined;
   const floralAssetSource = floralPattern ? getWidgetFloralAssetSource(floralPattern, previewSize ?? 'medium') : undefined;
   const previewBackground = designPattern && floralPattern ? getDesignPatternThemeTokens(designPattern, 'cool').background : colors.screenBackground;
@@ -131,7 +132,7 @@ export function WidgetSettingsCard({ settings, onChange, onPickPhoto, onUnlockWi
   const selectedCustomization = selectedWidgetType ? getWidgetCustomization(settings, selectedWidgetType) : undefined;
   const widgetPhotoUnlockActive = effectivePlanTier === 'free' && Boolean(widgetPhotoUnlock?.widgetType && widgetPhotoUnlock.expiresAt && new Date(widgetPhotoUnlock.expiresAt).getTime() > Date.now());
   const selectedPhotoUnlockActive = Boolean(selectedWidgetType && widgetPhotoUnlockActive && widgetPhotoUnlock?.widgetType === selectedWidgetType);
-  const selectedPhotoUri = selectedCustomization?.photoUri;
+  const selectedPhotoUri = isDisplayPhotoAvailable(selectedCustomization?.photoUri) ? selectedCustomization?.photoUri : undefined;
   const selectedPreviewStyle: WidgetSettings['style'] = settings.style;
   const selectedPhotoCustomizationAllowed = effectivePlanTier === 'premium' || effectiveDesignCustomizePurchased || selectedPhotoUnlockActive;
   const remainingPhotoUnlockDays = widgetPhotoUnlock?.expiresAt ? Math.max(1, Math.ceil((new Date(widgetPhotoUnlock.expiresAt).getTime() - Date.now()) / (24 * 60 * 60 * 1000))) : 0;
@@ -260,7 +261,7 @@ export function WidgetSettingsCard({ settings, onChange, onPickPhoto, onUnlockWi
                 })}
               </View>
               <Text style={{ color: colors.secondaryText, fontSize: 13, fontWeight: '800', marginTop: 14 }}>写真</Text>
-              {effectivePlanTier === 'free' && !effectiveDesignCustomizePurchased && !selectedPhotoUnlockActive && <View style={{ marginTop: 8, padding: 10, borderRadius: 10, backgroundColor: colors.screenBackground, borderWidth: 1, borderColor: colors.border }}><Text style={{ color: colors.secondaryText, fontSize: 13, lineHeight: 19 }}>{widgetPhotoUnlockActive ? '別のウィジェットで広告による写真利用中です。' : '広告を1回見ると、このウィジェットで写真を7日間使えます。'}</Text>{!widgetPhotoUnlockActive && onUnlockWidgetPhoto ? <Pressable accessibilityRole="button" onPress={requestSelectedWidgetPhotoUnlock} style={{ marginTop: 8, minHeight: 44, paddingHorizontal: 10, borderRadius: 9, backgroundColor: colors.softAccent, alignItems: 'center', justifyContent: 'center' }}><Text style={{ color: colors.primaryAccent, fontSize: 13, fontWeight: '800' }}>広告を見て7日間使う</Text></Pressable> : null}</View>}
+              {effectivePlanTier === 'free' && !effectiveDesignCustomizePurchased && !selectedPhotoUnlockActive && <View style={{ marginTop: 8, padding: 10, borderRadius: 10, backgroundColor: colors.screenBackground, borderWidth: 1, borderColor: colors.border }}><Text style={{ color: colors.secondaryText, fontSize: 13, lineHeight: 19 }}>{widgetPhotoUnlockActive ? '別のウィジェットで広告による写真利用中です。' : '広告を1回見ると、このウィジェットで写真を3日間使えます。'}</Text>{!widgetPhotoUnlockActive && onUnlockWidgetPhoto ? <Pressable accessibilityRole="button" onPress={requestSelectedWidgetPhotoUnlock} style={{ marginTop: 8, minHeight: 44, paddingHorizontal: 10, borderRadius: 9, backgroundColor: colors.softAccent, alignItems: 'center', justifyContent: 'center' }}><Text style={{ color: colors.primaryAccent, fontSize: 13, fontWeight: '800' }}>広告を見て3日間使う</Text></Pressable> : null}</View>}
               {selectedPhotoUnlockActive && <Text style={{ color: colors.primaryAccent, fontSize: 13, fontWeight: '800', marginTop: 7 }}>広告で写真利用中・あと{remainingPhotoUnlockDays}日</Text>}
               {selectedPhotoUri ? <Image source={{ uri: selectedPhotoUri }} resizeMode="cover" style={{ width: '100%', height: 118, borderRadius: 12, marginTop: 8 }} /> : <Text style={{ color: colors.secondaryText, fontSize: 13, marginTop: 8 }}>このウィジェットには写真が設定されていません。</Text>}
               {selectedPhotoCustomizationAllowed && <>
@@ -299,7 +300,7 @@ export function WidgetSettingsCard({ settings, onChange, onPickPhoto, onUnlockWi
           </View>
           <Text style={{ color: colors.secondaryText, fontSize: 13, lineHeight: 19, marginTop: 8 }}>写真は「写真ウィジェット」の写真を共有します（最大3枚）。</Text>
           {onPickPhoto && <Pressable onPress={() => onPickPhoto()} style={{ marginTop: 8, minHeight: 38, borderRadius: 10, borderWidth: 1, borderColor: colors.primaryAccent, alignItems: 'center', justifyContent: 'center' }}><Text style={{ color: colors.primaryAccent, fontSize: 13, fontWeight: '800' }}>{(settings.affirmationPhotoUris?.length ?? 0) > 0 ? '写真を追加・変更' : '写真を追加'}</Text></Pressable>}
-          {!!settings.affirmationPhotoUris?.length && onRemoveAffirmationPhoto && <View style={{ marginTop: 8, gap: 6 }}><Text style={{ color: colors.secondaryText, fontSize: 13, fontWeight: '700' }}>選択済みの写真（タップで個別に削除）</Text>{settings.affirmationPhotoUris.map((uri, index) => <View key={`${uri}-${index}`} style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}><Image source={{ uri }} style={{ width: 42, height: 32, borderRadius: 6 }} /><Text style={{ flex: 1, color: colors.secondaryText, fontSize: 13 }} numberOfLines={1}>写真{index + 1}</Text><Pressable onPress={() => onRemoveAffirmationPhoto(index)} hitSlop={8}><Text style={{ color: colors.secondaryText, fontSize: 13, fontWeight: '700' }}>削除</Text></Pressable></View>)}</View>}
+          {!!settings.affirmationPhotoUris?.length && onRemoveAffirmationPhoto && <View style={{ marginTop: 8, gap: 6 }}><Text style={{ color: colors.secondaryText, fontSize: 13, fontWeight: '700' }}>選択済みの写真（タップで個別に削除）</Text>{settings.affirmationPhotoUris.map((uri, index) => <View key={`${uri}-${index}`} style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>{isDisplayPhotoAvailable(uri) && <Image source={{ uri }} style={{ width: 42, height: 32, borderRadius: 6 }} />}<Text style={{ flex: 1, color: colors.secondaryText, fontSize: 13 }} numberOfLines={1}>写真{index + 1}</Text><Pressable onPress={() => onRemoveAffirmationPhoto(index)} hitSlop={8}><Text style={{ color: colors.secondaryText, fontSize: 13, fontWeight: '700' }}>削除</Text></Pressable></View>)}</View>}
         </View>}
 
       <Text style={{ color: colors.secondaryText, fontSize: 13, lineHeight: 19, marginTop: 10 }}>変更は自動保存されます。</Text>

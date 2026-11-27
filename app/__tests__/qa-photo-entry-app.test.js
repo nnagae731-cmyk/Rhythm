@@ -11,11 +11,12 @@ jest.mock('expo-image-manipulator', () => ({ manipulateAsync: jest.fn(), SaveFor
 jest.mock('../features/photo/persistentPhoto', () => ({ ...jest.requireActual('../features/photo/persistentPhoto'), persistPhotoUri: jest.fn((uri, target) => `file:///saved-${target}.jpg`), isPersistedPhotoAvailable: jest.fn(() => true), deleteManagedPhotoUri: jest.fn(), deleteTemporaryPhotoUri: jest.fn() }));
 const React = require('react');
 const { render, fireEvent, act, waitFor, cleanup, within } = require('@testing-library/react-native');
-const { Modal, Platform, Alert } = require('react-native');
+const { Modal, Platform, Alert, Image } = require('react-native');
 const storage = require('@react-native-async-storage/async-storage');
 const picker = require('expo-image-picker');
 const ads = require('react-native-google-mobile-ads');
 const iap = require('expo-iap');
+const { DesignTrialExpiredModal } = require('../components/DesignModals');
 const { PhotoEntrySheet } = require('../components/PhotoEntry');
 const { RewardedAccessModal } = require('../components/RewardedAccessModal');
 const { TopImageCropModal } = require('../components/TopImageCropModal');
@@ -38,11 +39,11 @@ beforeEach(() => {
   ads.RewardedAd.createForAdRequest.mockImplementation(() => { const listeners = {}; return { addAdEventListener: (type, cb) => { listeners[type] = cb; return () => {}; }, load: () => Promise.resolve().then(() => listeners.loaded()), show: () => { if (earn) listeners.earned(); listeners.closed(); return Promise.resolve(); } }; });
 });
 afterEach(() => { cleanup(); jest.restoreAllMocks(); if (previousPlan === undefined) delete process.env.EXPO_PUBLIC_RHYTHM_PLAN; else process.env.EXPO_PUBLIC_RHYTHM_PLAN = previousPlan; });
-async function mount({ tier = 'free', access, photoTheme, purchased = false, designMode = 'photo' } = {}) {
+async function mount({ tier = 'free', access, photoTheme, purchased = false, designMode = 'photo', state = {} } = {}) {
   process.env.EXPO_PUBLIC_RHYTHM_PLAN = tier;
   if (purchased) iap.__state.availablePurchases = [{ productId: STORE_PRODUCT_IDS.designCustomize, purchaseState: 'purchased' }];
   await storage.clear();
-  await saveRhythmState({ tasks: [marker], designMode, photoTheme: photoTheme ?? { placement: 'background' } });
+  await saveRhythmState({ ...state, tasks: [marker], designMode, photoTheme: photoTheme ?? { placement: 'background' } });
   await saveRewardedAccessState(access ?? JSON.parse(JSON.stringify(DEFAULT_REWARDED_ACCESS_STATE)));
   await storage.setItem(ONBOARDING_STORAGE_KEY, JSON.stringify({ version: 1, firstRunStage: 'done', completed: { intro: '2026-01-01', todo: '2026-01-01', todoComplete: '2026-01-01' } }));
   const view = render(<App />);
@@ -117,46 +118,155 @@ test('買い切りの実StoreKit解放判定を通ったFreeも広告なし。�
   expect(view.UNSAFE_queryAllByType(RewardedAccessModal).filter(node => node.props.visible)).toHaveLength(0); expect(ads.RewardedAd.createForAdRequest).not.toHaveBeenCalled();
 }, 60000);
 
-test('全体背景をチップで選んでも独立したphotoBackground権限を要求し、トップ枠1つの解放を横流ししない', async () => {
+test('旧枠は権限を与えず、背景と集中の広告進捗は別々。Native終了後だけ復帰', async () => {
   const access = JSON.parse(JSON.stringify(DEFAULT_REWARDED_ACCESS_STATE)); access.photoCustomization.topExtraSlotsUnlocked = 1;
-  const view = await mount({ access });
+  const view = await mount({ access, designMode: 'minimal' });
   openEntry(view, 'home'); fireEvent.press(view.getByRole('radio', { name: '全体の背景' })); await choosePhoto(view);
-  expect(view.UNSAFE_getByType(RewardedAccessModal).props.title).toBe('背景に写真を使う');
-  expect(picker.launchImageLibraryAsync).not.toHaveBeenCalled(); closeReward(view);
-  openEntry(view, 'focus'); await choosePhoto(view);
-  expect(view.UNSAFE_getByType(RewardedAccessModal).props.title).toBe('集中画面に写真を使う'); expect(picker.launchImageLibraryAsync).not.toHaveBeenCalled();
+  expect(activeReward(view).props.title).toBe('自分の写真を使う'); expect(picker.launchImageLibraryAsync).not.toHaveBeenCalled();
   earn = true;
-  await act(async () => { await activeReward(view).props.onReward(); });
-  expect((await loadRewardedAccessState()).photoCustomization.focusUnlocked).toBe(true);
-  if (activeReward(view)) closeReward(view);
-  // Re-enter through the same screen with the now-persisted entitlement;
-  // do not replace or change the existing Rewarded continuation flow.
-  picker.launchImageLibraryAsync.mockResolvedValueOnce({ canceled: false, assets: [{ uri: 'file:///focus.jpg', width: 1000, height: 700 }] });
+  let first; await act(async () => { first = await activeReward(view).props.onReward(); });
+  expect(first.completed).toBe(false); expect((await loadRewardedAccessState()).photoAccessByTarget.background.personalProgress).toBe(1); closeReward(view);
   openEntry(view, 'focus'); await choosePhoto(view);
+  expect(activeReward(view).props.current).toBe(0);
+  let focusFirst; await act(async () => { focusFirst = await activeReward(view).props.onReward(); });
+  expect(focusFirst.completed).toBe(false);
+  picker.launchImageLibraryAsync.mockResolvedValueOnce({ canceled: false, assets: [{ uri: 'file:///focus.jpg', width: 1000, height: 700 }] });
+  let second; await act(async () => { second = await activeReward(view).props.onReward(); });
+  expect(second.completed).toBe(true); expect(picker.launchImageLibraryAsync).not.toHaveBeenCalled();
+  closeReward(view);
   await waitFor(async () => expect((await loadRhythmState()).photoTheme.focusBackgroundUri).toBe('file:///saved-focus.jpg'), { timeout: 7000 });
-  expect((await loadRewardedAccessState()).photoCustomization.backgroundUnlocked).toBe(false);
+  expect((await loadRhythmState()).designMode).toBe('minimal');
+  expect((await loadRewardedAccessState()).photoAccessByTarget.focus.personalUnlockedUntil).toBeTruthy();
+  expect((await loadRewardedAccessState()).photoAccessByTarget.background.personalUnlockedUntil).toBeNull();
 }, 60000);
 
-test('広告を閉じただけでは設定不可。EARNED後だけ1枠を解放し、元のcrop・保存へ進める', async () => {
+test('広告CLOSEDだけは無効。EARNED1回はサンプルのみ、2回目のNative終了後にcrop保存。他枠には改めて広告が必要', async () => {
   const view = await mount();
   openEntry(view, 'home'); await choosePhoto(view);
   let result;
-  await act(async () => { result = await view.UNSAFE_getByType(RewardedAccessModal).props.onReward(); });
-  expect(result.completed).not.toBe(true); expect((await loadRewardedAccessState()).photoCustomization.topExtraSlotsUnlocked).toBe(0); expect(picker.launchImageLibraryAsync).not.toHaveBeenCalled();
+  await act(async () => { result = await activeReward(view).props.onReward(); });
+  expect(result.completed).not.toBe(true); expect((await loadRewardedAccessState()).photoAccessByTarget).toBeUndefined(); expect(picker.launchImageLibraryAsync).not.toHaveBeenCalled();
   earn = true;
+  await act(async () => { result = await activeReward(view).props.onReward(); });
+  expect(result.completed).toBe(false); expect((await loadRewardedAccessState()).photoAccessByTarget.home.sampleUnlocked).toBe(true); expect(picker.launchImageLibraryAsync).not.toHaveBeenCalled();
   picker.launchImageLibraryAsync.mockResolvedValueOnce({ canceled: false, assets: [{ uri: 'file:///selected.jpg', width: 1000, height: 700 }] });
-  await act(async () => { result = await view.UNSAFE_getByType(RewardedAccessModal).props.onReward(); });
-  expect(result.completed).toBe(true); expect((await loadRewardedAccessState()).photoCustomization.topExtraSlotsUnlocked).toBe(1);
+  await act(async () => { result = await activeReward(view).props.onReward(); });
+  expect(result.completed).toBe(true); expect((await loadRewardedAccessState()).photoAccessByTarget.home.personalUnlockedUntil).toBeTruthy();
   expect(picker.launchImageLibraryAsync).not.toHaveBeenCalled(); closeReward(view);
   await waitFor(() => expect(view.UNSAFE_getByType(TopImageCropModal).props.visible).toBe(true), { timeout: 7000 });
   await act(async () => view.UNSAFE_getByType(TopImageCropModal).props.onUse({ x: 0, y: 0, width: 1, height: 0.5 }));
   await waitFor(async () => expect((await loadRhythmState()).photoTheme.topImageUris.home).toBe('file:///saved-top-home.jpg'), { timeout: 7000 });
   expect((await loadRhythmState()).tasks.map(t => t.id)).toEqual([marker.id]);
-  expect(view.getByRole('button', { name: 'ホームのトップ画を変更' })).toBeTruthy();
   fireEvent.press(view.getByRole('button', { name: 'ホームのトップ画を変更' }));
   fireEvent.press(view.getByRole('radio', { name: '予定のトップ画' })); await choosePhoto(view);
-  expect(view.UNSAFE_getByType(RewardedAccessModal).props.title).toBe('写真枠を追加');
+  expect(activeReward(view).props.required).toBe(2);
+  expect(activeReward(view).props.current).toBe(0);
+  expect(picker.launchImageLibraryAsync).toHaveBeenCalledTimes(1);
 }, 90000);
+
+test('背景成功後のPhotoモード・URIを再起動で復元し、元のMono/Designの色柄は保持する', async () => {
+  const view = await mount({ tier: 'premium', designMode: 'chic', state: { monoAppearance: 'dark', monoPattern: 'looseLeaf', chicPattern: 'dot', chicCheckColor: 'pink' } });
+  picker.launchImageLibraryAsync.mockResolvedValueOnce({ canceled: false, assets: [{ uri: 'file:///background.jpg', width: 1200, height: 800 }] });
+  openEntry(view, 'home'); fireEvent.press(view.getByRole('radio', { name: '全体の背景' })); await choosePhoto(view);
+  await waitFor(async () => expect((await loadRhythmState()).designMode).toBe('photo'));
+  const saved = await loadRhythmState();
+  expect(saved.photoTheme.imageUri).toBe('file:///saved-background.jpg');
+  expect(saved).toMatchObject({ monoAppearance: 'dark', monoPattern: 'looseLeaf', chicPattern: 'dot', chicCheckColor: 'pink' });
+  view.unmount();
+  const again = render(<App />); await waitFor(() => expect(again.getAllByText(marker.title).length).toBeGreaterThan(0));
+  fireEvent.press(again.getByRole('tab', { name: '設定' }));
+  expect(again.UNSAFE_getByType(SettingsScreen).props.selectedDesignMode).toBe('photo');
+  act(() => again.UNSAFE_getByType(SettingsScreen).props.onDesignMode('minimal'));
+  expect(again.UNSAFE_getByType(SettingsScreen).props.monoPattern).toBe('looseLeaf');
+  act(() => again.UNSAFE_getByType(SettingsScreen).props.onDesignMode('chic'));
+  expect(again.UNSAFE_getByType(SettingsScreen).props.chicPattern).toBe('dot');
+  expect(again.UNSAFE_getByType(SettingsScreen).props.chicCheckColor).toBe('pink');
+}, 60000);
+
+test('トップ解除のキャンセル/確定・他枠保持・再起動後の解除・再設定を本番Appで確認', async () => {
+  const photo = { placement: 'background', imageUri: 'file:///bg', focusBackgroundUri: 'file:///focus', topImageUris: { home: 'file:///home', timeline: 'file:///timeline', analysis: 'file:///analysis', wish: 'file:///wish' }, topImageOriginalUris: { home: 'file:///original' }, topImageCropRects: { home: { x: 0, y: 0, width: 1, height: 0.4 } } };
+  let view = await mount({ tier: 'premium', designMode: 'chic', photoTheme: photo });
+  const beforeAccess = await loadRewardedAccessState();
+  async function confirm(remove) {
+    fireEvent.press(view.getByRole('button', { name: 'ホームのトップ画を変更' }));
+    fireEvent.press(view.getByLabelText('トップ画像を外す'));
+    if (Platform.OS === 'ios') await act(async () => view.UNSAFE_getByType(PhotoEntrySheet).findByType(Modal).props.onDismiss());
+    const buttons = Alert.alert.mock.calls.findLast(call => call[0] === 'このトップ画像を外しますか？')[2];
+    if (remove) act(() => buttons[1].onPress());
+  }
+  await confirm(false); expect(view.getByRole('button', { name: 'ホームのトップ画を変更' })).toBeTruthy();
+  await confirm(true); expect(view.queryByRole('button', { name: 'ホームのトップ画を変更' })).toBeNull();
+  await waitFor(async () => expect((await loadRhythmState()).photoTheme.topImageUris.home).toBeUndefined());
+  expect((await loadRhythmState()).photoTheme).toMatchObject({ imageUri: photo.imageUri, focusBackgroundUri: photo.focusBackgroundUri, topImageUris: { timeline: 'file:///timeline', analysis: 'file:///analysis', wish: 'file:///wish' } });
+  expect((await loadRhythmState()).designMode).toBe('chic'); expect(await loadRewardedAccessState()).toEqual(beforeAccess);
+  view.unmount(); view = render(<App />); await waitFor(() => expect(view.getAllByText(marker.title).length).toBeGreaterThan(0));
+  expect(view.getByRole('button', { name: 'ホームのトップ画を設定' })).toBeTruthy();
+  picker.launchImageLibraryAsync.mockResolvedValueOnce({ canceled: false, assets: [{ uri: 'file:///again.jpg', width: 1200, height: 800 }] });
+  openEntry(view, 'home'); await choosePhoto(view);
+  await waitFor(() => expect(view.UNSAFE_getByType(TopImageCropModal).props.visible).toBe(true));
+  await act(async () => view.UNSAFE_getByType(TopImageCropModal).props.onUse({ x: 0, y: 0, width: 1, height: 0.4 }));
+  await waitFor(() => expect(view.getByRole('button', { name: 'ホームのトップ画を変更' })).toBeTruthy());
+}, 60000);
+
+test('期限切れ写真は非表示だけでURI/cropを保存し、再解放後にpicker/cropなしで復帰する', async () => {
+  const access = JSON.parse(JSON.stringify(DEFAULT_REWARDED_ACCESS_STATE)); access.photoAccessByTarget = { home: { sampleUnlocked: true, personalProgress: 0, personalUnlockedUntil: '2000-01-01T00:00:00Z' } };
+  const photo = { placement: 'background', topImageUris: { home: 'file:///kept.jpg' }, topImageCropRects: { home: { x: 0, y: 0.2, width: 1, height: 0.4 } } };
+  const view = await mount({ access, photoTheme: photo, designMode: 'minimal' });
+  expect(view.getByRole('button', { name: 'ホームのトップ画を設定' })).toBeTruthy();
+  expect((await loadRhythmState()).photoTheme).toMatchObject(photo);
+  openEntry(view, 'home'); await choosePhoto(view); earn = true;
+  let result; await act(async () => { result = await activeReward(view).props.onReward(); }); expect(result.completed).toBe(false);
+  await act(async () => { result = await activeReward(view).props.onReward(); }); expect(result.completed).toBe(true); closeReward(view);
+  await waitFor(() => expect(view.getByRole('button', { name: 'ホームのトップ画を変更' })).toBeTruthy());
+  expect(picker.launchImageLibraryAsync).not.toHaveBeenCalled(); expect((await loadRhythmState()).photoTheme).toMatchObject(photo);
+  view.unmount(); const again = render(<App />);
+  await waitFor(() => expect(again.getByRole('button', { name: 'ホームのトップ画を変更' })).toBeTruthy());
+  expect(picker.launchImageLibraryAsync).not.toHaveBeenCalled(); expect((await loadRhythmState()).photoTheme).toMatchObject(photo);
+}, 60000);
+
+test('サンプルも枠ごとに広告1回が必要で、背景サンプル成功時だけPhotoへ。個人写真は未解放', async () => {
+  jest.spyOn(Image, 'resolveAssetSource').mockReturnValue({ uri: 'file:///bundle/sample.jpg', width: 1280, height: 640 });
+  const view = await mount({ designMode: 'minimal' });
+  openEntry(view, 'home'); fireEvent.press(view.getByLabelText('サンプル：花'));
+  if (Platform.OS === 'ios') await act(async () => view.UNSAFE_getByType(PhotoEntrySheet).findByType(Modal).props.onDismiss());
+  expect(activeReward(view).props.required).toBe(1); earn = true;
+  let result; await act(async () => { result = await activeReward(view).props.onReward(); }); expect(result.completed).toBe(true);
+  await act(async () => { result = await activeReward(view).props.onReward(); });
+  expect(result.completed).toBe(true); expect(ads.RewardedAd.createForAdRequest).toHaveBeenCalledTimes(1);
+  expect((await loadRewardedAccessState()).photoAccessByTarget.home.personalProgress).toBe(1);
+  expect((await loadRhythmState()).photoTheme.topImageUris?.home).toBeUndefined(); closeReward(view);
+  await waitFor(async () => expect((await loadRhythmState()).photoTheme.samplePhotoIds.home).toBe('flowers'));
+  expect((await loadRhythmState()).designMode).toBe('minimal'); expect((await loadRewardedAccessState()).photoAccessByTarget.home.personalUnlockedUntil).toBeNull();
+  fireEvent.press(view.getByRole('button', { name: 'ホームのトップ画を変更' })); fireEvent.press(view.getByRole('radio', { name: '全体の背景' }));
+  fireEvent.press(view.getByLabelText('サンプル：質感')); if (Platform.OS === 'ios') await act(async () => view.UNSAFE_getByType(PhotoEntrySheet).findByType(Modal).props.onDismiss());
+  expect(activeReward(view).props.required).toBe(1);
+  await act(async () => { result = await activeReward(view).props.onReward(); });
+  expect(result.completed).toBe(true); closeReward(view);
+  await waitFor(async () => expect((await loadRhythmState()).designMode).toBe('photo'));
+  expect((await loadRhythmState()).photoTheme.samplePhotoIds.background).toBe('texture'); expect(picker.launchImageLibraryAsync).not.toHaveBeenCalled();
+  expect(ads.RewardedAd.createForAdRequest).toHaveBeenCalledTimes(2);
+  expect((await loadRewardedAccessState()).photoAccessByTarget.focus).toBeUndefined();
+}, 60000);
+
+test('設定のPhoto試着からの正式適用も、試着案内のNative終了後に写真2広告へ進む', async () => {
+  const view = await mount({ designMode: 'minimal' });
+  fireEvent.press(view.getByRole('tab', { name: '設定' }));
+  const preview = view.UNSAFE_getByType(SettingsScreen).props.fullscreenPreview(jest.fn(), true, action => action());
+  act(() => preview.props.onApply({ mode: 'photo', pattern: 'plain', color: 'pink', photoUri: 'file:///preview.jpg', monoAppearance: 'light', monoPattern: 'plain' }));
+  expect(view.UNSAFE_getByType(DesignTrialExpiredModal).props.visible).toBe(true);
+  act(() => view.UNSAFE_getByType(DesignTrialExpiredModal).props.onTrial());
+  if (Platform.OS === 'ios') {
+    expect(activeReward(view)).toBeUndefined();
+    act(() => view.UNSAFE_getByType(DesignTrialExpiredModal).props.onDismiss());
+  }
+  await waitFor(() => expect(activeReward(view)?.props.required).toBe(2));
+  expect((await loadRhythmState()).designMode).toBe('minimal'); earn = true;
+  let result; await act(async () => { result = await activeReward(view).props.onReward(); }); expect(result.completed).toBe(false);
+  await act(async () => { result = await activeReward(view).props.onReward(); }); expect(result.completed).toBe(true);
+  expect((await loadRhythmState()).designMode).toBe('minimal'); closeReward(view);
+  await waitFor(async () => expect((await loadRhythmState()).designMode).toBe('photo'));
+  expect((await loadRhythmState()).photoTheme.imageUri).toBe('file:///saved-design-background.jpg');
+}, 60000);
 
 test('設定→デザイン→写真の既存UIとtarget callbackも残る', async () => {
   const view = await mount({ tier: 'premium' });

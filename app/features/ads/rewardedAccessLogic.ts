@@ -77,22 +77,19 @@ export function canTryPremiumDesign(
 export function getUnlockedTopPhotoSlots(
   state: RewardedAccessState,
 ): number {
-  return Math.min(
-    state.photoCustomization.topExtraSlotsUnlocked,
-    REWARDED_AD_RULES.photoTop.maxUnlocks,
-  );
+  return (['home', 'timeline', 'analysis', 'wish', 'settings'] as const).filter(target => isUnlockActive(state.photoAccessByTarget?.[target]?.personalUnlockedUntil ?? null)).length;
 }
 
 export function isBackgroundPhotoUnlocked(
   state: RewardedAccessState,
 ): boolean {
-  return state.photoCustomization.backgroundUnlocked;
+  return isUnlockActive(state.photoAccessByTarget?.background?.personalUnlockedUntil ?? null);
 }
 
 export function isFocusPhotoUnlocked(
   state: RewardedAccessState,
 ): boolean {
-  return state.photoCustomization.focusUnlocked;
+  return isUnlockActive(state.photoAccessByTarget?.focus?.personalUnlockedUntil ?? null);
 }
 
 export function isWidgetPhotoUnlockActive(

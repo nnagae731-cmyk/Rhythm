@@ -21,7 +21,7 @@ test('ガイドの閉じる操作は呼び出し元へ届く',()=>{
 });
 test('デザインカスタマイズ未購入時は広告・購入・復元を選択できる',()=>{
  const purchase=jest.fn(),reward=jest.fn(),restore=jest.fn();const view=render(<DesignCustomizeModal visible designMode="minimal" purchased={false} rewardedAvailable onRewarded={reward} onPurchase={purchase} onRestore={restore} onPremium={()=>{}} onClose={()=>{}}/>);
- fireEvent.press(view.getByText('広告を見て12時間使う'));fireEvent.press(view.getByText('価格を確認して購入'));fireEvent.press(view.getByText('購入を復元'));
+ fireEvent.press(view.getByText('広告を見て3日間使う'));fireEvent.press(view.getByText('価格を確認して購入'));fireEvent.press(view.getByText('購入を復元'));
  expect(reward).toHaveBeenCalledTimes(1);expect(purchase).toHaveBeenCalledTimes(1);expect(restore).toHaveBeenCalledTimes(1);
 });
 test('アファメーション画面で入力し通知追加を呼び出す',async()=>{

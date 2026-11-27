@@ -10,6 +10,11 @@ function isManagedPhotoUri(uri: string | undefined) {
   return Boolean(uri?.includes(`/${PHOTO_DIRECTORY_NAME}/`));
 }
 
+/** Display-only: foreign missing managed files never erase persisted references. */
+export function isDisplayPhotoAvailable(uri: string | undefined): boolean {
+  return Boolean(uri) && (!isManagedPhotoUri(uri) || isPersistedPhotoAvailable(uri));
+}
+
 function extensionFor(uri: string) {
   const match = uri.match(/\.([a-zA-Z0-9]{2,5})(?:\?|$)/);
   return match?.[1]?.toLowerCase() ?? 'jpg';
@@ -23,6 +28,51 @@ function photoDirectory() {
 
 function addUri(uris: Set<string>, uri: unknown) {
   if (typeof uri === 'string' && isManagedPhotoUri(uri)) uris.add(uri);
+}
+
+/** Reconnect restored files without mutating saved data or writing files. */
+export function rebaseManagedPhotoUris<T>(state: T): T {
+  try {
+    // Do not create a directory during a read. Missing files retain their URI.
+    const directoryUri = new Directory(Paths.document, PHOTO_DIRECTORY_NAME).uri.replace(/\/$/, '');
+    const visiting = new WeakSet<object>();
+    const visit = (value: unknown): unknown => {
+      if (typeof value === 'string') {
+        if (!isManagedPhotoUri(value)) return value;
+        const name = value.slice(value.lastIndexOf('/') + 1);
+        if (!name) return value;
+        const candidate = `${directoryUri}/${name}`;
+        if (candidate === value) return value;
+        return new File(candidate).exists ? candidate : value;
+      }
+      if (!value || typeof value !== 'object') return value;
+      if (visiting.has(value)) throw new Error('Cannot safely rebase cyclic photo references');
+      visiting.add(value);
+      try {
+        let changed = false;
+        if (Array.isArray(value)) {
+          const next = value.map(item => {
+            const rebased = visit(item);
+            if (rebased !== item) changed = true;
+            return rebased;
+          });
+          return changed ? next : value;
+        }
+        const next = Object.fromEntries(Object.entries(value).map(([key, item]) => {
+          const rebased = visit(item);
+          if (rebased !== item) changed = true;
+          return [key, rebased];
+        }));
+        return changed ? next : value;
+      } finally {
+        visiting.delete(value);
+      }
+    };
+    return visit(state) as T;
+  } catch (error) {
+    console.warn('Could not rebase restored Rhythm photos. Original references were kept.', error);
+    return state;
+  }
 }
 
 /** Collects every currently persisted Rhythm-owned image reference. */

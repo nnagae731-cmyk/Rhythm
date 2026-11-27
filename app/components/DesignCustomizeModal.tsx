@@ -22,7 +22,7 @@ type Props = {
   purchaseError?: string;
 };
 
-export function DesignCustomizeModal({ visible, designMode, chicPalette, purchased, premiumIncluded = false, onPurchase, onRestore, onPremium, onClose, onDismiss, onRewarded, rewardedAvailable = false, rewardedLabel = '広告を見て12時間使う', localizedPrice, priceStatus = localizedPrice ? 'ready' : 'unavailable', purchaseError }: Props) {
+export function DesignCustomizeModal({ visible, designMode, chicPalette, purchased, premiumIncluded = false, onPurchase, onRestore, onPremium, onClose, onDismiss, onRewarded, rewardedAvailable = false, rewardedLabel = '広告を見て3日間使う', localizedPrice, priceStatus = localizedPrice ? 'ready' : 'unavailable', purchaseError }: Props) {
   const theme = getThemeTokens(designMode, chicPalette?.id ?? 'cool');
   const colors = designMode === 'chic' && chicPalette
     ? { background: chicPalette.cardSurface, surface: chicPalette.surfaceSubtle, text: chicPalette.textPrimary, muted: chicPalette.textSecondary, border: chicPalette.border, accent: chicPalette.accent, accentSoft: chicPalette.accentSoft, onAccent: chicPalette.onAccent }
@@ -61,7 +61,7 @@ export function DesignCustomizeModal({ visible, designMode, chicPalette, purchas
             </>}
             <Text style={[styles.premiumNote, { color: colors.accent }]}>プレミアムにはデザインカスタマイズの全機能が含まれます</Text>
             <Pressable accessibilityRole="button" onPress={onPremium} style={styles.linkButton}><Text style={[styles.linkText, { color: colors.accent }]}>プレミアムを見る</Text></Pressable>
-            <Text style={[styles.note, { color: colors.muted }]}>見た目の確認・全画面試着は無料です。正式に使う時、初回は24時間無料体験、その後は広告1回で12時間利用できます。</Text>
+            <Text style={[styles.note, { color: colors.muted }]}>見た目の確認・全画面試着は無料です。正式に使う時、初回は24時間無料体験、その後は広告1回で3日間利用できます。</Text>
             <Pressable accessibilityRole="button" onPress={onClose} style={styles.closeButton}><Text style={[styles.closeText, { color: colors.muted }]}>閉じる</Text></Pressable>
           </ScrollView>
         </Pressable>

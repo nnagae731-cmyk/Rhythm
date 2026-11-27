@@ -63,6 +63,7 @@ module.exports = ({ config }) => {
   if (!hasAdsPlugin) plugins.push([GOOGLE_ADS_PLUGIN, adsPluginConfig()]);
   if (isWidgetEnabled()) plugins.push(WIDGET_PLUGIN);
   plugins.push(TOGGLE_PLUGIN);
+  plugins.push('./plugins/with-rhythm-icloud-kvs');
 
   return {
     ...baseConfig,

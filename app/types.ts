@@ -263,7 +263,9 @@ export type AffirmationCustomText = {
 export type PhotoThemeTopSlot = 'home' | 'timeline' | 'analysis' | 'wish' | 'settings';
 export type PhotoThemePhotoTarget = 'background' | 'focus' | PhotoThemeTopSlot;
 
+export type PhotoSampleId = 'flowers' | 'sky' | 'sea' | 'cafe' | 'cat' | 'dog' | 'texture';
 export type PhotoThemeSettings = {
+  samplePhotoIds?: Partial<Record<PhotoThemePhotoTarget, PhotoSampleId>>;
   imageUri?: string;
   placement: 'background' | 'top';
   topImageUris?: Partial<Record<PhotoThemeTopSlot, string>>;

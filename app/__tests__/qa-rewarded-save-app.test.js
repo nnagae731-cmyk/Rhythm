@@ -29,7 +29,7 @@ async function boot(){const view=render(<App/>);await waitFor(()=>expect(view.ge
 async function request(view){
  fireEvent.press(view.getByText('設定'));fireEvent.press(view.getByLabelText('デザイン設定を開く'));
  await waitFor(()=>expect(view.getByLabelText('デザインカスタマイズを開く')).toBeTruthy(),{timeout:10000});fireEvent.press(view.getByLabelText('デザインカスタマイズを開く'));
- await waitFor(()=>expect(view.getByText('広告を見て12時間使う')).toBeTruthy(),{timeout:10000});fireEvent.press(view.getByText('広告を見て12時間使う'));
+ await waitFor(()=>expect(view.getByText('広告を見て3日間使う')).toBeTruthy(),{timeout:10000});fireEvent.press(view.getByText('広告を見て3日間使う'));
  if(Platform.OS==='ios')act(()=>view.UNSAFE_getByType(DesignCustomizeModal).props.onDismiss());
 }
 const actualPattern=view=>view.UNSAFE_root.findAll(n=>typeof n.type==='function'&&n.type.name==='TodayWinStrip')[0].props.chicPattern;

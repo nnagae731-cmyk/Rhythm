@@ -14,7 +14,7 @@ export const REWARDED_AD_RULES = {
   premiumDesign: {
     label: 'プレミアデザイン',
     adsRequired: 1,
-    unlockDurationHours: 12,
+    unlockDurationHours: 72,
   },
 
   calendarImport: {
@@ -30,32 +30,36 @@ export const REWARDED_AD_RULES = {
   },
 
   premiumDesignTrialExpired: {
-    label: 'プレミアデザインを12時間使う',
+    label: 'プレミアデザインを3日間使う',
     adsRequired: 1,
-    unlockDurationHours: 12,
+    unlockDurationHours: 72,
   },
 
   photoTop: {
     label: '写真カスタマイズ・トップ画',
-    adsRequired: 1,
-    unlockCount: 1,
-    maxUnlocks: 5,
+    adsRequired: 2,
+    sampleAdsRequired: 1,
+    unlockDurationHours: 72,
   },
 
   photoBackground: {
     label: '写真カスタマイズ・背景',
-    adsRequired: 1,
+    adsRequired: 2,
+    sampleAdsRequired: 1,
+    unlockDurationHours: 72,
   },
 
   photoFocus: {
     label: '写真カスタマイズ・集中タイマー',
-    adsRequired: 1,
+    adsRequired: 2,
+    sampleAdsRequired: 1,
+    unlockDurationHours: 72,
   },
 
   widgetPhoto: {
     label: 'Widget写真カスタマイズ',
     adsRequired: 1,
-    unlockDurationDays: 7,
+    unlockDurationDays: 3,
   },
 
   routineSkip: {

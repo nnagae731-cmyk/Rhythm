@@ -4,11 +4,11 @@ const { DEFAULT_REWARDED_ACCESS_STATE, REWARDED_ACCESS_STORAGE_KEY, loadRewarded
 const { EARNED_REWARD_STORAGE_KEY, recordEarnedReward, recoverEarnedReward, applyEarnedReward } = require('../features/ads/earnedRewardStorage');
 const originalWrite = storage.setItem.getMockImplementation();
 const originalRemove = storage.removeItem.getMockImplementation();
-const receipt = (featureId = 'premiumDesign') => ({ id: 'earned-once', featureId, earnedAt: '2026-11-23T00:00:00.000Z', widgetType: null });
+const receipt = (featureId = 'premiumDesign') => ({ id: 'earned-once', featureId, earnedAt: '2026-11-23T00:00:00.000Z', widgetType: null, ...(featureId === 'photoTop' ? { photoTarget: 'home' } : {}) });
 beforeEach(async () => { await storage.clear(); });
 afterEach(() => { storage.setItem.mockImplementation(originalWrite); storage.removeItem.mockImplementation(originalRemove); jest.restoreAllMocks(); });
 
-test('報酬保存失敗後の再起動相当で視聴済み記録から復旧し、12時間の起点を延長しない', async () => {
+test('報酬保存失敗後の再起動相当で視聴済み記録から復旧し、3日間の起点を延長しない', async () => {
   await saveRewardedAccessState(DEFAULT_REWARDED_ACCESS_STATE);
   await recordEarnedReward(receipt());
   storage.setItem.mockImplementation((key, ...args) => key === REWARDED_ACCESS_STORAGE_KEY ? Promise.reject(Error('disk full')) : originalWrite(key, ...args));
@@ -17,7 +17,7 @@ test('報酬保存失敗後の再起動相当で視聴済み記録から復旧�
   expect((await loadRewardedAccessState()).premiumDesign.unlockedUntil).toBeNull();
   storage.setItem.mockImplementation(originalWrite);
   const recovered = await recoverEarnedReward(await loadRewardedAccessState());
-  expect(recovered.premiumDesign.unlockedUntil).toBe('2026-11-23T12:00:00.000Z');
+  expect(recovered.premiumDesign.unlockedUntil).toBe('2026-11-26T00:00:00.000Z');
   expect((await loadRewardedAccessState()).lastAppliedRewardId).toBe('earned-once');
   expect(await storage.getItem(EARNED_REWARD_STORAGE_KEY)).toBeNull();
 });
@@ -48,21 +48,22 @@ test('記録なしでは付与せず、不正な記録は保存済みTrialや写
 test('既存の写真・Trialを保ち、同じ報酬IDを再適用しても増やさない', async () => {
   const base = { ...DEFAULT_REWARDED_ACCESS_STATE, photoCustomization: { topExtraSlotsUnlocked: 2, backgroundUnlocked: true, focusUnlocked: false }, premiumDesignTrial: { used: true, designId: 'dot', expiresAt: null } };
   const next = applyEarnedReward(base, receipt('photoTop'));
-  expect(next.photoCustomization).toEqual({ topExtraSlotsUnlocked: 3, backgroundUnlocked: true, focusUnlocked: false });
+  expect(next.photoCustomization).toEqual(base.photoCustomization);
+  expect(next.photoAccessByTarget.home).toEqual({ sampleUnlocked: true, personalProgress: 1, personalUnlockedUntil: null });
   expect(next.premiumDesignTrial).toEqual(base.premiumDesignTrial);
   await saveRewardedAccessState(next);
-  expect(applyEarnedReward(await loadRewardedAccessState(), receipt('photoTop')).photoCustomization.topExtraSlotsUnlocked).toBe(3);
+  expect(applyEarnedReward(await loadRewardedAccessState(), receipt('photoTop')).photoAccessByTarget.home.personalProgress).toBe(1);
 });
 
-test('報酬の既存回数・写真枠上限・Widget7日間・Skip Bonusの段階を維持する', () => {
+test('消費型の既存回数・Widget3日間を維持し、写真は新しい共通進捗を使う', () => {
   const base = DEFAULT_REWARDED_ACCESS_STATE;
   expect(applyEarnedReward(base, receipt('wishCreate')).wishCreateProgress).toBe(1);
   expect(applyEarnedReward(base, receipt('wishActionCreate')).wishActionCreateProgress).toBe(1);
   expect(applyEarnedReward({ ...base, wishCreateProgress: 2 }, receipt('wishCreate')).wishCreateProgress).toBe(2);
   expect(applyEarnedReward({ ...base, photoCustomization: { ...base.photoCustomization, topExtraSlotsUnlocked: 5 } }, receipt('photoTop')).photoCustomization.topExtraSlotsUnlocked).toBe(5);
-  expect(applyEarnedReward(base, receipt('photoBackground')).photoCustomization.backgroundUnlocked).toBe(true);
-  expect(applyEarnedReward(base, receipt('photoFocus')).photoCustomization.focusUnlocked).toBe(true);
-  expect(applyEarnedReward(base, { ...receipt('widgetPhoto'), widgetType: 'current' }).widgetPhotoCustomization.expiresAt).toBe('2026-11-30T00:00:00.000Z');
+  expect(applyEarnedReward(base, receipt('photoBackground')).photoAccessByTarget.background.personalProgress).toBe(1);
+  expect(applyEarnedReward(base, receipt('photoFocus')).photoAccessByTarget.focus.sampleUnlocked).toBe(true);
+  expect(applyEarnedReward(base, { ...receipt('widgetPhoto'), widgetType: 'current' }).widgetPhotoCustomization.expiresAt).toBe('2026-11-26T00:00:00.000Z');
   expect(applyEarnedReward(base, receipt('routineSkip')).routine.skipStock).toBe(1);
   expect(applyEarnedReward(base, receipt('routineSkipBonus')).routine).toEqual({ skipStock: 0, skipBonusAdded: 0, skipBonusProgress: 1 });
   expect(applyEarnedReward({ ...base, routine: { skipStock: 2, skipBonusAdded: 1, skipBonusProgress: 1 } }, receipt('routineSkipBonus')).routine).toEqual({ skipStock: 3, skipBonusAdded: 2, skipBonusProgress: 0 });
