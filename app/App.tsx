@@ -1,3 +1,4 @@
+import { usePhotoTheme } from './features/photo/usePhotoTheme';
 import { ensureNotifications, scheduleAffirmationNotification } from './features/notifications/notificationSetup';
 import { type DepartureNotificationAction, departureNotificationActions } from './features/departure/departureNotifications';
 import { getInitialNormalizedCrop } from './features/photo/topImageCrop';
@@ -106,6 +107,9 @@ import {
   useColorScheme,
   Easing,
   Image,
+
+  Keyboard,
+  KeyboardAvoidingView,
   InteractionManager,
   Linking,
   Modal,
@@ -199,6 +203,9 @@ export default function App() {
   const [pendingGuideFeature, setPendingGuideFeature] = useState<Exclude<OnboardingFeatureId, 'intro'>>();
   const guideTransitioningRef = React.useRef(false);
   const [openTodayReview, setOpenTodayReview] = useState(false);
+
+  // UI receipt only: update from successful root writes, never optimistic edits.
+  const [savedJournalMonths, setSavedJournalMonths] = useState<WishMonthMap>({});
   const [tasks, setTasks] = useState<Task[]>([]);
   const [focusTimerActive, setFocusTimerActive] = useState(false);
   const [focusActivity, setFocusActivity] = useState<{ taskTitle?: string; endsAt?: string; elapsedStartAt?: string; elapsedSeconds?: number; remainingSeconds?: number; running?: boolean }>();
@@ -342,25 +349,6 @@ export default function App() {
   const completionAffirmationOpacity = React.useRef(new Animated.Value(0)).current;
   const [photoTheme, setPhotoTheme] = useState<PhotoThemeSettings>({ placement: 'background' });
   const [travelApps, setTravelApps] = useState<TravelAppSettings>(DEFAULT_TRAVEL_APP_SETTINGS);
-  const [pendingTopPhoto, setPendingTopPhoto] = useState<{ target: Exclude<PhotoThemePhotoTarget, 'background' | 'focus'>; originalUri: string; previewUri?: string; sourceWidth: number; sourceHeight: number; cropRect?: NormalizedCropRect }>();
-  const [topImageCropResumeToken, setTopImageCropResumeToken] = useState(0);
-  const topImageAccessPurchaseResumeRef = React.useRef(false);
-  const resumeTopImageAfterAccessFlow = React.useCallback(() => {
-    if (!topImageAccessPurchaseResumeRef.current) return;
-    topImageAccessPurchaseResumeRef.current = false;
-    InteractionManager.runAfterInteractions(() => setTopImageCropResumeToken((current) => current + 1));
-  }, []);
-  const [topImageProcessing, setTopImageProcessing] = useState(false);
-  const topImageProcessingRef = React.useRef(false);
-  const topImageCropDismissActionRef = React.useRef<{ type: 'resume' | 'reselect'; target?: Exclude<PhotoThemePhotoTarget, 'background' | 'focus'> }>({ type: 'resume' });
-  const previousTopImageVisibleRef = React.useRef(false);
-  useEffect(() => {
-    const visible = Boolean(pendingTopPhoto);
-    if (__DEV__ && visible && !previousTopImageVisibleRef.current) {
-      console.log('[TopImage] crop-presented', { target: pendingTopPhoto?.target });
-    }
-    previousTopImageVisibleRef.current = visible;
-  }, [pendingTopPhoto]);
   const [recoveryHistory, setRecoveryHistory] = useState<RecoveryRecord[]>([]);
   const [focusSessions, setFocusSessions] = useState<FocusSession[]>([]);
   const [aiShareOpen, setAiShareOpen] = useState(false);
@@ -1409,6 +1397,8 @@ export default function App() {
     if (affirmationOperationGenerationRef.current[affirmation.id] !== generation) return;
     setAffirmations((current) => current.filter((item) => item.id !== affirmation.id));
   }, []);
+  const { pendingTopPhoto, setPendingTopPhoto, topImageCropResumeToken, setTopImageCropResumeToken, topImageProcessing, topImageAccessPurchaseResumeRef, topImageCropDismissActionRef, resumeTopImageAfterAccessFlow, canOpenTopImagePicker, pickPhotoTheme, adjustTopPhoto, applyPendingTopPhoto } = usePhotoTheme({ photoTheme, setPhotoTheme, planTier, hasDesignCustomizeAccess, rewardedAccess, now, openRewardedPrompt });
+
   const pickPhotoForDesignPreview = React.useCallback(async (openPreviewAfterPick = false): Promise<boolean> => {
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!permission.granted) {
@@ -1648,180 +1638,9 @@ export default function App() {
       startReward?.();
     });
   }, [applyPhotoDesign, canStartPremiumDesignTrial, chicCheckColor, chicPattern, designMode, hasDesignCustomizeAccess, monoAppearance, monoPattern, photoTheme.imageUri, planTier, requestDesignReward, rewardedAccess, rewardedAccessHydrated, resumeTopImageAfterAccessFlow, startDesignTrial, startMonoDesignTrial, startPhotoDesignTrial]);
-  const canOpenTopImagePicker = React.useCallback((target: Exclude<PhotoThemePhotoTarget, 'background' | 'focus'>) => {
-    const hasWholePhotoAccess = planTier === 'premium'
-      || hasDesignCustomizeAccess
-      || isPremiumDesignTrialActive(rewardedAccess, now)
-      || isPremiumDesignUnlocked(rewardedAccess, now);
-    if (hasWholePhotoAccess) return true;
-    if (photoTheme.topImageUris?.[target] || photoTheme.topImageOriginalUris?.[target]) return true;
-    const usedSlots = new Set([
-      ...Object.keys(photoTheme.topImageUris ?? {}),
-      ...Object.keys(photoTheme.topImageOriginalUris ?? {}),
-    ]).size;
-    // Top-image slots are a separate rewarded feature. No slot is available
-    // before the first photoTop reward; existing images remain editable.
-    const allowedSlots = Math.min(5, rewardedAccess.photoCustomization.topExtraSlotsUnlocked);
-    return usedSlots < allowedSlots;
-  }, [hasDesignCustomizeAccess, isPremiumDesignUnlocked, now, photoTheme, planTier, rewardedAccess]);
 
-  const pickPhotoTheme = React.useCallback(async (target: PhotoThemePhotoTarget, options?: { bypassRewarded?: boolean }) => {
-    if (__DEV__) console.log('[TopImage] pick-start', { target });
-    const hasWholePhotoAccess = planTier === 'premium'
-      || hasDesignCustomizeAccess
-      || isPremiumDesignTrialActive(rewardedAccess, now)
-      || isPremiumDesignUnlocked(rewardedAccess, now);
-    if (planTier !== 'premium' && !hasDesignCustomizeAccess) {
-      if (target === 'background' && !rewardedAccess.photoCustomization.backgroundUnlocked && !hasWholePhotoAccess) {
-        openRewardedPrompt('photoBackground', '背景に写真を使う', '広告を見ると、好きな写真をRhythmの背景に設定できます。', () => { void pickPhotoTheme(target); });
-        return;
-      }
-      if (target === 'focus' && !rewardedAccess.photoCustomization.focusUnlocked && !hasWholePhotoAccess) {
-        openRewardedPrompt('photoFocus', '集中画面に写真を使う', '広告を見ると、集中タイムの背景に好きな写真を設定できます。', () => { void pickPhotoTheme(target); });
-        return;
-      }
-      if (target !== 'background' && target !== 'focus') {
-        const currentUri = photoTheme.topImageUris?.[target] ?? photoTheme.topImageOriginalUris?.[target];
-        // Every new top-image slot uses the existing photoTop Rewarded route;
-        // existing images can still be changed without another unlock.
-        const usedSlots = new Set([
-          ...Object.keys(photoTheme.topImageUris ?? {}),
-          ...Object.keys(photoTheme.topImageOriginalUris ?? {}),
-        ]).size;
-        const allowedSlots = Math.min(5, rewardedAccess.photoCustomization.topExtraSlotsUnlocked);
-        if (!options?.bypassRewarded && !currentUri && usedSlots >= allowedSlots) {
-          openRewardedPrompt('photoTop', '写真枠を追加', '広告を見ると、画面ごとのトップ写真枠を1つ追加できます。', () => { void pickPhotoTheme(target, { bypassRewarded: true }); });
-          return;
-        }
-      }
-    }
-    const isTopImage = target !== 'background' && target !== 'focus';
-    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!permission.granted) {
-      if (isTopImage) setTopImageCropResumeToken((current) => current + 1);
-      Alert.alert('写真へのアクセスを許可すると、背景やトップ画像に設定できます。');
-      return;
-    }
-    const aspect: [number, number] = [4, 3];
-    // iOS の標準トリミングは横長比率を指定しても正方形になることがあるため、
-    // トップ画像だけはアプリ内の横長プレビューで位置を確定する。
-    if (__DEV__ && isTopImage) console.log('[TopImage] picker-present', { target });
-    const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], allowsEditing: false, ...(isTopImage ? {} : { aspect }), quality: isTopImage ? 1 : 0.82 });
-    if (__DEV__ && isTopImage) console.log('[TopImage] picker-dismissed', { target });
-    if (__DEV__) console.log('[TopImage] picker-result', { target, canceled: result.canceled, width: result.canceled ? undefined : result.assets[0]?.width, height: result.canceled ? undefined : result.assets[0]?.height });
-    const selectedAsset = result.canceled ? undefined : result.assets[0];
-    if (!selectedAsset?.uri) {
-      if (isTopImage) setTopImageCropResumeToken((current) => current + 1);
-      return;
-    }
-    if (isTopImage) {
-      // 調整を確定するまでは選択元をそのまま使い、不要な端末内コピーを作らない。
-      const sourceWidth = selectedAsset.width || 1000;
-      const sourceHeight = selectedAsset.height || 1000;
-      let previewUri: string | undefined;
-      const maxPreviewEdge = 1800;
-      if (Math.max(sourceWidth, sourceHeight) > maxPreviewEdge) {
-        try {
-          if (__DEV__) console.log('[TopImage] crop-preview-start', { target, sourceWidth, sourceHeight, maxPreviewEdge });
-          const scale = maxPreviewEdge / Math.max(sourceWidth, sourceHeight);
-          const preview = await ImageManipulator.manipulateAsync(selectedAsset.uri, [{ resize: { width: Math.max(1, Math.round(sourceWidth * scale)) } }], { compress: 0.82, format: ImageManipulator.SaveFormat.JPEG });
-          previewUri = preview.uri;
-          if (__DEV__) console.log('[TopImage] crop-preview-complete', { target, width: Math.max(1, Math.round(sourceWidth * scale)), height: Math.max(1, Math.round(sourceHeight * scale)) });
-        } catch (error) {
-          if (__DEV__) console.log('[TopImage] error', { target, stage: 'crop-preview', message: error instanceof Error ? error.message : String(error) });
-        }
-      }
-      if (pendingTopPhoto?.previewUri) deleteTemporaryPhotoUri(pendingTopPhoto.previewUri);
-      const pending = { target: target as Exclude<PhotoThemePhotoTarget, 'background' | 'focus'>, originalUri: selectedAsset.uri, previewUri, sourceWidth, sourceHeight };
-      if (__DEV__) {
-        console.log('[TopImage] crop-presentation-start', { target: pending.target });
-        console.log('[TopImage] crop-modal-open', { target: pending.target, sourceWidth: pending.sourceWidth, sourceHeight: pending.sourceHeight, previewReady: Boolean(previewUri) });
-      }
-      setPendingTopPhoto(pending);
-      return;
-    }
-    let persistentUri: string;
-    try {
-      persistentUri = persistPhotoUri(selectedAsset.uri, target);
-    } catch (error) {
-      console.warn('Could not persist selected Rhythm photo.', error);
-      Alert.alert('写真を保存できませんでした', 'もう一度選び直してください。');
-      return;
-    }
-    if (target === 'background') {
-      setPhotoTheme((current) => {
-        deleteManagedPhotoUri(current.imageUri, [persistentUri, current.focusBackgroundUri, ...Object.values(current.topImageUris ?? {}), ...Object.values(current.topImageOriginalUris ?? {})]);
-        return { ...current, placement: 'background', imageUri: persistentUri };
-      });
-    } else if (target === 'focus') {
-      setPhotoTheme((current) => {
-        deleteManagedPhotoUri(current.focusBackgroundUri, [persistentUri, current.imageUri, ...Object.values(current.topImageUris ?? {}), ...Object.values(current.topImageOriginalUris ?? {})]);
-        return { ...current, focusBackgroundUri: persistentUri };
-      });
-    }
-  }, [hasDesignCustomizeAccess, isPremiumDesignUnlocked, now, openRewardedPrompt, pendingTopPhoto, photoTheme, planTier, rewardedAccess]);
 
-  const adjustTopPhoto = React.useCallback((target: Exclude<PhotoThemePhotoTarget, 'background' | 'focus'>) => {
-    const originalUri = photoTheme.topImageOriginalUris?.[target] ?? photoTheme.topImageUris?.[target];
-    if (!originalUri) return;
-    Image.getSize(originalUri, (sourceWidth, sourceHeight) => setPendingTopPhoto({ target, originalUri, sourceWidth, sourceHeight, cropRect: photoTheme.topImageCropRects?.[target] }), () => setPendingTopPhoto({ target, originalUri, sourceWidth: 1000, sourceHeight: 1000, cropRect: photoTheme.topImageCropRects?.[target] }));
-  }, [photoTheme]);
 
-  const applyPendingTopPhoto = React.useCallback(async (cropOverride?: NormalizedCropRect) => {
-    if (!pendingTopPhoto || topImageProcessingRef.current) return;
-    const pending = pendingTopPhoto;
-    let processingErrorMessage: string | undefined;
-    topImageProcessingRef.current = true;
-    setTopImageProcessing(true);
-    try {
-      if (__DEV__) console.log('[TopImage] apply-start', { target: pending.target, originalUri: Boolean(pending.originalUri), sourceWidth: pending.sourceWidth, sourceHeight: pending.sourceHeight });
-      const normalized = cropOverride ?? pending.cropRect ?? getInitialNormalizedCrop(pending.sourceWidth, pending.sourceHeight);
-      const crop = cropRectToPixels(normalized, pending.sourceWidth, pending.sourceHeight);
-      if (__DEV__) console.log('[TopImage] manipulate-start', { target: pending.target, crop });
-      const result = await ImageManipulator.manipulateAsync(pending.originalUri, [{ crop }, { resize: { width: 1000, height: 400 } }], { compress: 0.9, format: ImageManipulator.SaveFormat.JPEG });
-      if (__DEV__) console.log('[TopImage] manipulate-complete', { target: pending.target, resultUri: Boolean(result.uri) });
-      if (__DEV__) console.log('[TopImage] persist-original-start', { target: pending.target });
-      const originalUri = persistPhotoUri(pending.originalUri, `top-original-${pending.target}`);
-      const originalAvailable = isPersistedPhotoAvailable(originalUri);
-      if (__DEV__) console.log('[TopImage] persist-original-complete', { target: pending.target, exists: originalAvailable });
-      if (!originalAvailable) throw new Error('top image original persistence unavailable');
-      if (__DEV__) console.log('[TopImage] persist-display-start', { target: pending.target });
-      const displayUri = persistPhotoUri(result.uri, `top-${pending.target}`);
-      const displayAvailable = isPersistedPhotoAvailable(displayUri);
-      if (__DEV__) console.log('[TopImage] persist-display-complete', { target: pending.target, exists: displayAvailable });
-      if (!displayAvailable) throw new Error('top image display persistence unavailable');
-      setPhotoTheme((current) => {
-        if (__DEV__) console.log('[TopImage] state-before', { target: pending.target, hadDisplay: Boolean(current.topImageUris?.[pending.target]), hadOriginal: Boolean(current.topImageOriginalUris?.[pending.target]) });
-        const previousDisplayUri = current.topImageUris?.[pending.target];
-        const previousOriginalUri = current.topImageOriginalUris?.[pending.target];
-        const topImageUris = { ...current.topImageUris, [pending.target]: displayUri };
-        const topImageOriginalUris = { ...current.topImageOriginalUris, [pending.target]: originalUri };
-        const retainedUris = [current.imageUri, current.focusBackgroundUri, ...Object.values(topImageUris), ...Object.values(topImageOriginalUris)];
-        deleteManagedPhotoUri(previousDisplayUri, retainedUris);
-        deleteManagedPhotoUri(previousOriginalUri, retainedUris);
-        if (__DEV__) console.log('[TopImage] state-after', { target: pending.target, displayUri: Boolean(topImageUris[pending.target]), originalUri: Boolean(topImageOriginalUris[pending.target]), cropRect: true });
-        return { ...current, topImageUris, topImageOriginalUris, topImageCropRects: { ...current.topImageCropRects, [pending.target]: normalized } };
-      });
-    } catch (error) {
-      processingErrorMessage = error instanceof Error ? error.message : String(error);
-      if (__DEV__) console.log('[TopImage] error', { target: pending.target, message: processingErrorMessage });
-    } finally {
-      topImageProcessingRef.current = false;
-      setTopImageProcessing(false);
-      if (pending.previewUri) deleteTemporaryPhotoUri(pending.previewUri);
-      topImageCropDismissActionRef.current = { type: 'resume', target: pending.target };
-      if (__DEV__) {
-        console.log('[TopImage] crop-dismiss-start', { target: pending.target });
-        console.log('[TopImage] modal-close', { target: pending.target });
-      }
-      setPendingTopPhoto(undefined);
-      if (processingErrorMessage) {
-        InteractionManager.runAfterInteractions(() => {
-          Alert.alert('トップ画像を調整できませんでした', 'もう一度画像を選び直して試してください。');
-        });
-      }
-    }
-  }, [pendingTopPhoto]);
 
   const saveTaskAsTemplate = React.useCallback((task: Task) => {
     if (!hasPremiumAccess(planTier, 'saved_task_templates')) {
@@ -2469,6 +2288,8 @@ export default function App() {
         if (saved.taskTemplates) setTaskTemplates(saved.taskTemplates);
         setSavedTaskTemplates(saved.savedTaskTemplates ?? []);
         setWishMonths(saved.wishMonths ?? {});
+
+        setSavedJournalMonths(saved.wishMonths ?? {});
         setCalendarMarks(saved.calendarMarks ?? {});
         setCalendarImportCalendarIds(saved.calendarImportCalendarIds);
         setCalendarImportKnownCalendarIds(saved.calendarImportKnownCalendarIds);
@@ -2662,6 +2483,8 @@ export default function App() {
       const pendingForSnapshot = pendingWishSavesRef.current.filter((item) => item.expected === wishMonths);
       const pendingSettingsForSnapshot = pendingSettingsSavesRef.current.filter((item) => item.matches(state));
       void saveRhythmState(state).then(() => {
+
+        setSavedJournalMonths(state.wishMonths ?? {});
         if (!persistenceDisabledRef.current && latestPersistedStateRef.current === state) { setPersistenceIssue(undefined); setPersistenceRetrying(false); saveFailureNotifiedRef.current = false; }
         settleSettingsSave(state, undefined, pendingSettingsForSnapshot);
         const unsettled = pendingForSnapshot.filter((item) => pendingWishSavesRef.current.includes(item));
@@ -2698,6 +2521,8 @@ export default function App() {
         const pendingForSnapshot = pendingWishSavesRef.current.filter((item) => item.expected === latestPersistedWishMonthsRef.current);
         const pendingSettingsForSnapshot = pendingSettingsSavesRef.current.filter((item) => item.matches(pending));
         void saveRhythmState(pending).then(() => {
+
+          setSavedJournalMonths(pending.wishMonths ?? {});
           if (!persistenceDisabledRef.current && latestPersistedStateRef.current === pending) { setPersistenceIssue(undefined); setPersistenceRetrying(false); saveFailureNotifiedRef.current = false; }
           settleSettingsSave(pending, undefined, pendingSettingsForSnapshot);
           const unsettled = pendingForSnapshot.filter((item) => pendingWishSavesRef.current.includes(item));
@@ -5341,6 +5166,12 @@ export default function App() {
 
   const focusAvailableTasks = React.useMemo(() => getFocusAvailableTasks(tasks), [tasks, dateKey(now)]);
   const focusScreenVisible = screen === 'timeline' && timelineInitialTab === 'focus';
+
+  const savedTodayJournal = reviewsForMonth(getMonthlyWishState(savedJournalMonths, dateKey(now).slice(0, 7))).find(review => review.date === dateKey(now));
+  const currentTodayJournal = reviewsForMonth(getMonthlyWishState(wishMonths, dateKey(now).slice(0, 7))).find(review => review.date === dateKey(now));
+  const journalReceiptSignature = (review?: MonthlyReview) => review ? JSON.stringify([review.id ?? '', review.date ?? '', review.shortNote ?? '', review.memo ?? '', review.satisfaction ?? 0, [...new Set([...(review.photos ?? []), review.photo ?? ''].filter(Boolean))]]) : '';
+  const journalHasPendingChanges = journalReceiptSignature(savedTodayJournal) !== journalReceiptSignature(currentTodayJournal);
+  const closeTodayJournal = () => { Keyboard.dismiss(); setOpenTodayReview(false); };
   const focusCompletionCanPresent = focusScreenVisible && !planEditorOpen && !editingTask && !addOpen && !bulkAddOpen && !voiceOpen && !premiumOpen && !designCustomizeOpen && !designPreviewPattern && !designTrialNoticeOpen && !openTodayReview && !sharedEventOpen && !recoveryTargetPlanId && !noticeCenterOpen && !tomorrowPrepOpen && !rewardedPrompt && !onboarding.introVisible && !firstRunDemoActive;
   focusCompletionCanPresentRef.current = focusCompletionCanPresent;
   const focusControllerOptions = {
@@ -5556,7 +5387,10 @@ export default function App() {
               }}
               styles={styles}
               renderTodayWinStrip={(todayTasks, openFocus, toggleTask, openTaskActions, isSelectionMode, selectedIds) => <TodayWinStrip tasks={todayTasks} designMode={uiDesignMode} chicPattern={effectiveChicPattern} chicPalette={chicPalette} onRestore={firstRunDemoActive ? () => undefined : restoreTaskById} onOpenCompleted={() => firstRunDemoActive ? void advanceGuide('completedTasks') : void onboarding.complete('completedTasks')} onOpenFocus={openFocus} onToggleTask={toggleTask} onOpenTaskActions={openTaskActions} selectionMode={isSelectionMode} selectedTaskIds={selectedIds} />}
-              todayReviewExists={Boolean((wishMonths[dateKey(now).slice(0, 7)]?.reviews ?? []).some((review) => review.date === dateKey(now)) || wishMonths[dateKey(now).slice(0, 7)]?.review?.date === dateKey(now))}
+              todayReviewExists={Boolean(savedTodayJournal)}
+              todayReviewSummary={planTier === 'premium' ? savedTodayJournal?.shortNote || savedTodayJournal?.memo : undefined}
+              todayReviewPhotoUri={planTier === 'premium' ? savedTodayJournal?.photo || savedTodayJournal?.photos?.[0] : undefined}
+              todayReviewSaveStatus={journalHasPendingChanges ? persistenceIssue === 'write' ? 'error' : 'saving' : undefined}
               onOpenTodayRecord={() => { if (planTier !== 'premium') { openPremiumFeature('records'); return; } setOpenTodayReview(true); }}
               showTodoOnboarding={false}
               onTodoOnboardingAction={() => {
@@ -6012,15 +5846,18 @@ export default function App() {
         <BottomNav screen={screen} designMode={uiDesignMode} chicPalette={chicPalette} onChange={navigateWithinApp} />
       </View>
 
-      <Modal visible={openTodayReview && planTier === 'premium'} transparent animationType="slide" onRequestClose={() => setOpenTodayReview(false)}>
-        <Pressable style={styles.modalBackdrop} onPress={() => setOpenTodayReview(false)}>
-          <Pressable style={[styles.modalSheet, { backgroundColor: theme.colors.screenBackground, maxHeight: '92%' }]} onPress={(event) => event.stopPropagation()}>
-            <View style={{ flexDirection: 'row', justifyContent: 'flex-end', marginBottom: 4 }}><Pressable onPress={() => setOpenTodayReview(false)}><Text style={{ color: theme.colors.primaryAccent, fontSize: 13, fontWeight: '800' }}>閉じる</Text></Pressable></View>
-            <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+      <Modal visible={openTodayReview && planTier === 'premium'} transparent animationType="slide" onRequestClose={closeTodayJournal}>
+        <KeyboardAvoidingView testID="daily-journal-keyboard-avoidance" behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
+        <Pressable style={styles.modalBackdrop} onPress={closeTodayJournal}>
+          <Pressable style={[styles.modalSheet, { backgroundColor: theme.colors.screenBackground, maxHeight: '92%', flexShrink: 1 }]} onPress={(event) => event.stopPropagation()}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}><Pressable accessibilityRole="button" accessibilityLabel="キーボードを閉じる" style={{ minHeight: 44, paddingHorizontal: 8, justifyContent: 'center' }} onPress={Keyboard.dismiss}><Text style={{ color: theme.colors.primaryAccent, fontSize: 14, fontWeight: '700' }}>キーボードを閉じる⌄</Text></Pressable><Pressable accessibilityRole="button" accessibilityLabel="日記を閉じる" style={{ minHeight: 44, paddingHorizontal: 8, justifyContent: 'center' }} onPress={closeTodayJournal}><Text style={{ color: theme.colors.primaryAccent, fontSize: 13, fontWeight: '800' }}>閉じる</Text></Pressable></View>
+            <ScrollView testID="daily-journal-scroll" style={{ flexShrink: 1 }} contentContainerStyle={{ paddingBottom: 24 }} showsVerticalScrollIndicator={false} keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'} keyboardShouldPersistTaps="handled">
               <HistoryScreen dailyReviewOnly openDailyReview={openTodayReview} initialDate={dateKey(now)} tasks={tasks} wishMonths={wishMonths} calendarMarks={calendarMarks} onSetCalendarMark={(date, mark) => setCalendarMarks((current) => { const next = { ...current }; if (mark) next[date] = mark; else delete next[date]; return next; })} recoveryHistory={recoveryHistory} focusSessions={focusSessions} departureCheckIns={departureCheckIns} departurePlans={departurePlans} behaviorEvents={behaviorEvents} completionIcon={completionIcon} designMode={uiDesignMode} chicPattern={effectiveChicPattern} chicPalette={chicPalette} planTier={planTier} onPremium={openPremiumFeature} onSaveTemplate={saveTaskAsTemplate} onRestore={restoreTaskById} onSaveDailyReview={saveDailyReview} onSaveMonthlyReflectionCard={saveMonthlyReflectionCard} onUpdateReview={updateWishReview} onDeleteReview={deleteWishReview} guideOverlay={productionGuideFeature === 'photoLog' ? productionGuideCard : undefined} styles={styles} helpers={{ dateKey, formatLiveTime, getThemeTokens: getThemedThemeTokens }} components={{ AchievementVessel, CalendarMarkPicker }} />
             </ScrollView>
           </Pressable>
         </Pressable>
+
+        </KeyboardAvoidingView>
       </Modal>
 
       {premiumRecoveryGuideVisible && <RecoveryModal

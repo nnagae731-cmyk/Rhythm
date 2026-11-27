@@ -85,9 +85,11 @@ test('設定から紹介を再表示してスキップ・最終CTAを押して�
  fireEvent.press(view.getByText('RhythmPaceの使い方'));for(let i=0;i<4;i++)fireEvent.press(within(intro(view)).getByLabelText('次へ'));fireEvent.press(within(intro(view)).getByLabelText('閉じる'));await waitFor(()=>expect(intro(view).props.visible).toBe(false));
  expect(await savedIntro()).toEqual(before);expect(sheet(view)?.props.visible===true).toBe(false);expect((await loadRhythmState()).designMode).toBe('dark');
 },60000);
-test('Freeの日記入口はPremium案内であり、2枚分岐があっても無料登録は許可しない',async()=>{
- await saveRhythmState({tasks:[{id:'diary-free',title:'無料日記判定の目印',done:false,category:'その他',priority:'中',bucket:'now'}]});await storage.setItem(ONBOARDING_STORAGE_KEY,JSON.stringify({version:1,completed:{intro:'2026-01-01',todo:'2026-01-01'},firstRunStage:'done'}));
- const view=render(<App/>);await waitFor(()=>expect(view.getAllByText('無料日記判定の目印').length).toBeGreaterThan(0),{timeout:10000});const prompt=view.queryByText('今日はしない');if(prompt)fireEvent.press(prompt);fireEvent.press(view.getByText('今日を記録'));
+test('Freeの日記入口はPremium案内であり、無料登録を許可せず保存済みの本文・写真も表示しない',async()=>{
+ const day=require('../features/schedule/dateTimeUtils').dateKey();
+ await saveRhythmState({tasks:[{id:'diary-free',title:'無料日記判定の目印',done:false,category:'その他',priority:'中',bucket:'now'}],wishMonths:{[day.slice(0,7)]:{wishes:[],actions:[],review:{},reviews:[{id:'protected-journal',date:day,shortNote:'有料の日記本文保護',photo:'file:///protected-journal.jpg',photos:['file:///protected-journal.jpg']}]}}});await storage.setItem(ONBOARDING_STORAGE_KEY,JSON.stringify({version:1,completed:{intro:'2026-01-01',todo:'2026-01-01'},firstRunStage:'done'}));
+ const view=render(<App/>);await waitFor(()=>expect(view.getAllByText('無料日記判定の目印').length).toBeGreaterThan(0),{timeout:10000});const prompt=view.queryByText('今日はしない');if(prompt)fireEvent.press(prompt);
+ expect(view.queryByText('有料の日記本文保護')).toBeNull();expect(view.queryByLabelText('今日の日記の写真')).toBeNull();fireEvent.press(view.getByText('今日の日記を見る'));
  const {PremiumModal}=require('../components/PremiumModal');await waitFor(()=>expect(view.UNSAFE_getByType(PremiumModal).props.visible).toBe(true));
  // Inspect the actual dailyReviewOnly entry, not the read-only intro sample.
  const {HistoryScreen}=require('../screens/HistoryScreen');expect(view.UNSAFE_queryAllByType(HistoryScreen).filter(n=>n.props.dailyReviewOnly&&!n.props.previewJournal)).toHaveLength(0);

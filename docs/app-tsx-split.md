@@ -109,10 +109,19 @@ default App・DesignTryOnModal・FloralPatternDecorのexportを維持し、デ�
 - 全Jest：36 suites・324件PASS（追加・削除なし）。型チェック・iOS向けJS export・diffチェックPASS。Nativeの通知許可・配信・写真cropの実機確認とは別。
 - hook化はこの移動とは別段階。保存形式・保存キュー・失敗再試行を維持し、写真のstate・永続化・掃除との関連を調べてから着手する。
 
-## 次の分割候補（Phase 4-2以降）
+## Phase 4-2：写真選択・crop操作のhook化（2026-11-27）
+
+- `features/photo/usePhotoTheme.ts`：cropの一時state/ref/effectと写真選択・再調整・確定を移動。
+- App.tsx：6,374行 → 6,187行。移動13宣言の本文・依存配列と、App内の残りの文の一致を確認。
+- 写真設定本体・全体保存・hydration・起動時掃除・モーダル配線はAppに維持。写真全体の永続化責務をhookへ移したわけではない。
+- 全Jest：37 suites・329件PASS（既存324件＋hook回帰5件）。型チェック・iOS向けJS export・diffチェックPASS。
+- Reactレビュー：無条件のhook呼出し、初期値、refによる二重実行防止、最新設定のfunctional setterを維持。保存やNative処理の仕様変更は行わない。
+- iPhoneの写真選択→crop→確定→再調整、報酬/購入画面からの復帰、再起動後の写真表示は実機で最終確認する。
+
+## 次の分割候補（Phase 5以降）
 
 カレンダー等のUI部品、写真・音声・広告・Wishのドメインhook、保存・復元hook。
-Phase 4-2は写真テーマのhook化、次に保存・復元hook化を候補とする。Phase 4-1は未コミット・未push・EAS Build未実施（Phase 3Cまではmain `9ee77df` にpush済み）。
+次は保存・復元hook化を候補とするが、読込・保存キュー・失敗リトライは別段階で検証する。Phase 4-2は未コミット・未push・EAS Build未実施（Phase 4-1まではmain `9fc8e76` にpush済み）。
 
 ## メモ整理後の最終確認（2026-11-27）
 

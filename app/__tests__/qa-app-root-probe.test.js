@@ -14,8 +14,27 @@ const Notifications=require('expo-notifications');
 // Load/transpile the production dependency tree during suite setup, not
 // inside the first UI scenario's timeout (especially on a cold Windows run).
 require('../App');
+
+test('本番Appでルーティンの間隔をその場で選び、保存・再起動・再編集でも保持する',async()=>{
+ const {within}=require('@testing-library/react-native'),{TaskModal}=require('../components/TaskModal'),App=require('../App').default;
+ await storage.clear();await saveRhythmState({tasks:[{id:'routine-form-marker',title:'ルーティン読込の目印',done:false,category:'その他',priority:'中',bucket:'now'}]});
+ await storage.setItem(ONBOARDING_STORAGE_KEY,JSON.stringify({version:1,firstRunStage:'done',completed:Object.fromEntries(['intro','todo','todoComplete','taskDetails'].map(id=>[id,'2026-01-01']))}));
+ let view=render(<App/>);await waitFor(()=>expect(view.getAllByText('ルーティン読込の目印').length).toBeGreaterThan(0),{timeout:10000});dismissTomorrowPrompt(view);
+ fireEvent.press(view.getByLabelText('タスクを追加'));let form=within(view.UNSAFE_getByType(TaskModal));fireEvent.changeText(form.getByPlaceholderText('例：資料をバッグに入れる'),'皿を洗う習慣QA');
+ fireEvent.press(form.getByRole('switch',{name:'ルーティンにする'}));expect(form.queryByTestId('task-optional-details')).toBeNull();
+ expect(form.getByRole('button',{name:'登録する'}).props.accessibilityState.disabled).toBe(true);fireEvent.press(form.getByRole('radio',{name:'平日'}));fireEvent.press(form.getByText('登録する'));
+ const saved=async()=>(await loadRhythmState()).tasks.find(t=>t.title==='皿を洗う習慣QA');
+ await waitFor(async()=>{expect((await saved())?.isRoutine).toBe(true);expect((await saved())?.repeatRule).toBe('weekdays');});
+ view.unmount();view=render(<App/>);await waitFor(()=>expect(view.getAllByText('ルーティン読込の目印').length).toBeGreaterThan(0),{timeout:10000});dismissTomorrowPrompt(view);
+ fireEvent.press(view.getByText('ルーティン'));await waitFor(()=>expect(view.getByText('皿を洗う習慣QA')).toBeTruthy());
+ fireEvent.press(view.getByText('皿を洗う習慣QA'),{stopPropagation:()=>{}});fireEvent.press(view.getByText('編集'));dismissTaskAction(view);
+ form=within(view.UNSAFE_getByType(TaskModal));expect(form.getByRole('radio',{name:'平日'}).props.accessibilityState.checked).toBe(true);
+ fireEvent.press(form.getByRole('radio',{name:'毎月'}));fireEvent.press(form.getByText('詳しい設定を閉じる'));expect(form.queryByTestId('task-optional-details')).toBeNull();
+ fireEvent.press(form.getByText('変更を保存'));await waitFor(async()=>expect((await saved()).repeatRule).toBe('monthly'));expect((await saved()).isRoutine).toBe(true);
+},60000);
 afterEach(()=>{cleanup();jest.restoreAllMocks();Notifications.getAllScheduledNotificationsAsync.mockReset().mockResolvedValue([]);});
 function dismissTomorrowPrompt(view){const button=view.queryByText('今日はしない');if(button)fireEvent.press(button);}
+function dailyJournal(view){const {within}=require('@testing-library/react-native'),{HistoryScreen}=require('../screens/HistoryScreen');return within(view.UNSAFE_getAllByType(HistoryScreen).find(node=>node.props.dailyReviewOnly&&!node.props.previewJournal));}
 
 test.each(['minimal','dark','chic'])('本番Appでタイトル直下の関連メモを登録・表に表示し、編集・取消・削除と再読込が一致する：%s',async designMode=>{
  const {within}=require('@testing-library/react-native'),{TaskModal}=require('../components/TaskModal'),App=require('../App').default;
@@ -149,10 +168,10 @@ test('日記削除は永続化完了を待ち、失敗時に文章と写真参�
  try{
   const day=require('../features/tasks/taskUtils').dateKey(new Date()),month=day.slice(0,7),photo='file:///journal-shared-review.jpg';await storage.clear();await saveRhythmState({tasks:[{id:'delete-retry',title:'日記削除の読込目印',done:false,category:'その他',priority:'中',bucket:'now'}],wishMonths:{[month]:{monthlyGoal:'',wishes:[],actions:[],review:{},reviews:[{id:'delete-review',date:day,shortNote:'削除失敗でも残る文章',memo:'写真も保持',photo,photos:[photo]}]}}});await storage.setItem(ONBOARDING_STORAGE_KEY,JSON.stringify({version:1,completed:{intro:'2026-01-01',todo:'2026-01-01',photoLog:'2026-01-01'},firstRunStage:'done'}));
   const original=storage.setItem.getMockImplementation();jest.spyOn(storage,'setItem').mockImplementation((key,value)=>{if(key===STORAGE_KEY&&!value.includes('削除失敗でも残る文章')){writing=true;return gate.then(()=>{if(fail)throw Error('delete write failed');return original(key,value)});}return original(key,value)});const alert=jest.spyOn(Alert,'alert').mockImplementation(()=>{});
-  const App=require('../App').default;let view=render(<App/>);await waitFor(()=>expect(view.getAllByText('日記削除の読込目印').length).toBeGreaterThan(0),{timeout:7000});dismissTomorrowPrompt(view);fireEvent.press(view.getByText('今日の記録を編集'));await waitFor(()=>expect(view.getByText('削除失敗でも残る文章')).toBeTruthy(),{timeout:7000});fireEvent.press(view.getByText('削除'));act(()=>alert.mock.calls.filter(a=>a[0]==='記録を削除しますか？').at(-1)[2].find(b=>b.style==='destructive').onPress());
-  await waitFor(()=>expect(writing).toBe(true),{timeout:7000});expect(view.queryByText('この日の記録を削除しました')).toBeNull();expect((await loadRhythmState()).wishMonths[month].reviews[0].photos).toEqual([photo]);release();await waitFor(()=>expect(alert.mock.calls.some(a=>a[0]==='削除できませんでした')).toBe(true),{timeout:7000});await waitFor(()=>expect(view.getByText('削除失敗でも残る文章')).toBeTruthy(),{timeout:7000});expect((await loadRhythmState()).wishMonths[month].reviews[0].photos).toEqual([photo]);
+  const App=require('../App').default;let view=render(<App/>);await waitFor(()=>expect(view.getAllByText('日記削除の読込目印').length).toBeGreaterThan(0),{timeout:7000});dismissTomorrowPrompt(view);fireEvent.press(view.getByText('今日の日記を見る'));await waitFor(()=>expect(dailyJournal(view).getByText('削除失敗でも残る文章')).toBeTruthy(),{timeout:7000});fireEvent.press(view.getByText('削除'));act(()=>alert.mock.calls.filter(a=>a[0]==='記録を削除しますか？').at(-1)[2].find(b=>b.style==='destructive').onPress());
+  await waitFor(()=>expect(writing).toBe(true),{timeout:7000});expect(view.queryByText('この日の記録を削除しました')).toBeNull();expect((await loadRhythmState()).wishMonths[month].reviews[0].photos).toEqual([photo]);release();await waitFor(()=>expect(alert.mock.calls.some(a=>a[0]==='削除できませんでした')).toBe(true),{timeout:7000});await waitFor(()=>expect(dailyJournal(view).getByText('削除失敗でも残る文章')).toBeTruthy(),{timeout:7000});expect((await loadRhythmState()).wishMonths[month].reviews[0].photos).toEqual([photo]);
   fail=false;fireEvent.press(view.getByText('削除'));act(()=>alert.mock.calls.filter(a=>a[0]==='記録を削除しますか？').at(-1)[2].find(b=>b.style==='destructive').onPress());await waitFor(async()=>expect((await loadRhythmState()).wishMonths[month].reviews||[]).toHaveLength(0),{timeout:7000});await waitFor(()=>expect(view.getByText('この日の記録を削除しました')).toBeTruthy(),{timeout:7000});
-  view.unmount();view=render(<App/>);await waitFor(()=>expect(view.getAllByText('日記削除の読込目印').length).toBeGreaterThan(0),{timeout:7000});dismissTomorrowPrompt(view);expect(view.getByText('今日を記録')).toBeTruthy();
+  view.unmount();view=render(<App/>);await waitFor(()=>expect(view.getAllByText('日記削除の読込目印').length).toBeGreaterThan(0),{timeout:7000});dismissTomorrowPrompt(view);expect(view.getByText('今日の日記を書く')).toBeTruthy();
  }finally{release();if(previous===undefined)delete process.env.EXPO_PUBLIC_RHYTHM_PLAN;else process.env.EXPO_PUBLIC_RHYTHM_PLAN=previous;}
 },60000);
 test('予定の保存待ち中にTODOが完了しても両方の変更を永続化する',async()=>{
@@ -235,6 +254,24 @@ test('無料の記録画面は重複見出しなしで振り返りを残し、�
  expect(view.getByLabelText('写真を選んでプレビュー')).toBeTruthy();expect(view.queryByText(/写真デザインを適用/)).toBeNull();expect(view.queryByText('背景写真を選ぶ')).toBeNull();expect(view.getByText(/正式適用はプレビュー内から/)).toBeTruthy();
  const selector=view.UNSAFE_root.findAll(n=>typeof n.type==='function'&&n.type.name==='ThemeColorSelector'&&n.props.surfaceMode==='dark')[0];expect(selector).toBeTruthy();const rn=require('react-native');expect(rn.StyleSheet.flatten(selector.findAllByType(rn.View)[0].props.style).backgroundColor).toBe('#181F2E');
 },90000);
+test('日記のキーボードを閉じても入力を保持し、シートはキーボード回避とスクロールに対応する',async()=>{
+ const previous=process.env.EXPO_PUBLIC_RHYTHM_PLAN;process.env.EXPO_PUBLIC_RHYTHM_PLAN='premium';
+ try{
+  const {Keyboard,KeyboardAvoidingView}=require('react-native'),dismiss=jest.spyOn(Keyboard,'dismiss').mockImplementation(()=>{});
+  await storage.clear();await saveRhythmState({tasks:[{id:'journal-keyboard',title:'日記入力の目印',done:false,category:'その他',priority:'中',bucket:'now'}]});
+  await storage.setItem(ONBOARDING_STORAGE_KEY,JSON.stringify({version:1,firstRunStage:'done',completed:Object.fromEntries(['intro','todo','todoComplete','photoLog'].map(id=>[id,'2026-01-01']))}));
+  const App=require('../App').default,view=render(<App/>);await waitFor(()=>expect(view.getAllByText('日記入力の目印').length).toBeGreaterThan(0),{timeout:10000});dismissTomorrowPrompt(view);
+  fireEvent.press(view.getByRole('button',{name:'今日の日記を書く'}));
+  const input=view.getByLabelText('日記のひとこと'),memo=view.getByLabelText('日記の本文');
+  fireEvent.changeText(input,'キーボードを閉じても残す文章');fireEvent.changeText(memo,'長い本文\n改行も残す');
+  expect(view.UNSAFE_getAllByType(KeyboardAvoidingView).find(n=>n.props.testID==='daily-journal-keyboard-avoidance').props.behavior).toBe(Platform.OS==='ios'?'padding':'height');
+  expect(view.getByTestId('daily-journal-scroll').props.keyboardDismissMode).toBe(Platform.OS==='ios'?'interactive':'on-drag');
+  const keyboardClose=view.getByRole('button',{name:'キーボードを閉じる'});expect(view.getByTestId('daily-journal-scroll').findAll(node=>node===keyboardClose)).toHaveLength(0);fireEvent.press(keyboardClose);
+  fireEvent.press(view.getByRole('button',{name:'入力を終える'}));fireEvent(input,'submitEditing');expect(dismiss).toHaveBeenCalled();
+  expect(view.getByLabelText('日記のひとこと').props.value).toBe('キーボードを閉じても残す文章');expect(view.getByLabelText('日記の本文').props.value).toBe('長い本文\n改行も残す');
+ }finally{if(previous===undefined)delete process.env.EXPO_PUBLIC_RHYTHM_PLAN;else process.env.EXPO_PUBLIC_RHYTHM_PLAN=previous;}
+},60000);
+
 test('日記の本番保存中は成功表示しない',async()=>{
  const previous=process.env.EXPO_PUBLIC_RHYTHM_PLAN;process.env.EXPO_PUBLIC_RHYTHM_PLAN='premium';let release;const gate=new Promise(r=>{release=r});let pending;let writing=false;
  try {
@@ -242,8 +279,12 @@ test('日記の本番保存中は成功表示しない',async()=>{
   await storage.setItem(ONBOARDING_STORAGE_KEY,JSON.stringify({version:1,completed:{intro:'2026-01-01',todo:'2026-01-01',photoLog:'2026-01-01'},firstRunStage:'done'}));
   const original=storage.setItem.getMockImplementation();jest.spyOn(storage,'setItem').mockImplementation((key,value)=>{if(key===STORAGE_KEY&&value.includes('保存中日記QA')){writing=true;pending=gate.then(()=>original(key,value));return pending;}return original(key,value)});
   const App=require('../App').default;const view=render(<App/>);await waitFor(()=>expect(view.getAllByText('日記QA準備').length).toBeGreaterThan(0),{timeout:7000});dismissTomorrowPrompt(view);
-  fireEvent.press(view.getByText('今日を記録'));await waitFor(()=>expect(view.getByPlaceholderText('今日のひとこと')).toBeTruthy(),{timeout:7000});fireEvent.changeText(view.getByPlaceholderText('今日のひとこと'),'保存中日記QA');fireEvent.press(view.getByText('保存する'));
+  fireEvent.press(view.getByText('今日の日記を書く'));await waitFor(()=>expect(view.getByPlaceholderText('今日のひとこと')).toBeTruthy(),{timeout:7000});fireEvent.changeText(view.getByPlaceholderText('今日のひとこと'),'保存中日記QA');fireEvent.press(view.getByText('保存する'));
   await waitFor(()=>expect(writing).toBe(true),{timeout:7000});expect(view.queryByText('記録を更新しました')).toBeNull();expect(view.getByPlaceholderText('今日のひとこと').props.value).toBe('保存中日記QA');expect(view.getByPlaceholderText('今日のひとこと').props.editable).toBe(false);expect(view.getByPlaceholderText('今日のことを少し残す').props.editable).toBe(false);
+  const {within}=require('@testing-library/react-native');expect(within(view.getByTestId('home-journal-card')).queryByText('保存済み')).toBeNull();expect(view.queryByTestId('journal-saved-status')).toBeNull();
+  await act(async()=>{release();if(pending)await pending;});
+  await waitFor(()=>expect(view.getByTestId('journal-saved-status')).toBeTruthy(),{timeout:7000});
+  fireEvent.press(view.getByRole('button',{name:'日記を閉じる'}));expect(within(view.getByTestId('home-journal-card')).getByText('保存済み')).toBeTruthy();expect(within(view.getByTestId('home-journal-card')).getByText('保存中日記QA')).toBeTruthy();
  } finally {release();if(pending)await pending;if(previous===undefined)delete process.env.EXPO_PUBLIC_RHYTHM_PLAN;else process.env.EXPO_PUBLIC_RHYTHM_PLAN=previous;}
 },90000);
 
@@ -285,12 +326,12 @@ test('日記を登録・編集・削除しそれぞれ再読込する',async()=>
  try {
   await storage.clear();await saveRhythmState({tasks:[{id:'diary-crud',title:'日記復元確認',done:false,category:'その他',priority:'中',bucket:'now'}],wishMonths:{}});
   await storage.setItem(ONBOARDING_STORAGE_KEY,JSON.stringify({version:1,completed:{intro:'2026-01-01',todo:'2026-01-01',photoLog:'2026-01-01'},firstRunStage:'done'}));
-  const App=require('../App').default;let view=render(<App/>);const open=async()=>{await waitFor(()=>expect(view.getAllByText('日記復元確認').length).toBeGreaterThan(0),{timeout:7000});dismissTomorrowPrompt(view);fireEvent.press(view.getByText('今日を記録'));};
+  const App=require('../App').default;let view=render(<App/>);const open=async()=>{await waitFor(()=>expect(view.getAllByText('日記復元確認').length).toBeGreaterThan(0),{timeout:7000});dismissTomorrowPrompt(view);fireEvent.press(view.getByText('今日の日記を書く'));};
   const reviews=async()=>Object.values((await loadRhythmState()).wishMonths).flatMap(m=>m.reviews||[]);
   await open();fireEvent.changeText(view.getByPlaceholderText('今日のひとこと'),'日記登録QA');fireEvent.press(view.getByText('保存する'));await waitFor(async()=>expect((await reviews()).some(r=>r.shortNote==='日記登録QA')).toBe(true),{timeout:7000});await waitFor(()=>expect(view.getByText('記録を更新しました')).toBeTruthy(),{timeout:7000});
-  view.unmount();view=render(<App/>);await waitFor(()=>expect(view.getAllByText('日記復元確認').length).toBeGreaterThan(0),{timeout:7000});dismissTomorrowPrompt(view);fireEvent.press(view.getByText('今日の記録を編集'));await waitFor(()=>expect(view.getByText('日記登録QA')).toBeTruthy(),{timeout:7000});fireEvent.press(view.getByText('編集'));dismissTaskAction(view);fireEvent.changeText(view.getByPlaceholderText('今日のひとこと'),'日記編集QA');fireEvent.press(view.getByText('更新する'));await waitFor(async()=>expect((await reviews()).some(r=>r.shortNote==='日記編集QA')).toBe(true),{timeout:7000});
-  view.unmount();view=render(<App/>);await waitFor(()=>expect(view.getAllByText('日記復元確認').length).toBeGreaterThan(0),{timeout:7000});dismissTomorrowPrompt(view);fireEvent.press(view.getByText('今日の記録を編集'));await waitFor(()=>expect(view.getByText('日記編集QA')).toBeTruthy(),{timeout:7000});const alert=jest.spyOn(Alert,'alert').mockImplementation(()=>{});fireEvent.press(view.getByText('削除'));dismissTaskAction(view);const call=alert.mock.calls.find(a=>a[0]==='記録を削除しますか？');act(()=>call[2].find(b=>b.style==='destructive').onPress());await waitFor(async()=>expect((await reviews()).some(r=>r.shortNote==='日記編集QA')).toBe(false),{timeout:7000});
-  view.unmount();view=render(<App/>);await waitFor(()=>expect(view.getAllByText('日記復元確認').length).toBeGreaterThan(0),{timeout:7000});dismissTomorrowPrompt(view);expect(view.getByText('今日を記録')).toBeTruthy();
+  view.unmount();view=render(<App/>);await waitFor(()=>expect(view.getAllByText('日記復元確認').length).toBeGreaterThan(0),{timeout:7000});dismissTomorrowPrompt(view);fireEvent.press(view.getByText('今日の日記を見る'));await waitFor(()=>expect(dailyJournal(view).getByText('日記登録QA')).toBeTruthy(),{timeout:7000});fireEvent.press(view.getByText('編集'));dismissTaskAction(view);fireEvent.changeText(view.getByPlaceholderText('今日のひとこと'),'日記編集QA');fireEvent.press(view.getByText('更新する'));await waitFor(async()=>expect((await reviews()).some(r=>r.shortNote==='日記編集QA')).toBe(true),{timeout:7000});
+  view.unmount();view=render(<App/>);await waitFor(()=>expect(view.getAllByText('日記復元確認').length).toBeGreaterThan(0),{timeout:7000});dismissTomorrowPrompt(view);fireEvent.press(view.getByText('今日の日記を見る'));await waitFor(()=>expect(dailyJournal(view).getByText('日記編集QA')).toBeTruthy(),{timeout:7000});const alert=jest.spyOn(Alert,'alert').mockImplementation(()=>{});fireEvent.press(view.getByText('削除'));dismissTaskAction(view);const call=alert.mock.calls.find(a=>a[0]==='記録を削除しますか？');act(()=>call[2].find(b=>b.style==='destructive').onPress());await waitFor(async()=>expect((await reviews()).some(r=>r.shortNote==='日記編集QA')).toBe(false),{timeout:7000});
+  view.unmount();view=render(<App/>);await waitFor(()=>expect(view.getAllByText('日記復元確認').length).toBeGreaterThan(0),{timeout:7000});dismissTomorrowPrompt(view);expect(view.getByText('今日の日記を書く')).toBeTruthy();
  } finally {if(previous===undefined)delete process.env.EXPO_PUBLIC_RHYTHM_PLAN;else process.env.EXPO_PUBLIC_RHYTHM_PLAN=previous;}
 },90000);
 test('日記保存失敗後に入力を保って再試行し再読込する',async()=>{
@@ -299,10 +340,10 @@ test('日記保存失敗後に入力を保って再試行し再読込する',asy
   await storage.clear();await saveRhythmState({tasks:[{id:'diary-retry',title:'日記再試行準備',done:false,category:'その他',priority:'中',bucket:'now'}],wishMonths:{}});
   await storage.setItem(ONBOARDING_STORAGE_KEY,JSON.stringify({version:1,completed:{intro:'2026-01-01',todo:'2026-01-01',photoLog:'2026-01-01'},firstRunStage:'done'}));
   const original=storage.setItem.getMockImplementation();let failed=false;jest.spyOn(storage,'setItem').mockImplementation((key,value)=>{if(key===STORAGE_KEY&&value.includes('日記再試行QA')&&!failed){failed=true;return Promise.reject(Error('disk'));}return original(key,value)});
-  const alert=jest.spyOn(Alert,'alert').mockImplementation(()=>{});const App=require('../App').default;let view=render(<App/>);await waitFor(()=>expect(view.getAllByText('日記再試行準備').length).toBeGreaterThan(0),{timeout:7000});dismissTomorrowPrompt(view);fireEvent.press(view.getByText('今日を記録'));fireEvent.changeText(view.getByPlaceholderText('今日のひとこと'),'日記再試行QA');fireEvent.press(view.getByText('保存する'));
+  const alert=jest.spyOn(Alert,'alert').mockImplementation(()=>{});const App=require('../App').default;let view=render(<App/>);await waitFor(()=>expect(view.getAllByText('日記再試行準備').length).toBeGreaterThan(0),{timeout:7000});dismissTomorrowPrompt(view);fireEvent.press(view.getByText('今日の日記を書く'));fireEvent.changeText(view.getByPlaceholderText('今日のひとこと'),'日記再試行QA');fireEvent.press(view.getByText('保存する'));
   await waitFor(()=>expect(alert).toHaveBeenCalled(),{timeout:7000});await waitFor(()=>expect(view.getByPlaceholderText('今日のひとこと').props.value).toBe('日記再試行QA'),{timeout:7000});expect(Object.values((await loadRhythmState()).wishMonths||{}).flatMap(m=>m.reviews||[]).some(r=>r.shortNote==='日記再試行QA')).toBe(false);
   fireEvent.press(view.getByText('更新する'));await waitFor(async()=>expect(Object.values((await loadRhythmState()).wishMonths).flatMap(m=>m.reviews||[]).some(r=>r.shortNote==='日記再試行QA')).toBe(true),{timeout:7000});
-  view.unmount();view=render(<App/>);await waitFor(()=>expect(view.getAllByText('日記再試行準備').length).toBeGreaterThan(0),{timeout:7000});dismissTomorrowPrompt(view);fireEvent.press(view.getByText('今日の記録を編集'));await waitFor(()=>expect(view.getByText('日記再試行QA')).toBeTruthy(),{timeout:7000});
+  view.unmount();view=render(<App/>);await waitFor(()=>expect(view.getAllByText('日記再試行準備').length).toBeGreaterThan(0),{timeout:7000});dismissTomorrowPrompt(view);fireEvent.press(view.getByText('今日の日記を見る'));await waitFor(()=>expect(dailyJournal(view).getByText('日記再試行QA')).toBeTruthy(),{timeout:7000});
  } finally {if(previous===undefined)delete process.env.EXPO_PUBLIC_RHYTHM_PLAN;else process.env.EXPO_PUBLIC_RHYTHM_PLAN=previous;}
 },90000);
 test('本番Appを描画するためのNative境界を検証する',()=>{

@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { InteractionManager, Modal, Platform, Pressable, ScrollView, Text, View } from 'react-native';
+import { Image, InteractionManager, Modal, Platform, Pressable, ScrollView, Text, View } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { ChicThemePalette, DesignMode } from '../theme';
 import { Category, Priority, Task, TaskBucket, TaskListItem } from '../types';
@@ -27,6 +27,10 @@ export function HomeScreen({
   onOpenFocus,
   initialTab = 'now',
   todayReviewExists = false,
+
+  todayReviewSummary,
+  todayReviewPhotoUri,
+  todayReviewSaveStatus,
   onOpenTodayRecord,
   onOpenSchedule,
   onToggle,
@@ -74,6 +78,10 @@ export function HomeScreen({
   onOpenFocus: () => void;
   initialTab?: 'now' | 'list' | 'routine';
   todayReviewExists?: boolean;
+
+  todayReviewSummary?: string;
+  todayReviewPhotoUri?: string;
+  todayReviewSaveStatus?: 'saving' | 'error';
   onOpenTodayRecord?: () => void;
   onOpenSchedule?: () => void;
   onToggle: (id: string) => void;
@@ -249,7 +257,15 @@ export function HomeScreen({
           {homeTab !== 'routine' && <Pressable accessibilityRole="button" accessibilityLabel={selectionMode ? '選択を終了' : 'タスクを選択'} onPress={onSelectionMode} style={{ minHeight: 40, paddingHorizontal: 13, borderRadius: 12, borderWidth: 1, borderColor: selectionMode ? focusShortcutAccent : focusShortcutBorder, backgroundColor: selectionMode ? focusShortcutAccent : focusShortcutBackground, justifyContent: 'center' }}><Text style={{ color: selectionMode ? (designMode === 'chic' ? chicPalette.onAccent : theme?.colors?.screenBackground ?? '#FFFFFF') : focusShortcutText, fontSize: 13, fontWeight: '900' }}>{selectionMode ? '取消' : '選択'}</Text></Pressable>}
         </View>
       </View>
-       <View style={{ flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: focusShortcutBorder, marginBottom: 14 }}>
+       <Pressable testID="home-journal-card" accessibilityRole="button" accessibilityLabel={todayReviewExists ? '今日の日記を見る' : '今日の日記を書く'} disabled={!onOpenTodayRecord} onPress={onOpenTodayRecord} style={{ minHeight: 88, marginBottom: 14, padding: 14, borderRadius: 16, borderWidth: 1, borderColor: focusShortcutBorder, backgroundColor: designMode === 'chic' ? chicPalette.cardSurface : theme?.colors?.surface ?? (isDark ? '#181F2E' : '#FFFFFF'), flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+        {todayReviewPhotoUri && <Image source={{ uri: todayReviewPhotoUri }} style={{ width: 56, height: 56, borderRadius: 10 }} accessibilityLabel="今日の日記の写真" />}
+        <View style={{ flex: 1, minWidth: 0 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}><Text style={{ color: focusShortcutText, fontSize: 16, lineHeight: 24, fontWeight: '800' }}>ひと言日記</Text>{todayReviewExists && !todayReviewSaveStatus && <Text accessibilityLiveRegion="polite" style={{ color: focusShortcutAccent, fontSize: 13, fontWeight: '700' }}>保存済み</Text>}</View>
+          <Text style={{ color: focusShortcutMuted, fontSize: 14, lineHeight: 21, marginTop: 3 }} numberOfLines={2}>{todayReviewSummary || (todayReviewExists ? '内容を確認・編集できます' : 'ひとことや写真で、今日を残そう')}</Text>
+          <Text accessibilityLiveRegion="polite" style={{ color: focusShortcutAccent, fontSize: 13, lineHeight: 20, marginTop: 4 }}>{todayReviewSaveStatus === 'error' ? '変更は未保存です。保存を再試行してください' : todayReviewSaveStatus === 'saving' ? '日記を保存中…' : todayReviewExists ? '今日の日記を見る' : '今日の日記を書く'}</Text>
+        </View><Text style={{ color: focusShortcutAccent, fontSize: 20 }}>›</Text>
+      </Pressable>
+      <View style={{ flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: focusShortcutBorder, marginBottom: 14 }}>
         {(['now', 'list', 'routine'] as const).map((tab) => <Pressable key={tab} onPress={() => { clearSelectionForViewChange(); setHomeTab(tab); if (tab === 'now') setBucketFilter('now'); else if (tab === 'list') setBucketFilter('all'); }} style={{ flex: 1, minHeight: 40, alignItems: 'center', justifyContent: 'center', borderBottomWidth: homeTab === tab ? 2 : 0, borderBottomColor: focusShortcutAccent }}><Text style={{ color: homeTab === tab ? focusShortcutAccent : focusShortcutMuted, fontSize: 13, fontWeight: homeTab === tab ? '900' : '700' }}>{tab === 'now' ? '今' : tab === 'list' ? '一覧' : 'ルーティン'}</Text></Pressable>)}
        </View>
        {homeTab !== 'routine' && selectionBar}
@@ -262,13 +278,7 @@ export function HomeScreen({
         {nextUpcoming ? <Pressable onPress={onOpenSchedule} style={{ flexDirection: 'row', alignItems: 'center', marginTop: 5 }}><Text numberOfLines={2} style={{ color: focusShortcutText, fontSize: 14, fontWeight: '800', flex: 1 }}>{nextPlanTimeCopy}　{nextUpcoming.title}</Text><Text style={{ marginLeft: 'auto', color: focusShortcutAccent, fontSize: 20 }}>›</Text></Pressable> : <Text style={{ color: focusShortcutMuted, fontSize: 13, marginTop: 5 }}>今日の次の予定はありません</Text>}
       </View>
       <Pressable onPress={() => setTomorrowOpen(true)} style={{ minHeight: 44, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 4, marginTop: 8 }}><Text style={{ color: focusShortcutText, fontSize: 13, fontWeight: '800' }}>明日の予定を見る</Text><Text style={{ color: focusShortcutAccent, fontSize: 20 }}>›</Text></Pressable>
-      <Pressable disabled={!onOpenTodayRecord} onPress={onOpenTodayRecord} style={{ minHeight: 48, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 4, marginTop: 8, borderTopWidth: 1, borderTopColor: focusShortcutBorder }}>
-        <View style={{ flex: 1 }}>
-          <Text style={{ color: focusShortcutText, fontSize: 13, fontWeight: '800' }}>{todayReviewExists ? '今日の記録を編集' : '今日を記録'}</Text>
-          <Text style={{ color: focusShortcutMuted, fontSize: 12, marginTop: 3 }}>{todayReviewExists ? '今日残した内容を確認・編集できます' : '写真やひとことを残す'}</Text>
-        </View>
-        <Text style={{ color: focusShortcutAccent, fontSize: 20 }}>›</Text>
-      </Pressable>
+
       </>}
       {homeTab === 'routine' && <>
         <View style={{ paddingHorizontal: 4, marginBottom: 8 }}><Text style={{ color: focusShortcutText, fontSize: 16, fontWeight: '900' }}>今日のルーティン</Text><Text style={{ color: focusShortcutMuted, fontSize: 12, marginTop: 3 }}>{routineCompletedCount} / {routineTasks.length} 完了</Text></View>
