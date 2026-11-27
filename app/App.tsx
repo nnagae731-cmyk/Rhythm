@@ -287,6 +287,9 @@ export default function App() {
   const startupPhotoReferencesRef = React.useRef<Set<string> | undefined>(undefined);
   const pendingNotificationCompletionIdsRef = React.useRef<string[]>([]);
   const pendingWidgetActionsProcessingRef = React.useRef(false);
+  // Native ACK can fail after local persistence. Remember an applied linked
+  // action for this mounted session so a later undo is not replayed away.
+  const appliedLinkedWidgetCompletionIdsRef = React.useRef(new Set<string>());
   const pendingNotificationNavigationRef = React.useRef<Array<'timeline' | 'routine'>>([]);
   const pendingDepartureNotificationActionsRef = React.useRef<Array<{
     planId: string;
@@ -3208,7 +3211,8 @@ export default function App() {
       const actions = await getRhythmWidgetPendingActions();
       if (!actions.length) return;
       const linkedActionIds = new Set(actions.filter((raw: any) => typeof raw?.id === 'string' && raw.type === 'completeTask'
-        && tasksRef.current.some(task => task.id === raw.taskId && isOneOffWishTask(task))).map((raw: any) => raw.id));
+        && (appliedLinkedWidgetCompletionIdsRef.current.has(raw.id)
+          || tasksRef.current.some(task => task.id === raw.taskId && isOneOffWishTask(task)))).map((raw: any) => raw.id));
       const linkedActionTaskIds = new Set(actions.filter((raw: any) => linkedActionIds.has(raw?.id)).map((raw: any) => raw.taskId));
       const handledIds: string[] = [];
       const taskIdsToComplete: string[] = [];
@@ -3275,7 +3279,7 @@ export default function App() {
           handledIds.push(raw.id);
         } else if (raw.type === 'completeTask' && typeof raw.taskId === 'string') {
           const target = nextTasks.find((task) => task.id === raw.taskId);
-          if (target && !target.done) {
+          if (target && !target.done && !appliedLinkedWidgetCompletionIdsRef.current.has(raw.id)) {
             taskIdsToComplete.push(raw.taskId);
           }
           handledIds.push(raw.id);
@@ -3322,22 +3326,35 @@ export default function App() {
       }
       if (createdPlans.length) void onboarding.complete('planRegistration');
       if (taskIdsToComplete.length) completeTaskIds(taskIdsToComplete, 'manual');
+      linkedActionIds.forEach(id => appliedLinkedWidgetCompletionIdsRef.current.add(id));
       const ordinaryActionIds = handledIds.filter(id => !linkedActionIds.has(id));
       if (ordinaryActionIds.length) await acknowledgeRhythmWidgetPendingActions(ordinaryActionIds);
       if (linkedActionIds.size) {
         // Do not consume the native completion before the corresponding main
         // state is durable. Match the latest intent (including a later undo or
         // deletion), not the stale completed snapshot captured above.
-        const saved = waitForSettingsSave(state => state.tasks === tasksRef.current && state.tasks.every(task => {
-          if (!linkedActionTaskIds.has(task.id) || !isOneOffWishTask(task)
-            || state.tasks.filter(other => sameWishTaskOrigin(other.origin, task.origin)).length !== 1) return true;
-          const action = linkedWishAction(state.wishMonths ?? {}, task.origin);
-          return !action || action.completed === task.done;
-        }));
-        setSaveRetry(value => value + 1);
-        try { await saved; }
-        catch (error) { console.warn('Linked Widget completion is not saved; native action retained.', error); return; }
-        await acknowledgeRhythmWidgetPendingActions(handledIds.filter(id => linkedActionIds.has(id)));
+        while (true) {
+          const expectedTasks = tasksRef.current;
+          const expectedWishMonths = wishMonthsRef.current;
+          const saved = waitForSettingsSave(state => state.tasks === expectedTasks && state.tasks.every(task => {
+            if (!linkedActionTaskIds.has(task.id) || !isOneOffWishTask(task)
+              || state.tasks.filter(other => sameWishTaskOrigin(other.origin, task.origin)).length !== 1) return true;
+            const action = linkedWishAction(state.wishMonths ?? {}, task.origin);
+            return !action || action.completed === task.done;
+          }));
+          setSaveRetry(value => value + 1);
+          try { await saved; }
+          catch (error) {
+            if (expectedTasks !== tasksRef.current || expectedWishMonths !== wishMonthsRef.current) continue;
+            console.warn('Linked Widget completion is not saved; native action retained.', error); return;
+          }
+          if (expectedTasks !== tasksRef.current || expectedWishMonths !== wishMonthsRef.current) continue;
+          break;
+        }
+        const acknowledgedIds = handledIds.filter(id => linkedActionIds.has(id));
+        if (await acknowledgeRhythmWidgetPendingActions(acknowledgedIds)) {
+          acknowledgedIds.forEach(id => appliedLinkedWidgetCompletionIdsRef.current.delete(id));
+        }
       }
     } finally {
       pendingWidgetActionsProcessingRef.current = false;

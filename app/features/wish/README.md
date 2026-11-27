@@ -36,6 +36,8 @@ TaskとWishActionを同じイベント内で更新し、既存のApp全体snapsh
 
 関連TODOのWidget/App Intents完了は、最新のTask/Wish状態の永続化成功後だけNativeキューへACKする。保存失敗時はACKせず、既存の未保存表示・保存再試行・次回App起動/復帰から再取り込みできる。保存中にユーザーが完了取消/削除した場合も、古い完了ではなく最新の意図を保存してからACKする。
 
+2026-11-28の取消競合修正：同一mount内で適用した関連NativeアクションIDをACK成功まで記憶し、保存のsupersedeやACK失敗後に再完了しない。保存待ちの間にTask/Wishが変わった場合は、最新snapshotの保存待ちへ切り替えてからACKする。空キューの読取りだけでは適用済み記憶を消さない（Native利用不可も空配列として返るため）。新しい保存経路や永続フィールドは追加しない。詳細とプロセス終了時の限界は `docs/wish-native-completion-race.md`。
+
 NativeのTODO追加（Siriを含む）は独立したTaskであり、同じタイトルだけでは目標と関連付けない。Swift側のWidget描画・Siri発話・App Intents起動そのものはWindowsで検証できない。
 
 ## 限界

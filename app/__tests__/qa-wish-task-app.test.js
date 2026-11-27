@@ -6,7 +6,7 @@ jest.mock('expo-iap',()=>{const result={connected:true,products:[],subscriptions
 jest.mock('expo',()=>({...jest.requireActual('expo'),requireOptionalNativeModule:jest.fn()}));
 const React=require('react');
 const {render,fireEvent,waitFor,act,cleanup,within}=require('@testing-library/react-native');
-const {Alert,Modal,Platform}=require('react-native');
+const {Alert,Modal,Platform,AppState}=require('react-native');
 const storage=require('@react-native-async-storage/async-storage');
 const Notifications=require('expo-notifications'),expo=require('expo');
 const {saveRhythmState,loadRhythmState}=require('../storage/rhythmStorage');
@@ -280,6 +280,31 @@ test('Native完了の保存中にWish側で取消しても古い完了を再適�
  await act(async()=>release());await waitFor(()=>expect(pending).toHaveLength(0),{timeout:10000});expect((await action()).completed).toBe(false);expect((await loadRhythmState()).tasks.find(t=>t.id==='linked').done).toBe(false);
  view.unmount();view=await boot();expect((await action()).completed).toBe(false);
 },60000);
+test('Native ACK失敗・一時的な空キュー後の再取込でも、保存済みのWish取消を再完了しない',async()=>{
+ const getImpl=native.getPendingWidgetActions.getMockImplementation(),ackImpl=native.acknowledgePendingWidgetActions.getMockImplementation();
+ const listeners=[];jest.spyOn(AppState,'addEventListener').mockImplementation((_type,cb)=>{listeners.push(cb);return {remove:jest.fn()}});
+ let readable=true,canAck=false;const ackStates=[];
+ native.getPendingWidgetActions.mockImplementation(async()=>JSON.stringify(readable?pending:[]));
+ native.acknowledgePendingWidgetActions.mockImplementation(async ids=>{
+  if(!canAck){readable=false;return false;}
+  ackStates.push(await loadRhythmState());pending=pending.filter(a=>!ids.includes(a.id));return true;
+ });
+ try{
+  await seed([linked(),ordinary()]);pending=[{id:'ack-retry-undo',type:'completeTask',taskId:'linked'}];const view=await boot();
+  await waitFor(()=>expect(native.acknowledgePendingWidgetActions).toHaveBeenCalled(),{timeout:10000});
+  const w=await openWish(view);expect(wishCheck(w).props.accessibilityState.checked).toBe(true);
+  fireEvent.press(wishCheck(w),{stopPropagation:()=>{}});
+  await waitFor(async()=>expect((await action()).completed).toBe(false),{timeout:10000});
+  expect(pending).toHaveLength(1);readable=true;canAck=true;
+  await act(async()=>{listeners.forEach(cb=>cb('active'));});
+  await waitFor(()=>expect(pending).toHaveLength(0),{timeout:10000});
+  expect(ackStates).toHaveLength(1);expect(ackStates[0].tasks.find(t=>t.id==='linked').done).toBe(false);
+  expect(ackStates[0].wishMonths[key].actions[0].completed).toBe(false);
+  expect((await action()).completed).toBe(false);
+  view.unmount();await boot();expect((await action()).completed).toBe(false);
+ }finally{native.getPendingWidgetActions.mockImplementation(getImpl);native.acknowledgePendingWidgetActions.mockImplementation(ackImpl);}
+},60000);
+
 test('TODO編集中に通知から完了しても古い編集snapshotで完了・関連IDを巻き戻さない',async()=>{
  await seed([linked(),ordinary()]);let view=await boot();await openTaskEditor(view);fireEvent.changeText(view.getByPlaceholderText('例：資料をバッグに入れる'),'編集中の変更');
  const cb=Notifications.addNotificationResponseReceivedListener.mock.calls.at(-1)[0];await act(async()=>cb({actionIdentifier:'DONE',notification:{request:{identifier:'editing-notice',content:{data:{taskId:'linked'},body:'歩く'}}}}));
