@@ -12,6 +12,14 @@ const { getChicThemePalette } = require('../theme');
 
 afterEach(()=>{cleanup();jest.restoreAllMocks();});
 
+test.each(['minimal', 'dark'])('写真付きヘッダーは別デザインのpaletteが渡っても現在のテーマの文字色を使う：%s', designMode => {
+ const theme = require('../theme').getThemeTokens(designMode).colors;
+ const view = render(<Header compact designMode={designMode} chicPalette={getChicThemePalette('cool')} now={new Date('2026-11-27T12:00:00+09:00')} />);
+ expect(StyleSheet.flatten(view.getByText('Rhythm').props.style).color).toBe(theme.primaryText);
+ const date = view.getByText(/11月27日/);
+ expect(StyleSheet.flatten(date.props.style).color).toBe(theme.secondaryText);
+});
+
 test.each([
  ['Mono Light','minimal',false,390,1],['Mono Dark','dark',false,390,1],
  ['Design','chic',false,390,1],['Photo','chic',true,390,1],['小画面・拡大文字','dark',false,320,1.3],

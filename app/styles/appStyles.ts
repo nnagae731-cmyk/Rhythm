@@ -24,7 +24,7 @@ export const styles = StyleSheet.create({
   app: { flex: 1, width: '100%', maxWidth: 560, alignSelf: 'center' },
   photoThemeBackgroundWrap: { ...StyleSheet.absoluteFillObject },
   photoThemeBackground: { width: '100%', height: '100%' },
-    photoThemeTopImage: { aspectRatio: 2.5, marginHorizontal: 22, marginBottom: 12, borderRadius: 18, backgroundColor: '#E9DDE0', overflow: 'hidden' },
+    photoThemeTopImage: { aspectRatio: 2.5, marginHorizontal: 22, marginBottom: 12, borderRadius: 18, backgroundColor: 'transparent', overflow: 'hidden' },
     photoThemeTopImageContent: { width: '100%', height: '100%' },
   topImageCropBackdrop: { flex: 1, backgroundColor: 'rgba(12,16,24,0.72)', justifyContent: 'center', paddingHorizontal: 12 },
   topImageCropSheet: { backgroundColor: '#FFFFFF', borderRadius: 22, padding: 16, maxHeight: '94%' },

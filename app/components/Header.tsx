@@ -50,8 +50,8 @@ export function Header({ designMode, now, compact = false, chicPalette, onVoice,
   if (compact) return (
     <View style={styles.photoHeader}>
       <View style={styles.photoHeaderInfo}>
-        <Text style={[styles.photoBrand, { color: chicPalette?.textPrimary ?? theme.colors.primaryText }]}>{'Rhythm'}</Text>
-        <Text numberOfLines={2} style={[styles.photoDate, { color: chicPalette?.textSecondary ?? theme.colors.secondaryText }]}>{formatLiveDate(now)} ・ {formatLiveTime(now)}</Text>
+        <Text style={[styles.photoBrand, { color: designMode === 'chic' && chicPalette ? chicPalette.textPrimary : theme.colors.primaryText }]}>{'Rhythm'}</Text>
+        <Text numberOfLines={2} style={[styles.photoDate, { color: designMode === 'chic' && chicPalette ? chicPalette.textSecondary : theme.colors.secondaryText }]}>{formatLiveDate(now)} ・ {formatLiveTime(now)}</Text>
       </View>
       {actions}
     </View>
