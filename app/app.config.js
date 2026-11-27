@@ -64,6 +64,7 @@ module.exports = ({ config }) => {
   if (isWidgetEnabled()) plugins.push(WIDGET_PLUGIN);
   plugins.push(TOGGLE_PLUGIN);
   plugins.push('./plugins/with-rhythm-icloud-kvs');
+  plugins.push('./plugins/with-rhythm-family');
 
   return {
     ...baseConfig,
