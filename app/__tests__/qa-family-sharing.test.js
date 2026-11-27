@@ -153,6 +153,26 @@ test('CloudKit entitlementは既存KVS・Widget・App Group・production APNsを
   expect(next['com.apple.developer.icloud-container-identifiers']).toEqual(['iCloud.other', FAMILY_CONTAINER]);
   expect(familyEntitlements(next)).toEqual(next); expect(input['com.apple.developer.icloud-container-identifiers']).toEqual(['iCloud.other']);
 });
+test.each(['Development', 'Production'])('CloudKit %sを明示しAPNs・KVS・App Groupを維持する', (environment) => {
+  const input = { 'aps-environment': 'production', 'com.apple.developer.ubiquity-kvstore-identifier': 'existing-kvs', 'com.apple.security.application-groups': ['group.existing'] };
+  const next = familyEntitlements(input, environment);
+  expect(next['com.apple.developer.icloud-container-environment']).toBe(environment);
+  for (const key of Object.keys(input)) expect(next[key]).toEqual(input[key]);
+  expect(input).not.toHaveProperty('com.apple.developer.icloud-container-environment');
+});
+test('CloudKit環境の未指定は既存値を維持し不正な値は拒否する', () => {
+  const key = 'com.apple.developer.icloud-container-environment';
+  expect(familyEntitlements({ [key]: 'Production' })[key]).toBe('Production');
+  expect(familyEntitlements({})).not.toHaveProperty(key);
+  for (const value of ['', 'development', 'preview']) expect(() => familyEntitlements({}, value)).toThrow();
+});
+test('development-widgetだけがCloudKit Developmentを明示する', () => {
+  const eas = require('../eas.json');
+  expect(eas.build['development-widget'].env.RHYTHM_CLOUDKIT_ENVIRONMENT).toBe('Development');
+  expect(eas.build['development-widget'].distribution).toBe('internal');
+  expect(eas.build['development-widget'].developmentClient).toBe(true);
+  expect(eas.build.production.env).not.toHaveProperty('RHYTHM_CLOUDKIT_ENVIRONMENT');
+});
 test('招待設定は既存background modeを維持しscene構成の未接続を検出する', () => {
   const input = { UIBackgroundModes: ['audio'] };
   expect(familyInfo(input)).toEqual({ CKSharingSupported: true, UIBackgroundModes: ['audio', 'remote-notification'] });

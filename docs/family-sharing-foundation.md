@@ -1,5 +1,14 @@
 # 家族共有 CloudKit基盤
 
+## 2026-11-28 Development実機ビルド準備（以下の過去記録より優先）
+
+- 基準mainは `4a820e8`。オーナー指示により2台の実機で検証する。EAS登録済みの両端末を本体・Widgetの既存Ad Hoc profileへ追加。Distribution証明書 `G44M2YBF7H` とAPNsキー `VS639C26G5` は再利用し、削除・再発行しない。
+- `development-widget.env.RHYTHM_CLOUDKIT_ENVIRONMENT=Development` を家族共有pluginが読み、`com.apple.developer.icloud-container-environment=Development` を生成する。EAS標準Gymfileはこの値を `export_options.iCloudContainerEnvironment` へ渡す。EAS環境名・広告環境・APNsとは独立。未指定のprofileは既存値を維持し、不正な指定は失敗させる。
+- 更新後の本体profileはCloudKit環境のProduction/Development双方を許可し、対象container、KVS、App Group、APNs productionを含む。Widgetは既存App Groupのみを維持。最終IPAでは本体CloudKitがDevelopment、APNsが署名profileと一致、両profileのUDIDが2台、KVS/App Groupが残ることを再確認する。生成設定の確認だけで署名済みIPA検証済みとはしない。
+- DevelopmentのRecord Typesは現時点でUsersのみ（オーナー確認）。初回保存で型・フィールドを自動生成する。createGroupでFamilyGroup/CKShareを保存、FamilyMemberはqueue経由。sync後、時刻付き・終日予定と期日付きTODOの作成/完了を試し全フィールドを生成・確認する。CKQueryによる保存前検索はなく、事前Query indexは不要。Public DB権限を追加しない。Production schema deployは禁止。
+- Nativeビルドと別Apple IDによる招待・参加・双方向同期・権限検証は別の完了条件。開発harnessは `EXPO_PUBLIC_RHYTHM_SHARING_DEBUG=1` でMetroを起動し利用する。既存Metroを無断で停止しない。
+- 事前検証：全Jest **59 suites / 651 tests PASS**（既存647件＋環境設定4件）、`pnpm typecheck` PASS、iOS JS export PASS、`git diff --check` PASS。署名済みIPAと2台間通信は未検証。オーナー指示によりこの変更をmainへpush後、`development-widget`のEAS Buildを1回のみ実行する。失敗時も自動で追加ビルドしない。
+
 ## 基準／対象範囲
 
 最新mainをfast-forward取得して `17ffcc0`（変更前clean）を確認。`d6f235a` の580件に、その後の写真UI回帰3件を含む **58 suites / 583件**が現在の既存基準。個人データ移行、カレンダーUI、公開範囲設定、課金／Premium変更は行わない。commit/pushは今回行わない。

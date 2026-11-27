@@ -1,9 +1,15 @@
 const { withEntitlementsPlist, withInfoPlist, withAppDelegate, withPodfileProperties } = require('expo/config-plugins');
 const CONTAINER = 'iCloud.app.rhythm.daily.family';
 const marker = '// RhythmFamily CloudKit invitation bridge';
-function familyEntitlements(existing) {
+function familyEntitlements(existing, environment) {
+  if (environment !== undefined && !['Development', 'Production'].includes(environment)) {
+    throw Error('RhythmFamily: RHYTHM_CLOUDKIT_ENVIRONMENT must be Development or Production.');
+  }
   return {
     ...existing,
+    // EAS forwards this entitlement to export_options.iCloudContainerEnvironment.
+    // This is independent of the EAS environment name and APNs signing environment.
+    ...(environment === undefined ? {} : { 'com.apple.developer.icloud-container-environment': environment }),
     'com.apple.developer.icloud-container-identifiers': [...new Set([...(existing['com.apple.developer.icloud-container-identifiers'] ?? []), CONTAINER])],
     'com.apple.developer.icloud-services': [...new Set([...(existing['com.apple.developer.icloud-services'] ?? []), 'CloudKit'])],
     'aps-environment': existing['aps-environment'] ?? 'development',
@@ -27,7 +33,7 @@ function patchDelegate(source) {
 }
 function withRhythmFamily(config) {
   config = withEntitlementsPlist(config, mod => {
-    mod.modResults = familyEntitlements(mod.modResults);
+    mod.modResults = familyEntitlements(mod.modResults, process.env.RHYTHM_CLOUDKIT_ENVIRONMENT);
     return mod;
   });
   config = withInfoPlist(config, mod => {

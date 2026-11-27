@@ -15,6 +15,7 @@
       "developmentClient": true,
       "distribution": "internal",
       "env": {
+        "RHYTHM_CLOUDKIT_ENVIRONMENT": "Development",
         "RHYTHM_ENABLE_WIDGET": "true",
         "EXPO_PUBLIC_RHYTHM_ADS_ENV": "development",
         "EXPO_PUBLIC_RHYTHM_PREMIUM_MONTHLY_PRODUCT_ID": "app.rhythm.daily.premium.monthly",
