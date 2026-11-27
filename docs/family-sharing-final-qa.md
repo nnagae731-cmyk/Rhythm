@@ -28,11 +28,13 @@
 
 署名準備：本体/Widgetとも既存Distribution証明書 `G44M2YBF7H`、本体APNsキー `VS639C26G5` を再利用。既存profileは両端末を含み、本体はCloudKit Developmentを許可。生成configでDevelopment、既存KVS/App GroupとWidgetを再確認した。今回の新EASビルドは1回のみ実行し、再ビルドは追加承認なしに行わない。
 
+新Nativeビルド：コードコミット `07905fb` の [f64a9b45-4bac-47ee-8125-63329edb404a](https://expo.dev/accounts/rhythm-nn/projects/rhythm/builds/f64a9b45-4bac-47ee-8125-63329edb404a) がFINISHED、エラーなし。1回のみ実行。IPA内の署名entitlementsを読み取り、本体CloudKit Development/APNs production/既存KVS/App Group、Widgetの既存App Group、本体・Widget双方のprofileに2端末を確認。DEBUG用probeのNative文字列も本体に含まれる。Windows上のMach-O署名領域読み取りであり、macOS codesignによる暗号学的検証や実機API成功を代替しない。両実機への上書き更新と以降のQAはこれから実施する。
+
 各項目は実行時に結果/日時/根拠を追記する。現在は全て新ビルドで未実施。
 
 | 項目 | 手順と合格条件 | 状態 |
 | --- | --- | --- |
-| 署名/接続 | 同一IPAをA/Bへ。Development、既存KVS/App Group、両UDID、既存証明書を確認。異なるApple Account、同一CloudKit環境 | 未検証 |
+| 署名/接続 | 同一IPAをA/Bへ。Development、既存KVS/App Group、両UDID、既存証明書を確認。異なるApple Account、同一CloudKit環境 | Native/IPA確認済み、実機更新・接続待ち |
 | 閲覧専用招待 | A作成→システムUIで「閲覧のみ」→B受諾。両方のmembers/currentUserParticipantがreadOnly、Bの読み取り成功 | 未検証 |
 | サーバー拒否 | Bの通常save拒否に加えdebug.probeReadOnlyWriteでCloudKit permissionFailureを確認。A側にprobeが作成されていない | 未検証 |
 | 招待後の変更 | Aの既存共有管理でBをreadWriteへ変更→B編集成功→再びreadOnlyへ。共有URL/グループを複製しない | 未検証 |
