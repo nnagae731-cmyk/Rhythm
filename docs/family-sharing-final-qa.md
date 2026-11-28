@@ -22,7 +22,7 @@
 - `debug.diagnostics()`：実際のserverRecordChangedとpermissionFailureの件数のみ。私的本文/メール等は含まない。
 - `debug.probeReadOnlyWrite(participantGroup)`：実CKShareでreadOnlyを確認してから、local write guard/outboxを経由せずShared DBへ新しい `QA_PERMISSION_PROBE` TODOの保存を試みる。CloudKitのpermissionFailure（個別またはpartialFailure内）だけを `serverRejected:true` とする。通信エラーは合格ではない。成功してしまった場合は不合格とし、そのprobeだけ削除を試み、cleanupSucceededも返す。結果が不合格なら先へ進まず原因調査する。
 
-## 実機手順・記録表
+## 当初の実機手順・記録表（実施前の計画）
 
 事前自動検証：全Jest **60 suites / 671 tests PASS**（既存651＋追加20）、`pnpm typecheck` PASS、iOS JS export PASS、`git diff --check` PASS。追加分は競合の対称性/削除優先、権限状態、QA APIの引数・無効時no-op・Native失敗/ログアウト、DEBUG限定と実サーバー権限probe/権限回復のNativeソース契約、個人保存からの分離。Swift実行やCloudKit実権限拒否は、この自動テストの合格だけでは保証しない。
 
@@ -30,7 +30,7 @@
 
 新Nativeビルド：コードコミット `07905fb` の [f64a9b45-4bac-47ee-8125-63329edb404a](https://expo.dev/accounts/rhythm-nn/projects/rhythm/builds/f64a9b45-4bac-47ee-8125-63329edb404a) がFINISHED、エラーなし。1回のみ実行。IPA内の署名entitlementsを読み取り、本体CloudKit Development/APNs production/既存KVS/App Group、Widgetの既存App Group、本体・Widget双方のprofileに2端末を確認。DEBUG用probeのNative文字列も本体に含まれる。Windows上のMach-O署名領域読み取りであり、macOS codesignによる暗号学的検証や実機API成功を代替しない。両実機への上書き更新と以降のQAはこれから実施する。
 
-各項目は実行時に結果/日時/根拠を追記する。現在は全て新ビルドで未実施。
+以下の当初チェックリストは計画であり、実施結果は末尾の「2026-11-28 実機結果」を正とする。未実施・部分検証を合格扱いにしない。
 
 | 項目 | 手順と合格条件 | 状態 |
 | --- | --- | --- |
@@ -64,3 +64,37 @@ projectionのルートは既存FamilyGroupの子にしない。参加者集合/�
 これはUIフェーズ前の設計条件であり、今回projectionの実装/個人データ移行/新しい共有IDの保存は行わない。既存groupモデルだけで4段階が実現済みとは報告しない。対象者別の公開範囲、共同編集の正本、旧projectionの撤回手順を確定し、CloudKit実権限の否定テストを追加してからUIへ接続する。
 
 根拠：[Shared Records](https://developer.apple.com/documentation/cloudkit/shared-records)、[CKRecord.share](https://developer.apple.com/documentation/cloudkit/ckrecord/share)、[CKShare](https://developer.apple.com/documentation/cloudkit/ckshare)、[automaticallySync](https://developer.apple.com/documentation/cloudkit/cksyncengine-5sie5/configuration)。
+
+## 2026-11-28 実機結果（JST・当初チェックリストより優先）
+
+同じ新IPA `f64a9b45-4bac-47ee-8125-63329edb404a` を別Apple IDのA/Bに導入し、新Native QA APIで確認した。Bの旧バイナリは同じIPAの再インストールで解消。追加ビルド・Production deployは行っていない。以下は検証用レコードのみを対象とする。
+
+| 項目 | 実測結果・判定 |
+| --- | --- |
+| Native/CloudKit接続 | A/Bとも新API利用可能、CloudKit利用可能。IPA検査済みDevelopment環境の同一ビルドで検証 |
+| 閲覧専用とサーバー拒否 | Bのactual currentUserParticipantがaccepted/readOnly。通常保存拒否に加え、ローカルguardを迂回した直接保存probeもCloudKit error 10（permissionFailure）、serverRejected=true、unexpectedWrite=false。Aに不正レコードなし。再招待後にも同じ拒否を確認 |
+| 招待時の権限選択 | 実際の送信シートの「People you choose can edit.」行から「閲覧とダウンロードのみ」を選択して送信→B受諾→実CKShare readOnlyを確認。「選択した人」を維持。管理画面の共有オプションではprivate shareの新規参加者権限がグレーになる場合があり、送信シート側の選択と区別する。public shareへ変更しない。受諾前pending時点の権限は独立計測できていない |
+| 招待後の変更 | AのApple標準管理UIでreadWriteへ変更し、Bの実権限確認後に完了状態を更新、Aでdone=1を受信。readOnlyへの変更も確認 |
+| 未送信変更中の権限低下 | B自動同期停止→編集pending=1→AでreadOnly→送信試行。未許可の楽観的編集を取り下げ、サーバーの元タイトル/done=1へ戻りpending=0。閲覧可能なまま。readWrite復帰後も取り下げた編集は復活しない。ただしこの経路は送信前検証で処理され、engineのpermissionFailures=0。実送信permissionFailure後の復旧分岐は未検証（直接probeの拒否確認とは別） |
+| 同時編集 | A/Bが同じタグの同一TODOを編集し送信。Aで実serverRecordChangedを1件観測。双方がBの同じupdatedAt/mutationIdへ収束、pending=0。送信順を反転した全組合せは未実施 |
+| 編集対削除 | Bで削除をqueue後、Aでそれより新しい編集をqueueして送信。Aのconflictsは累計2。双方から非表示、pending=0。古い同一IDの更新は拒否。B完全終了→再起動でも復活なし。全送信順の組合せは未実施 |
+| 退出 | B退出後records=0/pending=0、left/permission=none/verified=false。Aのグループと検証TODOは維持 |
+| 再招待 | 閲覧専用で再送・受諾後、Bはaccepted/readOnly、グループ1件（重複なし）、Aの残したTODOを取得。以前削除したTODOは復活しない。Apple管理UIの未使用共有リンクを実在参加者の重複と混同しない |
+| 個人TODO/日記/Wish | 通常UIで作成した削除可能なQAデータを比較し、共有QA後も内容一致。Bの個人保存にこれらのQA目印なし。これは当該検証データの保持確認であり、全個人機能の網羅検証ではない |
+| 個人通知 | QA TODOの14:45通知を実画面で確認。14:55のpresented notificationsで期待identifierと一致する1件を確認。通知比較ではJSONキー順を正規化し、発火後に予約から消える正常動作を破損扱いしない |
+| Widget | Aの14:07/14:54スクリーンショットで同じQA個人TODO・進行中表示を確認。Widget設定/サイズの保存値も一致。全サイズ/全種類の操作は未検証 |
+| 長時間background後の復帰 | 初回はRhythm内ホームだったため無効。再試行はBをiPhone OSホームへ通常background（強制終了ではない）。約26分34秒後の復帰でAの新TODOを受信し手動更新なし/pending=0。background中の配送とは区別する。詳細は次段落 |
+| Account切替/ログアウト | 専用検証環境がないためユーザー判断で保留。未検証。通常利用Accountのログアウトを促さない |
+
+### background計測の正確な記録
+
+端末BのAppState時刻：background=`1795845706020`（15:01:46.020 JST）、active=`1795847299971`（15:28:19.971 JST）、約26分34秒。Aの新規QA TODO更新=`1795847049725`（15:24:09.725 JST）。Bの最初の観測イベント=`1795847300563`、受信内容確認=`1795847304163`（15:28:24.163 JST、復帰から約4.2秒）。観測時のAppStateは開始/完了ともactive。したがって **長時間background後のforeground自動同期は確認済みだが、background中の自動配送/silent push成功は未検証**。受信後の手動syncは行わず、検証用購読は解除した。省電力設定は記録できていない。Nativeがbackground中に取得済みだったかも、このJS観測だけでは断定しない。
+
+### UIフェーズへの引き継ぎと残件
+
+- 基本共有・実サーバー閲覧権限・代表的な競合/削除・退出/再参加・限定した個人データ保持は実機確認済み。UI設計・既存共有データの表示実装へは進める。ただし「全回帰検証完了」「リリース保証済み」とはしない。
+- 残件：engine実送信permissionFailure後のreadOnly復旧、競合の逆順組合せ、Account切替/ログアウト、background配送。いずれもリリース前の最終QAで必須検証とする（オーナー指示）。追加ビルドなしで実施可能なケースから別途計画する。Account操作は専用環境の承認が前提で、未実施のまま完了扱いにしない。
+- 個人予定4段階公開は上記の別CKShare/projection設計が前提。現在のFamilyGroup配下だけで実装しない。公開範囲UIの接続前に設計確定と否定テストが必要。
+- 権限低下で取り下げた編集はUIで理由を伝える必要がある。現状は開発QA APIのみで、本格編集UIは未実装。
+- QAグループ/検証データは削除承認なしに一括削除しない。証明書/APNs/KVS/App Groupを維持。Production deployおよび追加Nativeビルドは禁止のまま。
+- 自動検証の最終実行結果は60 suites / 671 tests PASS、typecheck/iOS JS export/diff check PASS（コード`07905fb`）。本記録追加はMarkdownのみであり、実機成功を単体テストの追加件数として数えない。

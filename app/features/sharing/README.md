@@ -19,6 +19,8 @@
 
 招待のcold/warm launch受け口はconfig pluginのAppDelegate bridge。Expo SDK 54は当該delegateを転送しないため明示追加している。現在のnon-scene構成専用で、scene構成へ変更した時はprebuildを止める（SceneDelegate対応が必要）。通常のURL／通知リスナーを置換しない。
 
-設計・Apple設定・開発コンソール手順・実機チェックと未検証範囲は `docs/family-sharing-foundation.md`。Nativeビルド・実CloudKitはMac／署名済み実機での確認前であり、JSテストをNative実証として扱わない。
+設計・Apple設定・開発コンソール手順は `docs/family-sharing-foundation.md`。最新の実機結果は `docs/family-sharing-final-qa.md` の2026-11-28実機結果を優先する。コード`07905fb`のNativeビルドは成功し、別Apple ID 2台で実権限拒否・競合・退出/再招待等を確認済み。JSテストをNative実証として扱わない。
 
-現在はWIP。Nativeビルド未確認につき完了扱いにしない。別Apple ID実機2台の招待→同期を確認するまで動作確認完了とはしない。全体Jestでの既存Wishケース失敗も報告書を参照。
+自動検証は60 suites / 671 tests PASS。共有表示のUI設計へ進めるが、全回帰完了ではない。Account切替/ログアウト、background中の配送、engine実送信permissionFailure後のreadOnly復旧、競合の逆順組合せは未検証。個人予定の4段階公開は別CKShare/projection設計が必要で、現行階層のUI制限だけでは実現不可。追加ビルド/Production deployは別途承認が必要。
+
+未検証4項目はリリース前の最終QAで必ず確認する。個人予定の公開処理は設計承認前に実装しない。コンパクト月間カレンダー等のUI先行実装とは切り離して管理する。

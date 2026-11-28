@@ -2,8 +2,11 @@
 
 ## 2026-11-28 家族共有の最新引き継ぎ（下の過去記録より優先）
 
-- `f1a29bf` のDevelopment Nativeビルドは成功。別Apple ID 2台で基本共有・双方向変更・オフラインqueue復元・共有停止を実機確認済み。個人タスク/日記は未登録、Widget未設置だったため保持への影響は未検証。
-- 現在は残件の最終QA段階。閲覧専用をCloudKit実権限として選択可能にする修正、permissionFailure後のreadOnly権限再検証、DEBUG限定の実サーバー拒否/競合検証手段を追加する。新ビルドでの実機結果が揃うまでは全体完了扱いにしない。
+- コード`07905fb`、Nativeビルド`f64a9b45-4bac-47ee-8125-63329edb404a`は成功し同じIPAを別Apple ID 2台へ導入済み。60 suites / 671 tests、typecheck、iOS JS export、diff check PASS。承認されたEAS Buildは1回のみ実行済み。
+- 実機で閲覧専用招待/権限変更、ローカルguardを迂回したCloudKit error 10による書き込み拒否、未送信編集の取り下げ、実serverRecordChanged競合・削除優先、退出/再招待、削除後の再起動を確認。QA個人TODO/日記/Wish保持・通知到達・Widget表示と相手への非流出も限定範囲で確認。
+- Bの約26分background後、復帰約4秒で手動更新なしに新TODO受信。background中の配送は証明できていない。Account切替/ログアウトは専用環境がなく保留。engine実送信permissionFailure後の復旧分岐、競合逆順組合せも未検証。全回帰完了/リリース保証済みとはしない。
+- UI設計・共有表示の作業へは進めるが、個人予定の公開範囲を接続する前に別CKShare/projection設計と否定テストを確定する。QAグループ/データを無断削除しない。
+- 未検証4項目（Account切替、background配送、一部権限拒否後復旧、競合逆順）はリリース前最終QAの必須項目。UI先行実装の許可は、これらの合格や個人予定の公開処理実装の承認を意味しない。
 - 最新の変更内容・検証状態・個人予定4段階公開の安全境界は `docs/family-sharing-final-qa.md` を参照。現在のFamilyGroup共有階層＋UI制限だけでは4段階公開は実現不可。個人原本を共有階層へ移さない。
 - CloudKit Development維持、Production schema deploy禁止。個人PersistedState/KVS/Widget識別子、既存証明書/APNsキーを維持。今回のEAS Buildは承認された1回のみ。
 
